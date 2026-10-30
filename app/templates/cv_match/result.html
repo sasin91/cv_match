@@ -1,0 +1,69 @@
+{#- A match's result, put in #result by js/app.js (views/result.php). The score ring fills and the
+    number counts up when it is shown; the filter buttons show only the missing, partial or met
+    requirements. A saved match has its Reject button and carries its post (.match-job) for the
+    job box, and the free match what it found in the CV (.cv-found) for the CV panel. -#}
+<div class="match-result" data-saved-id="{% if let Some(id) = result.saved_id %}{{ id }}{% endif %}">
+    <div class="summary">
+        <div class="score-ring {{ result.score.tag }}" id="score-ring" style="--value: {{ result.score.percent }}" data-percent="{{ result.score.percent }}">
+            <svg viewBox="0 0 120 120" aria-hidden="true">
+                <circle class="track" cx="60" cy="60" r="52"></circle>
+                <circle class="meter" cx="60" cy="60" r="52"></circle>
+            </svg>
+            <div class="score"><span id="score-value">{{ result.score.percent }}</span><small>%</small></div>
+        </div>
+        <div>
+            <div id="score-tag" class="tag {{ result.score.tag }}">{{ result.score.tag }}</div>
+            <div id="job-heading">{{ result.heading }}</div>
+            <div id="score-parts" class="muted">{{ result.parts }}{% if !result.saved_at.is_empty() %} · saved <time datetime="{{ result.saved_at }}" data-format="datetime">{{ result.saved_at }}</time>{% endif %}</div>
+        </div>
+    </div>
+    {%- if let Some(reject) = result.reject %}
+    {%- if reject.rejected %}
+        <form method="post" action="{{ reject.action }}" class="reject-match">
+            <input type="hidden" name="undo" value="1">
+            <span class="muted">{{ reject.note }}</span>
+            <button type="submit" name="reject">{{ reject.submit }}</button>
+        </form>
+    {%- else %}
+        {#- A plain form asking why: rejecting goes back to the shortlist. #}
+        <details class="reject-match">
+            <summary>{{ reject.open }}</summary>
+            <form method="post" action="{{ reject.action }}">
+                <fieldset>
+                    <legend>Why not? Tick all that apply</legend>
+                    {%- for reason in reject.reasons %}
+                        <div class="reject-reason">
+                            <label><input type="checkbox" name="reasons[]" value="{{ reason.value }}"> {{ reason.label }}</label>
+                            <input type="text" name="notes[{{ reason.value }}]" maxlength="{{ reject.note_max }}" placeholder="{{ reason.placeholder }}" aria-label="{{ reason.label }}: note">
+                        </div>
+                    {%- endfor %}
+                </fieldset>
+                <button type="submit" name="reject">{{ reject.submit }}</button>
+            </form>
+        </details>
+    {%- endif %}
+    {%- endif %}
+    {% include "cv_match/result_body.html" %}
+    {%- if let Some(documents) = result.documents %}
+        <section class="panel" id="application-panel">
+            <h3>Application and résumé</h3>
+            <div id="documents">{% include "cv_match/documents.html" %}</div>
+        </section>
+    {%- endif %}
+    {%- if !result.laya.text.is_empty() %}
+        <p id="laya-answer"{% if result.laya.failed %} class="muted"{% endif %}>{{ result.laya.text }}</p>
+    {%- endif %}
+    {%- if !result.laya_input.is_empty() %}
+        <div id="laya-block">
+            <h3>For Laya</h3>
+            <p class="muted">The job post and CV in English with a summary of the requirement verdicts: the input Laya's English checkpoint ranked well in the bake-off.</p>
+            <textarea id="laya" rows="6" readonly>{{ result.laya_input }}</textarea>
+        </div>
+    {%- endif %}
+    {%- if !result.job_text.is_empty() %}
+        <template class="match-job" data-url="{{ result.job_url }}">{{ result.job_text }}</template>
+    {%- endif %}
+    {%- if let Some(cv_found) = result.cv_found %}
+        {% include "cv_match/cv_found.html" %}
+    {%- endif %}
+</div>

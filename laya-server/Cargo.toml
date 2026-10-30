@@ -1,0 +1,23 @@
+[package]
+name = "laya-server"
+version = "0.1.0"
+edition = "2024"
+description = "Laya's /v1/systemone on ONNX Runtime: a drop-in for `python -m laya.serve` with the English checkpoint"
+license = "Apache-2.0"
+publish = false
+
+[dependencies]
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+serde = { version = "1", features = ["derive"] }
+# preserve_order: questions are answered in the order the request lists them, as in Python.
+serde_json = { version = "1", features = ["preserve_order"] }
+# download-binaries fetches a prebuilt onnxruntime; copy-dylibs puts it next to the binary.
+ort = { version = "=2.0.0-rc.15", default-features = false, features = ["std", "download-binaries", "copy-dylibs", "tls-native", "api-31"] }
+# fancy-regex instead of onig, so there is no C library to build.
+tokenizers = { version = "0.23", default-features = false, features = ["fancy-regex"] }
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true

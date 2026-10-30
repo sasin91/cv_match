@@ -1,0 +1,36 @@
+name: laya-server
+
+# The Rust Laya server in laya-server/. The model tests need the exported checkpoint,
+# which isn't in the repo, so they skip here; the sequence and decoding unit tests run.
+on:
+  push:
+    branches: [main]
+    paths: ['laya-server/**', '.github/workflows/laya-server.yml']
+  pull_request:
+    paths: ['laya-server/**', '.github/workflows/laya-server.yml']
+
+concurrency:
+  group: laya-server-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: read
+
+jobs:
+  rust:
+    name: fmt, clippy, test
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: laya-server
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: rustfmt, clippy
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: laya-server
+      - run: cargo fmt --check
+      - run: cargo clippy --all-targets -- -D warnings
+      - run: cargo test

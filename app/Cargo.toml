@@ -1,0 +1,40 @@
+[package]
+name = "recruiter"
+version = "0.1.0"
+edition = "2024"
+description = "Recruiter's cv_match as a local desktop app"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+# Word lists keep the order PHP's arrays keep, which decides ties and typo candidates.
+indexmap = { version = "2", features = ["serde"] }
+regex = "1"
+unicode-normalization = "0.1"
+# SQLite built in, so the exe needs no sqlite3.dll.
+rusqlite = { version = "0.41", features = ["bundled"] }
+# Only for importing from the PHP app's MariaDB; the pure-Rust zlib keeps the build C-free.
+mysql = { version = "28", default-features = false, features = ["minimal-rust"] }
+dirs = "6"
+# Lookaround in the patterns ported from PHP (Apply_instructions), which the regex crate lacks.
+fancy-regex = "0.20"
+axum = "0.8"
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+askama = "0.16"
+# The page's CSS and JS, read from ../assets while developing and built into the exe for release.
+rust-embed = { version = "8", features = ["include-exclude"] }
+mime_guess = "2"
+chrono = "0.4"
+webbrowser = "1"
+
+[profile.release]
+lto = "thin"
+codegen-units = 1
+strip = true
+
+[dev-dependencies]
+tower = { version = "0.5", features = ["util"] }
+http-body-util = "0.1"
+sha2 = "0.10"
+base64 = "0.22"

@@ -1,0 +1,38 @@
+{#- The confirm and flash dialogs and the toast stack, shown by js/ui.js, which only fills in their
+    text and opens them (modules/cv_match/views/dialogs.php). -#}
+{%- let icon_circle = "M30.5,6.5L30.5,6.5c6.6,6.6,6.6,17.4,0,24l0,0c-6.6,6.6-17.4,6.6-24,0l0,0c-6.6-6.6-6.6-17.4,0-24l0,0C13.1-0.2,23.9-0.2,30.5,6.5z" %}
+<dialog id="confirm-dialog" class="alert-dialog" aria-labelledby="confirm-dialog-title">
+    <svg class="alert-icon warning" viewBox="0 0 37 37" aria-hidden="true">
+        <path class="alert-circle" d="{{ icon_circle }}"></path>
+        <g class="warning">
+            <line class="alert-tick" x1="18.5" y1="9" x2="18.5" y2="21"></line>
+            <line class="alert-cross dot" x1="18.5" y1="26.5" x2="18.5" y2="27"></line>
+        </g>
+        <g class="error">
+            <polyline class="alert-tick" points="11.1,10 25.4,27.2"></polyline>
+            <polyline class="alert-cross" points="24.1,10 12.4,27.2"></polyline>
+        </g>
+    </svg>
+    <h2 id="confirm-dialog-title"></h2>
+    <p class="alert-dialog-text"></p>
+    <div class="alert-dialog-buttons">
+        <button type="button" value="cancel">Cancel</button>
+        <button type="button" value="confirm">Continue</button>
+    </div>
+</dialog>
+<dialog id="flash-dialog" class="alert-dialog flash">
+    <svg class="alert-icon success" viewBox="0 0 37 37" aria-hidden="true">
+        <path class="alert-circle" d="{{ icon_circle }}"></path>
+        <g class="success">
+            <polyline class="alert-tick" points="11.6,20 15.9,24.2 26.4,13.8"></polyline>
+        </g>
+        <g class="error">
+            <polyline class="alert-tick" points="11.1,10 25.4,27.2"></polyline>
+            <polyline class="alert-cross" points="24.1,10 12.4,27.2"></polyline>
+        </g>
+    </svg>
+    <h2></h2>
+    <p class="alert-dialog-text"></p>
+</dialog>
+<div id="toasts" class="toasts" role="status" aria-live="polite"></div>
+<template id="toast"><div class="toast"></div></template>

@@ -1,0 +1,60 @@
+{#- /joblog_extension: setting up the Jobnet extension the app ships (modules/joblog_extension's
+    page, for the desktop app): the folder it was written to, as folder (Ok) or why it couldn't
+    be (Err), and how to load it. -#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <base href="/">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Joblog autofill · Recruiter</title>
+    <link rel="stylesheet" href="cv_match_module/css/cv_match.css">
+</head>
+<body>
+<header class="site-header">
+    <a class="brand" href="cv_match">Recruiter</a>
+    <nav><a href="cv_match">CV match</a></nav>
+</header>
+<main>
+    <div class="hero">
+        <h1>Joblog autofill</h1>
+        <p class="muted">A browser extension that fills in Jobnet's "Opret joblog" form from a match you saved here: job title, company, address, deadline, contact, the day you applied and your notes. The jobs you have applied for but not logged on Jobnet yet come first. It never presses Gem: you check the form and save it yourself, and the app then knows that job is on Jobnet.</p>
+    </div>
+    <section class="panel">
+        <h2>Set it up once, in Edge or Chrome</h2>
+        {%- match folder %}
+        {%- when Ok(path) %}
+        <p>The app keeps the extension (version {{ version }}) in this folder:</p>
+        <p><code>{{ path }}</code></p>
+        <ol>
+            <li>Open <code>edge://extensions</code> in Edge, or <code>chrome://extensions</code> in Chrome, in a new tab.</li>
+            <li>Turn on Developer mode.</li>
+            <li>Press "Load unpacked" and pick the folder above.</li>
+        </ol>
+        <p class="muted">The app writes the newest version into the folder each time it starts. After an update, press Reload on "Joblog autofill, by Recruiter" on the extensions page.</p>
+        {%- when Err(why) %}
+        <p class="error">The app couldn't put the extension in a folder for your browser. {{ why }}</p>
+        {%- endmatch %}
+        <p class="muted">Firefox gives an extension a new ID on every install, which the app can't recognise, so it only works in Edge and Chrome.</p>
+    </section>
+    <section class="panel">
+        <h2>Use it</h2>
+        <ol>
+            <li>Keep the Recruiter app running, and save a match on the <a href="cv_match">CV match</a> page.</li>
+            <li>On Jobnet, open Joblog and "Opret joblog". A "Fill from Recruiter" box shows in the corner.</li>
+            <li>Pick the match, press "Fill in the form", check what it filled, then press Gem.</li>
+        </ol>
+        <p>Jobnet only keeps a company or postcode picked from its own suggestions, so the extension picks the closest one and says when it differs from your match. A company Jobnet doesn't know keeps its name as typed.</p>
+        <p class="muted">The application, CV and job ad PDFs come when the desktop app writes PDFs; until then the box says so and you add them on Jobnet yourself.</p>
+    </section>
+    <section class="panel">
+        <h2>What it sends where</h2>
+        <ul>
+            <li>It reads your saved matches from this app (127.0.0.1) and fills them into the form in your own Jobnet tab. Jobnet receives them only when you press Gem.</li>
+            <li>When you save a form it filled in, it tells this app that the match is on Jobnet, with the status you gave it.</li>
+            <li>When a post names no postcode and town, it looks the company's name up on cvrapi.dk for its registered address. Only the name is sent.</li>
+        </ul>
+    </section>
+</main>
+</body>
+</html>

@@ -1,0 +1,23 @@
+{#- The application and résumé panel of a saved match (views/documents.php): a box per document. -#}
+{%- if !documents.error.is_empty() %}
+    <p class="error">{{ documents.error }}</p>
+{%- else %}
+    <p class="muted">{{ documents.intro }}</p>
+    <label class="notes">{{ documents.notes_label }}<textarea rows="3" maxlength="{{ documents.notes_max }}" placeholder="{{ documents.notes_hint }}"></textarea></label>
+    {%- for doc in documents.boxes %}
+        {% include "cv_match/document_box.html" %}
+    {%- endfor %}
+    {%- if let Some(id) = documents.id %}
+    <div class="actions apply-open">
+        <button type="button" class="apply" data-id="{{ id }}"><span class="label">Apply</span></button>
+    </div>
+    {#- Jobnet's "Opret joblog" form filled in from the match: js/app.js reads it on every opening. #}
+    <details class="joblog" data-id="{{ id }}">
+        <summary>Jobnet joblog</summary>
+        <p class="muted">Jobnet's "Opret joblog" form, filled in from this match: check each field, copy it over, and download the PDFs for its uploads. Empty fields weren't in the post.</p>
+        <div class="joblog-body"></div>
+        <template class="joblog-loading"><p class="muted">Filling in the joblog…</p></template>
+        <template class="joblog-failed"><p class="error"></p></template>
+    </details>
+    {%- endif %}
+{%- endif %}

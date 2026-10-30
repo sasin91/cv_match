@@ -1,0 +1,68 @@
+{#- The body of a match's result, under its score (views/result_body.php): a location the candidate
+    likely misses, what the post asks of applicants, the requirements with their verdicts and a
+    filter by verdict, and the soft skills. Printed by result.html and batch_row.html. -#}
+{%- if let Some(location) = result.location %}
+<section class="location-notice">
+    <h3>{{ location.heading }}</h3>
+    <ul>
+        {%- for line in location.lines %}
+            <li><strong>{{ line.text }}</strong>{% if !line.reason.is_empty() %} · {{ line.reason }}{% endif %}</li>
+        {%- endfor %}
+    </ul>
+    <p class="muted">{{ location.note }}</p>
+</section>
+{%- endif %}
+{%- if let Some(apply) = result.apply %}
+<section class="apply-notice{% if apply.trap %} trap{% endif %}">
+    <h3>{{ apply.heading }}</h3>
+    {%- if !apply.note.is_empty() %}
+        <p class="muted">{{ apply.note }}</p>
+    {%- endif %}
+    <ul>
+        {%- if !apply.email.is_empty() %}
+            <li>Send it to <a href="{{ apply.mailto }}">{{ apply.email }}</a></li>
+        {%- endif %}
+        {%- if !apply.subject.is_empty() %}
+            <li>Subject line: <code>{{ apply.subject }}</code></li>
+        {%- endif %}
+        {%- if !apply.keyword.is_empty() %}
+            <li>Include: <code>{{ apply.keyword }}</code></li>
+        {%- endif %}
+        {%- if !apply.asks.is_empty() %}
+            <li>{{ apply.asks }}</li>
+        {%- endif %}
+    </ul>
+    <blockquote>
+        {%- for line in apply.lines %}
+            <p>{{ line }}</p>
+        {%- endfor %}
+    </blockquote>
+</section>
+{%- endif %}
+{%- if !result.filters.is_empty() %}
+    <div class="filter" role="group" aria-label="Show requirements">
+        {%- for filter in result.filters %}
+            <button type="button" class="filter-{{ filter.key }}" data-show="{{ filter.key }}" aria-pressed="{% if filter.key == "all" %}true{% else %}false{% endif %}">{{ filter.label }}<span class="count">{{ filter.count }}</span></button>
+        {%- endfor %}
+    </div>
+    <div class="verdicts">
+        {%- for section in result.sections %}
+            <section class="group">
+                <h3>{{ section.heading }}{% if !section.note.is_empty() %} <span class="muted">{{ section.note }}</span>{% endif %}</h3>
+                <ul>
+                    {%- for row in section.rows %}
+                        {% include "cv_match/verdict_row.html" %}
+                    {%- endfor %}
+                </ul>
+            </section>
+        {%- endfor %}
+    </div>
+{%- endif %}
+{%- if !result.soft_skills.is_empty() %}
+    <div class="soft-skills">
+        <h3>Soft skills <span class="muted">not scored</span></h3>
+        {%- for skill in result.soft_skills %}
+            <span class="chip">{{ skill }}</span>
+        {%- endfor %}
+    </div>
+{%- endif %}
