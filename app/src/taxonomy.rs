@@ -21,7 +21,7 @@ use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
 
 /// The shipped index (taxonomy/data/index.json, written by build-index.php).
-const INDEX_JSON: &str = include_str!("../../../taxonomy/data/index.json");
+const INDEX_JSON: &str = include_str!("../../assets/taxonomy/index.json");
 
 /// How much each kind of evidence is worth. A whole label of the term appearing in the query is
 /// the strongest signal there is; a word turning up in the definition is the weakest.

@@ -22,7 +22,7 @@ fancy-regex = "0.20"
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
 askama = "0.16"
-# The page's CSS and JS, read from modules/cv_match while developing and built into the exe for release.
+# The page's CSS and JS, read from ../assets while developing and built into the exe for release.
 rust-embed = { version = "8", features = ["include-exclude"] }
 mime_guess = "2"
 chrono = "0.4"

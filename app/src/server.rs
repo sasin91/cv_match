@@ -30,14 +30,14 @@ pub const DEFAULT_PORT: u16 = 8765;
 
 /// modules/cv_match's css/ and js/, served under cv_match_module/ as Trongate serves them.
 #[derive(RustEmbed)]
-#[folder = "../../modules/cv_match/"]
+#[folder = "../assets/cv_match/"]
 #[include = "css/*"]
 #[include = "js/*"]
 struct CvMatchAssets;
 
 /// Trongate MX, served under js/.
 #[derive(RustEmbed)]
-#[folder = "../../public/js/"]
+#[folder = "../assets/js/"]
 #[include = "trongate-mx.min.js"]
 struct PublicJs;
 

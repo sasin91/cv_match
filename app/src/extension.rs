@@ -1,4 +1,4 @@
-//! The Jobnet extension (extensions/jobnet-joblog), shipped inside the app. Browsers load an
+//! The Jobnet extension (extension/jobnet-joblog), shipped inside the app. Browsers load an
 //! extension of one's own from a folder ("Load unpacked"), so the app writes its copy out next
 //! to the database at every start, and the browser picks up a newer one when it is reloaded.
 
@@ -15,7 +15,7 @@ pub const ID: &str = "jijhihfppobcoconjjllmffbohpffbll";
 pub const FOLDER: &str = "jobnet-joblog";
 
 #[derive(RustEmbed)]
-#[folder = "../../extensions/jobnet-joblog/"]
+#[folder = "../extension/jobnet-joblog/"]
 #[include = "manifest.json"]
 #[include = "*.js"]
 #[include = "icons/*"]

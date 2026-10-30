@@ -22,9 +22,12 @@ PHP modules file by file, keeping their names, and is tested against what the PH
 | `templates/cv_match/*.html` | `modules/cv_match/views/*.php` |
 | `src/profile.rs` | the profile as text (`Profile_fields::text` and its queries) |
 | `src/cv_match/joblog.rs`, `joblog_panel.rs` | `Joblog.php` (with `danish_postcodes.php`, read as it is) and `Joblog_panel.php` |
-| `src/extension.rs` | (new) ships `extensions/jobnet-joblog` and writes it out for the browser |
+| `src/extension.rs` | (new) ships `extension/jobnet-joblog` and writes it out for the browser |
 
-The taxonomy index (`taxonomy/data/index.json`) is built into the program.
+The PHP files named here are in [sasin91/recruiter](https://github.com/sasin91/recruiter). What the
+app builds in from there is copied into `../assets` (cv_match's css and js, Trongate MX, the
+taxonomy index `taxonomy/data/index.json` and `danish_postcodes.php`); the Jobnet extension
+lives in `../extension/jobnet-joblog`.
 
 ## Running it
 
@@ -32,7 +35,7 @@ The taxonomy index (`taxonomy/data/index.json`) is built into the program.
 
 serves the app on http://127.0.0.1:8765/cv_match and opens it in your default browser
 (`--port`, `--database file`, `--no-browser`). It is the PHP app's match page with the same CSS
-and JS (`modules/cv_match/css`, `js`, and Trongate MX from `public/js`, built into the exe), for
+and JS (`assets/cv_match/css`, `js`, and Trongate MX from `assets/js`, built into the exe), for
 one local user who is always signed in:
 
 - the saved matches by list (Shortlist, All, Applied not on Jobnet yet, On Jobnet, Rejected),
@@ -54,7 +57,7 @@ can't use it.
 
 ## The Jobnet extension
 
-The app carries `extensions/jobnet-joblog` and writes it to a `jobnet-joblog` folder next to the
+The app carries `extension/jobnet-joblog` and writes it to a `jobnet-joblog` folder next to the
 database at every start (`%APPDATA%\Recruiter\jobnet-joblog`). Load that folder once in Edge or
 Chrome (extensions page, Developer mode, "Load unpacked"); the app's page
 http://127.0.0.1:8765/joblog_extension shows the folder and the steps. After an update, press
@@ -91,18 +94,18 @@ CVs, all 28 post x CV matches (criteria, verdicts, score, Laya summary) and 27 t
 the post asks to be applied to, and the joblog: 343 deadlines, working hours, places and contact
 people, 16 saved matches filled in as joblog entries and 10 days applied in Danish time.
 
-The fixtures come from the PHP code itself. After changing the PHP side, write them again and
-let the Rust tests show what the port has to follow:
+The fixtures come from the PHP code itself, in a checkout of sasin91/recruiter. After changing
+the PHP side, write them again and let the Rust tests show what the port has to follow:
 
-    php desktop/recruiter/tests/fixtures/generate.php
+    php app/tests/fixtures/generate.php ../recruiter
 
 `tests/server.rs` sends the page's requests to the server: the lists, a saved match, the free
 match, the joblog, the extension's calls, what isn't ported yet, and requests from other sites.
 
-`tests/import.rs` imports from a real MariaDB with `db/schema.sql` loaded. It empties that
+`tests/import.rs` imports from a real MariaDB with recruiter's `db/schema.sql` loaded. It empties that
 database's cv_match tables, so point it at a scratch database only:
 
     RECRUITER_TEST_MYSQL=mysql://test:test@127.0.0.1:3306/recruiter_test cargo test --test import -- --ignored --test-threads=1
 
-CI (`.github/workflows/recruiter-desktop.yml`) runs that against a MariaDB service, and also runs the generator and fails when the
-committed fixtures no longer match what PHP answers.
+CI (`.github/workflows/app.yml`) runs that against a MariaDB service, and also runs the generator
+on recruiter's master and fails when the committed fixtures no longer match what PHP answers.

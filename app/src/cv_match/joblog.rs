@@ -314,7 +314,7 @@ static DATES: LazyLock<Vec<(Regex, DateForm)>> = LazyLock::new(|| {
 
 /// Danish postcodes and their towns, in the list's order (danish_postcodes.php, PostNord's list).
 static POSTCODES: LazyLock<Vec<(String, String)>> = LazyLock::new(|| {
-    include_str!("../../../../modules/cv_match/danish_postcodes.php")
+    include_str!("../../../assets/danish_postcodes.php")
         .lines()
         .filter_map(|line| {
             let (code, town) = line.trim().strip_prefix('\'')?.split_once("' => '")?;

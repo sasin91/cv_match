@@ -3,13 +3,19 @@
  * Writes the parity fixtures the Rust port is tested against: what the PHP
  * taxonomy lookup, Free_reader and Cv_matcher answer for the same inputs.
  *
- *   php desktop/recruiter/tests/fixtures/generate.php
+ *   php app/tests/fixtures/generate.php path/to/recruiter
+ *
+ * The PHP code is in sasin91/recruiter, so it takes that checkout's folder.
  *
  * Run it again whenever the PHP side changes; the Rust tests then show what
  * the port has to follow. Inputs are the skill names in eval/data/gold.jsonl
  * (public job ads) and the synthetic posts and CVs below.
  */
-$root = dirname(__DIR__, 4);
+$root = rtrim($argv[1] ?? '', '/\\');
+if ($root === '' || !is_file("$root/modules/cv_match/Cv_matcher.php")) {
+    fwrite(STDERR, "usage: php app/tests/fixtures/generate.php path/to/recruiter\n");
+    exit(1);
+}
 require_once "$root/taxonomy/php/Taxonomy.php";
 require_once "$root/modules/cv_match/Free_reader.php";
 require_once "$root/modules/cv_match/Cv_matcher.php";
