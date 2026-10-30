@@ -12,6 +12,8 @@ pub mod cv_matcher;
 pub mod dates;
 pub mod document_box;
 pub mod free_reader;
+pub mod joblog;
+pub mod joblog_panel;
 pub mod location_notice;
 pub mod match_documents;
 pub mod match_result;

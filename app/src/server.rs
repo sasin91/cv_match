@@ -4,9 +4,11 @@
 //!
 //! Only this computer can reach it, but any web page open in a browser here could send it
 //! requests, so it answers a request only when its Host header names this server (no DNS
-//! rebinding) and, for anything but GET, when its Origin is this server's own page.
+//! rebinding) and, for anything but GET, when its Origin is this server's own page or the Jobnet
+//! extension (extension::ID).
 
 use std::net::{Ipv4Addr, SocketAddr};
+use std::path::PathBuf;
 use std::sync::{Arc, Mutex, MutexGuard};
 
 use axum::Router;
@@ -20,6 +22,7 @@ use rusqlite::Connection;
 use rust_embed::RustEmbed;
 
 use crate::cv_match::pages;
+use crate::extension;
 use crate::taxonomy::Taxonomy;
 
 /// The port the app listens on unless told otherwise, fixed so the Jobnet extension can find it.
@@ -46,6 +49,8 @@ pub struct AppState {
     pub user_id: i64,
     flash: Mutex<Option<String>>,
     port: u16,
+    /// Where the Jobnet extension was written for the browser to load, or why it couldn't be.
+    pub extension_folder: Result<PathBuf, String>,
 }
 
 impl AppState {
@@ -56,6 +61,7 @@ impl AppState {
             user_id,
             flash: Mutex::new(None),
             port,
+            extension_folder: Err("The extension wasn't written out.".to_string()),
         }
     }
 
@@ -95,6 +101,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/cv_match/quick_match", post(pages::quick_match))
         .route("/cv_match/already_matched", post(pages::already_matched))
         .route("/cv_match/submit_reject/{id}", post(pages::submit_reject))
+        .route("/cv_match/history", get(pages::history))
+        .route("/cv_match/joblog/{id}", get(pages::joblog))
+        .route("/cv_match/joblog_panel/{id}", get(pages::joblog_panel))
+        .route("/cv_match/joblog_status", post(pages::joblog_status))
+        .route("/joblog_extension", get(pages::joblog_extension))
         .route("/cv_match_module/{*path}", get(cv_match_asset))
         .route("/js/{*path}", get(public_js))
         .fallback(pages::not_yet)
@@ -139,7 +150,8 @@ fn allowed(method: &Method, headers: &HeaderMap, port: u16) -> Result<(), &'stat
     let origin = headers.get(header::ORIGIN).and_then(|origin| origin.to_str().ok());
     match origin {
         Some(origin) if hosts.iter().any(|own| origin == format!("http://{own}")) => Ok(()),
-        _ => Err("Only the Recruiter app's own pages can send it changes."),
+        Some(origin) if origin == format!("chrome-extension://{}", extension::ID) => Ok(()),
+        _ => Err("Only the Recruiter app's own pages and its Jobnet extension can send it changes."),
     }
 }
 
@@ -194,5 +206,16 @@ mod tests {
             (header::ORIGIN, "http://localhost:8765"),
         ]);
         assert!(allowed(&Method::POST, &same, port).is_ok());
+        // The Jobnet extension (Edge and Chrome), and no other.
+        let ours = headers(&[
+            (header::HOST, "127.0.0.1:8765"),
+            (header::ORIGIN, "chrome-extension://jijhihfppobcoconjjllmffbohpffbll"),
+        ]);
+        assert!(allowed(&Method::POST, &ours, port).is_ok());
+        let other = headers(&[
+            (header::HOST, "127.0.0.1:8765"),
+            (header::ORIGIN, "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
+        ]);
+        assert!(allowed(&Method::POST, &other, port).is_err());
     }
 }

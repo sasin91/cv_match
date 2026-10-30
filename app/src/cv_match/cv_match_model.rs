@@ -4,6 +4,7 @@
 use std::collections::HashMap;
 
 use rusqlite::{Connection, OptionalExtension, Row, params};
+use serde::Serialize;
 
 use super::apply_instructions::{self, ApplyInstructions};
 use super::reject_reason::Rejection;
@@ -94,8 +95,8 @@ pub struct SavedMatch {
     pub apply_instructions: Option<ApplyInstructions>,
 }
 
-/// A saved match as a list shows it.
-#[derive(Debug, Clone, PartialEq)]
+/// A saved match as a list shows it (and the Jobnet extension lists it, as JSON).
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct ListedMatch {
     pub id: i64,
     pub job_title: String,
@@ -113,7 +114,9 @@ pub struct ListedMatch {
     pub location_missed: Option<String>,
     pub jobnet_status: Option<String>,
     pub jobnet_logged_at: Option<i64>,
+    #[serde(skip)]
     pub rejected_at: Option<i64>,
+    #[serde(skip)]
     pub rejections: Vec<Rejection>,
 }
 
@@ -351,6 +354,39 @@ pub fn integration(db: &Connection, id: i64, integration: &str) -> rusqlite::Res
         },
     )
     .optional()
+}
+
+/// Saves a match's status in an outside service. `logged` says whether the candidate has
+/// entered it there; the first time keeps its date. The first applied status
+/// (APPLIED_STATUSES) keeps its date too (applied_at), through Søgt -> Samtale; any other status
+/// clears it.
+pub fn save_integration(
+    db: &Connection,
+    id: i64,
+    integration: &str,
+    status: &str,
+    logged: bool,
+    now: i64,
+) -> rusqlite::Result<Option<Integration>> {
+    let applied = APPLIED_STATUSES.contains(&status);
+    db.execute(
+        "INSERT INTO cv_match_integrations (cv_match_id, integration, status, applied_at, logged_at, created_at, updated_at)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)
+         ON CONFLICT (cv_match_id, integration) DO UPDATE SET status = excluded.status, updated_at = excluded.updated_at,
+             applied_at = CASE WHEN ?7 THEN COALESCE(applied_at, excluded.applied_at) END,
+             logged_at = CASE WHEN ?8 THEN COALESCE(logged_at, excluded.logged_at) END",
+        params![
+            id,
+            integration,
+            status,
+            applied.then_some(now),
+            logged.then_some(now),
+            now,
+            applied,
+            logged
+        ],
+    )?;
+    self::integration(db, id, integration)
 }
 
 /// Rejects one of the user's matches (not interested), with why; false when it isn't theirs.

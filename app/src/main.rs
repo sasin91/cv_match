@@ -11,7 +11,7 @@ use std::sync::Arc;
 
 use recruiter::server::{self, AppState};
 use recruiter::taxonomy::Taxonomy;
-use recruiter::{db, import};
+use recruiter::{db, extension, import};
 
 /// Herd's MariaDB with the production copy, as set up on Jonas's PC.
 const DEFAULT_SOURCE: &str = "mysql://root@127.0.0.1:3306/recruiter_prod";
@@ -74,7 +74,16 @@ fn run_server(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let state = Arc::new(AppState::new(db, Arc::new(Taxonomy::load()), user_id, port));
+    let mut state = AppState::new(db, Arc::new(Taxonomy::load()), user_id, port);
+    let folder = database
+        .parent()
+        .unwrap_or(std::path::Path::new("."))
+        .join(extension::FOLDER);
+    state.extension_folder = extension::write(&folder).map_err(|e| {
+        eprintln!("Couldn't write the Jobnet extension to {}: {e}", folder.display());
+        format!("It couldn't be written to {}: {e}", folder.display())
+    });
+    let state = Arc::new(state);
     let address = format!("http://127.0.0.1:{port}/cv_match");
     let runtime = match tokio::runtime::Runtime::new() {
         Ok(runtime) => runtime,

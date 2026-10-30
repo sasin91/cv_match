@@ -38,7 +38,12 @@ fn app() -> axum::Router {
 }
 
 async fn send(request: Request<Body>) -> (StatusCode, String) {
-    let response = app().oneshot(request).await.unwrap();
+    send_to(&app(), request).await
+}
+
+/// Sends to one app, so a later request sees what an earlier one saved.
+async fn send_to(app: &axum::Router, request: Request<Body>) -> (StatusCode, String) {
+    let response = app.clone().oneshot(request).await.unwrap();
     let status = response.status();
     let body = response.into_body().collect().await.unwrap().to_bytes();
     (status, String::from_utf8(body.to_vec()).unwrap())
@@ -132,7 +137,7 @@ async fn what_isnt_ported_yet_says_so() {
         answer,
         r#"{"error":"Fetching a job post from a link isn't in the desktop app yet."}"#
     );
-    let (status, _) = send(get("/cv_match/joblog_panel/21")).await;
+    let (status, _) = send(get("/cv_match/application_delivery/21")).await;
     assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
 }
 
@@ -166,4 +171,118 @@ async fn the_page_css_and_js_are_served() {
         let response = app().oneshot(get(path)).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK, "{path}");
     }
+}
+
+/// The Jobnet extension's origin (extension::ID).
+const EXTENSION: &str = "chrome-extension://jijhihfppobcoconjjllmffbohpffbll";
+
+#[tokio::test]
+async fn the_joblog_is_filled_in_from_the_saved_match() {
+    let (status, panel) = send(get("/cv_match/joblog_panel/21")).await;
+    assert_eq!(status, StatusCode::OK, "{panel}");
+    assert!(
+        panel
+            .contains(r#"<div class="joblog-field" data-name="occupation" data-label="Stilling eller arbejdsområde">"#)
+    );
+    assert!(panel.contains(r#"<input type="text" value="job@firma.dk" inputmode="text" aria-label="E-mail">"#));
+    assert!(panel.contains(r#"<button type="button" class="chip chosen" aria-pressed="true" data-value="IkkeSoegt" data-prompt="choose &#34;Ikke søgt&#34;">Ikke søgt</button>"#)
+        || panel.contains(r#"data-prompt="choose &quot;Ikke søgt&quot;">Ikke søgt</button>"#), "{panel}");
+    assert!(panel.contains("Jobansøgning: Skriv ansøgningen først (Write application)."));
+    assert!(panel.contains(r#"<label class="joblog-logged"><input type="checkbox"> I&#39;ve entered this job in my joblog on Jobnet</label>"#)
+        || panel.contains("<input type=\"checkbox\"> I&#x27;ve entered"), "{panel}");
+
+    let (status, entry) = send(get("/cv_match/joblog/21")).await;
+    assert_eq!(status, StatusCode::OK);
+    let entry: serde_json::Value = serde_json::from_str(&entry).unwrap();
+    assert_eq!(entry["sections"][0]["fields"][0]["value"], "PHP-udvikler");
+    assert_eq!(entry["sections"][1]["fields"][3]["value"], true);
+    assert_eq!(entry["logged_at"], serde_json::Value::Null);
+
+    let (status, answer) = send(get("/cv_match/joblog/99")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    assert_eq!(answer, r#"{"error":"That saved match was not found."}"#);
+}
+
+#[tokio::test]
+async fn the_extension_marks_a_match_as_on_jobnet() {
+    let app = app();
+    let (_, history) = send_to(&app, get("/cv_match/history")).await;
+    let history: serde_json::Value = serde_json::from_str(&history).unwrap();
+    assert_eq!(history["matches"][0]["id"], 21);
+    assert_eq!(history["matches"][0]["job_title"], "PHP-udvikler");
+    assert_eq!(
+        history["matches"].as_array().unwrap().len(),
+        1,
+        "rejected matches stay out"
+    );
+    assert_eq!(history["not_joblogged"], serde_json::json!([]));
+
+    // The page says it was applied for: it is waiting to be logged.
+    let (status, logged) = send_to(
+        &app,
+        post_json(
+            "/cv_match/joblog_status",
+            r#"{"id": "21", "status": "Soegt", "logged": false}"#,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{logged}");
+    assert!(logged.contains(r#"<section class="joblog-section joblog-saved" data-applied-on=""#));
+    assert!(!logged.contains("<time"));
+    let (_, history) = send_to(&app, get("/cv_match/history")).await;
+    let history: serde_json::Value = serde_json::from_str(&history).unwrap();
+    assert_eq!(history["not_joblogged"][0]["id"], 21);
+    assert_eq!(history["not_joblogged"][0]["jobnet_status"], "Soegt");
+
+    // The extension saved it on Jobnet.
+    let request = Request::post("/cv_match/joblog_status")
+        .header(header::HOST, HOST)
+        .header(header::ORIGIN, EXTENSION)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(r#"{"id": 21, "status": "Samtale", "logged": true}"#))
+        .unwrap();
+    let (status, logged) = send_to(&app, request).await;
+    assert_eq!(status, StatusCode::OK, "{logged}");
+    assert!(logged.contains(" checked>"));
+    assert!(logged.contains("Entered on <time datetime=\""));
+    let (_, history) = send_to(&app, get("/cv_match/history")).await;
+    let history: serde_json::Value = serde_json::from_str(&history).unwrap();
+    assert_eq!(history["not_joblogged"], serde_json::json!([]));
+    let (_, entry) = send_to(&app, get("/cv_match/joblog/21")).await;
+    let entry: serde_json::Value = serde_json::from_str(&entry).unwrap();
+    assert_eq!(entry["sections"][2]["fields"][0]["value"], "Samtale");
+    assert!(entry["logged_at"].is_i64());
+    // The day applied is kept from Søgt.
+    assert_eq!(
+        entry["sections"][2]["fields"][1]["value"].as_str().unwrap().len(),
+        "30-10-2026".len()
+    );
+
+    let (status, answer) = send_to(
+        &app,
+        post_json("/cv_match/joblog_status", r#"{"id": 21, "status": "Done"}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::BAD_REQUEST);
+    assert_eq!(
+        answer,
+        r#"{"error":"Pick one of Jobnet's statuses: Ikke søgt, Søgt, Samtale."}"#
+    );
+    let (status, _) = send_to(
+        &app,
+        post_json("/cv_match/joblog_status", r#"{"id": 22000, "status": "Soegt"}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn the_extension_setup_page_says_where_it_is() {
+    let (status, page) = send(get("/joblog_extension")).await;
+    assert_eq!(status, StatusCode::OK);
+    // Not written out in the tests.
+    assert!(
+        page.contains("The app couldn't put the extension in a folder for your browser."),
+        "{page}"
+    );
 }

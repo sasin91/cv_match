@@ -1,0 +1,61 @@
+{#- The Jobnet joblog entry of a saved match (views/joblog_panel.php): panel (JoblogPanel).
+    cv_match/joblog_panel answers with it when the joblog is opened; js/app.js puts it in the
+    panel, fills in the company's registered address from the CVR register when the post has
+    none, and runs the buttons. -#}
+{%- for section in panel.sections %}
+    <section class="joblog-section">
+        <h5>{{ section.heading }}</h5>
+        {%- for field in section.fields %}
+            <div class="joblog-field" data-name="{{ field.name }}" data-label="{{ field.label }}">
+                <span class="joblog-label">{{ field.label }}{% if field.required %}<span class="required" aria-hidden="true">*</span>{% endif %}</span>
+                {%- if field.choice %}
+                    <div class="joblog-options">
+                        {%- for option in field.options %}
+                            {%- if field.choose %}
+                                <button type="button" class="chip{% if option.chosen %} chosen{% endif %}" aria-pressed="{% if option.chosen %}true{% else %}false{% endif %}" data-value="{{ option.value }}" data-prompt="{{ option.prompt }}">{{ option.text }}</button>
+                            {%- else %}
+                                <span class="chip{% if option.chosen %} chosen{% endif %}" data-value="{{ option.value }}" data-prompt="{{ option.prompt }}">{{ option.text }}</span>
+                            {%- endif %}
+                        {%- endfor %}
+                    </div>
+                    <small class="muted hint"{% if field.hint.is_empty() %} hidden{% endif %}>{{ field.hint }}</small>
+                {%- else %}
+                    <div class="joblog-value">
+                        {%- if field.multiline %}
+                            <textarea rows="4" maxlength="{{ crate::cv_match::joblog::MAX_NOTES }}" aria-label="{{ field.label }}">{{ field.value }}</textarea>
+                        {%- else %}
+                            <input type="text" value="{{ field.value }}" inputmode="{% if field.numeric %}numeric{% else %}text{% endif %}" aria-label="{{ field.label }}">
+                        {%- endif %}
+                        <button type="button" class="copy-field">Copy</button>
+                    </div>
+                    <small class="muted hint"{% if field.hint.is_empty() %} hidden{% endif %}>{{ field.hint }}</small>
+                    {%- if let Some(left) = field.left %}
+                        <small class="muted">{{ crate::cv_match::joblog_panel::CHARACTERS_LEFT }} <span class="left">{{ left }}</span></small>
+                    {%- endif %}
+                    <span class="muted status" aria-live="polite"></span>
+                {%- endif %}
+            </div>
+        {%- endfor %}
+    </section>
+{%- endfor %}
+<section class="joblog-section">
+    <h5>Gem ansøgning, CV og jobannonce</h5>
+    <div class="actions">
+        {#- Not disabled, since run() enables every button when a task ends. #}
+        {%- for file in panel.files %}
+            <button type="button" class="joblog-pdf{% if !file.ready %} unavailable{% endif %}" data-kind="{{ file.kind }}" title="{{ file.title }}"><span class="label">{{ file.label }}</span></button>
+        {%- endfor %}
+    </div>
+    {%- for missing in panel.missing %}
+        <p class="muted">{{ missing }}</p>
+    {%- endfor %}
+</section>
+<section class="joblog-section">
+    <h5>Fill it in with an AI</h5>
+    <p class="muted">Copies these values as instructions for an AI that can use your browser, such as Claude in Chrome. It fills the form and stops before Gem; you add the PDFs.</p>
+    <div class="actions"><button type="button" class="joblog-prompt">Copy as AI prompt</button><span class="muted status" aria-live="polite"></span></div>
+    {#- Shown once copied, so the prompt can be read, and copied by hand if the clipboard refuses. #}
+    <textarea class="joblog-prompt-text" rows="8" readonly hidden></textarea>
+</section>
+{%- let logged = panel.logged.clone() %}
+{% include "cv_match/joblog_logged.html" %}

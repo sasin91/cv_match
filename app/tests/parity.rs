@@ -4,9 +4,10 @@
 use std::sync::LazyLock;
 
 use indexmap::IndexMap;
+use recruiter::cv_match::cv_match_model::{Integration, SavedItem, SavedMatch};
 use recruiter::cv_match::cv_matcher::{self, CvMatcher, Verdicts};
 use recruiter::cv_match::free_reader::{self, FreeReader, YearMonth};
-use recruiter::cv_match::{apply_instructions, match_score};
+use recruiter::cv_match::{apply_instructions, joblog, match_score};
 use recruiter::taxonomy::{self, Taxonomy};
 use serde::Serialize;
 use serde_json::Value;
@@ -229,6 +230,120 @@ fn application_instructions_are_read_as_php_reads_them() {
             &format!("apply_instructions::read({text:?})"),
             &case["found"],
             apply_instructions::read(text),
+        );
+    }
+}
+
+fn joblog_cases(name: &str) -> &'static Vec<Value> {
+    FIXTURES["joblog"][name]
+        .as_array()
+        .unwrap_or_else(|| panic!("parity.json has no joblog {name}"))
+}
+
+#[test]
+fn joblog_deadlines_hours_places_and_contacts_are_read_as_php_reads_them() {
+    for case in joblog_cases("deadlines") {
+        let text = text(&case["text"]);
+        let saved_at = case["saved_at"].as_i64().unwrap();
+        assert_same(
+            &format!("joblog::deadline({text:?}, {saved_at})"),
+            &case["deadline"],
+            joblog::deadline(text, saved_at),
+        );
+    }
+    for case in joblog_cases("hours") {
+        let text = text(&case["text"]);
+        assert_same(
+            &format!("joblog::working_hours({text:?})"),
+            &case["hours"],
+            joblog::working_hours(text),
+        );
+    }
+    for case in joblog_cases("places") {
+        let text = text(&case["text"]);
+        assert_same(&format!("joblog::place({text:?})"), &case["place"], joblog::place(text));
+    }
+    for case in joblog_cases("contacts") {
+        let text = text(&case["text"]);
+        let company = self::text(&case["company"]);
+        let apply = apply_instructions::read(text);
+        assert_same(
+            &format!("joblog::contact({text:?}, {company:?})"),
+            &case["contact"],
+            joblog::contact(text, company, apply.as_ref()),
+        );
+    }
+}
+
+/// A saved match as the fixture gives it, with what find() adds.
+fn saved_match(case: &Value) -> SavedMatch {
+    let optional = |value: &Value| value.as_str().map(str::to_string);
+    let job_text = text(&case["job_text"]).to_string();
+    SavedMatch {
+        id: 1,
+        trongate_user_id: Some(1),
+        job_title: text(&case["job_title"]).to_string(),
+        company: text(&case["company"]).to_string(),
+        job_url: optional(&case["job_url"]),
+        cv_name: String::new(),
+        cv_text: text(&case["cv_text"]).to_string(),
+        score: case["score"].as_f64().unwrap(),
+        points: 0,
+        max_points: 0,
+        tag: text(&case["tag"]).to_string(),
+        application_text: optional(&case["application_text"]),
+        application_written_at: None,
+        resume_text: optional(&case["resume_text"]),
+        resume_written_at: None,
+        rejected_at: None,
+        created_at: case["created_at"].as_i64().unwrap(),
+        resume_structured: false,
+        items: case["items"]
+            .as_array()
+            .unwrap()
+            .iter()
+            .map(|item| SavedItem {
+                criterion: text(&item["criterion"]).to_string(),
+                text: text(&item["text"]).to_string(),
+                verdict: text(&item["verdict"]).to_string(),
+                decided_by: String::new(),
+                reason: String::new(),
+                evidence: String::new(),
+            })
+            .collect(),
+        jobnet_joblog: integration(&case["jobnet_joblog"]),
+        rejections: Vec::new(),
+        apply_instructions: apply_instructions::read(&job_text),
+        job_text,
+    }
+}
+
+fn integration(case: &Value) -> Option<Integration> {
+    case.is_object().then(|| Integration {
+        status: text(&case["status"]).to_string(),
+        external_id: None,
+        applied_at: case["applied_at"].as_i64(),
+        logged_at: case["logged_at"].as_i64(),
+        updated_at: 0,
+    })
+}
+
+#[test]
+fn a_saved_match_fills_the_joblog_as_php_fills_it() {
+    for case in joblog_cases("entries") {
+        let saved = saved_match(&case["match"]);
+        assert_same(
+            &format!("joblog::read({:?})", saved.job_text),
+            &case["entry"],
+            joblog::read(&saved),
+        );
+    }
+    for case in joblog_cases("applied_on") {
+        let jobnet = integration(case);
+        assert_same(
+            &format!("joblog::applied_on({case})"),
+            &case["applied_on"],
+            joblog::applied_on(jobnet.as_ref()),
         );
     }
 }

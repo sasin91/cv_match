@@ -1,0 +1,8 @@
+{#- Whether the candidate has entered the match in their Jobnet joblog, and when, with the day
+    applied for the date field (views/joblog_logged.php): logged (Logged). Part of
+    joblog_panel.html, and joblog_status's answer when it is saved. -#}
+<section class="joblog-section joblog-saved" data-applied-on="{{ logged.applied_on }}">
+    <h5>In your Jobnet joblog</h5>
+    <label class="joblog-logged"><input type="checkbox"{% if logged.checked %} checked{% endif %}> {{ crate::cv_match::joblog_panel::LOGGED_LABEL }}</label>
+    <span class="muted" aria-live="polite">{% if !logged.at.is_empty() %}{{ crate::cv_match::joblog_panel::LOGGED_ON }} <time datetime="{{ logged.at }}">{{ logged.at }}</time>.{% endif %}</span>
+</section>

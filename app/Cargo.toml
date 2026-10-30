@@ -36,3 +36,5 @@ strip = true
 [dev-dependencies]
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
+sha2 = "0.10"
+base64 = "0.22"

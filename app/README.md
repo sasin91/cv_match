@@ -21,6 +21,8 @@ PHP modules file by file, keeping their names, and is tested against what the PH
 | `src/cv_match/apply_instructions.rs` | `Apply_instructions.php` |
 | `templates/cv_match/*.html` | `modules/cv_match/views/*.php` |
 | `src/profile.rs` | the profile as text (`Profile_fields::text` and its queries) |
+| `src/cv_match/joblog.rs`, `joblog_panel.rs` | `Joblog.php` (with `danish_postcodes.php`, read as it is) and `Joblog_panel.php` |
+| `src/extension.rs` | (new) ships `extensions/jobnet-joblog` and writes it out for the browser |
 
 The taxonomy index (`taxonomy/data/index.json`) is built into the program.
 
@@ -38,14 +40,25 @@ one local user who is always signed in:
 - a saved match's result, with its notices (location, how to apply) and its application and
   résumé as written;
 - Not interested and Bring back;
-- the free keyword match of new posts against your profile or a pasted CV.
+- the free keyword match of new posts against your profile or a pasted CV;
+- a match's Jobnet joblog panel, and what the Jobnet extension asks for (the history, a joblog
+  entry, marking a match as on Jobnet).
 
 What isn't ported yet (the AI match, fetching a post from a link, writing, PDFs, the Apply
-dialog, Jobnet's joblog) answers with "... isn't in the desktop app yet.", which the page shows
+dialog) answers with "... isn't in the desktop app yet.", which the page shows
 as its error.
 
 The server only answers requests whose Host is its own address, and only takes changes (POST)
-from its own pages (their Origin), so other sites open in the browser can't use it.
+from its own pages and the Jobnet extension (their Origin), so other sites open in the browser
+can't use it.
+
+## The Jobnet extension
+
+The app carries `extensions/jobnet-joblog` and writes it to a `jobnet-joblog` folder next to the
+database at every start (`%APPDATA%\Recruiter\jobnet-joblog`). Load that folder once in Edge or
+Chrome (extensions page, Developer mode, "Load unpacked"); the app's page
+http://127.0.0.1:8765/joblog_extension shows the folder and the steps. After an update, press
+Reload on the extension. Its manifest `key` fixes its ID, the one `src/extension.rs` lets in.
 
 ## Database
 
@@ -75,7 +88,8 @@ copied, because it is encrypted with the server's secret: add it again in the ap
 compares the answer with PHP's: 3,092 taxonomy lookups (the skill names of the 200 labelled ads
 in `eval/data/gold.jsonl`, plus typos and edge cases), the free reading of synthetic posts and
 CVs, all 28 post x CV matches (criteria, verdicts, score, Laya summary) and 27 texts read for how
-the post asks to be applied to.
+the post asks to be applied to, and the joblog: 343 deadlines, working hours, places and contact
+people, 16 saved matches filled in as joblog entries and 10 days applied in Danish time.
 
 The fixtures come from the PHP code itself. After changing the PHP side, write them again and
 let the Rust tests show what the port has to follow:
@@ -83,7 +97,7 @@ let the Rust tests show what the port has to follow:
     php desktop/recruiter/tests/fixtures/generate.php
 
 `tests/server.rs` sends the page's requests to the server: the lists, a saved match, the free
-match, what isn't ported yet, and requests from other sites.
+match, the joblog, the extension's calls, what isn't ported yet, and requests from other sites.
 
 `tests/import.rs` imports from a real MariaDB with `db/schema.sql` loaded. It empties that
 database's cv_match tables, so point it at a scratch database only:

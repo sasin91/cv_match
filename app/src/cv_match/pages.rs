@@ -1,6 +1,6 @@
 //! The match page and the endpoints its JS calls, ported from modules/cv_match/Cv_match.php for
 //! the one local user (always signed in). Endpoints that need what isn't ported yet (the AI
-//! match, writing, PDFs, Jobnet's joblog) answer JSON {error} saying so, as the PHP endpoints
+//! match, writing, PDFs) answer JSON {error} saying so, as the PHP endpoints
 //! answer their errors, so the page shows it.
 
 use std::sync::Arc;
@@ -14,9 +14,11 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::batch_row::BatchRow;
-use super::cv_match_model::{self, LISTS, SHORTLIST};
+use super::cv_match_model::{self, JOBNET_JOBLOG, LISTS, SHORTLIST, SavedMatch};
 use super::cv_matcher::{self, CvMatcher, Verdict, Verdicts};
 use super::free_reader::{FreeReader, YearMonth};
+use super::joblog;
+use super::joblog_panel::{JoblogPanel, Logged};
 use super::match_documents::{self, MatchDocuments, Uses};
 use super::match_result::{Fresh, MatchResult};
 use super::saved_match_row::SavedMatchRow;
@@ -132,6 +134,21 @@ struct BatchRowView {
     result: MatchResult,
     row: BatchRow,
 }
+
+#[derive(Template)]
+#[template(path = "cv_match/joblog_panel.html")]
+struct JoblogPanelView {
+    panel: JoblogPanel,
+}
+
+#[derive(Template)]
+#[template(path = "cv_match/joblog_logged.html")]
+struct JoblogLoggedView {
+    logged: Logged,
+}
+
+/// The extension's history: the latest matches, and the ones to log on Jobnet first.
+const HISTORY_SIZE: usize = 50;
 
 /// ?list= and ?after= of the saved matches' list.
 #[derive(Debug, Default, Deserialize)]
@@ -448,6 +465,107 @@ pub async fn submit_reject(
     Ok(Redirect::to(&back).into_response())
 }
 
+/// One of the user's saved matches by its id in the address, or the error the page shows.
+fn saved_match(state: &AppState, id: i64) -> Result<SavedMatch, PageError> {
+    if id <= 0 {
+        return Err(PageError::not_found());
+    }
+    cv_match_model::find(&state.db(), id, state.user_id)?.ok_or_else(PageError::not_found)
+}
+
+/// An id from the address; anything but a number is no match.
+fn id_of(segment: &str) -> i64 {
+    segment.parse().unwrap_or(0)
+}
+
+/// GET cv_match/history: the saved matches for the Jobnet extension: matches, the latest ones,
+/// newest first; not_joblogged, the ones applied for but not in Jobnet's joblog yet (the list
+/// "Applied, not on Jobnet yet"), best first, which the extension offers first.
+pub async fn history(State(state): State<Arc<AppState>>) -> Answer {
+    let db = state.db();
+    let matches = cv_match_model::recent(&db, state.user_id, HISTORY_SIZE)?;
+    let not_joblogged = cv_match_model::best_first(&db, state.user_id, HISTORY_SIZE, "", "not_joblogged")?.rows;
+    Ok(Json(json!({ "matches": matches, "not_joblogged": not_joblogged })).into_response())
+}
+
+/// GET cv_match/joblog/{id}: a saved match as an entry for Jobnet's joblog (joblog::read): its
+/// fields in Jobnet's order, filled in from the match, and which of the three PDFs Jobnet keeps
+/// can be downloaded.
+pub async fn joblog(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Answer {
+    let found = saved_match(&state, id_of(&id))?;
+    Ok(Json(joblog::read(&found)).into_response())
+}
+
+/// GET cv_match/joblog_panel/{id}: the same entry as joblog/{id} as the page prints it under the
+/// match.
+pub async fn joblog_panel(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Answer {
+    let found = saved_match(&state, id_of(&id))?;
+    html(JoblogPanelView {
+        panel: JoblogPanel::from(found.id, &joblog::read(&found)),
+    })
+}
+
+/// joblog_status's body: the page sends the id as text, the extension as a number.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct JoblogStatusInput {
+    id: serde_json::Value,
+    status: serde_json::Value,
+    logged: serde_json::Value,
+}
+
+/// POST cv_match/joblog_status {id, status, logged}: how far the candidate is with the job in
+/// Jobnet's words (joblog::SEARCH_STATUSES), and whether they have entered it in their Jobnet
+/// joblog. Answers the "In your Jobnet joblog" section as the page prints it.
+pub async fn joblog_status(State(state): State<Arc<AppState>>, Json(input): Json<JoblogStatusInput>) -> Answer {
+    let id = match &input.id {
+        serde_json::Value::Number(id) => id.as_i64().unwrap_or(0),
+        serde_json::Value::String(id) => id_of(id.trim()),
+        _ => 0,
+    };
+    let found = saved_match(&state, id)?;
+    let Some(status) = input
+        .status
+        .as_str()
+        .filter(|status| joblog::search_status(status).is_some())
+    else {
+        let statuses: Vec<&str> = joblog::SEARCH_STATUSES.iter().map(|(_, text)| *text).collect();
+        return Err(PageError::new(
+            StatusCode::BAD_REQUEST,
+            format!("Pick one of Jobnet's statuses: {}.", statuses.join(", ")),
+        ));
+    };
+    let logged = input.logged == serde_json::Value::Bool(true);
+    let now = chrono::Utc::now().timestamp();
+    let saved = cv_match_model::save_integration(&state.db(), found.id, JOBNET_JOBLOG, status, logged, now)?;
+    html(JoblogLoggedView {
+        logged: Logged::from(
+            saved.as_ref().and_then(|saved| saved.logged_at),
+            joblog::applied_on(saved.as_ref()),
+        ),
+    })
+}
+
+#[derive(Template)]
+#[template(path = "joblog_extension.html")]
+struct JoblogExtensionPage {
+    folder: Result<String, String>,
+    version: String,
+}
+
+/// GET joblog_extension: how to load the Jobnet extension the app ships, from the folder it
+/// wrote it to.
+pub async fn joblog_extension(State(state): State<Arc<AppState>>) -> Answer {
+    html(JoblogExtensionPage {
+        folder: state
+            .extension_folder
+            .as_ref()
+            .map(|folder| folder.display().to_string())
+            .map_err(Clone::clone),
+        version: crate::extension::version(),
+    })
+}
+
 /// already_matched's body.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
@@ -465,7 +583,7 @@ pub async fn already_matched(State(state): State<Arc<AppState>>, Json(input): Js
 }
 
 /// What each endpoint not in the desktop app yet does, for the page to say so.
-const NOT_YET: [(&str, &str); 12] = [
+const NOT_YET: [(&str, &str); 9] = [
     ("fetch_job", "Fetching a job post from a link"),
     ("extract_job", "The AI match"),
     ("extract_cv", "Reading a CV with the AI"),
@@ -474,9 +592,6 @@ const NOT_YET: [(&str, &str); 12] = [
     ("tailor_resume", "Tailoring the résumé"),
     ("resume_comparison", "Comparing the tailored résumé"),
     ("pdf", "Downloading a PDF"),
-    ("joblog", "Jobnet's joblog"),
-    ("joblog_panel", "Jobnet's joblog"),
-    ("joblog_status", "Jobnet's joblog"),
     ("application_delivery", "The Apply dialog"),
 ];
 
