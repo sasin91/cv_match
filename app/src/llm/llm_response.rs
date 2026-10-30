@@ -1,8 +1,10 @@
 //! The provider's HTTP answer, ported from modules/llm/Llm_response.php: status, headers and
 //! body. Every LlmException made after an answer carries it, so the log (and the user) can see
 //! why the request failed, such as which rate limit a 429 hit and when it resets, or what a
-//! refused or cut-short answer said.
+//! refused or cut-short answer said. The body is kept as the provider sent it, for the adapters
+//! to read; what goes to the log or the page has any API key in it cut to its prefix.
 
+use std::fmt;
 use std::sync::LazyLock;
 
 use regex::Regex;
@@ -24,13 +26,24 @@ static API_KEY_PATTERN: LazyLock<Regex> =
 /// Runs of whitespace, which a log line keeps as one space.
 static WHITESPACE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").unwrap());
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Clone, PartialEq)]
 pub struct LlmResponse {
     pub status: u16,
     /// Lower-case name and value, in the order the provider sent them.
     pub headers: Vec<(String, String)>,
-    /// The body, with any API key in it cut to its prefix.
-    pub body: String,
+    /// The body as the provider sent it; redacted() before it is shown or logged.
+    body: String,
+}
+
+impl fmt::Debug for LlmResponse {
+    /// With the body redacted, like the log.
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("LlmResponse")
+            .field("status", &self.status)
+            .field("headers", &self.headers)
+            .field("body", &redacted(&self.body))
+            .finish()
+    }
 }
 
 impl LlmResponse {
@@ -38,7 +51,7 @@ impl LlmResponse {
         LlmResponse {
             status,
             headers,
-            body: API_KEY_PATTERN.replace_all(body, "$1…").into_owned(),
+            body: body.to_string(),
         }
     }
 
@@ -61,14 +74,10 @@ impl LlmResponse {
         matches!(self.json(), Value::Object(_) | Value::Array(_))
     }
 
-    /// The provider's own words on what went wrong (error.message), or "".
+    /// The provider's own words on what went wrong (error.message), redacted, or "".
     pub fn error_message(&self) -> String {
-        self.error()
-            .get("message")
-            .map(text_of)
-            .unwrap_or_default()
-            .trim()
-            .to_string()
+        let message = self.error().get("message").map(text_of).unwrap_or_default();
+        redacted(message.trim())
     }
 
     /// The provider's error code or type ("rate_limit_exceeded", "insufficient_quota"), or "".
@@ -102,7 +111,8 @@ impl LlmResponse {
     }
 
     fn logged_body(&self) -> String {
-        let body = WHITESPACE.replace_all(self.body.trim(), " ");
+        let body = redacted(&self.body);
+        let body = WHITESPACE.replace_all(body.trim(), " ");
         if body.chars().count() > LOGGED_BODY_CHARACTERS {
             let cut: String = body.chars().take(LOGGED_BODY_CHARACTERS).collect();
             format!("{cut}…")
@@ -110,6 +120,11 @@ impl LlmResponse {
             body.into_owned()
         }
     }
+}
+
+/// text with any API key in it cut to its prefix ("sk-…", "sk-ant-…").
+fn redacted(text: &str) -> String {
+    API_KEY_PATTERN.replace_all(text, "$1…").into_owned()
 }
 
 /// A JSON value as PHP's (string) cast prints it: a string as itself, a number as its digits.
@@ -133,7 +148,14 @@ mod tests {
             r#"{"error":{"message":"Incorrect API key provided: sk-proj-abcdef123456. Or sk-ant-api03-xyz9"}}"#,
         );
         assert_eq!(answer.error_message(), "Incorrect API key provided: sk-… Or sk-ant-…");
-        assert!(!answer.body.contains("abcdef"));
+        assert!(!answer.summary().contains("abcdef"));
+        assert!(!format!("{answer:?}").contains("abcdef"));
+    }
+
+    #[test]
+    fn an_answer_is_read_as_the_provider_sent_it() {
+        let answer = LlmResponse::new(200, vec![], r#"{"skill":"sk-learn"}"#);
+        assert_eq!(answer.json()["skill"], "sk-learn");
     }
 
     #[test]
