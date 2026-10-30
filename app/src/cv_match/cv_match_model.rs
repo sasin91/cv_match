@@ -10,18 +10,13 @@ use sqlx::SqlitePool;
 use sqlx::sqlite::SqliteConnection;
 
 use super::apply_instructions::{self, ApplyInstructions};
+use super::document_box::{APPLICATION, RESUME};
 use super::reject_reason::Rejection;
 use super::score_cursor;
 use super::tailored_resume::{ResumeEntry, TailoredResume};
 
 /// The integration a match's Jobnet joblog status is kept under.
 pub const JOBNET_JOBLOG: &str = "jobnet_joblog";
-
-/// The kind of document that is a match's job application (documents.kind).
-pub const APPLICATION: &str = "application";
-
-/// The kind of document that is a match's tailored résumé (documents.kind).
-pub const RESUME: &str = "resume";
 
 /// How much of a résumé's links its head keeps, in characters (cv_match_resumes.links is a
 /// varchar(1000) in MariaDB, so the PHP app cuts it there).
@@ -361,7 +356,7 @@ pub async fn find(db: &SqlitePool, id: i64, user_id: i64) -> sqlx::Result<Option
     }))
 }
 
-/// The newest version of one kind (APPLICATION, RESUME) of a match's documents, or None when
+/// The newest version of one kind (document_box's APPLICATION, RESUME) of a match's documents, or None when
 /// none is written.
 pub async fn newest_document(db: &SqlitePool, id: i64, kind: &str) -> sqlx::Result<Option<Document>> {
     sqlx::query_file_as!(Document, "queries/cv_match_model/newest_document.sql", id, kind)

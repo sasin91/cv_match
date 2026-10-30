@@ -6,7 +6,9 @@
 use super::application_delivery;
 use super::apply_instructions::ApplyInstructions;
 
+/// The kind of document that is a job application (also documents.kind).
 pub const APPLICATION: &str = "application";
+/// The kind of document that is a tailored résumé (also documents.kind).
 pub const RESUME: &str = "resume";
 
 /// The documents in the order the panel shows them: kind, title, noun, Write button.

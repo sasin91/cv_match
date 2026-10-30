@@ -20,7 +20,7 @@ use sqlx::mysql::{MySqlConnection, MySqlRow};
 use sqlx::sqlite::{Sqlite, SqliteArguments, SqliteConnection};
 use sqlx::{AssertSqlSafe, Column, Connection, Row, SqlitePool, TypeInfo, ValueRef};
 
-use crate::cv_match::cv_match_model::{APPLICATION, RESUME};
+use crate::cv_match::document_box::{APPLICATION, RESUME};
 
 /// Where a table's rows hang on the user, which decides the WHERE that picks out their rows.
 #[derive(Clone, Copy)]
