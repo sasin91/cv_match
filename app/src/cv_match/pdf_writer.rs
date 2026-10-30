@@ -96,7 +96,7 @@ fn text_page(kind: &str, text: &str, title: &str) -> Page {
         "job" => vec![job_html(&text, title)],
         _ => vec![letter_html(&text)],
     };
-    page(body, title, font(&text))
+    page(body, title)
 }
 
 fn resume_fields_page(resume: &TailoredResume, title: &str) -> Page {
@@ -133,8 +133,7 @@ fn resume_fields_page(resume: &TailoredResume, title: &str) -> Page {
     }
     body.extend(section(&resume.education_heading, education));
 
-    let fields = serde_json::to_string(resume).unwrap_or_default();
-    page(body, title, font(&fields))
+    page(body, title)
 }
 
 /// An entry's heading, meta line, summary, bullets and note.
@@ -193,7 +192,11 @@ fn section(heading: &str, blocks: Vec<Node>) -> Vec<Node> {
     nodes
 }
 
-fn page(body: Vec<Node>, title: &str, family: Family) -> Page {
+/// The page, in the font that can set everything the body prints. PHP chose the font from the
+/// input text (or the résumé's fields) instead, so a job title above the post, which the text
+/// doesn't hold, could print "?" for a letter Helvetica lacks.
+fn page(body: Vec<Node>, title: &str) -> Page {
+    let family = font(body.iter().flat_map(Node::texts));
     Page {
         title: title.to_string(),
         family,
@@ -203,8 +206,8 @@ fn page(body: Vec<Node>, title: &str, family: Family) -> Page {
 
 /// Helvetica, as sasin91.xyz's cv.pdf, when every character is in its WinAnsi set (Danish
 /// letters are); DejaVu Sans otherwise, so a letter outside it isn't printed as "?".
-fn font(text: &str) -> Family {
-    if text.chars().all(|c| fonts::windows_1252(c).is_some()) {
+fn font<'a>(mut texts: impl Iterator<Item = &'a str>) -> Family {
+    if texts.all(|text| text.chars().all(|c| fonts::windows_1252(c).is_some())) {
         Family::Helvetica
     } else {
         Family::DejaVuSans
@@ -477,7 +480,13 @@ mod tests {
 
     #[test]
     fn a_letter_outside_windows_1252_picks_dejavu_sans() {
-        assert_eq!(font("Kære Søren – “tak” · 5 €"), Family::Helvetica);
-        assert_eq!(font("Łódź → Kraków"), Family::DejaVuSans);
+        assert_eq!(font(["Kære Søren – “tak” · 5 €"].into_iter()), Family::Helvetica);
+        assert_eq!(font(["Kære Søren", "Łódź → Kraków"].into_iter()), Family::DejaVuSans);
+    }
+
+    #[test]
+    fn the_job_title_counts_when_picking_the_font() {
+        let page = text_page("job", "We are hiring in Poland.", "Developer · Łódź Software");
+        assert_eq!(page.family, Family::DejaVuSans);
     }
 }

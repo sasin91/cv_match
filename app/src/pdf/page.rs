@@ -179,6 +179,18 @@ impl Page {
     }
 }
 
+impl Node {
+    /// Every text the node prints, in order: what the page's font has to be able to set.
+    pub fn texts(&self) -> Vec<&str> {
+        match self {
+            Node::Heading1(text) | Node::Heading2(text) | Node::Heading3(text) => vec![text],
+            Node::Paragraph(paragraph) => paragraph.lines.iter().map(String::as_str).collect(),
+            Node::List(items) => items.iter().map(String::as_str).collect(),
+            Node::Block(block) => block.children.iter().flat_map(Node::texts).collect(),
+        }
+    }
+}
+
 /// The nodes' HTML, one after the other.
 pub fn nodes_html(nodes: &[Node]) -> String {
     nodes.iter().map(node_html).collect()
