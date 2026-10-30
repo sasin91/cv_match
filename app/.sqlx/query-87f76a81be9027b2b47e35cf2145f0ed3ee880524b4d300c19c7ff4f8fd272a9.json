@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO user_llm_keys (trongate_user_id, provider, model, base_url, key_hint, created_at, updated_at)\nVALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6)\nON CONFLICT (trongate_user_id) DO UPDATE SET\n  provider = excluded.provider,\n  model = excluded.model,\n  base_url = excluded.base_url,\n  key_hint = excluded.key_hint,\n  updated_at = excluded.updated_at\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "87f76a81be9027b2b47e35cf2145f0ed3ee880524b4d300c19c7ff4f8fd272a9"
+}

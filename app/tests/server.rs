@@ -6,6 +6,7 @@ use std::sync::{Arc, LazyLock};
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use http_body_util::BodyExt;
+use recruiter::account::key_vault::KeyVault;
 use recruiter::db;
 use recruiter::server::{self, AppState};
 use recruiter::taxonomy::Taxonomy;
@@ -47,7 +48,13 @@ async fn seeded() -> SqlitePool {
 async fn app() -> axum::Router {
     let db = seeded().await;
     let user_id = server::local_user(&db).await.unwrap();
-    server::router(Arc::new(AppState::new(db, TAXONOMY.clone(), user_id, PORT)))
+    server::router(Arc::new(AppState::new(
+        db,
+        TAXONOMY.clone(),
+        user_id,
+        PORT,
+        KeyVault::in_memory(),
+    )))
 }
 
 async fn send(request: Request<Body>) -> (StatusCode, String) {
@@ -403,4 +410,93 @@ async fn a_resume_written_as_fields_is_read_back_whole() {
     assert_eq!(resume.skills, ["PHP"]);
     assert_eq!(resume.experience_heading, "Experience");
     assert_eq!(cv_match_model::resume_fields(&db, 22).await.unwrap(), None);
+}
+
+fn post_form(path: &str, form: &str) -> Request<Body> {
+    Request::post(path)
+        .header(header::HOST, HOST)
+        .header(header::ORIGIN, ORIGIN)
+        .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
+        .body(Body::from(form.to_string()))
+        .unwrap()
+}
+
+/// The page a form's redirect leads to, after checking it redirects there.
+async fn followed(app: &axum::Router, request: Request<Body>) -> String {
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    assert_eq!(response.headers()[header::LOCATION], "/account");
+    send_to(app, get("/account")).await.1
+}
+
+#[tokio::test]
+async fn the_api_key_page_saves_switches_and_deletes_a_key() {
+    let app = app().await;
+    let (status, page) = send_to(&app, get("/account")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        page.contains(r#"<option value="openai" selected>OpenAI</option>"#),
+        "{page}"
+    );
+    assert!(page.contains(r#"placeholder="Default: gpt-5.4-mini or claude-sonnet-5-5""#));
+    assert!(!page.contains("saved-key"));
+
+    let page = followed(
+        &app,
+        post_form(
+            "/account/submit_key",
+            "provider=openai&model=&api_key=sk-proj-0123456789abcdWXYZ&base_url=",
+        ),
+    )
+    .await;
+    assert!(page.contains("Your key is saved."), "{page}");
+    assert!(page.contains("key ending in <code>…WXYZ</code>"), "{page}");
+    assert!(!page.contains("0123456789"), "the key is never shown again");
+    assert!(page.contains(r#"<input type="checkbox" name="use_for_job_evaluation" value="1" checked>"#));
+
+    let page = followed(&app, post_form("/account/submit_uses", "use_for_resume=1")).await;
+    assert!(page.contains("Saved where your key is used."));
+    assert!(page.contains(r#"name="use_for_resume" value="1" checked>"#));
+    assert!(page.contains(r#"name="use_for_application" value="1">"#), "{page}");
+
+    let page = followed(&app, post_form("/account/submit_delete", "")).await;
+    assert!(page.contains("Your key is deleted."));
+    assert!(!page.contains("saved-key"));
+}
+
+#[tokio::test]
+async fn the_api_key_page_shows_what_is_wrong_with_the_form() {
+    let app = app().await;
+    let (status, page) = send_to(
+        &app,
+        post_form(
+            "/account/submit_key",
+            "provider=local&model=&api_key=&base_url=localhost%3A11434",
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        page.contains("<li>A local model needs its model name, like llama3.1:8b.</li>"),
+        "{page}"
+    );
+    assert!(page.contains(r#"<option value="local" selected>"#));
+    assert!(page.contains(r#"value="localhost:11434""#), "what was typed comes back");
+
+    let page = followed(
+        &app,
+        post_form(
+            "/account/submit_key",
+            "provider=local&model=llama3.1%3A8b&api_key=&base_url=http%3A%2F%2Flocalhost%3A11434%2Fv1",
+        ),
+    )
+    .await;
+    assert!(page.contains("<strong>A local model (Ollama, LM Studio)</strong>, model <code>llama3.1:8b</code>, at <code>http://localhost:11434/v1</code>."), "{page}");
+}
+
+#[tokio::test]
+async fn checking_without_a_key_says_so() {
+    let app = app().await;
+    let page = followed(&app, post_form("/account/submit_check", "")).await;
+    assert!(page.contains("no key to check: save one first."), "{page}");
 }

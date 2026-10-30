@@ -164,7 +164,8 @@ pub struct ViewQuery {
     view: Option<String>,
 }
 
-/// Which keys the AI may use; none until the LLM adapters are ported.
+/// Which keys the AI may use; none until the AI endpoints (extract_job, match, ...) are ported,
+/// so a key saved on the API key page doesn't send the page to endpoints that aren't there.
 fn ai_uses() -> Uses {
     Uses::default()
 }

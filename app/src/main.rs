@@ -9,6 +9,7 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
+use recruiter::account::key_vault::KeyVault;
 use recruiter::server::{self, AppState};
 use recruiter::taxonomy::Taxonomy;
 use recruiter::{db, extension, import};
@@ -77,7 +78,13 @@ fn run_server(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let mut state = AppState::new(db, Arc::new(Taxonomy::load()), user_id, port);
+    let mut state = AppState::new(
+        db,
+        Arc::new(Taxonomy::load()),
+        user_id,
+        port,
+        KeyVault::CredentialManager,
+    );
     let folder = database
         .parent()
         .unwrap_or(std::path::Path::new("."))
@@ -151,7 +158,7 @@ fn run_import(args: &[String]) -> ExitCode {
             }
             if report.skipped_llm_key {
                 println!(
-                    "Your LLM key isn't imported (it is encrypted with the server's secret); add it again in the app."
+                    "Your LLM key isn't imported (it is encrypted with the server's secret); add it again on the app's API key page."
                 );
             }
             ExitCode::SUCCESS
