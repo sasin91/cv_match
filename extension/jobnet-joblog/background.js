@@ -5,14 +5,14 @@
 // it at the website instead, with the person's own sign-in there (the host
 // permission sends its cookie along).
 //
-// Messages: {type: "matches"} gives the saved matches as cv_match/history
+// Messages: {type: "matches"} gives the saved matches as match/history
 // does: {matches (newest first), not_joblogged (applied for, not in Jobnet's
 // joblog yet)};
-// {type: "joblog", id} the joblog entry of one (cv_match/joblog/{id}), with
+// {type: "joblog", id} the joblog entry of one (match/joblog/{id}), with
 // CVR's address when the post has none (withCvrAddress);
 // {type: "pdf", id, kind} one of its PDFs as {name, base64};
 // {type: "logged", id, status} marks it as entered in Jobnet's joblog
-// (cv_match/joblog_status), keeping its status. Each answers
+// (match/joblog_status), keeping its status. Each answers
 // {error} when Recruiter says no, signed out included.
 
 const api = globalThis.browser ?? globalThis.chrome;
@@ -48,11 +48,11 @@ async function call(path, options = {}) {
 
 async function answer(message) {
   if (message.type === "matches") {
-    const { matches, not_joblogged } = await (await call("cv_match/history")).json();
+    const { matches, not_joblogged } = await (await call("match/history")).json();
     return { matches, not_joblogged: not_joblogged ?? [] };
   }
   if (message.type === "logged") {
-    await call("cv_match/joblog_status", {
+    await call("match/joblog_status", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: Number(message.id), status: message.status, logged: true }),
@@ -60,10 +60,10 @@ async function answer(message) {
     return true;
   }
   if (message.type === "joblog") {
-    return withCvrAddress(await (await call(`cv_match/joblog/${Number(message.id)}`)).json());
+    return withCvrAddress(await (await call(`match/joblog/${Number(message.id)}`)).json());
   }
   if (message.type === "pdf") {
-    const response = await call("cv_match/pdf", {
+    const response = await call("match/pdf", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ id: Number(message.id), kind: message.kind }),

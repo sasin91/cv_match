@@ -8,26 +8,26 @@ PHP modules file by file, keeping their names, and is tested against what the PH
 
 | Rust | Ported from |
 | --- | --- |
-| `src/taxonomy.rs` | `taxonomy/php/Taxonomy.php`, the lexical lookup (cv_match ranks without the embedding model, so `Static_model` and `index.q8.bin` aren't needed) |
-| `src/cv_match/free_reader.rs` | `modules/cv_match/Free_reader.php` (with `free_reader_ignore.php` and `free_reader_soft.php`) |
-| `src/cv_match/cv_matcher.rs` | `modules/cv_match/Cv_matcher.php` |
-| `src/cv_match/match_score.rs` | `modules/cv_match/Match_score.php` |
+| `src/taxonomy.rs` | `taxonomy/php/Taxonomy.php`, the lexical lookup (match ranks without the embedding model, so `Static_model` and `index.q8.bin` aren't needed) |
+| `src/match/free_reader.rs` | `modules/cv_match/Free_reader.php` (with `free_reader_ignore.php` and `free_reader_soft.php`) |
+| `src/match/matcher.rs` | `modules/cv_match/Cv_matcher.php` |
+| `src/match/match_score.rs` | `modules/cv_match/Match_score.php` |
 | `src/php.rs` | the PHP built-ins whose exact behaviour matters (`round`, `trim`) |
-| `src/db.rs`, `migrations/`, `queries/` | `db/schema.sql`'s cv_match tables, for SQLite, and the longer queries |
+| `src/db.rs`, `migrations/`, `queries/` | `db/schema.sql`'s match tables, for SQLite, and the longer queries |
 | `src/import.rs` | (new) the one-time copy from MariaDB |
-| `src/server.rs`, `src/cv_match/pages.rs` | `Cv_match.php` (the page and its endpoints) |
-| `src/cv_match/cv_match_model.rs` | `Cv_match_model.php` |
-| `src/cv_match/match_result.rs`, `saved_match_row.rs`, `batch_row.rs`, `verdict_row.rs`, `location_notice.rs`, `apply_notice.rs`, `reject_button.rs`, `reject_reason.rs`, `match_documents.rs`, `document_box.rs`, `score_cursor.rs` | the view models of the same names |
-| `src/cv_match/apply_instructions.rs` | `Apply_instructions.php` |
-| `templates/cv_match/*.html` | `modules/cv_match/views/*.php` |
+| `src/server.rs`, `src/match/pages.rs` | `Cv_match.php` (the page and its endpoints) |
+| `src/match/match_model.rs` | `Cv_match_model.php` |
+| `src/match/match_result.rs`, `saved_match_row.rs`, `batch_row.rs`, `verdict_row.rs`, `location_notice.rs`, `apply_notice.rs`, `reject_button.rs`, `reject_reason.rs`, `match_documents.rs`, `document_box.rs`, `score_cursor.rs` | the view models of the same names |
+| `src/match/apply_instructions.rs` | `Apply_instructions.php` |
+| `templates/match/*.html` | `modules/cv_match/views/*.php` |
 | `src/profile.rs` | the profile as text (`Profile_fields::text` and its queries) |
-| `src/cv_match/joblog.rs`, `joblog_panel.rs` | `Joblog.php` (with `danish_postcodes.php`, read as it is) and `Joblog_panel.php` |
+| `src/match/joblog.rs`, `joblog_panel.rs` | `Joblog.php` (with `danish_postcodes.php`, read as it is) and `Joblog_panel.php` |
 | `src/extension.rs` | (new) ships `extension/jobnet-joblog` and writes it out for the browser |
-| `src/cv_match/pdf_writer.rs`, `tailored_resume.rs` | `Pdf_writer.php`, and the part of `Tailored_resume.php` its résumé layout uses |
+| `src/match/pdf_writer.rs`, `tailored_resume.rs` | `Pdf_writer.php`, and the part of `Tailored_resume.php` its résumé layout uses |
 | `src/pdf/` | (new) stands in for dompdf: lays the page out on A4 as dompdf 3.1 did and writes the PDF |
 
 The PHP files named here are in [sasin91/recruiter](https://github.com/sasin91/recruiter). What the
-app builds in from there is copied into `../assets` (cv_match's css and js, Trongate MX, the
+app builds in from there is copied into `../assets` (match's css and js, Trongate MX, the
 taxonomy index `taxonomy/data/index.json` and `danish_postcodes.php`); the Jobnet extension
 lives in `../extension/jobnet-joblog`.
 
@@ -35,9 +35,9 @@ lives in `../extension/jobnet-joblog`.
 
     cargo run --release
 
-serves the app on http://127.0.0.1:8765/cv_match and opens it in your default browser
+serves the app on http://127.0.0.1:8765/match and opens it in your default browser
 (`--port`, `--database file`, `--no-browser`). It is the PHP app's match page with the same CSS
-and JS (`assets/cv_match/css`, `js`, and Trongate MX from `assets/js`, built into the exe), for
+and JS (`assets/match/css`, `js`, and Trongate MX from `assets/js`, built into the exe), for
 one local user who is always signed in:
 
 - the saved matches by list (Shortlist, All, Applied not on Jobnet yet, On Jobnet, Rejected),
@@ -48,9 +48,9 @@ one local user who is always signed in:
 - the free keyword match of new posts against your profile or a pasted CV;
 - a match's Jobnet joblog panel, and what the Jobnet extension asks for (the history, a joblog
   entry, marking a match as on Jobnet, the PDFs it attaches);
-- the application, the tailored résumé, the CV and the job post as PDFs (`POST cv_match/pdf`);
+- the application, the tailored résumé, the CV and the job post as PDFs (`POST match/pdf`);
 - reading an uploaded PDF CV in the browser with pdf.js, which the app serves itself
-  (`assets/cv_match/pdfjs`), so it works offline;
+  (`assets/match/pdfjs`), so it works offline;
 - the API key page (http://127.0.0.1:8765/account), below.
 
 What isn't ported yet (the AI match, fetching a post from a link, writing, the Apply dialog)
@@ -103,13 +103,26 @@ Reload on the extension. Its manifest `key` fixes its ID, the one `src/extension
 ## Database
 
 The app keeps its data in one SQLite file, `%APPDATA%\Recruiter\recruiter.sqlite` on Windows.
-Its tables are cv_match's MariaDB tables with the same names (`migrations/`, applied in order at
-start-up and recorded in `schema_migrations`), with three changes for one local user:
+Its tables are cv_match's MariaDB tables (`migrations/`, applied in order at start-up and
+recorded in `schema_migrations`) without the `cv_match` prefix, since the whole app is the
+match: `cv_matches` is `matches`, `cv_match_id` is `match_id`, `cv_match_items` is
+`match_items`, and so on; the import reads each under its MariaDB name. Besides the names, there
+are four changes:
 
 - `trongate_users` keeps only `id`, and `candidates` drops the login columns.
 - `user_llm_keys.uses` (a SET) is three yes/no columns, `use_for_resume`,
   `use_for_application` and `use_for_job_evaluation`; `base_url` is set for a local model.
 - The API key itself goes in Windows Credential Manager, so the table has no key column.
+- The documents written for a match (its application and tailored résumé) are versions in
+  `documents` instead of `matches.application_text` and `resume_text`, so writing one again
+  keeps the one before; the newest is the one shown. Each version records the model that wrote
+  it (`written_by`) and the notes it was written with. The résumé's fields (`match_resumes`,
+  `match_resume_entries`, `match_resume_lines`) hang on the résumé version
+  (`document_id`) instead of the match.
+
+While the app is new, `migrations/0001_schema.sql` is changed in place instead of getting new
+migrations. A database made from an older version of it is refused at start with a message
+saying so: delete `recruiter.sqlite` and run `recruiter import` again (below).
 
 To copy your data from the PHP app's MariaDB (Herd's copy of production, `recruiter_prod`):
 
@@ -117,7 +130,8 @@ To copy your data from the PHP app's MariaDB (Herd's copy of production, `recrui
 
 `--from mysql://user:pass@host:3306/db` reads another database and `--database file` writes
 another SQLite file. Only the candidate with that email is copied, with every id as it was, all
-in one transaction. It refuses a database that already has your data. Your LLM key isn't
+in one transaction, each written application and résumé as its first version. It refuses a
+database that already has your data. Your LLM key isn't
 copied, because it is encrypted with the server's secret: add it again on the API key page.
 
 ### Queries
@@ -162,7 +176,7 @@ requests from other sites. `tests/llm.rs` calls each adapter against a stand-in 
 127.0.0.1 and checks the request it sends and how it reads the answers and failures.
 
 `tests/import.rs` imports from a real MariaDB with recruiter's `db/schema.sql` loaded. It empties that
-database's cv_match tables, so point it at a scratch database only:
+database's match tables, so point it at a scratch database only:
 
     RECRUITER_TEST_MYSQL=mysql://test:test@127.0.0.1:3306/recruiter_test cargo test --test import -- --ignored --test-threads=1
 

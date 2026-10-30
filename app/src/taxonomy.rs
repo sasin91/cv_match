@@ -2,7 +2,7 @@
 //! from a job post or a CV ("Erfaring med SAP", "projektleder", "Kørekort B") into ranked
 //! skill, role and title terms.
 //!
-//! This is the lexical half of the PHP lookup, the half cv_match uses: Cv_matcher ranks with
+//! This is the lexical half of the PHP lookup, the half match uses: Cv_matcher ranks with
 //! no query vector, so the static embedding model (Static_model, index.q8.bin) is not needed.
 //! Plain word matching against each term's labels and definition, so exact names like "SAP" or
 //! "Kørekort B" are never outranked, and words also match with one or two typos

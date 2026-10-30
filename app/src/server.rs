@@ -22,21 +22,21 @@ use rust_embed::RustEmbed;
 use sqlx::SqlitePool;
 
 use crate::account::{self, key_vault::KeyVault};
-use crate::cv_match::pages;
 use crate::extension;
+use crate::matches::pages;
 use crate::taxonomy::Taxonomy;
 
 /// The port the app listens on unless told otherwise, fixed so the Jobnet extension can find it.
 pub const DEFAULT_PORT: u16 = 8765;
 
-/// modules/cv_match's css/ and js/, served under cv_match_module/ as Trongate serves them, and
+/// modules/cv_match's css/ and js/, served under match_module/ as Trongate serves them, and
 /// pdf.js beside them, which js/app.js reads uploaded PDFs with.
 #[derive(RustEmbed)]
-#[folder = "../assets/cv_match/"]
+#[folder = "../assets/match/"]
 #[include = "css/*"]
 #[include = "js/*"]
 #[include = "pdfjs/*.mjs"]
-struct CvMatchAssets;
+struct MatchAssets;
 
 /// Trongate MX, served under js/.
 #[derive(RustEmbed)]
@@ -104,26 +104,26 @@ pub async fn local_user(db: &SqlitePool) -> sqlx::Result<i64> {
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/", get(pages::home))
-        .route("/cv_match", get(pages::index))
-        .route("/cv_match/{id}", get(pages::show))
-        .route("/cv_match/history_list", get(pages::history_list))
-        .route("/cv_match/history_more", get(pages::history_more))
-        .route("/cv_match/result/{id}", get(pages::result))
-        .route("/cv_match/quick_match", post(pages::quick_match))
-        .route("/cv_match/already_matched", post(pages::already_matched))
-        .route("/cv_match/submit_reject/{id}", post(pages::submit_reject))
-        .route("/cv_match/history", get(pages::history))
-        .route("/cv_match/joblog/{id}", get(pages::joblog))
-        .route("/cv_match/joblog_panel/{id}", get(pages::joblog_panel))
-        .route("/cv_match/joblog_status", post(pages::joblog_status))
-        .route("/cv_match/pdf", post(pages::pdf))
+        .route("/match", get(pages::index))
+        .route("/match/{id}", get(pages::show))
+        .route("/match/history_list", get(pages::history_list))
+        .route("/match/history_more", get(pages::history_more))
+        .route("/match/result/{id}", get(pages::result))
+        .route("/match/quick_match", post(pages::quick_match))
+        .route("/match/already_matched", post(pages::already_matched))
+        .route("/match/submit_reject/{id}", post(pages::submit_reject))
+        .route("/match/history", get(pages::history))
+        .route("/match/joblog/{id}", get(pages::joblog))
+        .route("/match/joblog_panel/{id}", get(pages::joblog_panel))
+        .route("/match/joblog_status", post(pages::joblog_status))
+        .route("/match/pdf", post(pages::pdf))
         .route("/joblog_extension", get(pages::joblog_extension))
         .route("/account", get(account::index))
         .route("/account/submit_key", post(account::submit_key))
         .route("/account/submit_uses", post(account::submit_uses))
         .route("/account/submit_delete", post(account::submit_delete))
         .route("/account/submit_check", post(account::submit_check))
-        .route("/cv_match_module/{*path}", get(cv_match_asset))
+        .route("/match_module/{*path}", get(match_asset))
         .route("/js/{*path}", get(public_js))
         .fallback(pages::not_yet)
         .method_not_allowed_fallback(pages::not_yet)
@@ -172,8 +172,8 @@ fn allowed(method: &Method, headers: &HeaderMap, port: u16) -> Result<(), &'stat
     }
 }
 
-async fn cv_match_asset(Path(path): Path<String>) -> Response {
-    asset(CvMatchAssets::get(&path), &path)
+async fn match_asset(Path(path): Path<String>) -> Response {
+    asset(MatchAssets::get(&path), &path)
 }
 
 async fn public_js(Path(path): Path<String>) -> Response {

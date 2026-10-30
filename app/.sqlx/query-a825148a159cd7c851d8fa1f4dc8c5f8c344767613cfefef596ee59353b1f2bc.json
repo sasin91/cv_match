@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT text, written_at FROM documents WHERE kind = 'application'",
+  "describe": {
+    "columns": [
+      {
+        "name": "text",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "text"
+          }
+        }
+      },
+      {
+        "name": "written_at",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "written_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "a825148a159cd7c851d8fa1f4dc8c5f8c344767613cfefef596ee59353b1f2bc"
+}

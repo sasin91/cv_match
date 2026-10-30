@@ -94,7 +94,7 @@ fn run_server(args: &[String]) -> ExitCode {
         format!("It couldn't be written to {}: {e}", folder.display())
     });
     let state = Arc::new(state);
-    let address = format!("http://127.0.0.1:{port}/cv_match");
+    let address = format!("http://127.0.0.1:{port}/match");
     runtime.block_on(async {
         let serving = tokio::spawn(server::serve(state));
         println!(

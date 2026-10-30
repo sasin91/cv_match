@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS (SELECT 1 FROM match_resumes WHERE document_id = ?1) AS \"has: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "has: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "6e488db8949ae774f464c125d33c20571f6d226f49d43e89248d8f9c41c8e0f5"
+}

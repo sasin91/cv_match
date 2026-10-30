@@ -75,16 +75,18 @@ async fn copies_only_my_rows_with_their_ids() {
 
     assert!(report.skipped_llm_key);
     assert_eq!(count(&target, "candidates").await, 1);
-    assert_eq!(count(&target, "cv_matches").await, 1);
-    assert_eq!(count(&target, "cv_match_items").await, 2);
-    assert_eq!(count(&target, "cv_match_integrations").await, 1);
-    assert_eq!(count(&target, "cv_match_rejections").await, 0);
-    assert_eq!(count(&target, "cv_match_resume_lines").await, 2);
+    assert_eq!(count(&target, "matches").await, 1);
+    assert_eq!(count(&target, "match_items").await, 2);
+    assert_eq!(count(&target, "match_integrations").await, 1);
+    assert_eq!(count(&target, "match_rejections").await, 0);
+    assert_eq!(count(&target, "match_resume_lines").await, 2);
+    // The application, and the résumé its fields need (it has no text in MariaDB).
+    assert_eq!(count(&target, "documents").await, 2);
     assert_eq!(count(&target, "candidate_profiles").await, 1);
     assert_eq!(count(&target, "candidate_profile_links").await, 1);
     assert_eq!(count(&target, "user_llm_keys").await, 0);
 
-    let saved = sqlx::query!(r#"SELECT id, score, job_title, job_text FROM cv_matches"#)
+    let saved = sqlx::query!(r#"SELECT id, score, job_title, job_text FROM matches"#)
         .fetch_one(&target)
         .await
         .unwrap();
@@ -98,11 +100,28 @@ async fn copies_only_my_rows_with_their_ids() {
         .await
         .unwrap();
     assert_eq!(started.as_deref(), Some("2017-01-01"));
-    let entry = sqlx::query_scalar!(r#"SELECT entry_id FROM cv_match_resume_lines WHERE kind = 'bullet'"#)
+    let entry = sqlx::query_scalar!(r#"SELECT entry_id FROM match_resume_lines WHERE kind = 'bullet'"#)
         .fetch_one(&target)
         .await
         .unwrap();
     assert_eq!(entry, Some(31));
+    let application = sqlx::query!(r#"SELECT text, written_at FROM documents WHERE kind = 'application'"#)
+        .fetch_one(&target)
+        .await
+        .unwrap();
+    assert_eq!((application.text.as_str(), application.written_at), ("Kære Firma", 300));
+    let resume = sqlx::query_scalar!(r#"SELECT id FROM documents WHERE match_id = 21 AND kind = 'resume'"#)
+        .fetch_one(&target)
+        .await
+        .unwrap();
+    let hung_on_it = sqlx::query_scalar!(
+        r#"SELECT COUNT(*) FROM match_resume_lines WHERE document_id = ?1"#,
+        resume
+    )
+    .fetch_one(&target)
+    .await
+    .unwrap();
+    assert_eq!(hung_on_it, 2);
 }
 
 #[tokio::test]
@@ -121,5 +140,5 @@ async fn refuses_a_second_import_and_an_unknown_email() {
         import::import(&url, ME, &target).await,
         Err(import::Error::AlreadyImported)
     ));
-    assert_eq!(count(&target, "cv_matches").await, 1);
+    assert_eq!(count(&target, "matches").await, 1);
 }
