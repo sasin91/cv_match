@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT EXISTS (\n          SELECT 1 FROM cv_matches WHERE id = ?1 AND trongate_user_id IS ?2\n        ) AS \"owns: bool\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "owns: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "90fa76361ce95e7592aadff64b4cf6b1fc0c775e9bed998bcef37f37879a18dd"
+}

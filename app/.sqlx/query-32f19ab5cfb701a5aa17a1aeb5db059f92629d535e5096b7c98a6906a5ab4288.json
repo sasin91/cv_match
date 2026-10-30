@@ -1,0 +1,237 @@
+{
+  "db_name": "SQLite",
+  "query": "-- One of the user's saved matches. ?1 the match, ?2 the user.\nSELECT\n  id,\n  trongate_user_id,\n  job_title,\n  company,\n  job_url,\n  job_text,\n  cv_name,\n  cv_text,\n  score,\n  points,\n  max_points,\n  tag,\n  application_text,\n  application_written_at,\n  resume_text,\n  resume_written_at,\n  rejected_at,\n  created_at,\n  EXISTS (\n    SELECT 1 FROM cv_match_resumes r WHERE r.cv_match_id = cv_matches.id\n  ) AS \"resume_structured: bool\"\nFROM cv_matches\nWHERE id = ?1 AND trongate_user_id IS ?2\n",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "trongate_user_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "trongate_user_id"
+          }
+        }
+      },
+      {
+        "name": "job_title",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "job_title"
+          }
+        }
+      },
+      {
+        "name": "company",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "company"
+          }
+        }
+      },
+      {
+        "name": "job_url",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "job_url"
+          }
+        }
+      },
+      {
+        "name": "job_text",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "job_text"
+          }
+        }
+      },
+      {
+        "name": "cv_name",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "cv_name"
+          }
+        }
+      },
+      {
+        "name": "cv_text",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "cv_text"
+          }
+        }
+      },
+      {
+        "name": "score",
+        "ordinal": 8,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "score"
+          }
+        }
+      },
+      {
+        "name": "points",
+        "ordinal": 9,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "points"
+          }
+        }
+      },
+      {
+        "name": "max_points",
+        "ordinal": 10,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "max_points"
+          }
+        }
+      },
+      {
+        "name": "tag",
+        "ordinal": 11,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "tag"
+          }
+        }
+      },
+      {
+        "name": "application_text",
+        "ordinal": 12,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "application_text"
+          }
+        }
+      },
+      {
+        "name": "application_written_at",
+        "ordinal": 13,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "application_written_at"
+          }
+        }
+      },
+      {
+        "name": "resume_text",
+        "ordinal": 14,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "resume_text"
+          }
+        }
+      },
+      {
+        "name": "resume_written_at",
+        "ordinal": 15,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "resume_written_at"
+          }
+        }
+      },
+      {
+        "name": "rejected_at",
+        "ordinal": 16,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "rejected_at"
+          }
+        }
+      },
+      {
+        "name": "created_at",
+        "ordinal": 17,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "created_at"
+          }
+        }
+      },
+      {
+        "name": "resume_structured: bool",
+        "ordinal": 18,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "32f19ab5cfb701a5aa17a1aeb5db059f92629d535e5096b7c98a6906a5ab4288"
+}

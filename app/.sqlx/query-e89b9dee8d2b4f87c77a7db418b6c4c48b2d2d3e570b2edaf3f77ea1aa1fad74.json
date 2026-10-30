@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT title, location, about FROM candidate_profiles WHERE candidate_id = ?1",
+  "describe": {
+    "columns": [
+      {
+        "name": "title",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "candidate_profiles",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "name": "location",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "candidate_profiles",
+            "name": "location"
+          }
+        }
+      },
+      {
+        "name": "about",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "candidate_profiles",
+            "name": "about"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e89b9dee8d2b4f87c77a7db418b6c4c48b2d2d3e570b2edaf3f77ea1aa1fad74"
+}

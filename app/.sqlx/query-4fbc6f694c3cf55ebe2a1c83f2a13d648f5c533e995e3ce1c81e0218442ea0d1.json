@@ -1,0 +1,134 @@
+{
+  "db_name": "SQLite",
+  "query": "-- The candidate's profile entries by section, newest first: ongoing ones on top, then by when\n-- they ended and started; the CV's order breaks ties. ?1 the candidate.\nSELECT id, section, title, organisation, location, url, started_on, ended_on, summary, note\nFROM candidate_profile_entries\nWHERE candidate_id = ?1\nORDER BY\n  CASE section WHEN 'experience' THEN 1 WHEN 'project' THEN 2 WHEN 'education' THEN 3 ELSE 0 END,\n  ended_on IS NULL DESC,\n  ended_on DESC,\n  started_on DESC,\n  sort_order,\n  id\n",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "candidate_profile_entries",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "section",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "candidate_profile_entries",
+            "name": "section"
+          }
+        }
+      },
+      {
+        "name": "title",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "candidate_profile_entries",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "name": "organisation",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "candidate_profile_entries",
+            "name": "organisation"
+          }
+        }
+      },
+      {
+        "name": "location",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "candidate_profile_entries",
+            "name": "location"
+          }
+        }
+      },
+      {
+        "name": "url",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "candidate_profile_entries",
+            "name": "url"
+          }
+        }
+      },
+      {
+        "name": "started_on",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "candidate_profile_entries",
+            "name": "started_on"
+          }
+        }
+      },
+      {
+        "name": "ended_on",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "candidate_profile_entries",
+            "name": "ended_on"
+          }
+        }
+      },
+      {
+        "name": "summary",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "candidate_profile_entries",
+            "name": "summary"
+          }
+        }
+      },
+      {
+        "name": "note",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "candidate_profile_entries",
+            "name": "note"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "4fbc6f694c3cf55ebe2a1c83f2a13d648f5c533e995e3ce1c81e0218442ea0d1"
+}

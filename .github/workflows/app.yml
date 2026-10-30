@@ -25,6 +25,9 @@ jobs:
     defaults:
       run:
         working-directory: app
+    env:
+      # The query! macros check against the committed .sqlx, never a database.
+      SQLX_OFFLINE: true
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -36,6 +39,26 @@ jobs:
       - run: cargo fmt --check
       - run: cargo clippy --all-targets -- -D warnings
       - run: cargo test --release
+
+  sqlx:
+    name: .sqlx matches the queries
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: app
+    env:
+      # A database made from migrations/, which the query! macros are checked against.
+      DATABASE_URL: sqlite:target/sqlx-dev.sqlite
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
+      # The same version as the sqlx crate; rust-cache keeps it between runs.
+      - run: cargo install sqlx-cli@0.9.0 --locked --no-default-features --features sqlite
+      - run: mkdir -p target && sqlx database reset -y
+      - run: cargo sqlx prepare --check -- --all-targets
 
   php:
     name: fixtures match the PHP code
@@ -70,6 +93,7 @@ jobs:
           --health-interval=5s --health-timeout=5s --health-retries=20
     env:
       RECRUITER_TEST_MYSQL: mysql://test:test@127.0.0.1:3306/recruiter_test
+      SQLX_OFFLINE: true
     steps:
       - uses: actions/checkout@v4
       - uses: actions/checkout@v4

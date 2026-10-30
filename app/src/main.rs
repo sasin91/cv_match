@@ -60,14 +60,17 @@ fn run_server(args: &[String]) -> ExitCode {
             }
         }
     }
-    let db = match db::open(&database) {
+    let Some(runtime) = runtime() else {
+        return ExitCode::FAILURE;
+    };
+    let db = match runtime.block_on(db::open(&database)) {
         Ok(db) => db,
         Err(e) => {
             eprintln!("Couldn't open {}: {e}", database.display());
             return ExitCode::FAILURE;
         }
     };
-    let user_id = match server::local_user(&db) {
+    let user_id = match runtime.block_on(server::local_user(&db)) {
         Ok(id) => id,
         Err(e) => {
             eprintln!("Couldn't read the local user: {e}");
@@ -85,13 +88,6 @@ fn run_server(args: &[String]) -> ExitCode {
     });
     let state = Arc::new(state);
     let address = format!("http://127.0.0.1:{port}/cv_match");
-    let runtime = match tokio::runtime::Runtime::new() {
-        Ok(runtime) => runtime,
-        Err(e) => {
-            eprintln!("Couldn't start: {e}");
-            return ExitCode::FAILURE;
-        }
-    };
     runtime.block_on(async {
         let serving = tokio::spawn(server::serve(state));
         println!(
@@ -140,9 +136,13 @@ fn run_import(args: &[String]) -> ExitCode {
         return ExitCode::FAILURE;
     };
 
-    let result = db::open(&database)
-        .map_err(import::Error::Sqlite)
-        .and_then(|mut target| import::import(&source, &email, &mut target));
+    let Some(runtime) = runtime() else {
+        return ExitCode::FAILURE;
+    };
+    let result = runtime.block_on(async {
+        let target = db::open(&database).await.map_err(import::Error::Sqlite)?;
+        import::import(&source, &email, &target).await
+    });
     match result {
         Ok(report) => {
             println!("Imported into {}", database.display());
@@ -161,4 +161,11 @@ fn run_import(args: &[String]) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// The async runtime the database and the server run on, or None (said why) when it can't start.
+fn runtime() -> Option<tokio::runtime::Runtime> {
+    tokio::runtime::Runtime::new()
+        .map_err(|e| eprintln!("Couldn't start: {e}"))
+        .ok()
 }

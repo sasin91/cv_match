@@ -58,8 +58,8 @@ impl IntoResponse for PageError {
     }
 }
 
-impl From<rusqlite::Error> for PageError {
-    fn from(e: rusqlite::Error) -> Self {
+impl From<sqlx::Error> for PageError {
+    fn from(e: sqlx::Error) -> Self {
         eprintln!("cv_match: {e}");
         Self::new(
             StatusCode::INTERNAL_SERVER_ERROR,
@@ -177,7 +177,7 @@ struct SavedMatches {
     next: Option<String>,
 }
 
-fn saved_matches(state: &AppState, query: &ListQuery, first: bool) -> Result<SavedMatches, PageError> {
+async fn saved_matches(state: &AppState, query: &ListQuery, first: bool) -> Result<SavedMatches, PageError> {
     let list = LISTS
         .iter()
         .map(|(name, ..)| *name)
@@ -188,7 +188,7 @@ fn saved_matches(state: &AppState, query: &ListQuery, first: bool) -> Result<Sav
     } else {
         query.after.as_deref().unwrap_or("")
     };
-    let found = cv_match_model::best_first(&state.db(), state.user_id, PER_PAGE, after, list)?;
+    let found = cv_match_model::best_first(state.db(), state.user_id, PER_PAGE, after, list).await?;
     let list_param = if list == SHORTLIST {
         String::new()
     } else {
@@ -236,7 +236,7 @@ pub async fn home() -> Redirect {
 
 /// GET cv_match: the match page.
 pub async fn index(State(state): State<Arc<AppState>>, Query(query): Query<ListQuery>) -> Answer {
-    match_page(&state, &query, None)
+    match_page(&state, &query, None).await
 }
 
 /// GET cv_match/{id}: the match page with that saved match open, so it can be linked to. Any
@@ -247,13 +247,13 @@ pub async fn show(
     Query(query): Query<ListQuery>,
 ) -> Answer {
     match segment.parse::<i64>() {
-        Ok(id) => match_page(&state, &query, (id > 0).then_some(id)),
+        Ok(id) => match_page(&state, &query, (id > 0).then_some(id)).await,
         Err(_) => Err(not_yet_for(&segment)),
     }
 }
 
-fn match_page(state: &AppState, query: &ListQuery, open_id: Option<i64>) -> Answer {
-    let saved = saved_matches(state, query, false)?;
+async fn match_page(state: &AppState, query: &ListQuery, open_id: Option<i64>) -> Answer {
+    let saved = saved_matches(state, query, false).await?;
     let uses = ai_uses();
     let empty_text = LISTS
         .iter()
@@ -268,7 +268,7 @@ fn match_page(state: &AppState, query: &ListQuery, open_id: Option<i64>) -> Answ
                 .to_string(),
         max_jobs: MAX_JOBS,
         open_id_json: json!(open_id).to_string(),
-        profile_text: profile::text_for_user(&state.db(), state.user_id)?,
+        profile_text: profile::text_for_user(state.db(), state.user_id).await?,
         list_tabs: list_tabs(saved.list),
         matches: saved.matches,
         next: saved.next,
@@ -280,7 +280,7 @@ fn match_page(state: &AppState, query: &ListQuery, open_id: Option<i64>) -> Answ
 /// GET cv_match/history_list: the first batch of the page's list, polled by Trongate MX so
 /// matches saved elsewhere show up on their own.
 pub async fn history_list(State(state): State<Arc<AppState>>, Query(query): Query<ListQuery>) -> Answer {
-    let saved = saved_matches(&state, &query, true)?;
+    let saved = saved_matches(&state, &query, true).await?;
     html(HistoryLatest {
         matches: saved.matches,
         next: saved.next,
@@ -290,7 +290,7 @@ pub async fn history_list(State(state): State<Arc<AppState>>, Query(query): Quer
 
 /// GET cv_match/history_more?after=...: the next saved matches of the page's list.
 pub async fn history_more(State(state): State<Arc<AppState>>, Query(query): Query<ListQuery>) -> Answer {
-    let saved = saved_matches(&state, &query, false)?;
+    let saved = saved_matches(&state, &query, false).await?;
     html(History {
         matches: saved.matches,
         next: saved.next,
@@ -301,7 +301,9 @@ pub async fn history_more(State(state): State<Arc<AppState>>, Query(query): Quer
 /// GET cv_match/result/{id}: a saved match as the page shows it, with its application and
 /// résumé panel; ?view=row as a row of the ranked jobs.
 pub async fn result(State(state): State<Arc<AppState>>, Path(id): Path<i64>, Query(view): Query<ViewQuery>) -> Answer {
-    let found = cv_match_model::find(&state.db(), id, state.user_id)?.ok_or_else(PageError::not_found)?;
+    let found = cv_match_model::find(state.db(), id, state.user_id)
+        .await?
+        .ok_or_else(PageError::not_found)?;
     let uses = ai_uses();
     let documents = MatchDocuments::from(
         Some(found.id),
@@ -439,14 +441,18 @@ pub async fn submit_reject(
         state.set_flash(problem);
         return Ok(Redirect::to(&format!("/cv_match/{id}")).into_response());
     }
-    let done = {
-        let mut db = state.db();
-        if undo {
-            cv_match_model::bring_back(&mut db, id, state.user_id)?
-        } else {
-            let now = chrono::Utc::now().timestamp();
-            cv_match_model::reject(&mut db, id, state.user_id, &reject_reason::rows(&reasons, &notes), now)?
-        }
+    let done = if undo {
+        cv_match_model::bring_back(state.db(), id, state.user_id).await?
+    } else {
+        let now = chrono::Utc::now().timestamp();
+        cv_match_model::reject(
+            state.db(),
+            id,
+            state.user_id,
+            &reject_reason::rows(&reasons, &notes),
+            now,
+        )
+        .await?
     };
     if done {
         state.set_flash(
@@ -467,11 +473,13 @@ pub async fn submit_reject(
 }
 
 /// One of the user's saved matches by its id in the address, or the error the page shows.
-fn saved_match(state: &AppState, id: i64) -> Result<SavedMatch, PageError> {
+async fn saved_match(state: &AppState, id: i64) -> Result<SavedMatch, PageError> {
     if id <= 0 {
         return Err(PageError::not_found());
     }
-    cv_match_model::find(&state.db(), id, state.user_id)?.ok_or_else(PageError::not_found)
+    cv_match_model::find(state.db(), id, state.user_id)
+        .await?
+        .ok_or_else(PageError::not_found)
 }
 
 /// An id from the address; anything but a number is no match.
@@ -493,8 +501,10 @@ fn id_in_body(id: &serde_json::Value) -> i64 {
 /// "Applied, not on Jobnet yet"), best first, which the extension offers first.
 pub async fn history(State(state): State<Arc<AppState>>) -> Answer {
     let db = state.db();
-    let matches = cv_match_model::recent(&db, state.user_id, HISTORY_SIZE)?;
-    let not_joblogged = cv_match_model::best_first(&db, state.user_id, HISTORY_SIZE, "", "not_joblogged")?.rows;
+    let matches = cv_match_model::recent(db, state.user_id, HISTORY_SIZE).await?;
+    let not_joblogged = cv_match_model::best_first(db, state.user_id, HISTORY_SIZE, "", "not_joblogged")
+        .await?
+        .rows;
     Ok(Json(json!({ "matches": matches, "not_joblogged": not_joblogged })).into_response())
 }
 
@@ -502,14 +512,14 @@ pub async fn history(State(state): State<Arc<AppState>>) -> Answer {
 /// fields in Jobnet's order, filled in from the match, and which of the three PDFs Jobnet keeps
 /// can be downloaded.
 pub async fn joblog(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Answer {
-    let found = saved_match(&state, id_of(&id))?;
+    let found = saved_match(&state, id_of(&id)).await?;
     Ok(Json(joblog::read(&found)).into_response())
 }
 
 /// GET cv_match/joblog_panel/{id}: the same entry as joblog/{id} as the page prints it under the
 /// match.
 pub async fn joblog_panel(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Answer {
-    let found = saved_match(&state, id_of(&id))?;
+    let found = saved_match(&state, id_of(&id)).await?;
     html(JoblogPanelView {
         panel: JoblogPanel::from(found.id, &joblog::read(&found)),
     })
@@ -528,7 +538,7 @@ pub struct JoblogStatusInput {
 /// Jobnet's words (joblog::SEARCH_STATUSES), and whether they have entered it in their Jobnet
 /// joblog. Answers the "In your Jobnet joblog" section as the page prints it.
 pub async fn joblog_status(State(state): State<Arc<AppState>>, Json(input): Json<JoblogStatusInput>) -> Answer {
-    let found = saved_match(&state, id_in_body(&input.id))?;
+    let found = saved_match(&state, id_in_body(&input.id)).await?;
     let Some(status) = input
         .status
         .as_str()
@@ -542,7 +552,7 @@ pub async fn joblog_status(State(state): State<Arc<AppState>>, Json(input): Json
     };
     let logged = input.logged == serde_json::Value::Bool(true);
     let now = chrono::Utc::now().timestamp();
-    let saved = cv_match_model::save_integration(&state.db(), found.id, JOBNET_JOBLOG, status, logged, now)?;
+    let saved = cv_match_model::save_integration(state.db(), found.id, JOBNET_JOBLOG, status, logged, now).await?;
     html(JoblogLoggedView {
         logged: Logged::from(
             saved.as_ref().and_then(|saved| saved.logged_at),
@@ -594,7 +604,7 @@ pub async fn pdf(State(state): State<Arc<AppState>>, Json(input): Json<PdfInput>
             "Choose the application, the résumé, the CV or the job post.",
         ));
     }
-    let found = saved_match(&state, id_in_body(&input.id))?;
+    let found = saved_match(&state, id_in_body(&input.id)).await?;
     let text = pdf_text(&found, kind, crate::php::trim(&input.text));
     if text.is_empty() {
         return Err(PageError::new(
@@ -612,7 +622,7 @@ pub async fn pdf(State(state): State<Arc<AppState>>, Json(input): Json<PdfInput>
     // A résumé written with fields is laid out from them; the text is only for one written
     // before they existed.
     let fields = if kind == "resume" {
-        cv_match_model::resume_fields(&state.db(), found.id)?
+        cv_match_model::resume_fields(state.db(), found.id).await?
     } else {
         None
     };
@@ -718,7 +728,7 @@ pub struct AlreadyMatchedInput {
 /// same job post text, as {match: {id}}, or {match: null}. The page uses it to skip posts it
 /// has matched before.
 pub async fn already_matched(State(state): State<Arc<AppState>>, Json(input): Json<AlreadyMatchedInput>) -> Answer {
-    let id = cv_match_model::existing(&state.db(), state.user_id, input.cv_text.trim(), input.job_text.trim())?;
+    let id = cv_match_model::existing(state.db(), state.user_id, input.cv_text.trim(), input.job_text.trim()).await?;
     Ok(Json(json!({ "match": id.map(|id| json!({ "id": id })) })).into_response())
 }
 

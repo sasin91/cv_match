@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO trongate_users (id)\n        SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM trongate_users)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "618f4521e883656f4a9621d4814b20b5a80e5c8e63f2d6023ca07c88e0df46a6"
+}

@@ -13,7 +13,7 @@ PHP modules file by file, keeping their names, and is tested against what the PH
 | `src/cv_match/cv_matcher.rs` | `modules/cv_match/Cv_matcher.php` |
 | `src/cv_match/match_score.rs` | `modules/cv_match/Match_score.php` |
 | `src/php.rs` | the PHP built-ins whose exact behaviour matters (`round`, `trim`) |
-| `src/db.rs`, `migrations/` | `db/schema.sql`'s cv_match tables, for SQLite |
+| `src/db.rs`, `migrations/`, `queries/` | `db/schema.sql`'s cv_match tables, for SQLite, and the longer queries |
 | `src/import.rs` | (new) the one-time copy from MariaDB |
 | `src/server.rs`, `src/cv_match/pages.rs` | `Cv_match.php` (the page and its endpoints) |
 | `src/cv_match/cv_match_model.rs` | `Cv_match_model.php` |
@@ -98,6 +98,25 @@ another SQLite file. Only the candidate with that email is copied, with every id
 in one transaction. It refuses a database that already has your data. Your LLM key isn't
 copied, because it is encrypted with the server's secret: add it again in the app.
 
+### Queries
+
+The app talks to both databases through [sqlx](https://github.com/launchbadge/sqlx). Its queries
+use the `query!` macros, which check the SQL, its parameters and the Rust types of its columns
+at compile time. A query of more than a few lines is its own file in `queries/` (read with
+`query_file!`); a short one is a raw string `r#"..."#` laid out like a heredoc where it is used.
+Only the import's queries are built at run time, because its columns come from the tables.
+
+The checks run against `.sqlx/`, the descriptions of every query, which is committed, so a
+plain `cargo build` needs no database. After adding or changing a query, write them again
+against a database made from `migrations/` (`cargo install sqlx-cli --no-default-features
+--features sqlite` once):
+
+    $env:DATABASE_URL = "sqlite:target/sqlx-dev.sqlite"   # PowerShell; export DATABASE_URL=... elsewhere
+    sqlx database reset -y
+    cargo sqlx prepare -- --all-targets
+
+and commit `.sqlx/` with the change. CI fails when it doesn't match the queries.
+
 ## Tests
 
     cargo test --release
@@ -124,5 +143,6 @@ database's cv_match tables, so point it at a scratch database only:
 
     RECRUITER_TEST_MYSQL=mysql://test:test@127.0.0.1:3306/recruiter_test cargo test --test import -- --ignored --test-threads=1
 
-CI (`.github/workflows/app.yml`) runs that against a MariaDB service, and also runs the generator
-on recruiter's master and fails when the committed fixtures no longer match what PHP answers.
+CI (`.github/workflows/app.yml`) runs that against a MariaDB service, runs the generator on
+recruiter's master and fails when the committed fixtures no longer match what PHP answers, and
+checks `.sqlx/` is what the queries are.
