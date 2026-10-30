@@ -83,9 +83,7 @@ fn run_server(args: &[String]) -> ExitCode {
         Arc::new(Taxonomy::load()),
         user_id,
         port,
-        KeyVault::CredentialManager {
-            database: full_path(&database),
-        },
+        KeyVault::credential_manager(full_path(&database)),
     );
     let folder = database
         .parent()

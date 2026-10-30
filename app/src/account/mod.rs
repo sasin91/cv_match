@@ -189,11 +189,13 @@ async fn check(state: &AppState) -> Result<String, String> {
 
 /// The page, with the form as typed (None: as saved) and its errors.
 async fn page(state: &AppState, typed: Option<&KeyForm>, errors: Vec<String>) -> Response {
+    let together = state.key_vault.lock().await;
     let saved = match account_model::saved(state.db(), state.user_id).await {
         Ok(saved) => saved,
         Err(e) => return failure_page(&format!("The database couldn't answer: {e}")),
     };
     let (unreadable, vault_error) = readable(state, saved.as_ref());
+    drop(together);
     let provider = typed
         .map(|form| form.provider.as_str())
         .filter(|provider| !provider.is_empty())

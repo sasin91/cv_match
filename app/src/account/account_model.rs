@@ -110,6 +110,7 @@ pub async fn saved(db: &SqlitePool, user_id: i64) -> sqlx::Result<Option<Saved>>
 /// The key to call the model with, or None without a usable one: none saved, or saved but no
 /// longer in Credential Manager. A local model saved without a key runs with none.
 pub async fn key_for(db: &SqlitePool, vault: &KeyVault, user_id: i64) -> Result<Option<KeyFor>, Error> {
+    let _together = vault.lock().await;
     let Some(saved) = saved(db, user_id).await? else {
         return Ok(None);
     };
@@ -150,10 +151,9 @@ pub async fn save_uses(db: &SqlitePool, user_id: i64, on: Uses) -> sqlx::Result<
 /// Saves the key, replacing any saved one (its uses stay as they were). api_key "" (a local
 /// model without one) keeps no key in Credential Manager.
 ///
-/// The row and the credential change together: the row is written in a transaction, which holds
-/// SQLite's write lock while Credential Manager is changed, so two saves can't interleave; a
-/// failed credential write leaves the row as it was, and a failed commit puts the previous key
-/// back.
+/// The row and the credential change together, under the vault's lock, so no one reads one
+/// without the other: the row is written in a transaction, a failed credential write leaves the
+/// row as it was, and a failed commit puts the previous key back.
 pub async fn save(
     db: &SqlitePool,
     vault: &KeyVault,
@@ -165,6 +165,7 @@ pub async fn save(
 ) -> Result<(), Error> {
     let hint = key_hint(api_key);
     let now = chrono::Utc::now().timestamp();
+    let _together = vault.lock().await;
     let mut tx = db.begin().await?;
     sqlx::query_file!(
         "queries/account_model/save.sql",
@@ -200,6 +201,7 @@ fn keep(vault: &KeyVault, user_id: i64, api_key: &str) -> Result<(), Error> {
 
 /// Deletes the saved key, from the table and from Credential Manager.
 pub async fn delete_key(db: &SqlitePool, vault: &KeyVault, user_id: i64) -> Result<(), Error> {
+    let _together = vault.lock().await;
     sqlx::query!(r#"DELETE FROM user_llm_keys WHERE trongate_user_id = ?1"#, user_id)
         .execute(db)
         .await?;

@@ -2,6 +2,9 @@
 //! the server's secret: Windows Credential Manager (through the keyring crate), so the key is
 //! never in the database file. Each database file has its own credential, so a second database
 //! (--database) can't replace the first one's key. Tests keep keys in memory instead.
+//!
+//! The key and its row in user_llm_keys are two stores, so whoever reads or changes them takes
+//! the vault's lock() first: a reader never pairs one key's row with another key.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -9,7 +12,13 @@ use std::sync::Mutex;
 /// The service the key's credential is filed under in Credential Manager.
 const SERVICE: &str = "Recruiter";
 
-pub enum KeyVault {
+pub struct KeyVault {
+    store: Store,
+    /// Held while a key and its row are read or changed together.
+    together: tokio::sync::Mutex<()>,
+}
+
+enum Store {
     /// Windows Credential Manager (the system's secret store on other platforms), for the
     /// database at this full path.
     CredentialManager { database: String },
@@ -18,15 +27,33 @@ pub enum KeyVault {
 }
 
 impl KeyVault {
+    /// Windows Credential Manager, for the database at this full path.
+    pub fn credential_manager(database: String) -> Self {
+        Self::with(Store::CredentialManager { database })
+    }
+
     pub fn in_memory() -> Self {
-        KeyVault::InMemory(Mutex::new(HashMap::new()))
+        Self::with(Store::InMemory(Mutex::new(HashMap::new())))
+    }
+
+    fn with(store: Store) -> Self {
+        KeyVault {
+            store,
+            together: tokio::sync::Mutex::new(()),
+        }
+    }
+
+    /// Waits until no one else is reading or changing the key and its row, and keeps them from
+    /// it until the guard is dropped.
+    pub async fn lock(&self) -> tokio::sync::MutexGuard<'_, ()> {
+        self.together.lock().await
     }
 
     /// Keeps key as the user's, replacing any kept before.
     pub fn save(&self, user_id: i64, key: &str) -> Result<(), String> {
-        match self {
-            KeyVault::CredentialManager { database } => entry(database, user_id)?.set_password(key).map_err(failed),
-            KeyVault::InMemory(keys) => {
+        match &self.store {
+            Store::CredentialManager { database } => entry(database, user_id)?.set_password(key).map_err(failed),
+            Store::InMemory(keys) => {
                 lock(keys).insert(user_id, key.to_string());
                 Ok(())
             }
@@ -35,24 +62,24 @@ impl KeyVault {
 
     /// The user's key, or None when none is kept.
     pub fn key_for(&self, user_id: i64) -> Result<Option<String>, String> {
-        match self {
-            KeyVault::CredentialManager { database } => match entry(database, user_id)?.get_password() {
+        match &self.store {
+            Store::CredentialManager { database } => match entry(database, user_id)?.get_password() {
                 Ok(key) => Ok(Some(key)),
                 Err(keyring::Error::NoEntry) => Ok(None),
                 Err(e) => Err(failed(e)),
             },
-            KeyVault::InMemory(keys) => Ok(lock(keys).get(&user_id).cloned()),
+            Store::InMemory(keys) => Ok(lock(keys).get(&user_id).cloned()),
         }
     }
 
     /// Forgets the user's key; none kept is fine.
     pub fn delete(&self, user_id: i64) -> Result<(), String> {
-        match self {
-            KeyVault::CredentialManager { database } => match entry(database, user_id)?.delete_credential() {
+        match &self.store {
+            Store::CredentialManager { database } => match entry(database, user_id)?.delete_credential() {
                 Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
                 Err(e) => Err(failed(e)),
             },
-            KeyVault::InMemory(keys) => {
+            Store::InMemory(keys) => {
                 lock(keys).remove(&user_id);
                 Ok(())
             }
