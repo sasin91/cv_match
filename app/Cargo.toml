@@ -27,7 +27,7 @@ dirs = "6"
 # Lookaround in the patterns ported from PHP (Apply_instructions), which the regex crate lacks.
 fancy-regex = "0.20"
 axum = "0.8"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync"] }
 askama = "0.16"
 # The page's CSS and JS, read from ../assets while developing and built into the exe for release.
 rust-embed = { version = "8", features = ["include-exclude"] }
@@ -38,6 +38,11 @@ pdf-writer = "0.15"
 subsetter = "0.2"
 ttf-parser = "0.25"
 miniz_oxide = "0.9"
+# The user's API key, in Windows Credential Manager.
+keyring = "4"
+# The language models' APIs over HTTPS (rustls, with Windows' own certificate store), through
+# the system's proxy when one is set.
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "system-proxy"] }
 
 [profile.release]
 lto = "thin"

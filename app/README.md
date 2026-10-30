@@ -50,7 +50,8 @@ one local user who is always signed in:
   entry, marking a match as on Jobnet, the PDFs it attaches);
 - the application, the tailored résumé, the CV and the job post as PDFs (`POST cv_match/pdf`);
 - reading an uploaded PDF CV in the browser with pdf.js, which the app serves itself
-  (`assets/cv_match/pdfjs`), so it works offline.
+  (`assets/cv_match/pdfjs`), so it works offline;
+- the API key page (http://127.0.0.1:8765/account), below.
 
 What isn't ported yet (the AI match, fetching a post from a link, writing, the Apply dialog)
 answers with "... isn't in the desktop app yet.", which the page shows as its error.
@@ -69,6 +70,27 @@ Helvetica lacks is set in DejaVu Sans as in PHP, with only the letters used embe
 The server only answers requests whose Host is its own address, and only takes changes (POST)
 from its own pages and the Jobnet extension (their Origin), so other sites open in the browser
 can't use it.
+
+## The API key and the language models
+
+The AI features run on your own key, saved on the API key page (`account`, ported from
+recruiter's account page): an OpenAI key, an Anthropic key, or a local OpenAI-compatible server
+such as Ollama (`http://localhost:11434/v1`) or LM Studio (`http://localhost:1234/v1`), which
+needs a model name and usually no key. The key goes in Windows Credential Manager (service
+`Recruiter`, user `user_llm_keys:1@` and the database file's full path, so each database has its
+own key), never in the database; `user_llm_keys` keeps the provider,
+model, address, the key's last 4 characters and what the key is used for. "Check key" sends one
+tiny request and says whether it was answered.
+
+`src/llm` is modules/llm: `Llm::use_key` picks the adapter, and `structured()` asks for one JSON
+answer that follows a schema. `openai` speaks Chat Completions (and the Responses API with web
+search), also for a local server at its `base_url`; `anthropic` speaks the Messages API with
+structured output, effort and server-side refusal fallbacks. With no model named, a key runs on
+gpt-5.4-mini (OpenAI) or claude-sonnet-5-5 (Anthropic). A call waits up to 180 seconds; errors
+come back in the provider's own words for the page, and the log gets the status, the rate-limit
+headers and the body, with any key in it cut to its prefix.
+
+The match page doesn't use the key yet: that comes with the AI match.
 
 ## The Jobnet extension
 
@@ -96,7 +118,7 @@ To copy your data from the PHP app's MariaDB (Herd's copy of production, `recrui
 `--from mysql://user:pass@host:3306/db` reads another database and `--database file` writes
 another SQLite file. Only the candidate with that email is copied, with every id as it was, all
 in one transaction. It refuses a database that already has your data. Your LLM key isn't
-copied, because it is encrypted with the server's secret: add it again in the app.
+copied, because it is encrypted with the server's secret: add it again on the API key page.
 
 ### Queries
 
@@ -135,8 +157,9 @@ the PHP side, write them again and let the Rust tests show what the port has to 
     php app/tests/fixtures/generate.php ../recruiter
 
 `tests/server.rs` sends the page's requests to the server: the lists, a saved match, the free
-match, the joblog, the extension's calls, the PDFs, what isn't ported yet, and requests from
-other sites.
+match, the joblog, the extension's calls, the PDFs, the API key page, what isn't ported yet, and
+requests from other sites. `tests/llm.rs` calls each adapter against a stand-in for its API on
+127.0.0.1 and checks the request it sends and how it reads the answers and failures.
 
 `tests/import.rs` imports from a real MariaDB with recruiter's `db/schema.sql` loaded. It empties that
 database's cv_match tables, so point it at a scratch database only:

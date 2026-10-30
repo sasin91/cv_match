@@ -21,6 +21,7 @@ use axum::routing::{get, post};
 use rust_embed::RustEmbed;
 use sqlx::SqlitePool;
 
+use crate::account::{self, key_vault::KeyVault};
 use crate::cv_match::pages;
 use crate::extension;
 use crate::taxonomy::Taxonomy;
@@ -43,12 +44,13 @@ struct CvMatchAssets;
 #[include = "trongate-mx.min.js"]
 struct PublicJs;
 
-/// What every request shares: the database, the taxonomy, the local user and the message the
-/// next page shows (Trongate's flashdata).
+/// What every request shares: the database, the taxonomy, the local user, where the user's API
+/// key is kept and the message the next page shows (Trongate's flashdata).
 pub struct AppState {
     db: SqlitePool,
     pub taxonomy: Arc<Taxonomy>,
     pub user_id: i64,
+    pub key_vault: KeyVault,
     flash: Mutex<Option<String>>,
     port: u16,
     /// Where the Jobnet extension was written for the browser to load, or why it couldn't be.
@@ -56,11 +58,12 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: SqlitePool, taxonomy: Arc<Taxonomy>, user_id: i64, port: u16) -> Self {
+    pub fn new(db: SqlitePool, taxonomy: Arc<Taxonomy>, user_id: i64, port: u16, key_vault: KeyVault) -> Self {
         AppState {
             db,
             taxonomy,
             user_id,
+            key_vault,
             flash: Mutex::new(None),
             port,
             extension_folder: Err("The extension wasn't written out.".to_string()),
@@ -115,6 +118,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/cv_match/joblog_status", post(pages::joblog_status))
         .route("/cv_match/pdf", post(pages::pdf))
         .route("/joblog_extension", get(pages::joblog_extension))
+        .route("/account", get(account::index))
+        .route("/account/submit_key", post(account::submit_key))
+        .route("/account/submit_uses", post(account::submit_uses))
+        .route("/account/submit_delete", post(account::submit_delete))
+        .route("/account/submit_check", post(account::submit_check))
         .route("/cv_match_module/{*path}", get(cv_match_asset))
         .route("/js/{*path}", get(public_js))
         .fallback(pages::not_yet)

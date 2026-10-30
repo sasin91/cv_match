@@ -1,0 +1,92 @@
+{#- The API key page (modules/account/views/account.php's key part), for the one local user: the
+    saved key with its uses, and the form that saves one. -#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <base href="/">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API key · Recruiter</title>
+    <link rel="stylesheet" href="cv_match_module/css/cv_match.css">
+    <link rel="stylesheet" href="cv_match_module/css/account.css">
+</head>
+<body>
+<header class="site-header">
+    <a class="brand" href="cv_match">Recruiter</a>
+    <nav><a href="cv_match">CV match</a></nav>
+</header>
+<main class="narrow">
+    <h1>Your AI key</h1>
+    <p class="muted">The AI match runs on your own OpenAI or Anthropic API key, so you pay the provider directly for what you use, or on a model running on your own computer (Ollama, LM Studio).</p>
+
+    {%- if let Some(flash) = flash %}
+    <p class="notice">{{ flash }}</p>
+    {%- endif %}
+    {%- if let Some(vault_error) = vault_error %}
+    <p class="notice">Your saved key couldn't be read: {{ vault_error }}</p>
+    {%- endif %}
+
+    {%- if let Some(saved) = saved %}
+    <div class="saved-key">
+        <p><strong>{{ saved.provider }}</strong>
+            {%- if !saved.key_hint.is_empty() %} key ending in <code>…{{ saved.key_hint }}</code>{% endif %}
+            {%- if !saved.model.is_empty() %}, model <code>{{ saved.model }}</code>{% endif %}
+            {%- if !saved.base_url.is_empty() %}, at <code>{{ saved.base_url }}</code>{% endif %}.<br>
+        <span class="muted">Saved {{ saved.saved_on }}.</span></p>
+        {%- if unreadable %}
+        <p class="notice">This key isn't in Windows Credential Manager anymore, so the AI can't use it. Save it again below.</p>
+        {%- else %}
+        <form method="post" action="account/submit_uses" class="stack key-uses">
+            <fieldset>
+                <legend>Use my key for</legend>
+                {%- for key_use in saved.uses %}
+                <label><input type="checkbox" name="{{ key_use.field }}" value="1"{% if key_use.on %} checked{% endif %}> {{ key_use.label }}</label>
+                {%- endfor %}
+                <span class="muted small">Switched off, the CV match reads job posts with the free reader instead of the AI, and résumés or applications aren't written.</span>
+            </fieldset>
+            <button type="submit">Save</button>
+        </form>
+        <form method="post" action="account/submit_check" class="inline">
+            <button type="submit">Check key</button>
+        </form>
+        {%- endif %}
+        <form method="post" action="account/submit_delete" class="inline">
+            <button type="submit">Delete key</button>
+        </form>
+    </div>
+    <h2>Replace it</h2>
+    {%- endif %}
+
+    {%- if !errors.is_empty() %}
+    <ul class="validation-errors">
+        {%- for error in errors %}
+        <li>{{ error }}</li>
+        {%- endfor %}
+    </ul>
+    {%- endif %}
+
+    <form method="post" action="account/submit_key" class="stack" autocomplete="off">
+        <label for="provider">Provider</label>
+        <select name="provider" id="provider">
+            {%- for option in providers %}
+            <option value="{{ option.value }}"{% if option.selected %} selected{% endif %}>{{ option.label }}</option>
+            {%- endfor %}
+        </select>
+
+        <label for="api_key">API key</label>
+        <input type="password" name="api_key" id="api_key" autocomplete="off" placeholder="sk-…">
+        <span class="muted small">From <a href="https://platform.openai.com/api-keys" target="_blank" rel="noopener">platform.openai.com/api-keys</a> or <a href="https://console.anthropic.com/settings/keys" target="_blank" rel="noopener">console.anthropic.com</a>. It's kept in Windows Credential Manager and never shown again. A local model usually needs none.</span>
+
+        <label for="model">Model (optional)</label>
+        <input type="text" name="model" id="model" value="{{ model }}" placeholder="{{ model_placeholder }}">
+        <span class="muted small">A local model needs its name, like <code>llama3.1:8b</code>.</span>
+
+        <label for="base_url">Address of a local model</label>
+        <input type="text" name="base_url" id="base_url" value="{{ base_url }}" placeholder="{{ base_url_placeholder }}" inputmode="url">
+        <span class="muted small">Only for a local model: its OpenAI-compatible API. Ollama's is <code>http://localhost:11434/v1</code>, LM Studio's <code>http://localhost:1234/v1</code>.</span>
+
+        <button type="submit" class="primary">Save key</button>
+    </form>
+</main>
+</body>
+</html>

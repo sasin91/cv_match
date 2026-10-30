@@ -1,0 +1,19 @@
+/* The API key page: the account page's rules from modules/welcome/css/site.css ("Sign-up form",
+   "Account page"), on top of cv_match.css and its colours. */
+main.narrow { max-width: 480px; }
+.stack { display: flex; flex-direction: column; gap: 6px; }
+.stack label { margin-top: 10px; font-weight: 600; }
+.stack input[type=text], .stack input[type=password], .stack select {
+  font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); color: var(--text);
+}
+.stack button { margin-top: 16px; align-self: flex-start; }
+.validation-errors { color: var(--missing); padding-left: 20px; }
+.saved-key { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 16px 0; }
+.saved-key p { margin-top: 0; }
+.key-uses { margin-bottom: 16px; }
+.key-uses fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
+.key-uses legend { font-weight: 600; margin-bottom: 4px; }
+.key-uses fieldset label { margin-top: 0; font-weight: normal; }
+.small { font-size: 0.85rem; }
+form.inline { display: inline; }

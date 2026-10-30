@@ -13,7 +13,7 @@
 <body>
 <header class="site-header">
     <a class="brand" href="cv_match">Recruiter</a>
-    <nav><a href="joblog_extension">Jobnet extension</a></nav>
+    <nav><a href="joblog_extension">Jobnet extension</a> <a href="account">API key</a></nav>
 </header>
 {% include "cv_match/dialogs.html" %}
 <main>
@@ -25,7 +25,7 @@
     <p class="notice">{{ flash }}</p>
     {%- endif %}
     {%- if !ai_ready %}
-        <p class="notice">You're using the free keyword match. The AI match comes to the desktop app with your own API key: it reads requirements written as sentences, judges related experience and writes your application.</p>
+        <p class="notice">You're using the free keyword match. The AI match comes to the desktop app with your own API key, which you can already add on the <a href="account">API key page</a>: it reads requirements written as sentences, judges related experience and writes your application.</p>
     {%- endif %}
 
     {#- On wide screens the input, the result and the saved matches sit side by side (css/cv_match.css "wide screens"). #}
