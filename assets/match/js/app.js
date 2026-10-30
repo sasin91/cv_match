@@ -1043,7 +1043,7 @@ function wireDocument(box, notes) {
       text.value.trim() &&
       !(await confirmDialog({
         title: `Write the ${doc.noun} again?`,
-        text: `The new one replaces the text below, your edits included, and uses your API key.`,
+        text: `The new one takes the place of the text below, your edits included, and uses your API key. The one written before stays under Earlier versions.`,
         confirm: "Write it again",
       }))
     ) {
@@ -1073,6 +1073,19 @@ function wireDocument(box, notes) {
     }
     downloadPdf(kind, id, text, pdf);
   });
+  wireVersions(box, kind, id);
+}
+
+// The box's earlier versions (details.versions), each with its own Copy and
+// Download PDF; the PDF is made from that version as it was written.
+function wireVersions(box, kind, id) {
+  for (const version of box.querySelectorAll(".versions .version")) {
+    const text = version.querySelector("textarea");
+    const status = version.querySelector(".status");
+    version.querySelector("button.copy-version").addEventListener("click", () => copyText(text, status));
+    const pdf = version.querySelector("button.version-pdf");
+    pdf.addEventListener("click", () => downloadPdf(kind, id, { value: "" }, pdf, Number(version.dataset.documentId)));
+  }
 }
 
 // Writes a document box's text and puts the box the server answers in its
@@ -1094,6 +1107,7 @@ async function writeDocument(box, notes, pendingToo = {}) {
     throw error;
   }
   box.replaceWith(fresh);
+  localDates(fresh);
   wireDocument(fresh, notes);
   reveal(fresh.querySelectorAll(".keywords, textarea"));
   clearPending();
@@ -1263,13 +1277,14 @@ function documentsOf(node) {
   return node.closest("#documents, .batch-documents");
 }
 
-// The textarea's current text as a PDF, edits included, saved as a download.
-function downloadPdf(kind, id, area, button) {
+// The textarea's current text as a PDF, edits included, saved as a download;
+// with documentId, that earlier version of the document as it was written.
+function downloadPdf(kind, id, area, button, documentId = null) {
   run(async () => {
     const response = await fetch(new URL("match/pdf", base), {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ id, kind, text: area.value }),
+      body: JSON.stringify({ id, kind, text: area.value, ...(documentId ? { document_id: documentId } : {}) }),
     });
     if (!response.ok || !response.headers.get("Content-Type")?.startsWith("application/pdf")) {
       const data = await response.json().catch(() => ({}));

@@ -1,7 +1,7 @@
 //! The match page and the endpoints its JS calls, ported from modules/cv_match/Cv_match.php for
-//! the one local user (always signed in). Endpoints that need what isn't ported yet (the AI
-//! match and writing) answer JSON {error} saying so, as the PHP endpoints answer their errors,
-//! so the page shows it.
+//! the one local user (always signed in). The AI match and writing run on the user's own key
+//! (llm_key); errors answer JSON {error}, as the PHP endpoints answer theirs, so the page shows
+//! them.
 
 use std::sync::Arc;
 
@@ -13,17 +13,26 @@ use axum::{Form, Json};
 use serde::Deserialize;
 use serde_json::json;
 
-use super::application_delivery::rawurlencode;
+use super::ai_match::{self, AiMatch, Matching};
+use super::application_delivery::{ApplicationDelivery, rawurlencode};
 use super::batch_row::BatchRow;
+use super::cv_links::CvLink;
+use super::document_box::{APPLICATION, DocumentBox, RESUME};
+use super::document_writer::{self, WriteError};
 use super::free_reader::{FreeReader, YearMonth};
 use super::joblog;
 use super::joblog_panel::{JoblogPanel, Logged};
-use super::match_documents::{self, MatchDocuments, Uses};
-use super::match_model::{self, JOBNET_JOBLOG, LISTS, SHORTLIST, SavedMatch};
+use super::llm_key;
+use super::match_documents::{self, MatchDocuments};
+use super::match_model::{self, JOBNET_JOBLOG, LISTS, NewMatch, SHORTLIST, SavedMatch};
 use super::match_result::{Fresh, MatchResult};
 use super::matcher::{self, Matcher, Verdict, Verdicts};
+use super::page_error::PageError;
+use super::page_reader;
+use super::resume_comparison::ResumeComparison;
 use super::saved_match_row::SavedMatchRow;
-use super::{apply_instructions, pdf_writer, reject_reason};
+use super::{Job, Profile, apply_instructions, match_prompts, pdf_writer, reject_reason};
+use crate::account::account_model::JOB_EVALUATION;
 use crate::profile;
 use crate::server::AppState;
 
@@ -36,47 +45,13 @@ const MAX_JOBS: usize = 10;
 /// Saved matches the page lists at a time; scrolling to the end loads the next ones.
 const PER_PAGE: usize = 25;
 
+/// Most pages fetch_job reads in FETCH_WINDOW_SECONDS: a batch of MAX_JOBS links a few times
+/// over, not a crawler.
+pub const MAX_FETCHES: usize = 30;
+pub const FETCH_WINDOW_SECONDS: i64 = 600;
+
 /// What the free match says of a requirement the taxonomy didn't find in the CV.
 const NOT_FOUND_REASON: &str = "Not named in the CV. The AI match also looks for related experience.";
-
-/// An error the page shows: JSON {error} with its status.
-pub struct PageError(StatusCode, String);
-
-impl PageError {
-    fn new(status: StatusCode, message: impl Into<String>) -> Self {
-        PageError(status, message.into())
-    }
-
-    fn not_found() -> Self {
-        Self::new(StatusCode::NOT_FOUND, "That saved match was not found.")
-    }
-}
-
-impl IntoResponse for PageError {
-    fn into_response(self) -> Response {
-        (self.0, Json(json!({ "error": self.1 }))).into_response()
-    }
-}
-
-impl From<sqlx::Error> for PageError {
-    fn from(e: sqlx::Error) -> Self {
-        eprintln!("match: {e}");
-        Self::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("The database couldn't answer: {e}"),
-        )
-    }
-}
-
-impl From<askama::Error> for PageError {
-    fn from(e: askama::Error) -> Self {
-        eprintln!("match: {e}");
-        Self::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("The page couldn't be printed: {e}"),
-        )
-    }
-}
 
 type Answer = Result<Response, PageError>;
 
@@ -164,12 +139,6 @@ pub struct ViewQuery {
     view: Option<String>,
 }
 
-/// Which keys the AI may use; none until the AI endpoints (extract_job, match, ...) are ported,
-/// so a key saved on the API key page doesn't send the page to endpoints that aren't there.
-fn ai_uses() -> Uses {
-    Uses::default()
-}
-
 /// A batch of the saved matches as the page lists them, best first.
 struct SavedMatches {
     matches: Vec<SavedMatchRow>,
@@ -255,7 +224,7 @@ pub async fn show(
 
 async fn match_page(state: &AppState, query: &ListQuery, open_id: Option<i64>) -> Answer {
     let saved = saved_matches(state, query, false).await?;
-    let uses = ai_uses();
+    let uses = llm_key::ai_uses(state).await?;
     let empty_text = LISTS
         .iter()
         .find(|(name, ..)| *name == saved.list)
@@ -305,7 +274,7 @@ pub async fn result(State(state): State<Arc<AppState>>, Path(id): Path<i64>, Que
     let found = match_model::find(state.db(), id, state.user_id)
         .await?
         .ok_or_else(PageError::not_found)?;
-    let uses = ai_uses();
+    let uses = llm_key::ai_uses(&state).await?;
     let documents = MatchDocuments::from(
         Some(found.id),
         "",
@@ -398,7 +367,8 @@ pub async fn quick_match(
         apply_instructions: apply.as_ref(),
         saved_id: None,
     };
-    let result = MatchResult::from(&fresh, ai_uses().any(), None, "").with_cv_found(&profile);
+    let writer = llm_key::ai_uses(&state).await?.any();
+    let result = MatchResult::from(&fresh, writer, None, "").with_cv_found(&profile);
     respond_result(result, view, &input.job_url)
 }
 
@@ -589,6 +559,9 @@ pub struct PdfInput {
     id: serde_json::Value,
     kind: String,
     text: String,
+    /// An earlier version of the application or résumé (documents), whose PDF is made as it was
+    /// written instead.
+    document_id: Option<i64>,
 }
 
 /// POST match/pdf {id, kind, text}: a saved match's job application (kind application),
@@ -596,7 +569,8 @@ pub struct PdfInput {
 /// as a PDF download (pdf_writer). A résumé with fields (tailored_resume) is laid out from them,
 /// so edits to its text aren't in the PDF (the page says so first). Otherwise text is what the
 /// page shows, edits included; without it the saved text is used; the CV and the job post are
-/// always the saved text. Errors come back as JSON like the other endpoints.
+/// always the saved text. document_id, an earlier version from the box's list, is its text (and
+/// fields) as written. Errors come back as JSON like the other endpoints.
 pub async fn pdf(State(state): State<Arc<AppState>>, Json(input): Json<PdfInput>) -> Answer {
     let kind = input.kind.as_str();
     if !pdf_writer::KINDS.contains(&kind) {
@@ -606,7 +580,19 @@ pub async fn pdf(State(state): State<Arc<AppState>>, Json(input): Json<PdfInput>
         ));
     }
     let found = saved_match(&state, id_in_body(&input.id)).await?;
-    let text = pdf_text(&found, kind, crate::php::trim(&input.text));
+    let version = match input.document_id {
+        Some(document_id) => Some(
+            match_model::version(state.db(), found.id, document_id)
+                .await?
+                .filter(|version| version.kind == kind)
+                .ok_or_else(|| PageError::new(StatusCode::NOT_FOUND, "That version was not found."))?,
+        ),
+        None => None,
+    };
+    let text = match &version {
+        Some(version) => crate::php::trim(&version.text).to_string(),
+        None => pdf_text(&found, kind, crate::php::trim(&input.text)),
+    };
     if text.is_empty() {
         return Err(PageError::new(
             StatusCode::UNPROCESSABLE_ENTITY,
@@ -622,10 +608,10 @@ pub async fn pdf(State(state): State<Arc<AppState>>, Json(input): Json<PdfInput>
     let title = pdf_title(&found, kind);
     // A résumé written with fields is laid out from them; the text is only for one written
     // before they existed.
-    let fields = if kind == "resume" {
-        match_model::resume_fields(state.db(), found.id).await?
-    } else {
-        None
+    let fields = match (&version, kind) {
+        (Some(version), RESUME) => match_model::resume_fields_of(state.db(), version.id).await?,
+        (None, RESUME) => match_model::resume_fields(state.db(), found.id).await?,
+        _ => None,
     };
     let made = match &fields {
         Some(fields) => pdf_writer::resume_pdf(fields, &title),
@@ -733,20 +719,8 @@ pub async fn already_matched(State(state): State<Arc<AppState>>, Json(input): Js
     Ok(Json(json!({ "match": id.map(|id| json!({ "id": id })) })).into_response())
 }
 
-/// What each endpoint not in the desktop app yet does, for the page to say so.
-const NOT_YET: [(&str, &str); 8] = [
-    ("fetch_job", "Fetching a job post from a link"),
-    ("extract_job", "The AI match"),
-    ("extract_cv", "Reading a CV with the AI"),
-    ("match", "The AI match"),
-    ("write_application", "Writing the application"),
-    ("tailor_resume", "Tailoring the résumé"),
-    ("resume_comparison", "Comparing the tailored résumé"),
-    ("application_delivery", "The Apply dialog"),
-];
-
-/// Every other address: a match endpoint not in the desktop app yet, said the way the page
-/// shows errors, or a page that isn't there.
+/// Every other address: a match endpoint not in the desktop app, said the way the page shows
+/// errors, or a page that isn't there.
 pub async fn not_yet(uri: Uri) -> PageError {
     match uri.path().strip_prefix("/match/") {
         Some(rest) => not_yet_for(rest.split('/').next().unwrap_or("")),
@@ -755,13 +729,283 @@ pub async fn not_yet(uri: Uri) -> PageError {
 }
 
 fn not_yet_for(endpoint: &str) -> PageError {
-    let what = NOT_YET
-        .iter()
-        .find(|(name, _)| *name == endpoint)
-        .map(|(_, what)| *what)
-        .unwrap_or("That");
     PageError::new(
         StatusCode::NOT_IMPLEMENTED,
-        format!("{what} isn't in the desktop app yet."),
+        format!("match/{endpoint} isn't in the desktop app."),
     )
+}
+
+/// fetch_job's body.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct FetchJobInput {
+    url: serde_json::Value,
+}
+
+/// POST match/fetch_job {url}: the job post at a pasted link as {url, title, text}
+/// (page_reader). Fetches are counted (MAX_FETCHES in FETCH_WINDOW_SECONDS), so a batch of links
+/// can't become a crawler.
+pub async fn fetch_job(State(state): State<Arc<AppState>>, Json(input): Json<FetchJobInput>) -> Answer {
+    if let Err(minutes) = state.count_fetch(chrono::Utc::now().timestamp()) {
+        let plural = if minutes == 1 { "" } else { "s" };
+        return Err(PageError::new(
+            StatusCode::TOO_MANY_REQUESTS,
+            format!(
+                "That's a lot of links in a short time. Try again in {minutes} minute{plural}, or paste the post text."
+            ),
+        ));
+    }
+    let url = input.url.as_str().unwrap_or("");
+    match page_reader::read(url).await {
+        Ok(page) => Ok(Json(page).into_response()),
+        Err(why) => {
+            eprintln!("match (fetch_job): {url}: {why}");
+            Err(PageError::new(StatusCode::UNPROCESSABLE_ENTITY, why))
+        }
+    }
+}
+
+/// extract_job's and extract_cv's body.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct ExtractInput {
+    text: String,
+}
+
+/// POST match/extract_job {text}: the job post as structured requirements, read by the model,
+/// or by the free reader when the key is off for evaluating job posts.
+pub async fn extract_job(State(state): State<Arc<AppState>>, Json(input): Json<ExtractInput>) -> Answer {
+    let job: Job = if llm_key::llm_settings(&state, JOB_EVALUATION).await?.is_none() {
+        FreeReader::new(&state.taxonomy, this_month()).job(&input.text)
+    } else {
+        let keyed = llm_key::llm(&state, JOB_EVALUATION).await?;
+        match_prompts::read_job(&keyed.llm, &input.text)
+            .await
+            .map_err(|e| PageError::llm("extract_job", &e))?
+    };
+    Ok(Json(job).into_response())
+}
+
+/// POST match/extract_cv {text}: the CV as a structured profile, read by the model, or by the
+/// free reader when the key is off for evaluating job posts.
+pub async fn extract_cv(State(state): State<Arc<AppState>>, Json(input): Json<ExtractInput>) -> Answer {
+    let profile: Profile = if llm_key::llm_settings(&state, JOB_EVALUATION).await?.is_none() {
+        FreeReader::new(&state.taxonomy, this_month()).cv(&input.text)
+    } else {
+        let keyed = llm_key::llm(&state, JOB_EVALUATION).await?;
+        match_prompts::read_cv(&keyed.llm, &input.text)
+            .await
+            .map_err(|e| PageError::llm("extract_cv", &e))?
+    };
+    Ok(Json(profile).into_response())
+}
+
+/// match's body: the post and the CV as extract_job and extract_cv read them, with their texts.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct MatchInput {
+    job: Job,
+    profile: Profile,
+    job_text: String,
+    job_url: String,
+    cv_name: String,
+    cv_text: String,
+}
+
+/// POST match/match {job, profile, job_text, job_url, cv_name, cv_text}: the match of a read job
+/// post with a read CV (ai_match), saved when both texts are given. Asked for text/html, the
+/// answer is the result as the page shows it with the application and résumé panel, carrying
+/// the saved id (?view=row: as a row of the ranked jobs); otherwise JSON, which the page reads
+/// when it matches a tailored résumé only to compare its score (resume_comparison).
+pub async fn r#match(
+    State(state): State<Arc<AppState>>,
+    Query(view): Query<ViewQuery>,
+    headers: axum::http::HeaderMap,
+    Json(input): Json<MatchInput>,
+) -> Answer {
+    let keyed = match llm_key::llm_settings(&state, JOB_EVALUATION).await? {
+        Some(_) => Some(llm_key::llm(&state, JOB_EVALUATION).await?),
+        None => None,
+    };
+    let matching = Matching {
+        db: state.db(),
+        taxonomy: &state.taxonomy,
+        user_id: state.user_id,
+        now: chrono::Utc::now().timestamp(),
+    };
+    let new = NewMatch {
+        job: &input.job,
+        job_url: &input.job_url,
+        job_text: &input.job_text,
+        cv_name: &input.cv_name,
+        cv_text: &input.cv_text,
+    };
+    let llm = keyed.as_ref().map(|keyed| &keyed.llm);
+    let found = ai_match::ai_match(&matching, llm, new, &input.profile, Default::default())
+        .await
+        .map_err(|e| PageError::llm("match", &e))?;
+    if !wants_html(&headers) {
+        return Ok(Json(found).into_response());
+    }
+    let result = ai_match_result(&state, &input, &found).await?;
+    respond_result(result, view, &input.job_url)
+}
+
+/// The AI match as the page shows it, with the application and résumé panel of its saved match.
+async fn ai_match_result(state: &AppState, input: &MatchInput, found: &AiMatch) -> Result<MatchResult, PageError> {
+    let uses = llm_key::ai_uses(state).await?;
+    let documents = MatchDocuments::from(
+        found.saved_id,
+        found.save_error.as_deref().unwrap_or(""),
+        &Default::default(),
+        uses,
+        found.apply_instructions.as_ref(),
+    );
+    let fresh = Fresh {
+        job: &input.job,
+        groups: &found.groups,
+        verdicts: &found.verdicts,
+        score: &found.result,
+        soft_skills: found.soft_skills.clone(),
+        apply_instructions: found.apply_instructions.as_ref(),
+        saved_id: found.saved_id,
+    };
+    let laya_input = ai_match::laya_input(&input.job, &input.profile, &input.cv_text, &found.laya_summary);
+    Ok(MatchResult::from(&fresh, true, Some(documents), &laya_input))
+}
+
+/// Whether the page asked for HTML (the result as it shows it) rather than JSON.
+fn wants_html(headers: &axum::http::HeaderMap) -> bool {
+    headers
+        .get(header::ACCEPT)
+        .and_then(|accept| accept.to_str().ok())
+        .is_some_and(|accept| accept.contains("text/html"))
+}
+
+/// GET match/saved/{id}: one saved match with its items and documents, as JSON. The page reads
+/// it to pick up an application or résumé written while it was away.
+pub async fn saved(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Answer {
+    let found = saved_match(&state, id_of(&id)).await?;
+    Ok(Json(found).into_response())
+}
+
+/// write_application's and tailor_resume's body.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct WriteInput {
+    id: serde_json::Value,
+    notes: String,
+}
+
+#[derive(Template)]
+#[template(path = "match/document_box.html")]
+struct DocumentBoxView {
+    doc: DocumentBox,
+}
+
+/// POST match/write_application {id, notes}: a job application for a saved match, written from
+/// the CV and the post in the post's language, and kept with the match as its newest version.
+/// notes is optional context from the candidate. Answers the application's box as the page
+/// prints it.
+pub async fn write_application(State(state): State<Arc<AppState>>, Json(input): Json<WriteInput>) -> Answer {
+    write(state, input, APPLICATION).await
+}
+
+/// POST match/tailor_resume {id, notes}: the CV rewritten for a saved match's post (from the CV's
+/// own facts and the candidate's notes only), kept with the match as its newest version. Answers
+/// the résumé's box with the post's keywords it took over and the ones it left out; the page
+/// then matches the résumé against the post as a match of its own, to compare
+/// (resume_comparison).
+pub async fn tailor_resume(State(state): State<Arc<AppState>>, Json(input): Json<WriteInput>) -> Answer {
+    write(state, input, RESUME).await
+}
+
+/// Writes kind for the saved match and answers its box. The writing runs as its own task, so it
+/// finishes and is saved even when the page drops the connection meanwhile (a laptop asleep, a
+/// tab reloaded); the page picks it up from the saved match when it's back.
+async fn write(state: Arc<AppState>, input: WriteInput, kind: &'static str) -> Answer {
+    let found = saved_match(&state, id_in_body(&input.id)).await?;
+    let keyed = llm_key::llm(&state, kind).await?;
+    let notes = document_writer::notes(&input.notes);
+    let task_state = state.clone();
+    let task_found = found.clone();
+    let writing = tokio::spawn(async move {
+        let db = task_state.db();
+        let now = chrono::Utc::now().timestamp();
+        if kind == RESUME {
+            document_writer::tailor_resume(db, &task_found, &keyed, &notes, now)
+                .await
+                .map(|tailored| (tailored.keywords, tailored.left_out))
+        } else {
+            document_writer::write_application(db, &task_found, &keyed, &notes, now)
+                .await
+                .map(|_| (Vec::new(), Vec::new()))
+        }
+    });
+    let endpoint = if kind == RESUME {
+        "tailor_resume"
+    } else {
+        "write_application"
+    };
+    let (keywords, left_out) = writing
+        .await
+        .map_err(|e| PageError::failed(endpoint, format!("The writing stopped: {e}")))?
+        .map_err(|e| match e {
+            WriteError::Llm(e) => PageError::llm(endpoint, &e),
+            WriteError::Database(e) => PageError::from(e),
+            WriteError::Empty(why) => PageError::failed(endpoint, why),
+        })?;
+    let found = saved_match(&state, found.id).await?;
+    let uses = llm_key::ai_uses(&state).await?;
+    let (application, resume) = match_documents::written_of(&found);
+    let written = if kind == RESUME { resume } else { application };
+    let doc = DocumentBox::from(
+        kind,
+        found.id,
+        &written,
+        uses.of(kind),
+        found.apply_instructions.as_ref(),
+    )
+    .with_keywords(keywords, &left_out);
+    html(DocumentBoxView { doc })
+}
+
+#[derive(Template)]
+#[template(path = "match/resume_comparison.html")]
+struct ResumeComparisonView {
+    comparison: ResumeComparison,
+}
+
+/// GET match/resume_comparison/{id}/{resume_id}: the tailored résumé's saved match (resume_id)
+/// against the CV's (id), as the résumé box prints it.
+pub async fn resume_comparison(
+    State(state): State<Arc<AppState>>,
+    Path((id, resume_id)): Path<(String, String)>,
+) -> Answer {
+    let cv_match = saved_match(&state, id_of(&id)).await?;
+    let resume_match = saved_match(&state, id_of(&resume_id)).await?;
+    html(ResumeComparisonView {
+        comparison: ResumeComparison::from(&cv_match, &resume_match),
+    })
+}
+
+#[derive(Template)]
+#[template(path = "match/application_delivery.html")]
+struct ApplicationDeliveryView {
+    delivery: ApplicationDelivery,
+}
+
+/// GET match/application_delivery/{id}: the Apply dialog's content for a saved match: how the
+/// application is delivered, by email (recipient, subject, body and mailto link) or on the
+/// employer's form (the job post's link), with the PDFs and the profile links to copy.
+pub async fn application_delivery(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Answer {
+    let found = saved_match(&state, id_of(&id)).await?;
+    let links: Vec<CvLink> = profile::links_for_user(state.db(), state.user_id)
+        .await?
+        .into_iter()
+        .map(|(label, url)| CvLink { label, url })
+        .collect();
+    html(ApplicationDeliveryView {
+        delivery: ApplicationDelivery::from(&found, &links),
+    })
 }

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n                INSERT INTO match_items (match_id, criterion, text, verdict, decided_by, reason, evidence, sort_order)\n                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)\n                ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "cab9a2842438931a34bcf1d3ec418eaa1538a33d8d9b05fe0deb39890ba15957"
+}

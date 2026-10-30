@@ -20,7 +20,7 @@ pub const REASONS: [(&str, &str); 8] = [
 pub const NOTE_MAX: usize = 255;
 
 /// One reason a match was rejected, with its note ('' when none).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
 pub struct Rejection {
     pub reason: String,
     pub note: String,
