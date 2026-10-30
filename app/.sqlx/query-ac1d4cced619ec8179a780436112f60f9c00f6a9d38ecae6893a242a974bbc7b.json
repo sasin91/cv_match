@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT match_id, reason, note\n        FROM match_rejections\n        WHERE match_id IN (SELECT value FROM json_each(?1))\n        ORDER BY id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "match_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "match_rejections",
+            "name": "match_id"
+          }
+        }
+      },
+      {
+        "name": "reason",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "match_rejections",
+            "name": "reason"
+          }
+        }
+      },
+      {
+        "name": "note",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "match_rejections",
+            "name": "note"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ac1d4cced619ec8179a780436112f60f9c00f6a9d38ecae6893a242a974bbc7b"
+}

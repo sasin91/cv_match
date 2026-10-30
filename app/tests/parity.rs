@@ -4,11 +4,11 @@
 use std::sync::LazyLock;
 
 use indexmap::IndexMap;
-use recruiter::cv_match::cv_match_model::{Integration, SavedItem, SavedMatch};
-use recruiter::cv_match::cv_matcher::{self, CvMatcher, Verdicts};
-use recruiter::cv_match::free_reader::{self, FreeReader, YearMonth};
-use recruiter::cv_match::tailored_resume::TailoredResume;
-use recruiter::cv_match::{apply_instructions, joblog, match_score, pdf_writer};
+use recruiter::matches::free_reader::{self, FreeReader, YearMonth};
+use recruiter::matches::match_model::{Integration, SavedItem, SavedMatch};
+use recruiter::matches::matcher::{self, Matcher, Verdicts};
+use recruiter::matches::tailored_resume::TailoredResume;
+use recruiter::matches::{apply_instructions, joblog, match_score, pdf_writer};
 use recruiter::taxonomy::{self, Taxonomy};
 use serde::Serialize;
 use serde_json::Value;
@@ -176,32 +176,32 @@ fn every_post_and_cv_match_as_php_matches_them() {
         assert_same(&format!("{what}: job"), &case["job"], &job);
         assert_same(&format!("{what}: profile"), &case["profile"], &profile);
 
-        let matcher = CvMatcher::new(&TAXONOMY, profile, reader.known.clone());
-        let groups = cv_matcher::criteria(&job);
+        let matcher = Matcher::new(&TAXONOMY, profile, reader.known.clone());
+        let groups = matcher::criteria(&job);
         assert_same(&format!("{what}: groups"), &case["groups"], &groups);
         let mut verdicts = Verdicts::new();
-        for unit in cv_matcher::units(&groups) {
+        for unit in matcher::units(&groups) {
             if let Some(verdict) = matcher.decide(unit) {
                 verdicts.insert(unit.id.clone(), verdict);
             }
         }
         assert_same(&format!("{what}: verdicts"), &case["verdicts"], &verdicts);
-        let combined = cv_matcher::combine(&groups, &verdicts);
+        let combined = matcher::combine(&groups, &verdicts);
         assert_same(&format!("{what}: combined"), &case["combined"], &combined);
         assert_same(
             &format!("{what}: score"),
             &case["score"],
-            cv_matcher::score(&groups, &combined),
+            matcher::score(&groups, &combined),
         );
         assert_same(
             &format!("{what}: laya_summary"),
             &case["laya_summary"],
-            cv_matcher::laya_summary(&job, &groups, &combined),
+            matcher::laya_summary(&job, &groups, &combined),
         );
         assert_same(
             &format!("{what}: soft_skills"),
             &case["soft_skills"],
-            cv_matcher::soft_skills(&job),
+            matcher::soft_skills(&job),
         );
     }
 }
@@ -215,11 +215,7 @@ fn scores_print_as_php_prints_them() {
             &case["percent"],
             match_score::percent(score),
         );
-        assert_same(
-            &format!("match_tag({score})"),
-            &case["tag"],
-            cv_matcher::match_tag(score),
-        );
+        assert_same(&format!("match_tag({score})"), &case["tag"], matcher::match_tag(score));
     }
 }
 

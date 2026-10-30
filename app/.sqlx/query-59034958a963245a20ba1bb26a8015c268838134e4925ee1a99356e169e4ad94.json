@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "-- The newest version of one kind of a saved match's documents, the one the page shows.\n-- ?1 the match, ?2 the kind (application, resume).\nSELECT id, text, written_at\nFROM documents\nWHERE match_id = ?1 AND kind = ?2\nORDER BY written_at DESC, id DESC\nLIMIT 1\n",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "text",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "text"
+          }
+        }
+      },
+      {
+        "name": "written_at",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "written_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "59034958a963245a20ba1bb26a8015c268838134e4925ee1a99356e169e4ad94"
+}

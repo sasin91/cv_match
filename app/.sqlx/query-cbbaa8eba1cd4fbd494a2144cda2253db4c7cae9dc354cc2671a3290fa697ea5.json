@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO match_resume_lines (document_id, entry_id, kind, text, sort_order)\n        VALUES (?1, ?2, ?3, ?4, ?5)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "cbbaa8eba1cd4fbd494a2144cda2253db4c7cae9dc354cc2671a3290fa697ea5"
+}

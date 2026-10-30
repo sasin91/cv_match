@@ -203,17 +203,17 @@ mod tests {
         db.execute(sqlx::raw_sql(
             r#"
             INSERT INTO trongate_users (id) VALUES (1);
-            INSERT INTO cv_matches (id, trongate_user_id, job_title, job_text, cv_text, score, points,
+            INSERT INTO matches (id, trongate_user_id, job_title, job_text, cv_text, score, points,
                                     max_points, tag, created_at)
             VALUES (7, 1, 'PHP developer', 'post', 'cv', 0.81, 8, 10, 'good', 0);
-            INSERT INTO cv_match_items (cv_match_id, criterion, text, verdict, decided_by)
+            INSERT INTO match_items (match_id, criterion, text, verdict, decided_by)
             VALUES (7, 'skills', 'PHP', 'met', 'exact');
-            DELETE FROM cv_matches WHERE id = 7;
+            DELETE FROM matches WHERE id = 7;
             "#,
         ))
         .await
         .unwrap();
-        let items = sqlx::query_scalar!(r#"SELECT COUNT(*) FROM cv_match_items"#)
+        let items = sqlx::query_scalar!(r#"SELECT COUNT(*) FROM match_items"#)
             .fetch_one(&db)
             .await
             .unwrap();

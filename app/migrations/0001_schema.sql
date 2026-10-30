@@ -1,14 +1,15 @@
--- cv_match's tables, as db/schema.sql has them in MariaDB, for the one local user. Same table
--- and column names, so the PHP app's names keep meaning the same; ids are copied over by the
--- import, so every link between rows stays as it was. Timestamps are unix seconds. The written
--- documents are the one table MariaDB doesn't have (documents).
+-- cv_match's tables, as db/schema.sql has them in MariaDB, for the one local user, without the
+-- cv_match prefix (cv_matches is matches, cv_match_id is match_id, cv_match_items is
+-- match_items); the rest of the names are MariaDB's. Ids are copied over by the import, so every
+-- link between rows stays as it was. Timestamps are unix seconds. The written documents are the
+-- one table MariaDB doesn't have (documents).
 --
 -- While the app is new, this file is changed in place rather than followed by migrations: a
 -- database made from an older version of it is refused at start (db.rs), and made again with
 -- `recruiter import`.
 
 -- The local user. Only id is kept: there is no login on the desktop, and trongate_user_id
--- stays the key that cv_matches and user_llm_keys hang on.
+-- stays the key that matches and user_llm_keys hang on.
 CREATE TABLE trongate_users (
   id INTEGER PRIMARY KEY
 );
@@ -28,7 +29,7 @@ CREATE TABLE candidates (
 );
 
 -- A saved match: the job post and the CV it was matched with, and its score.
-CREATE TABLE cv_matches (
+CREATE TABLE matches (
   id INTEGER PRIMARY KEY,
   trongate_user_id INTEGER DEFAULT NULL REFERENCES trongate_users (id) ON DELETE CASCADE,
   job_title TEXT NOT NULL,
@@ -44,12 +45,12 @@ CREATE TABLE cv_matches (
   rejected_at INTEGER DEFAULT NULL,
   created_at INTEGER NOT NULL
 );
-CREATE INDEX cv_matches_user_created ON cv_matches (trongate_user_id, created_at);
+CREATE INDEX matches_user_created ON matches (trongate_user_id, created_at);
 
--- One row per scored criterion item: the "why" behind a cv_matches score.
-CREATE TABLE cv_match_items (
+-- One row per scored criterion item: the "why" behind a matches score.
+CREATE TABLE match_items (
   id INTEGER PRIMARY KEY,
-  cv_match_id INTEGER NOT NULL REFERENCES cv_matches (id) ON DELETE CASCADE,
+  match_id INTEGER NOT NULL REFERENCES matches (id) ON DELETE CASCADE,
   criterion TEXT NOT NULL,
   text TEXT NOT NULL,
   verdict TEXT NOT NULL,
@@ -58,12 +59,12 @@ CREATE TABLE cv_match_items (
   evidence TEXT NOT NULL DEFAULT '',
   sort_order INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX cv_match_items_cv_match_id ON cv_match_items (cv_match_id, sort_order);
+CREATE INDEX match_items_match_id ON match_items (match_id, sort_order);
 
 -- A saved match's state in an outside service (Jobnet's joblog).
-CREATE TABLE cv_match_integrations (
+CREATE TABLE match_integrations (
   id INTEGER PRIMARY KEY,
-  cv_match_id INTEGER NOT NULL REFERENCES cv_matches (id) ON DELETE CASCADE,
+  match_id INTEGER NOT NULL REFERENCES matches (id) ON DELETE CASCADE,
   integration TEXT NOT NULL,
   status TEXT NOT NULL,
   external_id TEXT DEFAULT NULL,
@@ -71,38 +72,38 @@ CREATE TABLE cv_match_integrations (
   logged_at INTEGER DEFAULT NULL,
   created_at INTEGER NOT NULL,
   updated_at INTEGER NOT NULL,
-  UNIQUE (cv_match_id, integration)
+  UNIQUE (match_id, integration)
 );
 
 -- Why a match was marked Not interested, one row per reason.
-CREATE TABLE cv_match_rejections (
+CREATE TABLE match_rejections (
   id INTEGER PRIMARY KEY,
-  cv_match_id INTEGER NOT NULL REFERENCES cv_matches (id) ON DELETE CASCADE,
+  match_id INTEGER NOT NULL REFERENCES matches (id) ON DELETE CASCADE,
   reason TEXT NOT NULL,
   note TEXT NOT NULL DEFAULT '',
   created_at INTEGER NOT NULL,
-  UNIQUE (cv_match_id, reason)
+  UNIQUE (match_id, reason)
 );
-CREATE INDEX cv_match_rejections_reason ON cv_match_rejections (reason);
+CREATE INDEX match_rejections_reason ON match_rejections (reason);
 
 -- A document written for a saved match, one row per version: kind application (the job
 -- application) or resume (the tailored résumé). The newest of a kind is the one the page shows.
--- MariaDB keeps only the last one, in cv_matches.application_text and resume_text.
+-- MariaDB keeps only the last one, in matches.application_text and resume_text.
 -- written_by: the provider and model that wrote it ("openai/gpt-5.4-mini"), '' when it came
 -- from the PHP app. notes: the notes the user gave for that writing, '' when none.
 CREATE TABLE documents (
   id INTEGER PRIMARY KEY,
-  cv_match_id INTEGER NOT NULL REFERENCES cv_matches (id) ON DELETE CASCADE,
+  match_id INTEGER NOT NULL REFERENCES matches (id) ON DELETE CASCADE,
   kind TEXT NOT NULL,
   text TEXT NOT NULL,
   written_by TEXT NOT NULL DEFAULT '',
   notes TEXT NOT NULL DEFAULT '',
   written_at INTEGER NOT NULL
 );
-CREATE INDEX documents_cv_match_kind ON documents (cv_match_id, kind, written_at);
+CREATE INDEX documents_match_kind ON documents (match_id, kind, written_at);
 
 -- A tailored résumé's head, one per résumé version (documents of kind resume).
-CREATE TABLE cv_match_resumes (
+CREATE TABLE match_resumes (
   document_id INTEGER PRIMARY KEY REFERENCES documents (id) ON DELETE CASCADE,
   name TEXT NOT NULL,
   title TEXT NOT NULL DEFAULT '',
@@ -120,7 +121,7 @@ CREATE TABLE cv_match_resumes (
 );
 
 -- A tailored résumé's roles, projects and schools, in order.
-CREATE TABLE cv_match_resume_entries (
+CREATE TABLE match_resume_entries (
   id INTEGER PRIMARY KEY,
   document_id INTEGER NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
   section TEXT NOT NULL,
@@ -133,19 +134,19 @@ CREATE TABLE cv_match_resume_entries (
   note TEXT NOT NULL DEFAULT '',
   sort_order INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX cv_match_resume_entries_document_id ON cv_match_resume_entries (document_id, section, sort_order);
+CREATE INDEX match_resume_entries_document_id ON match_resume_entries (document_id, section, sort_order);
 
 -- A tailored résumé's bullets, skills and languages; entry_id is set for an entry's bullets.
-CREATE TABLE cv_match_resume_lines (
+CREATE TABLE match_resume_lines (
   id INTEGER PRIMARY KEY,
   document_id INTEGER NOT NULL REFERENCES documents (id) ON DELETE CASCADE,
-  entry_id INTEGER DEFAULT NULL REFERENCES cv_match_resume_entries (id) ON DELETE CASCADE,
+  entry_id INTEGER DEFAULT NULL REFERENCES match_resume_entries (id) ON DELETE CASCADE,
   kind TEXT NOT NULL,
   text TEXT NOT NULL,
   sort_order INTEGER NOT NULL DEFAULT 0
 );
-CREATE INDEX cv_match_resume_lines_document_id ON cv_match_resume_lines (document_id, kind, sort_order);
-CREATE INDEX cv_match_resume_lines_entry_id ON cv_match_resume_lines (entry_id, sort_order);
+CREATE INDEX match_resume_lines_document_id ON match_resume_lines (document_id, kind, sort_order);
+CREATE INDEX match_resume_lines_entry_id ON match_resume_lines (entry_id, sort_order);
 
 -- The candidate's profile, which the writing uses.
 CREATE TABLE candidate_profiles (

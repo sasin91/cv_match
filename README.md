@@ -11,7 +11,7 @@ file and with the same names, and tested against what the PHP code answers.
 | --- | --- |
 | `app/` | the app (`recruiter.exe`): the matching, the pages, the database, the import from the PHP app's MariaDB. See its README. |
 | `laya-server/` | Laya's `/v1/systemone` in Rust on ONNX Runtime, to be built into the app |
-| `assets/` | what the app builds in: from recruiter cv_match's CSS and JS, Trongate MX, the taxonomy index and the Danish postcodes; pdf.js 4.10.38 (`cv_match/pdfjs`) and DejaVu Sans 2.37 (`fonts`) |
+| `assets/` | what the app builds in: from recruiter cv_match's CSS and JS, Trongate MX, the taxonomy index and the Danish postcodes; pdf.js 4.10.38 (`match/pdfjs`) and DejaVu Sans 2.37 (`fonts`) |
 | `extension/jobnet-joblog/` | the Jobnet extension the app ships and you load once in Edge or Chrome |
 
     cd app

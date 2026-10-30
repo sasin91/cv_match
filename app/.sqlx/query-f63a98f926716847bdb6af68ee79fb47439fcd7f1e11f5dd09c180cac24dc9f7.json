@@ -1,0 +1,182 @@
+{
+  "db_name": "SQLite",
+  "query": "-- One of the user's saved matches. ?1 the match, ?2 the user.\nSELECT\n  id,\n  trongate_user_id,\n  job_title,\n  company,\n  job_url,\n  job_text,\n  cv_name,\n  cv_text,\n  score,\n  points,\n  max_points,\n  tag,\n  rejected_at,\n  created_at\nFROM matches\nWHERE id = ?1 AND trongate_user_id IS ?2\n",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "trongate_user_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "trongate_user_id"
+          }
+        }
+      },
+      {
+        "name": "job_title",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "job_title"
+          }
+        }
+      },
+      {
+        "name": "company",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "company"
+          }
+        }
+      },
+      {
+        "name": "job_url",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "job_url"
+          }
+        }
+      },
+      {
+        "name": "job_text",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "job_text"
+          }
+        }
+      },
+      {
+        "name": "cv_name",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "cv_name"
+          }
+        }
+      },
+      {
+        "name": "cv_text",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "cv_text"
+          }
+        }
+      },
+      {
+        "name": "score",
+        "ordinal": 8,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "score"
+          }
+        }
+      },
+      {
+        "name": "points",
+        "ordinal": 9,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "points"
+          }
+        }
+      },
+      {
+        "name": "max_points",
+        "ordinal": 10,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "max_points"
+          }
+        }
+      },
+      {
+        "name": "tag",
+        "ordinal": 11,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "tag"
+          }
+        }
+      },
+      {
+        "name": "rejected_at",
+        "ordinal": 12,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "rejected_at"
+          }
+        }
+      },
+      {
+        "name": "created_at",
+        "ordinal": 13,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "created_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false
+    ]
+  },
+  "hash": "f63a98f926716847bdb6af68ee79fb47439fcd7f1e11f5dd09c180cac24dc9f7"
+}

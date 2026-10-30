@@ -9,8 +9,8 @@ use std::fmt;
 use sqlx::SqlitePool;
 
 use super::key_vault::KeyVault;
-use crate::cv_match::match_documents::Uses;
 use crate::llm::{ANTHROPIC, LOCAL, OPENAI};
+use crate::matches::match_documents::Uses;
 
 /// provider => what the page calls it.
 pub const PROVIDERS: [(&str, &str); 3] = [
@@ -26,7 +26,7 @@ pub const USES: [(&str, &str); 3] = [
     (APPLICATION, "Writing job applications"),
     (JOB_EVALUATION, "Evaluating job posts (the AI match)"),
 ];
-pub use crate::cv_match::document_box::{APPLICATION, RESUME};
+pub use crate::matches::document_box::{APPLICATION, RESUME};
 pub const JOB_EVALUATION: &str = "job_evaluation";
 
 /// How many of the key's last characters the page shows.

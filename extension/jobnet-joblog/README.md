@@ -2,7 +2,7 @@
 
 A browser extension that fills in Jobnet's "Opret joblog" form from a saved
 match in Recruiter's CV checker: the same values the match's "Jobnet joblog"
-panel shows (`cv_match/joblog/{id}`, modules/cv_match/Joblog.php), and the
+panel shows (`match/joblog/{id}`, modules/cv_match/Joblog.php), and the
 application, CV and job post as PDFs in Jobnet's upload fields. It never
 presses Gem: check the form and save it yourself.
 
@@ -71,9 +71,9 @@ you set that status in Recruiter.
   `data-jobnet-joblog="<version>"` on the page, so its "add the extension"
   banner stays hidden.
 - `background.js` fetches from Recruiter (a content script can't fetch from
-  another site): the saved matches (`cv_match/history`), the joblog entry and
-  the PDFs (`cv_match/pdf`), with your Recruiter cookie, and marks a match as
-  entered on Jobnet (`cv_match/joblog_status`).
+  another site): the saved matches (`match/history`), the joblog entry and
+  the PDFs (`match/pdf`), with your Recruiter cookie, and marks a match as
+  entered on Jobnet (`match/joblog_status`).
 
 To point it at another copy of Recruiter (a dev machine), set `base` in the
 extension's storage, e.g. from its service worker console:

@@ -23,18 +23,18 @@ static TAXONOMY: LazyLock<Arc<Taxonomy>> = LazyLock::new(|| Arc::new(Taxonomy::l
 /// a rejected one.
 const SEED: &str = "
 INSERT INTO trongate_users (id) VALUES (3);
-INSERT INTO cv_matches (id, trongate_user_id, job_title, company, job_url, job_text, cv_name, cv_text, score, points, max_points, tag, created_at)
+INSERT INTO matches (id, trongate_user_id, job_title, company, job_url, job_text, cv_name, cv_text, score, points, max_points, tag, created_at)
 VALUES (21, 3, 'PHP-udvikler', 'Firma <A/S>', 'https://www.jobindex.dk/job/1', 'Vi søger en PHP-udvikler.\nSend din ansøgning til job@firma.dk. Skriv \"Backend\" i emnefeltet.', 'cv', 'PHP', 0.86, 9, 10, 'top', 1760000000),
        (22, 3, 'Mekaniker', '', NULL, 'Mekaniker søges', 'cv', 'PHP', 0.2, 1, 10, 'poor', 1760000100);
-INSERT INTO cv_match_items (cv_match_id, criterion, text, verdict, decided_by, reason, sort_order)
+INSERT INTO match_items (match_id, criterion, text, verdict, decided_by, reason, sort_order)
 VALUES (21, 'requirements', 'PHP', 'met', 'exact', 'Named in the CV.', 0),
        (21, 'location', 'Bor i København', 'missing', 'llm', 'Lives in Slagelse.', 1);
-INSERT INTO cv_match_rejections (cv_match_id, reason, note, created_at) VALUES (22, 'commute', '1h each way', 0);
-UPDATE cv_matches SET rejected_at = 1 WHERE id = 22;
-INSERT INTO documents (id, cv_match_id, kind, text, written_at) VALUES (5, 21, 'resume', 'Mette Sørensen', 1760000200);
-INSERT INTO cv_match_resumes (document_id, name, intro) VALUES (5, 'Mette Sørensen', 'Backend-udvikler.');
-INSERT INTO cv_match_resume_entries (id, document_id, section, title, sort_order) VALUES (1, 5, 'experience', 'Udvikler', 0);
-INSERT INTO cv_match_resume_lines (document_id, entry_id, kind, text, sort_order)
+INSERT INTO match_rejections (match_id, reason, note, created_at) VALUES (22, 'commute', '1h each way', 0);
+UPDATE matches SET rejected_at = 1 WHERE id = 22;
+INSERT INTO documents (id, match_id, kind, text, written_at) VALUES (5, 21, 'resume', 'Mette Sørensen', 1760000200);
+INSERT INTO match_resumes (document_id, name, intro) VALUES (5, 'Mette Sørensen', 'Backend-udvikler.');
+INSERT INTO match_resume_entries (id, document_id, section, title, sort_order) VALUES (1, 5, 'experience', 'Udvikler', 0);
+INSERT INTO match_resume_lines (document_id, entry_id, kind, text, sort_order)
 VALUES (5, 1, 'bullet', 'Byggede en API', 0), (5, NULL, 'skill', 'PHP', 1);
 ";
 
@@ -87,10 +87,10 @@ fn post_json(path: &str, json: &str) -> Request<Body> {
 
 #[tokio::test]
 async fn the_page_lists_the_saved_matches_best_first() {
-    let (status, page) = send(get("/cv_match")).await;
+    let (status, page) = send(get("/match")).await;
     assert_eq!(status, StatusCode::OK);
     assert!(
-        page.contains(r#"<li class="history-top" id="saved-match-21"><a href="cv_match/21" data-id="21">"#),
+        page.contains(r#"<li class="history-top" id="saved-match-21"><a href="match/21" data-id="21">"#),
         "{page}"
     );
     assert!(page.contains("PHP-udvikler · Firma &#60;A/S&#62;") || page.contains("PHP-udvikler · Firma &lt;A/S&gt;"));
@@ -99,14 +99,14 @@ async fn the_page_lists_the_saved_matches_best_first() {
         !page.contains("saved-match-22"),
         "rejected matches stay out of the shortlist"
     );
-    let (_, rejected) = send(get("/cv_match?list=rejected")).await;
+    let (_, rejected) = send(get("/match?list=rejected")).await;
     assert!(rejected.contains("rejected: Too long commute (1h each way)"));
-    assert!(rejected.contains(r#"<a href="cv_match?list=rejected" aria-current="page">Rejected</a>"#));
+    assert!(rejected.contains(r#"<a href="match?list=rejected" aria-current="page">Rejected</a>"#));
 }
 
 #[tokio::test]
 async fn a_saved_match_prints_with_its_notices_and_post() {
-    let (status, result) = send(get("/cv_match/result/21")).await;
+    let (status, result) = send(get("/match/result/21")).await;
     assert_eq!(status, StatusCode::OK);
     for part in [
         r#"data-saved-id="21""#,
@@ -114,17 +114,17 @@ async fn a_saved_match_prints_with_its_notices_and_post() {
         "Likely disqualifier: where you live",
         "Subject line: <code>Backend</code>",
         r#"href="mailto:job@firma.dk?subject=Backend""#,
-        r#"action="cv_match/submit_reject/21""#,
+        r#"action="match/submit_reject/21""#,
         r#"class="document" data-kind="application" data-id="21""#,
         r#"<template class="match-job" data-url="https://www.jobindex.dk/job/1">"#,
     ] {
         assert!(result.contains(part), "{part} in {result}");
     }
-    let (status, row) = send(get("/cv_match/result/21?view=row")).await;
+    let (status, row) = send(get("/match/result/21?view=row")).await;
     assert_eq!(status, StatusCode::OK);
     assert!(row.contains(r#"<li class="batch-row" data-score="86" data-saved-id="21">"#));
     assert!(row.contains("www.jobindex.dk"));
-    let (status, missing) = send(get("/cv_match/result/99")).await;
+    let (status, missing) = send(get("/match/result/99")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(missing, r#"{"error":"That saved match was not found."}"#);
 }
@@ -132,7 +132,7 @@ async fn a_saved_match_prints_with_its_notices_and_post() {
 #[tokio::test]
 async fn the_free_match_reads_both_texts_and_saves_nothing() {
     let (status, result) = send(post_json(
-        "/cv_match/quick_match",
+        "/match/quick_match",
         r#"{"job_text": "PHP-udvikler\nDin profil\n- Erfaring med PHP\n- Kendskab til Docker", "cv_text": "Udvikler\nPHP, Laravel, MySQL"}"#,
     ))
     .await;
@@ -140,30 +140,26 @@ async fn the_free_match_reads_both_texts_and_saves_nothing() {
     assert!(result.contains(r#"data-saved-id="""#));
     assert!(result.contains(r#"<template class="cv-found""#));
     assert!(!result.contains("submit_reject"));
-    let (status, empty) = send(post_json(
-        "/cv_match/quick_match",
-        r#"{"job_text": "", "cv_text": "x"}"#,
-    ))
-    .await;
+    let (status, empty) = send(post_json("/match/quick_match", r#"{"job_text": "", "cv_text": "x"}"#)).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(empty, r#"{"error":"Paste or upload both the CV and the job post."}"#);
 }
 
 #[tokio::test]
 async fn what_isnt_ported_yet_says_so() {
-    let (status, answer) = send(post_json("/cv_match/fetch_job", r#"{"url": "https://x.dk"}"#)).await;
+    let (status, answer) = send(post_json("/match/fetch_job", r#"{"url": "https://x.dk"}"#)).await;
     assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
     assert_eq!(
         answer,
         r#"{"error":"Fetching a job post from a link isn't in the desktop app yet."}"#
     );
-    let (status, _) = send(get("/cv_match/application_delivery/21")).await;
+    let (status, _) = send(get("/match/application_delivery/21")).await;
     assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
 }
 
 #[tokio::test]
 async fn other_sites_cant_post_here() {
-    let request = Request::post("/cv_match/submit_reject/21")
+    let request = Request::post("/match/submit_reject/21")
         .header(header::HOST, HOST)
         .header(header::ORIGIN, "https://evil.example")
         .header(header::CONTENT_TYPE, "application/x-www-form-urlencoded")
@@ -172,7 +168,7 @@ async fn other_sites_cant_post_here() {
     let (status, _) = send(request).await;
     assert_eq!(status, StatusCode::FORBIDDEN);
     let (status, _) = send(
-        Request::get("/cv_match")
+        Request::get("/match")
             .header(header::HOST, "evil.example")
             .body(Body::empty())
             .unwrap(),
@@ -184,8 +180,8 @@ async fn other_sites_cant_post_here() {
 #[tokio::test]
 async fn the_page_css_and_js_are_served() {
     for path in [
-        "/cv_match_module/css/cv_match.css",
-        "/cv_match_module/js/app.js",
+        "/match_module/css/match.css",
+        "/match_module/js/app.js",
         "/js/trongate-mx.min.js",
     ] {
         let response = app().await.oneshot(get(path)).await.unwrap();
@@ -196,8 +192,8 @@ async fn the_page_css_and_js_are_served() {
 #[tokio::test]
 async fn pdf_js_is_served_from_the_app_for_offline_uploads() {
     for path in [
-        "/cv_match_module/pdfjs/pdf.min.mjs",
-        "/cv_match_module/pdfjs/pdf.worker.min.mjs",
+        "/match_module/pdfjs/pdf.min.mjs",
+        "/match_module/pdfjs/pdf.worker.min.mjs",
     ] {
         let response = app().await.oneshot(get(path)).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK, "{path}");
@@ -209,7 +205,7 @@ async fn pdf_js_is_served_from_the_app_for_offline_uploads() {
 
 /// A saved match's PDF: its status, Content-Type and Content-Disposition, and its bytes.
 async fn pdf(app: &axum::Router, json: &str) -> (StatusCode, String, String, Vec<u8>) {
-    let response = app.clone().oneshot(post_json("/cv_match/pdf", json)).await.unwrap();
+    let response = app.clone().oneshot(post_json("/match/pdf", json)).await.unwrap();
     let status = response.status();
     let header_of = |name| {
         response
@@ -288,7 +284,7 @@ const EXTENSION: &str = "chrome-extension://jijhihfppobcoconjjllmffbohpffbll";
 
 #[tokio::test]
 async fn the_joblog_is_filled_in_from_the_saved_match() {
-    let (status, panel) = send(get("/cv_match/joblog_panel/21")).await;
+    let (status, panel) = send(get("/match/joblog_panel/21")).await;
     assert_eq!(status, StatusCode::OK, "{panel}");
     assert!(
         panel
@@ -301,14 +297,14 @@ async fn the_joblog_is_filled_in_from_the_saved_match() {
     assert!(panel.contains(r#"<label class="joblog-logged"><input type="checkbox"> I&#39;ve entered this job in my joblog on Jobnet</label>"#)
         || panel.contains("<input type=\"checkbox\"> I&#x27;ve entered"), "{panel}");
 
-    let (status, entry) = send(get("/cv_match/joblog/21")).await;
+    let (status, entry) = send(get("/match/joblog/21")).await;
     assert_eq!(status, StatusCode::OK);
     let entry: serde_json::Value = serde_json::from_str(&entry).unwrap();
     assert_eq!(entry["sections"][0]["fields"][0]["value"], "PHP-udvikler");
     assert_eq!(entry["sections"][1]["fields"][3]["value"], true);
     assert_eq!(entry["logged_at"], serde_json::Value::Null);
 
-    let (status, answer) = send(get("/cv_match/joblog/99")).await;
+    let (status, answer) = send(get("/match/joblog/99")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
     assert_eq!(answer, r#"{"error":"That saved match was not found."}"#);
 }
@@ -316,7 +312,7 @@ async fn the_joblog_is_filled_in_from_the_saved_match() {
 #[tokio::test]
 async fn the_extension_marks_a_match_as_on_jobnet() {
     let app = app().await;
-    let (_, history) = send_to(&app, get("/cv_match/history")).await;
+    let (_, history) = send_to(&app, get("/match/history")).await;
     let history: serde_json::Value = serde_json::from_str(&history).unwrap();
     assert_eq!(history["matches"][0]["id"], 21);
     assert_eq!(history["matches"][0]["job_title"], "PHP-udvikler");
@@ -331,7 +327,7 @@ async fn the_extension_marks_a_match_as_on_jobnet() {
     let (status, logged) = send_to(
         &app,
         post_json(
-            "/cv_match/joblog_status",
+            "/match/joblog_status",
             r#"{"id": "21", "status": "Soegt", "logged": false}"#,
         ),
     )
@@ -339,13 +335,13 @@ async fn the_extension_marks_a_match_as_on_jobnet() {
     assert_eq!(status, StatusCode::OK, "{logged}");
     assert!(logged.contains(r#"<section class="joblog-section joblog-saved" data-applied-on=""#));
     assert!(!logged.contains("<time"));
-    let (_, history) = send_to(&app, get("/cv_match/history")).await;
+    let (_, history) = send_to(&app, get("/match/history")).await;
     let history: serde_json::Value = serde_json::from_str(&history).unwrap();
     assert_eq!(history["not_joblogged"][0]["id"], 21);
     assert_eq!(history["not_joblogged"][0]["jobnet_status"], "Soegt");
 
     // The extension saved it on Jobnet.
-    let request = Request::post("/cv_match/joblog_status")
+    let request = Request::post("/match/joblog_status")
         .header(header::HOST, HOST)
         .header(header::ORIGIN, EXTENSION)
         .header(header::CONTENT_TYPE, "application/json")
@@ -355,10 +351,10 @@ async fn the_extension_marks_a_match_as_on_jobnet() {
     assert_eq!(status, StatusCode::OK, "{logged}");
     assert!(logged.contains(" checked>"));
     assert!(logged.contains("Entered on <time datetime=\""));
-    let (_, history) = send_to(&app, get("/cv_match/history")).await;
+    let (_, history) = send_to(&app, get("/match/history")).await;
     let history: serde_json::Value = serde_json::from_str(&history).unwrap();
     assert_eq!(history["not_joblogged"], serde_json::json!([]));
-    let (_, entry) = send_to(&app, get("/cv_match/joblog/21")).await;
+    let (_, entry) = send_to(&app, get("/match/joblog/21")).await;
     let entry: serde_json::Value = serde_json::from_str(&entry).unwrap();
     assert_eq!(entry["sections"][2]["fields"][0]["value"], "Samtale");
     assert!(entry["logged_at"].is_i64());
@@ -370,7 +366,7 @@ async fn the_extension_marks_a_match_as_on_jobnet() {
 
     let (status, answer) = send_to(
         &app,
-        post_json("/cv_match/joblog_status", r#"{"id": 21, "status": "Done"}"#),
+        post_json("/match/joblog_status", r#"{"id": 21, "status": "Done"}"#),
     )
     .await;
     assert_eq!(status, StatusCode::BAD_REQUEST);
@@ -380,7 +376,7 @@ async fn the_extension_marks_a_match_as_on_jobnet() {
     );
     let (status, _) = send_to(
         &app,
-        post_json("/cv_match/joblog_status", r#"{"id": 22000, "status": "Soegt"}"#),
+        post_json("/match/joblog_status", r#"{"id": 22000, "status": "Soegt"}"#),
     )
     .await;
     assert_eq!(status, StatusCode::NOT_FOUND);
@@ -399,9 +395,9 @@ async fn the_extension_setup_page_says_where_it_is() {
 
 #[tokio::test]
 async fn a_resume_written_as_fields_is_read_back_whole() {
-    use recruiter::cv_match::cv_match_model;
+    use recruiter::matches::match_model;
     let db = seeded().await;
-    let resume = cv_match_model::resume_fields(&db, 21).await.unwrap().unwrap();
+    let resume = match_model::resume_fields(&db, 21).await.unwrap().unwrap();
     assert_eq!(resume.name, "Mette Sørensen");
     assert_eq!(resume.intro, ["Backend-udvikler."]);
     assert!(resume.links.is_empty());
@@ -409,7 +405,7 @@ async fn a_resume_written_as_fields_is_read_back_whole() {
     assert_eq!(resume.experience[0].bullets, ["Byggede en API"]);
     assert_eq!(resume.skills, ["PHP"]);
     assert_eq!(resume.experience_heading, "Experience");
-    assert_eq!(cv_match_model::resume_fields(&db, 22).await.unwrap(), None);
+    assert_eq!(match_model::resume_fields(&db, 22).await.unwrap(), None);
 }
 
 fn post_form(path: &str, form: &str) -> Request<Body> {

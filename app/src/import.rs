@@ -6,10 +6,12 @@
 //! built as text rather than checked at compile time; only the SQLite ones that don't depend
 //! on the table are.
 //!
-//! The documents are the one place the tables differ: MariaDB keeps a match's application and
-//! résumé in cv_matches (application_text, resume_text) and the résumé's fields on the match,
-//! the desktop keeps them as versions in documents with the fields on the résumé version. Each
-//! written one becomes its first version.
+//! The desktop's tables drop the cv_match prefix MariaDB's have (cv_matches is matches,
+//! cv_match_id is match_id), so each table is read under its MariaDB name. The documents are the
+//! one place the tables differ beyond names: MariaDB keeps a match's application and résumé in
+//! cv_matches (application_text, resume_text) and the résumé's fields on the match, the desktop
+//! keeps them as versions in documents with the fields on the résumé version. Each written one
+//! becomes its first version.
 
 use std::collections::HashMap;
 use std::fmt;
@@ -20,7 +22,7 @@ use sqlx::mysql::{MySqlConnection, MySqlRow};
 use sqlx::sqlite::{Sqlite, SqliteArguments, SqliteConnection};
 use sqlx::{AssertSqlSafe, Column, Connection, Row, SqlitePool, TypeInfo, ValueRef};
 
-use crate::cv_match::document_box::{APPLICATION, RESUME};
+use crate::matches::document_box::{APPLICATION, RESUME};
 
 /// Where a table's rows hang on the user, which decides the WHERE that picks out their rows.
 #[derive(Clone, Copy)]
@@ -39,28 +41,36 @@ enum Owner {
     Resume,
 }
 
-/// The column the résumé tables hang on here, and the one in MariaDB it is read from.
-const DOCUMENT_ID: &str = "document_id";
-const MARIADB_RESUME_KEY: &str = "cv_match_id";
+/// The column a match's rows hang on here, and the one in MariaDB it is read from.
+const MATCH_ID: &str = "match_id";
+const MARIADB_MATCH_ID: &str = "cv_match_id";
 
-/// The tables copied, parents before children so every foreign key finds its row. The columns
-/// come from the SQLite table, so a column the desktop dropped (the login ones) isn't read.
-const TABLES: &[(&str, Owner)] = &[
-    ("trongate_users", Owner::User),
-    ("candidates", Owner::UserId),
-    ("cv_matches", Owner::UserId),
-    ("documents", Owner::Documents),
-    ("cv_match_items", Owner::Match),
-    ("cv_match_integrations", Owner::Match),
-    ("cv_match_rejections", Owner::Match),
-    ("cv_match_resumes", Owner::Resume),
-    ("cv_match_resume_entries", Owner::Resume),
-    ("cv_match_resume_lines", Owner::Resume),
-    ("candidate_profiles", Owner::Candidate),
-    ("candidate_profile_entries", Owner::Candidate),
-    ("candidate_profile_lines", Owner::Candidate),
-    ("candidate_profile_links", Owner::Candidate),
-    ("candidate_resumes", Owner::Candidate),
+/// The column the résumé tables hang on here; MariaDB's is the match's (MARIADB_MATCH_ID).
+const DOCUMENT_ID: &str = "document_id";
+
+/// The tables copied, parents before children so every foreign key finds its row: the desktop's
+/// name, then MariaDB's. The columns come from the SQLite table, so a column the desktop dropped
+/// (the login ones) isn't read.
+const TABLES: &[(&str, &str, Owner)] = &[
+    ("trongate_users", "trongate_users", Owner::User),
+    ("candidates", "candidates", Owner::UserId),
+    ("matches", "cv_matches", Owner::UserId),
+    ("documents", "cv_matches", Owner::Documents),
+    ("match_items", "cv_match_items", Owner::Match),
+    ("match_integrations", "cv_match_integrations", Owner::Match),
+    ("match_rejections", "cv_match_rejections", Owner::Match),
+    ("match_resumes", "cv_match_resumes", Owner::Resume),
+    ("match_resume_entries", "cv_match_resume_entries", Owner::Resume),
+    ("match_resume_lines", "cv_match_resume_lines", Owner::Resume),
+    ("candidate_profiles", "candidate_profiles", Owner::Candidate),
+    (
+        "candidate_profile_entries",
+        "candidate_profile_entries",
+        Owner::Candidate,
+    ),
+    ("candidate_profile_lines", "candidate_profile_lines", Owner::Candidate),
+    ("candidate_profile_links", "candidate_profile_links", Owner::Candidate),
+    ("candidate_resumes", "candidate_resumes", Owner::Candidate),
 ];
 
 #[derive(Debug)]
@@ -121,7 +131,7 @@ pub async fn import(source_url: &str, email: &str, target: &SqlitePool) -> Resul
     let mut report = Report::default();
     // Each match's résumé document, by match id, for the résumé tables after it.
     let mut resumes = HashMap::new();
-    for &(table, owner) in TABLES {
+    for &(table, source_table, owner) in TABLES {
         if let Owner::Documents = owner {
             let documents = documents(&mut source, user_id).await.map_err(Error::MariaDb)?;
             resumes = insert_documents(&mut tx, &documents).await.map_err(Error::Sqlite)?;
@@ -129,7 +139,7 @@ pub async fn import(source_url: &str, email: &str, target: &SqlitePool) -> Resul
             continue;
         }
         let columns = columns(&mut tx, table).await.map_err(Error::Sqlite)?;
-        let mut rows = select(&mut source, table, &columns, owner, user_id, candidate_id)
+        let mut rows = select(&mut source, source_table, &columns, owner, user_id, candidate_id)
             .await
             .map_err(Error::MariaDb)?;
         if let Owner::Resume = owner {
@@ -151,7 +161,7 @@ pub async fn import(source_url: &str, email: &str, target: &SqlitePool) -> Resul
 /// A document in one of the user's MariaDB cv_matches rows.
 #[derive(Debug)]
 struct ImportedDocument {
-    cv_match_id: i64,
+    match_id: i64,
     kind: &'static str,
     text: String,
     written_at: i64,
@@ -190,7 +200,7 @@ async fn documents(source: &mut MySqlConnection, user_id: i64) -> sqlx::Result<V
     for row in rows {
         if let Some(text) = row.application_text {
             documents.push(ImportedDocument {
-                cv_match_id: row.id,
+                match_id: row.id,
                 kind: APPLICATION,
                 text,
                 written_at: row.application_written_at.unwrap_or(row.created_at),
@@ -198,7 +208,7 @@ async fn documents(source: &mut MySqlConnection, user_id: i64) -> sqlx::Result<V
         }
         if row.resume_text.is_some() || row.resume_structured != 0 {
             documents.push(ImportedDocument {
-                cv_match_id: row.id,
+                match_id: row.id,
                 kind: RESUME,
                 text: row.resume_text.unwrap_or_default(),
                 written_at: row.resume_written_at.unwrap_or(row.created_at),
@@ -217,10 +227,10 @@ async fn insert_documents(
     for document in documents {
         let id = sqlx::query!(
             r#"
-            INSERT INTO documents (cv_match_id, kind, text, written_at)
+            INSERT INTO documents (match_id, kind, text, written_at)
             VALUES (?1, ?2, ?3, ?4)
             "#,
-            document.cv_match_id,
+            document.match_id,
             document.kind,
             document.text,
             document.written_at
@@ -229,7 +239,7 @@ async fn insert_documents(
         .await?
         .last_insert_rowid();
         if document.kind == RESUME {
-            resumes.insert(document.cv_match_id, id);
+            resumes.insert(document.match_id, id);
         }
     }
     Ok(resumes)
@@ -241,9 +251,9 @@ fn to_resume_documents(columns: &[String], rows: &mut [Vec<Value>], resumes: &Ha
         return;
     };
     for row in rows {
-        if let Value::Integer(cv_match_id) = row[key] {
+        if let Value::Integer(match_id) = row[key] {
             // Every match with résumé rows got a résumé document (documents()).
-            row[key] = resumes.get(&cv_match_id).map_or(Value::Null, |id| Value::Integer(*id));
+            row[key] = resumes.get(&match_id).map_or(Value::Null, |id| Value::Integer(*id));
         }
     }
 }
@@ -265,7 +275,7 @@ enum Value {
     Text(String),
 }
 
-/// The user's rows of one table, as SQLite values in the columns' order.
+/// The user's rows of one MariaDB table, as SQLite values in the SQLite columns' order.
 async fn select(
     source: &mut MySqlConnection,
     table: &str,
@@ -286,16 +296,19 @@ async fn select(
     };
     let quoted: Vec<String> = columns.iter().map(|c| source_column(c, owner)).collect();
     let sql = format!("SELECT {} FROM `{table}` WHERE {filter} ORDER BY 1", quoted.join(", "));
-    // Safe: the table is one of TABLES and the columns are SQLite's own names for its columns.
+    // Safe: the table is one of TABLES and the columns are SQLite's own names for its columns
+    // (or MariaDB's for them, source_column).
     let rows = sqlx::query(AssertSqlSafe(sql)).bind(key).fetch_all(source).await?;
     rows.iter().map(sqlite_values).collect()
 }
 
-/// The MariaDB column a SQLite column is read from, quoted: its own name, but a résumé row's
-/// document_id comes from its cv_match_id (to_resume_documents swaps the id).
+/// The MariaDB column a SQLite column is read from, quoted: its own name, but match_id is
+/// cv_match_id there, and a résumé row's document_id comes from its cv_match_id too
+/// (to_resume_documents swaps the id).
 fn source_column(column: &str, owner: Owner) -> String {
     match owner {
-        Owner::Resume if column == DOCUMENT_ID => format!("`{MARIADB_RESUME_KEY}`"),
+        _ if column == MATCH_ID => format!("`{MARIADB_MATCH_ID}`"),
+        Owner::Resume if column == DOCUMENT_ID => format!("`{MARIADB_MATCH_ID}`"),
         _ => format!("`{column}`"),
     }
 }
