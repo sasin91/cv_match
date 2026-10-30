@@ -149,6 +149,11 @@ pub async fn save_uses(db: &SqlitePool, user_id: i64, on: Uses) -> sqlx::Result<
 
 /// Saves the key, replacing any saved one (its uses stay as they were). api_key "" (a local
 /// model without one) keeps no key in Credential Manager.
+///
+/// The row and the credential change together: the row is written in a transaction, which holds
+/// SQLite's write lock while Credential Manager is changed, so two saves can't interleave; a
+/// failed credential write leaves the row as it was, and a failed commit puts the previous key
+/// back.
 pub async fn save(
     db: &SqlitePool,
     vault: &KeyVault,
@@ -158,13 +163,9 @@ pub async fn save(
     base_url: &str,
     api_key: &str,
 ) -> Result<(), Error> {
-    if api_key.is_empty() {
-        vault.delete(user_id).map_err(Error::Vault)?;
-    } else {
-        vault.save(user_id, api_key).map_err(Error::Vault)?;
-    }
     let hint = key_hint(api_key);
     let now = chrono::Utc::now().timestamp();
+    let mut tx = db.begin().await?;
     sqlx::query_file!(
         "queries/account_model/save.sql",
         user_id,
@@ -174,9 +175,27 @@ pub async fn save(
         hint,
         now
     )
-    .execute(db)
+    .execute(&mut *tx)
     .await?;
+    let previous = vault.key_for(user_id).map_err(Error::Vault)?;
+    keep(vault, user_id, api_key)?;
+    if let Err(e) = tx.commit().await {
+        if let Err(restore) = keep(vault, user_id, previous.as_deref().unwrap_or("")) {
+            eprintln!("account: the previous key couldn't be put back after a failed save: {restore}");
+        }
+        return Err(e.into());
+    }
     Ok(())
+}
+
+/// Keeps api_key as the user's in Credential Manager, or none when it is "".
+fn keep(vault: &KeyVault, user_id: i64, api_key: &str) -> Result<(), Error> {
+    let kept = if api_key.is_empty() {
+        vault.delete(user_id)
+    } else {
+        vault.save(user_id, api_key)
+    };
+    kept.map_err(Error::Vault)
 }
 
 /// Deletes the saved key, from the table and from Credential Manager.
