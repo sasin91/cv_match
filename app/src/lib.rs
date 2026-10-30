@@ -5,6 +5,7 @@ pub mod cv_match;
 pub mod db;
 pub mod extension;
 pub mod import;
+pub mod pdf;
 pub mod php;
 pub mod profile;
 pub mod server;

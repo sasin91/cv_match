@@ -1,18 +1,19 @@
 //! The match page and the endpoints its JS calls, ported from modules/cv_match/Cv_match.php for
 //! the one local user (always signed in). Endpoints that need what isn't ported yet (the AI
-//! match, writing, PDFs) answer JSON {error} saying so, as the PHP endpoints
-//! answer their errors, so the page shows it.
+//! match and writing) answer JSON {error} saying so, as the PHP endpoints answer their errors,
+//! so the page shows it.
 
 use std::sync::Arc;
 
 use askama::Template;
 use axum::extract::{Path, Query, State};
-use axum::http::{StatusCode, Uri};
+use axum::http::{StatusCode, Uri, header};
 use axum::response::{Html, IntoResponse, Redirect, Response};
 use axum::{Form, Json};
 use serde::Deserialize;
 use serde_json::json;
 
+use super::application_delivery::rawurlencode;
 use super::batch_row::BatchRow;
 use super::cv_match_model::{self, JOBNET_JOBLOG, LISTS, SHORTLIST, SavedMatch};
 use super::cv_matcher::{self, CvMatcher, Verdict, Verdicts};
@@ -22,7 +23,7 @@ use super::joblog_panel::{JoblogPanel, Logged};
 use super::match_documents::{self, MatchDocuments, Uses};
 use super::match_result::{Fresh, MatchResult};
 use super::saved_match_row::SavedMatchRow;
-use super::{apply_instructions, reject_reason};
+use super::{apply_instructions, pdf_writer, reject_reason};
 use crate::profile;
 use crate::server::AppState;
 
@@ -202,7 +203,7 @@ fn saved_matches(state: &AppState, query: &ListQuery, first: bool) -> Result<Sav
             format!("?{list_param}")
         },
         next: found.next.map(|next| {
-            let after = format!("after={}", super::application_delivery::rawurlencode(&next));
+            let after = format!("after={}", rawurlencode(&next));
             if list_param.is_empty() {
                 after
             } else {
@@ -478,6 +479,15 @@ fn id_of(segment: &str) -> i64 {
     segment.parse().unwrap_or(0)
 }
 
+/// An id in a JSON body: the page sends it as text, the extension as a number (PHP's (int)).
+fn id_in_body(id: &serde_json::Value) -> i64 {
+    match id {
+        serde_json::Value::Number(id) => id.as_i64().or_else(|| id.as_f64().map(|id| id as i64)).unwrap_or(0),
+        serde_json::Value::String(id) => id_of(id.trim()),
+        _ => 0,
+    }
+}
+
 /// GET cv_match/history: the saved matches for the Jobnet extension: matches, the latest ones,
 /// newest first; not_joblogged, the ones applied for but not in Jobnet's joblog yet (the list
 /// "Applied, not on Jobnet yet"), best first, which the extension offers first.
@@ -518,12 +528,7 @@ pub struct JoblogStatusInput {
 /// Jobnet's words (joblog::SEARCH_STATUSES), and whether they have entered it in their Jobnet
 /// joblog. Answers the "In your Jobnet joblog" section as the page prints it.
 pub async fn joblog_status(State(state): State<Arc<AppState>>, Json(input): Json<JoblogStatusInput>) -> Answer {
-    let id = match &input.id {
-        serde_json::Value::Number(id) => id.as_i64().unwrap_or(0),
-        serde_json::Value::String(id) => id_of(id.trim()),
-        _ => 0,
-    };
-    let found = saved_match(&state, id)?;
+    let found = saved_match(&state, id_in_body(&input.id))?;
     let Some(status) = input
         .status
         .as_str()
@@ -566,6 +571,141 @@ pub async fn joblog_extension(State(state): State<Arc<AppState>>) -> Answer {
     })
 }
 
+/// pdf's body.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct PdfInput {
+    id: serde_json::Value,
+    kind: String,
+    text: String,
+}
+
+/// POST cv_match/pdf {id, kind, text}: a saved match's job application (kind application),
+/// tailored résumé (kind resume), the CV it was matched with (kind cv) or its job post (kind job)
+/// as a PDF download (pdf_writer). A résumé with fields (tailored_resume) is laid out from them,
+/// so edits to its text aren't in the PDF (the page says so first). Otherwise text is what the
+/// page shows, edits included; without it the saved text is used; the CV and the job post are
+/// always the saved text. Errors come back as JSON like the other endpoints.
+pub async fn pdf(State(state): State<Arc<AppState>>, Json(input): Json<PdfInput>) -> Answer {
+    let kind = input.kind.as_str();
+    if !pdf_writer::KINDS.contains(&kind) {
+        return Err(PageError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Choose the application, the résumé, the CV or the job post.",
+        ));
+    }
+    let found = saved_match(&state, id_in_body(&input.id))?;
+    let text = pdf_text(&found, kind, crate::php::trim(&input.text));
+    if text.is_empty() {
+        return Err(PageError::new(
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "There is no text to export yet.",
+        ));
+    }
+    if text.chars().count() > MAX_TEXT {
+        return Err(PageError::new(
+            StatusCode::PAYLOAD_TOO_LARGE,
+            "That text is too long for a PDF.",
+        ));
+    }
+    let title = pdf_title(&found, kind);
+    // A résumé written with fields is laid out from them; the text is only for one written
+    // before they existed.
+    let fields = if kind == "resume" {
+        cv_match_model::resume_fields(&state.db(), found.id)?
+    } else {
+        None
+    };
+    let made = match &fields {
+        Some(fields) => pdf_writer::resume_pdf(fields, &title),
+        None => pdf_writer::pdf(kind, &text, &title),
+    };
+    let bytes = made.map_err(|e| {
+        eprintln!("cv_match: pdf: {e}");
+        PageError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("The PDF couldn't be made: {e}"),
+        )
+    })?;
+    let name = pdf_writer::file_name(kind, &found.job_title, &found.company);
+    Ok((
+        [
+            (header::CONTENT_TYPE, "application/pdf".to_string()),
+            (header::CONTENT_DISPOSITION, content_disposition(&name)),
+            (header::CACHE_CONTROL, "private, no-store".to_string()),
+        ],
+        bytes,
+    )
+        .into_response())
+}
+
+/// The text a PDF is made from: what the page sent, or the saved text when it sent none; the
+/// CV and the job post are always the saved text, the post under its link.
+fn pdf_text(found: &SavedMatch, kind: &str, sent: &str) -> String {
+    let saved = |text: Option<&str>| crate::php::trim(text.unwrap_or("")).to_string();
+    let text = if sent.is_empty() || kind == "cv" || kind == "job" {
+        match kind {
+            "application" => saved(found.application_text.as_deref()),
+            "resume" => saved(found.resume_text.as_deref()),
+            "cv" => saved(Some(&found.cv_text)),
+            _ => saved(Some(&found.job_text)),
+        }
+    } else {
+        sent.to_string()
+    };
+    let job_url = found.job_url.as_deref().unwrap_or("");
+    if kind == "job" && !text.is_empty() && !job_url.is_empty() {
+        format!("{job_url}\n\n{text}")
+    } else {
+        text
+    }
+}
+
+/// The PDF's title: "Job application: Acme", "Résumé: Acme", "CV: Acme", or the job post's
+/// "Title · Company".
+fn pdf_title(found: &SavedMatch, kind: &str) -> String {
+    if kind == "job" {
+        let title: Vec<&str> = [found.job_title.as_str(), found.company.as_str()]
+            .into_iter()
+            .filter(|part| crate::php::filled(part))
+            .collect();
+        return if title.is_empty() {
+            "Job post".to_string()
+        } else {
+            title.join(" · ")
+        };
+    }
+    let label = match kind {
+        "application" => "Job application",
+        "resume" => "Résumé",
+        _ => "CV",
+    };
+    if found.company.is_empty() {
+        label.to_string()
+    } else {
+        format!("{label}: {}", found.company)
+    }
+}
+
+/// The download's Content-Disposition: the name in ASCII (each other byte and " as _) for old
+/// clients, and in full as filename*=UTF-8''.
+fn content_disposition(name: &str) -> String {
+    let ascii: String = name
+        .bytes()
+        .map(|byte| {
+            if (0x20..=0x7e).contains(&byte) && byte != b'"' {
+                byte as char
+            } else {
+                '_'
+            }
+        })
+        .collect();
+    format!(
+        "attachment; filename=\"{ascii}\"; filename*=UTF-8''{}",
+        rawurlencode(name)
+    )
+}
+
 /// already_matched's body.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
@@ -583,7 +723,7 @@ pub async fn already_matched(State(state): State<Arc<AppState>>, Json(input): Js
 }
 
 /// What each endpoint not in the desktop app yet does, for the page to say so.
-const NOT_YET: [(&str, &str); 9] = [
+const NOT_YET: [(&str, &str); 8] = [
     ("fetch_job", "Fetching a job post from a link"),
     ("extract_job", "The AI match"),
     ("extract_cv", "Reading a CV with the AI"),
@@ -591,7 +731,6 @@ const NOT_YET: [(&str, &str); 9] = [
     ("write_application", "Writing the application"),
     ("tailor_resume", "Tailoring the résumé"),
     ("resume_comparison", "Comparing the tailored résumé"),
-    ("pdf", "Downloading a PDF"),
     ("application_delivery", "The Apply dialog"),
 ];
 

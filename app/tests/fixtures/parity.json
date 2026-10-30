@@ -103103,5 +103103,560 @@
                 "applied_on": ""
             }
         ]
+    },
+    "pdf": {
+        "html": [
+            {
+                "kind": "application",
+                "text": "Kære Acme\r\n\r\nJeg søger **stillingen**.\n\nVenlig hilsen\nJonas Hansen",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n<p>Kære Acme</p>\n<p>Jeg søger stillingen.</p>\n<p>Venlig hilsen<br>\nJonas Hansen</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "resume",
+                "text": "Kære Acme\r\n\r\nJeg søger **stillingen**.\n\nVenlig hilsen\nJonas Hansen",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>Kære Acme</h1>\n<p class=\"contact\"></p>\n<p>Jeg søger stillingen.</p>\n<div class=\"keep\">\n<h2>Venlig hilsen</h2>\n<p>Jonas Hansen</p>\n</div>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "cv",
+                "text": "Kære Acme\r\n\r\nJeg søger **stillingen**.\n\nVenlig hilsen\nJonas Hansen",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>Kære Acme</h1>\n<p class=\"contact\"></p>\n<p>Jeg søger stillingen.</p>\n<div class=\"keep\">\n<h2>Venlig hilsen</h2>\n<p>Jonas Hansen</p>\n</div>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "job",
+                "text": "Kære Acme\r\n\r\nJeg søger **stillingen**.\n\nVenlig hilsen\nJonas Hansen",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"job\">\n<h1>Ansøgning: Acme &amp; &quot;Co&quot;</h1>\n<p>Kære Acme</p>\n<p>Jeg søger stillingen.</p>\n<p>Venlig hilsen</p>\n<p>Jonas Hansen</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "other",
+                "text": "Kære Acme\r\n\r\nJeg søger **stillingen**.\n\nVenlig hilsen\nJonas Hansen",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n<p>Kære Acme</p>\n<p>Jeg søger stillingen.</p>\n<p>Venlig hilsen<br>\nJonas Hansen</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "application",
+                "text": "Jonas Hansen\njonas@example.com | +45 12 34 56 78\n\nProfil\nBackend-udvikler med 9 års erfaring i PHP & Laravel.\n\nErfaring\nTech Lead, Acme ApS (2019 - 2023)\n- Ledte et team på 4 <udviklere>\n- Opgraderede Symfony 6 til 7\n\nKOMPETENCER\n- PHP, Laravel, Kubernetes",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n<p>Jonas Hansen<br>\njonas@example.com | +45 12 34 56 78</p>\n<p>Profil<br>\nBackend-udvikler med 9 års erfaring i PHP &amp; Laravel.</p>\n<p>Erfaring<br>\nTech Lead, Acme ApS (2019 - 2023)<br>\n- Ledte et team på 4 &lt;udviklere&gt;<br>\n- Opgraderede Symfony 6 til 7</p>\n<p>KOMPETENCER<br>\n- PHP, Laravel, Kubernetes</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "resume",
+                "text": "Jonas Hansen\njonas@example.com | +45 12 34 56 78\n\nProfil\nBackend-udvikler med 9 års erfaring i PHP & Laravel.\n\nErfaring\nTech Lead, Acme ApS (2019 - 2023)\n- Ledte et team på 4 <udviklere>\n- Opgraderede Symfony 6 til 7\n\nKOMPETENCER\n- PHP, Laravel, Kubernetes",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>Jonas Hansen</h1>\n<p class=\"contact\">jonas@example.com | +45 12 34 56 78</p>\n<div class=\"keep\">\n<h2>Profil</h2>\n<p>Backend-udvikler med 9 års erfaring i PHP &amp; Laravel.</p>\n</div>\n<div class=\"keep\">\n<h2>Erfaring</h2>\n<div class=\"entry\">\n<h3>Tech Lead, Acme ApS (2019 - 2023)</h3>\n<ul>\n<li>Ledte et team på 4 &lt;udviklere&gt;</li>\n<li>Opgraderede Symfony 6 til 7</li>\n</ul>\n</div>\n</div>\n<div class=\"keep\">\n<h2>KOMPETENCER</h2>\n<ul>\n<li>PHP, Laravel, Kubernetes</li>\n</ul>\n</div>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "cv",
+                "text": "Jonas Hansen\njonas@example.com | +45 12 34 56 78\n\nProfil\nBackend-udvikler med 9 års erfaring i PHP & Laravel.\n\nErfaring\nTech Lead, Acme ApS (2019 - 2023)\n- Ledte et team på 4 <udviklere>\n- Opgraderede Symfony 6 til 7\n\nKOMPETENCER\n- PHP, Laravel, Kubernetes",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>Jonas Hansen</h1>\n<p class=\"contact\">jonas@example.com | +45 12 34 56 78</p>\n<div class=\"keep\">\n<h2>Profil</h2>\n<p>Backend-udvikler med 9 års erfaring i PHP &amp; Laravel.</p>\n</div>\n<div class=\"keep\">\n<h2>Erfaring</h2>\n<div class=\"entry\">\n<h3>Tech Lead, Acme ApS (2019 - 2023)</h3>\n<ul>\n<li>Ledte et team på 4 &lt;udviklere&gt;</li>\n<li>Opgraderede Symfony 6 til 7</li>\n</ul>\n</div>\n</div>\n<div class=\"keep\">\n<h2>KOMPETENCER</h2>\n<ul>\n<li>PHP, Laravel, Kubernetes</li>\n</ul>\n</div>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "job",
+                "text": "Jonas Hansen\njonas@example.com | +45 12 34 56 78\n\nProfil\nBackend-udvikler med 9 års erfaring i PHP & Laravel.\n\nErfaring\nTech Lead, Acme ApS (2019 - 2023)\n- Ledte et team på 4 <udviklere>\n- Opgraderede Symfony 6 til 7\n\nKOMPETENCER\n- PHP, Laravel, Kubernetes",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"job\">\n<h1>Ansøgning: Acme &amp; &quot;Co&quot;</h1>\n<p>Jonas Hansen</p>\n<p>jonas@example.com | +45 12 34 56 78</p>\n<p>Profil</p>\n<p>Backend-udvikler med 9 års erfaring i PHP &amp; Laravel.</p>\n<p>Erfaring</p>\n<p>Tech Lead, Acme ApS (2019 - 2023)</p>\n<ul>\n<li>Ledte et team på 4 &lt;udviklere&gt;</li>\n<li>Opgraderede Symfony 6 til 7</li>\n</ul>\n<p>KOMPETENCER</p>\n<ul>\n<li>PHP, Laravel, Kubernetes</li>\n</ul>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "other",
+                "text": "Jonas Hansen\njonas@example.com | +45 12 34 56 78\n\nProfil\nBackend-udvikler med 9 års erfaring i PHP & Laravel.\n\nErfaring\nTech Lead, Acme ApS (2019 - 2023)\n- Ledte et team på 4 <udviklere>\n- Opgraderede Symfony 6 til 7\n\nKOMPETENCER\n- PHP, Laravel, Kubernetes",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n<p>Jonas Hansen<br>\njonas@example.com | +45 12 34 56 78</p>\n<p>Profil<br>\nBackend-udvikler med 9 års erfaring i PHP &amp; Laravel.</p>\n<p>Erfaring<br>\nTech Lead, Acme ApS (2019 - 2023)<br>\n- Ledte et team på 4 &lt;udviklere&gt;<br>\n- Opgraderede Symfony 6 til 7</p>\n<p>KOMPETENCER<br>\n- PHP, Laravel, Kubernetes</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "application",
+                "text": "https://example.dk/job/1\n\nVi søger en <udvikler>.\nDu har:\n- PHP\n- Laravel\n\nSøg nu.",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n<p>https://example.dk/job/1</p>\n<p>Vi søger en &lt;udvikler&gt;.<br>\nDu har:<br>\n- PHP<br>\n- Laravel</p>\n<p>Søg nu.</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "resume",
+                "text": "https://example.dk/job/1\n\nVi søger en <udvikler>.\nDu har:\n- PHP\n- Laravel\n\nSøg nu.",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>https://example.dk/job/1</h1>\n<p class=\"contact\"></p>\n<div class=\"keep entry\">\n<h3>Vi søger en &lt;udvikler&gt;.</h3>\n<p>Du har:</p>\n<ul>\n<li>PHP</li>\n<li>Laravel</li>\n</ul>\n</div>\n<p>Søg nu.</p>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "cv",
+                "text": "https://example.dk/job/1\n\nVi søger en <udvikler>.\nDu har:\n- PHP\n- Laravel\n\nSøg nu.",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>https://example.dk/job/1</h1>\n<p class=\"contact\"></p>\n<div class=\"keep entry\">\n<h3>Vi søger en &lt;udvikler&gt;.</h3>\n<p>Du har:</p>\n<ul>\n<li>PHP</li>\n<li>Laravel</li>\n</ul>\n</div>\n<p>Søg nu.</p>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "job",
+                "text": "https://example.dk/job/1\n\nVi søger en <udvikler>.\nDu har:\n- PHP\n- Laravel\n\nSøg nu.",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"job\">\n<h1>Ansøgning: Acme &amp; &quot;Co&quot;</h1>\n<p>https://example.dk/job/1</p>\n<p>Vi søger en &lt;udvikler&gt;.</p>\n<p>Du har:</p>\n<ul>\n<li>PHP</li>\n<li>Laravel</li>\n</ul>\n<p>Søg nu.</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "other",
+                "text": "https://example.dk/job/1\n\nVi søger en <udvikler>.\nDu har:\n- PHP\n- Laravel\n\nSøg nu.",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n<p>https://example.dk/job/1</p>\n<p>Vi søger en &lt;udvikler&gt;.<br>\nDu har:<br>\n- PHP<br>\n- Laravel</p>\n<p>Søg nu.</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "application",
+                "text": "Mette Sørensen\nAarhus\nmette@example.dk\n\nErfaring\n\nSenior udvikler · Nordlys A/S\napril 2021 – nu\n- Byggede en ordre-API\n- Mentor for 3 juniorer\n\nUdvikler\nFirma ApS, 2018-2021\n- Laravel\n\nUddannelse\nDatamatiker\n- EAAA, 2017\n\nSprog\nInteresser\nLøb og klatring.\nOg brætspil.\n\nReferencer:",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n<p>Mette Sørensen<br>\nAarhus<br>\nmette@example.dk</p>\n<p>Erfaring</p>\n<p>Senior udvikler · Nordlys A/S<br>\napril 2021 – nu<br>\n- Byggede en ordre-API<br>\n- Mentor for 3 juniorer</p>\n<p>Udvikler<br>\nFirma ApS, 2018-2021<br>\n- Laravel</p>\n<p>Uddannelse<br>\nDatamatiker<br>\n- EAAA, 2017</p>\n<p>Sprog<br>\nInteresser<br>\nLøb og klatring.<br>\nOg brætspil.</p>\n<p>Referencer:</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "resume",
+                "text": "Mette Sørensen\nAarhus\nmette@example.dk\n\nErfaring\n\nSenior udvikler · Nordlys A/S\napril 2021 – nu\n- Byggede en ordre-API\n- Mentor for 3 juniorer\n\nUdvikler\nFirma ApS, 2018-2021\n- Laravel\n\nUddannelse\nDatamatiker\n- EAAA, 2017\n\nSprog\nInteresser\nLøb og klatring.\nOg brætspil.\n\nReferencer:",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>Mette Sørensen</h1>\n<p class=\"contact\">Aarhus<br>mette@example.dk</p>\n<p>Erfaring</p>\n<div class=\"keep entry\">\n<h3>Senior udvikler · Nordlys A/S</h3>\n<p>april 2021 – nu</p>\n<ul>\n<li>Byggede en ordre-API</li>\n<li>Mentor for 3 juniorer</li>\n</ul>\n</div>\n<div class=\"keep\">\n<h2>Udvikler</h2>\n<div class=\"entry\">\n<h3>Firma ApS, 2018-2021</h3>\n<ul>\n<li>Laravel</li>\n</ul>\n</div>\n</div>\n<div class=\"keep\">\n<h2>Uddannelse</h2>\n<h2>Datamatiker</h2>\n</div>\n<ul>\n<li>EAAA, 2017</li>\n</ul>\n<div class=\"keep\">\n<h2>Sprog</h2>\n<h2>Interesser</h2>\n</div>\n<p>Løb og klatring.<br>Og brætspil.</p>\n<p>Referencer:</p>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "cv",
+                "text": "Mette Sørensen\nAarhus\nmette@example.dk\n\nErfaring\n\nSenior udvikler · Nordlys A/S\napril 2021 – nu\n- Byggede en ordre-API\n- Mentor for 3 juniorer\n\nUdvikler\nFirma ApS, 2018-2021\n- Laravel\n\nUddannelse\nDatamatiker\n- EAAA, 2017\n\nSprog\nInteresser\nLøb og klatring.\nOg brætspil.\n\nReferencer:",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>Mette Sørensen</h1>\n<p class=\"contact\">Aarhus<br>mette@example.dk</p>\n<p>Erfaring</p>\n<div class=\"keep entry\">\n<h3>Senior udvikler · Nordlys A/S</h3>\n<p>april 2021 – nu</p>\n<ul>\n<li>Byggede en ordre-API</li>\n<li>Mentor for 3 juniorer</li>\n</ul>\n</div>\n<div class=\"keep\">\n<h2>Udvikler</h2>\n<div class=\"entry\">\n<h3>Firma ApS, 2018-2021</h3>\n<ul>\n<li>Laravel</li>\n</ul>\n</div>\n</div>\n<div class=\"keep\">\n<h2>Uddannelse</h2>\n<h2>Datamatiker</h2>\n</div>\n<ul>\n<li>EAAA, 2017</li>\n</ul>\n<div class=\"keep\">\n<h2>Sprog</h2>\n<h2>Interesser</h2>\n</div>\n<p>Løb og klatring.<br>Og brætspil.</p>\n<p>Referencer:</p>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "job",
+                "text": "Mette Sørensen\nAarhus\nmette@example.dk\n\nErfaring\n\nSenior udvikler · Nordlys A/S\napril 2021 – nu\n- Byggede en ordre-API\n- Mentor for 3 juniorer\n\nUdvikler\nFirma ApS, 2018-2021\n- Laravel\n\nUddannelse\nDatamatiker\n- EAAA, 2017\n\nSprog\nInteresser\nLøb og klatring.\nOg brætspil.\n\nReferencer:",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"job\">\n<h1>Ansøgning: Acme &amp; &quot;Co&quot;</h1>\n<p>Mette Sørensen</p>\n<p>Aarhus</p>\n<p>mette@example.dk</p>\n<p>Erfaring</p>\n<p>Senior udvikler · Nordlys A/S</p>\n<p>april 2021 – nu</p>\n<ul>\n<li>Byggede en ordre-API</li>\n<li>Mentor for 3 juniorer</li>\n</ul>\n<p>Udvikler</p>\n<p>Firma ApS, 2018-2021</p>\n<ul>\n<li>Laravel</li>\n</ul>\n<p>Uddannelse</p>\n<p>Datamatiker</p>\n<ul>\n<li>EAAA, 2017</li>\n</ul>\n<p>Sprog</p>\n<p>Interesser</p>\n<p>Løb og klatring.</p>\n<p>Og brætspil.</p>\n<p>Referencer:</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "other",
+                "text": "Mette Sørensen\nAarhus\nmette@example.dk\n\nErfaring\n\nSenior udvikler · Nordlys A/S\napril 2021 – nu\n- Byggede en ordre-API\n- Mentor for 3 juniorer\n\nUdvikler\nFirma ApS, 2018-2021\n- Laravel\n\nUddannelse\nDatamatiker\n- EAAA, 2017\n\nSprog\nInteresser\nLøb og klatring.\nOg brætspil.\n\nReferencer:",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n<p>Mette Sørensen<br>\nAarhus<br>\nmette@example.dk</p>\n<p>Erfaring</p>\n<p>Senior udvikler · Nordlys A/S<br>\napril 2021 – nu<br>\n- Byggede en ordre-API<br>\n- Mentor for 3 juniorer</p>\n<p>Udvikler<br>\nFirma ApS, 2018-2021<br>\n- Laravel</p>\n<p>Uddannelse<br>\nDatamatiker<br>\n- EAAA, 2017</p>\n<p>Sprog<br>\nInteresser<br>\nLøb og klatring.<br>\nOg brætspil.</p>\n<p>Referencer:</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "application",
+                "text": "Navn\n\nResumé\n• Første   \n* Anden\n– Tredje\nEt afsnit efter punkterne.\rEn linje mere.\n\n\n\nSidste afsnit, med komma.",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n<p>Navn</p>\n<p>Resumé<br>\n• Første<br>\n* Anden<br>\n– Tredje<br>\nEt afsnit efter punkterne.<br>\nEn linje mere.</p>\n<p>Sidste afsnit, med komma.</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "resume",
+                "text": "Navn\n\nResumé\n• Første   \n* Anden\n– Tredje\nEt afsnit efter punkterne.\rEn linje mere.\n\n\n\nSidste afsnit, med komma.",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>Navn</h1>\n<p class=\"contact\"></p>\n<div class=\"keep\">\n<h2>Resumé</h2>\n<ul>\n<li>Første</li>\n<li>Anden</li>\n<li>Tredje</li>\n</ul>\n</div>\n<p>Et afsnit efter punkterne.<br>En linje mere.</p>\n<p>Sidste afsnit, med komma.</p>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "cv",
+                "text": "Navn\n\nResumé\n• Første   \n* Anden\n– Tredje\nEt afsnit efter punkterne.\rEn linje mere.\n\n\n\nSidste afsnit, med komma.",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>Navn</h1>\n<p class=\"contact\"></p>\n<div class=\"keep\">\n<h2>Resumé</h2>\n<ul>\n<li>Første</li>\n<li>Anden</li>\n<li>Tredje</li>\n</ul>\n</div>\n<p>Et afsnit efter punkterne.<br>En linje mere.</p>\n<p>Sidste afsnit, med komma.</p>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "job",
+                "text": "Navn\n\nResumé\n• Første   \n* Anden\n– Tredje\nEt afsnit efter punkterne.\rEn linje mere.\n\n\n\nSidste afsnit, med komma.",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"job\">\n<h1>Ansøgning: Acme &amp; &quot;Co&quot;</h1>\n<p>Navn</p>\n<p>Resumé</p>\n<ul>\n<li>Første</li>\n<li>Anden</li>\n<li>Tredje</li>\n</ul>\n<p>Et afsnit efter punkterne.</p>\n<p>En linje mere.</p>\n<p>Sidste afsnit, med komma.</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "other",
+                "text": "Navn\n\nResumé\n• Første   \n* Anden\n– Tredje\nEt afsnit efter punkterne.\rEn linje mere.\n\n\n\nSidste afsnit, med komma.",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n<p>Navn</p>\n<p>Resumé<br>\n• Første<br>\n* Anden<br>\n– Tredje<br>\nEt afsnit efter punkterne.<br>\nEn linje mere.</p>\n<p>Sidste afsnit, med komma.</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "application",
+                "text": "Dear Łukasz → hi\n\n Indrykket linje\n   \nAfsnit med *stjerne* og **fed** og ** ikke**.",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: \"DejaVu Sans\", sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n<p>Dear Łukasz → hi</p>\n<p> Indrykket linje</p>\n<p>Afsnit med *stjerne* og fed og  ikke.</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "resume",
+                "text": "Dear Łukasz → hi\n\n Indrykket linje\n   \nAfsnit med *stjerne* og **fed** og ** ikke**.",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: \"DejaVu Sans\", sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>Dear Łukasz → hi</h1>\n<p class=\"contact\"></p>\n<p> Indrykket linje</p>\n<p>Afsnit med *stjerne* og fed og  ikke.</p>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "cv",
+                "text": "Dear Łukasz → hi\n\n Indrykket linje\n   \nAfsnit med *stjerne* og **fed** og ** ikke**.",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: \"DejaVu Sans\", sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>Dear Łukasz → hi</h1>\n<p class=\"contact\"></p>\n<p> Indrykket linje</p>\n<p>Afsnit med *stjerne* og fed og  ikke.</p>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "job",
+                "text": "Dear Łukasz → hi\n\n Indrykket linje\n   \nAfsnit med *stjerne* og **fed** og ** ikke**.",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: \"DejaVu Sans\", sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"job\">\n<h1>Ansøgning: Acme &amp; &quot;Co&quot;</h1>\n<p>Dear Łukasz → hi</p>\n<p> Indrykket linje</p>\n<p>Afsnit med *stjerne* og fed og  ikke.</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "other",
+                "text": "Dear Łukasz → hi\n\n Indrykket linje\n   \nAfsnit med *stjerne* og **fed** og ** ikke**.",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: \"DejaVu Sans\", sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n<p>Dear Łukasz → hi</p>\n<p> Indrykket linje</p>\n<p>Afsnit med *stjerne* og fed og  ikke.</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "application",
+                "text": "",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "resume",
+                "text": "",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "cv",
+                "text": "",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "job",
+                "text": "",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"job\">\n<h1>Ansøgning: Acme &amp; &quot;Co&quot;</h1>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "other",
+                "text": "",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "application",
+                "text": "   \n\n  ",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "resume",
+                "text": "   \n\n  ",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "cv",
+                "text": "   \n\n  ",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "job",
+                "text": "   \n\n  ",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"job\">\n<h1>Ansøgning: Acme &amp; &quot;Co&quot;</h1>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "other",
+                "text": "   \n\n  ",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "application",
+                "text": "Kun et navn",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n<p>Kun et navn</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "resume",
+                "text": "Kun et navn",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>Kun et navn</h1>\n<p class=\"contact\"></p>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "cv",
+                "text": "Kun et navn",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>Kun et navn</h1>\n<p class=\"contact\"></p>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "job",
+                "text": "Kun et navn",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"job\">\n<h1>Ansøgning: Acme &amp; &quot;Co&quot;</h1>\n<p>Kun et navn</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "other",
+                "text": "Kun et navn",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n<p>Kun et navn</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "application",
+                "text": "Navn\nKontakt\n- tidlig punkt\n\nHeading Med Fem Ord Her\n- a\n\nEt spørgsmål?\n- b\n\n0\n- c",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n<p>Navn<br>\nKontakt<br>\n- tidlig punkt</p>\n<p>Heading Med Fem Ord Her<br>\n- a</p>\n<p>Et spørgsmål?<br>\n- b</p>\n<p>0<br>\n- c</p>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "resume",
+                "text": "Navn\nKontakt\n- tidlig punkt\n\nHeading Med Fem Ord Her\n- a\n\nEt spørgsmål?\n- b\n\n0\n- c",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>Navn</h1>\n<p class=\"contact\">Kontakt<br>- tidlig punkt</p>\n<div class=\"keep entry\">\n<h3>Heading Med Fem Ord Her</h3>\n<ul>\n<li>a</li>\n</ul>\n</div>\n<div class=\"keep entry\">\n<h3>Et spørgsmål?</h3>\n<ul>\n<li>b</li>\n</ul>\n</div>\n<div class=\"keep entry\">\n<h3>0</h3>\n<ul>\n<li>c</li>\n</ul>\n</div>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "cv",
+                "text": "Navn\nKontakt\n- tidlig punkt\n\nHeading Med Fem Ord Her\n- a\n\nEt spørgsmål?\n- b\n\n0\n- c",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>Navn</h1>\n<p class=\"contact\">Kontakt<br>- tidlig punkt</p>\n<div class=\"keep entry\">\n<h3>Heading Med Fem Ord Her</h3>\n<ul>\n<li>a</li>\n</ul>\n</div>\n<div class=\"keep entry\">\n<h3>Et spørgsmål?</h3>\n<ul>\n<li>b</li>\n</ul>\n</div>\n<div class=\"keep entry\">\n<h3>0</h3>\n<ul>\n<li>c</li>\n</ul>\n</div>\n\n</body>\n</html>"
+            },
+            {
+                "kind": "job",
+                "text": "Navn\nKontakt\n- tidlig punkt\n\nHeading Med Fem Ord Her\n- a\n\nEt spørgsmål?\n- b\n\n0\n- c",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"job\">\n<h1>Ansøgning: Acme &amp; &quot;Co&quot;</h1>\n<p>Navn</p>\n<p>Kontakt</p>\n<ul>\n<li>tidlig punkt</li>\n</ul>\n<p>Heading Med Fem Ord Her</p>\n<ul>\n<li>a</li>\n</ul>\n<p>Et spørgsmål?</p>\n<ul>\n<li>b</li>\n</ul>\n<p>0</p>\n<ul>\n<li>c</li>\n</ul>\n</div>\n</body>\n</html>"
+            },
+            {
+                "kind": "other",
+                "text": "Navn\nKontakt\n- tidlig punkt\n\nHeading Med Fem Ord Her\n- a\n\nEt spørgsmål?\n- b\n\n0\n- c",
+                "title": "Ansøgning: Acme & \"Co\"",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Ansøgning: Acme &amp; &quot;Co&quot;</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<div class=\"letter\">\n<p>Navn<br>\nKontakt<br>\n- tidlig punkt</p>\n<p>Heading Med Fem Ord Her<br>\n- a</p>\n<p>Et spørgsmål?<br>\n- b</p>\n<p>0<br>\n- c</p>\n</div>\n</body>\n</html>"
+            }
+        ],
+        "resume_fields_html": [
+            {
+                "resume": {
+                    "name": "Mette Sørensen",
+                    "title": "Backend-udvikler",
+                    "location": "Aarhus",
+                    "phone": "+45 22 33 44 55",
+                    "email": "mette@example.dk",
+                    "links": [
+                        "github.com/mette"
+                    ],
+                    "intro": [
+                        "Backend-udvikler med 7 års erfaring i PHP.",
+                        "Bor i Aarhus."
+                    ],
+                    "skills": [
+                        "PHP",
+                        "Laravel"
+                    ],
+                    "languages": [
+                        "Dansk (modersmål)"
+                    ],
+                    "education_note": "Selvlært ved siden af.",
+                    "experience_heading": "Erfaring",
+                    "skills_heading": "Kompetencer",
+                    "education_heading": "Uddannelse",
+                    "languages_heading": "Languages",
+                    "projects_heading": "Projects",
+                    "experience": [
+                        {
+                            "title": "Senior PHP-udvikler",
+                            "organisation": "Nordlys A/S",
+                            "location": "Aarhus",
+                            "starts": "april 2021",
+                            "ends": "nu",
+                            "summary": "Logistikplatform",
+                            "bullets": [
+                                "Byggede en <ordre-API>"
+                            ],
+                            "note": "Fuld tid."
+                        },
+                        {
+                            "title": "Udvikler",
+                            "organisation": "",
+                            "location": "",
+                            "starts": "2018",
+                            "ends": "",
+                            "summary": "",
+                            "bullets": [],
+                            "note": ""
+                        }
+                    ],
+                    "projects": [
+                        {
+                            "title": "recruiter",
+                            "organisation": "",
+                            "location": "",
+                            "starts": "",
+                            "ends": "",
+                            "summary": "Jobsøgning med AI",
+                            "bullets": [],
+                            "note": ""
+                        }
+                    ],
+                    "education": [
+                        {
+                            "title": "Datamatiker",
+                            "organisation": "EAAA",
+                            "location": "Aarhus",
+                            "starts": "2015",
+                            "ends": "2017",
+                            "summary": "",
+                            "bullets": [],
+                            "note": ""
+                        }
+                    ]
+                },
+                "title": "Résumé: Acme",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Résumé: Acme</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>Mette Sørensen</h1>\n<p class=\"title\">Backend-udvikler</p>\n<p class=\"contact\">Aarhus · +45 22 33 44 55 · mette@example.dk<br>github.com/mette</p>\n<p class=\"intro\">Backend-udvikler med 7 års erfaring i PHP.</p>\n<p class=\"intro\">Bor i Aarhus.</p>\n<div class=\"keep\">\n<h2>Erfaring</h2>\n<div class=\"entry\">\n<h3>Senior PHP-udvikler · Nordlys A/S</h3>\n<p class=\"meta\">april 2021 – nu — Aarhus</p>\n<p>Logistikplatform</p>\n<ul>\n<li>Byggede en &lt;ordre-API&gt;</li>\n</ul>\n<p class=\"note\">Fuld tid.</p>\n</div></div>\n<div class=\"keep\">\n<div class=\"entry\">\n<h3>Udvikler</h3>\n<p class=\"meta\">2018</p>\n</div></div>\n<div class=\"keep\">\n<h2>Projects</h2>\n<div class=\"entry\">\n<h3>recruiter</h3>\n<p>Jobsøgning med AI</p>\n</div></div>\n<div class=\"keep\">\n<h2>Kompetencer</h2>\n<ul>\n<li>PHP</li>\n<li>Laravel</li>\n</ul>\n</div>\n<div class=\"keep\">\n<h2>Languages</h2>\n<ul>\n<li>Dansk (modersmål)</li>\n</ul>\n</div>\n<div class=\"keep\">\n<h2>Uddannelse</h2>\n<p>Selvlært ved siden af.</p></div>\n<div class=\"keep\">\n<div class=\"entry\">\n<h3>Datamatiker · EAAA</h3>\n<p class=\"meta\">2015 – 2017 — Aarhus</p>\n</div></div>\n\n</body>\n</html>"
+            },
+            {
+                "resume": {
+                    "name": "Mette Sørensen",
+                    "title": "",
+                    "location": "Aarhus",
+                    "phone": "+45 22 33 44 55",
+                    "email": "mette@example.dk",
+                    "links": [],
+                    "intro": [
+                        "Backend-udvikler med 7 års erfaring i PHP.",
+                        "Bor i Aarhus."
+                    ],
+                    "skills": [],
+                    "languages": [],
+                    "education_note": "",
+                    "experience_heading": "Erfaring",
+                    "skills_heading": "Kompetencer",
+                    "education_heading": "Uddannelse",
+                    "languages_heading": "Languages",
+                    "projects_heading": "Projects",
+                    "experience": [
+                        {
+                            "title": "Senior PHP-udvikler",
+                            "organisation": "Nordlys A/S",
+                            "location": "Aarhus",
+                            "starts": "april 2021",
+                            "ends": "nu",
+                            "summary": "Logistikplatform",
+                            "bullets": [
+                                "Byggede en <ordre-API>"
+                            ],
+                            "note": "Fuld tid."
+                        },
+                        {
+                            "title": "Udvikler",
+                            "organisation": "",
+                            "location": "",
+                            "starts": "2018",
+                            "ends": "",
+                            "summary": "",
+                            "bullets": [],
+                            "note": ""
+                        }
+                    ],
+                    "projects": [],
+                    "education": []
+                },
+                "title": "Résumé: Acme",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Résumé: Acme</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: Helvetica, sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>Mette Sørensen</h1>\n<p class=\"contact\">Aarhus · +45 22 33 44 55 · mette@example.dk</p>\n<p class=\"intro\">Backend-udvikler med 7 års erfaring i PHP.</p>\n<p class=\"intro\">Bor i Aarhus.</p>\n<div class=\"keep\">\n<h2>Erfaring</h2>\n<div class=\"entry\">\n<h3>Senior PHP-udvikler · Nordlys A/S</h3>\n<p class=\"meta\">april 2021 – nu — Aarhus</p>\n<p>Logistikplatform</p>\n<ul>\n<li>Byggede en &lt;ordre-API&gt;</li>\n</ul>\n<p class=\"note\">Fuld tid.</p>\n</div></div>\n<div class=\"keep\">\n<div class=\"entry\">\n<h3>Udvikler</h3>\n<p class=\"meta\">2018</p>\n</div></div>\n\n</body>\n</html>"
+            },
+            {
+                "resume": {
+                    "name": "Łukasz Nowak",
+                    "title": "Backend-udvikler",
+                    "location": "",
+                    "phone": "",
+                    "email": "",
+                    "links": [
+                        "0"
+                    ],
+                    "intro": [],
+                    "skills": [
+                        "PHP",
+                        "Laravel"
+                    ],
+                    "languages": [
+                        "Dansk (modersmål)"
+                    ],
+                    "education_note": "Selvlært ved siden af.",
+                    "experience_heading": "Erfaring",
+                    "skills_heading": "Kompetencer",
+                    "education_heading": "Uddannelse",
+                    "languages_heading": "Languages",
+                    "projects_heading": "Projects",
+                    "experience": [
+                        {
+                            "title": "Senior PHP-udvikler",
+                            "organisation": "Nordlys A/S",
+                            "location": "Aarhus",
+                            "starts": "april 2021",
+                            "ends": "nu",
+                            "summary": "Logistikplatform",
+                            "bullets": [
+                                "Byggede en <ordre-API>"
+                            ],
+                            "note": "Fuld tid."
+                        },
+                        {
+                            "title": "Udvikler",
+                            "organisation": "",
+                            "location": "",
+                            "starts": "2018",
+                            "ends": "",
+                            "summary": "",
+                            "bullets": [],
+                            "note": ""
+                        }
+                    ],
+                    "projects": [
+                        {
+                            "title": "recruiter",
+                            "organisation": "",
+                            "location": "",
+                            "starts": "",
+                            "ends": "",
+                            "summary": "Jobsøgning med AI",
+                            "bullets": [],
+                            "note": ""
+                        }
+                    ],
+                    "education": [
+                        {
+                            "title": "Datamatiker",
+                            "organisation": "EAAA",
+                            "location": "Aarhus",
+                            "starts": "2015",
+                            "ends": "2017",
+                            "summary": "",
+                            "bullets": [],
+                            "note": ""
+                        }
+                    ]
+                },
+                "title": "Résumé: Acme",
+                "html": "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>Résumé: Acme</title>\n<style>\n    @page { margin: 18mm 16mm; }\n    body { font-family: \"DejaVu Sans\", sans-serif; font-size: 10pt; line-height: 14pt; color: #000; }\n    p { margin: 0 0 4pt 0; }\n    h1 { font-size: 20pt; line-height: 24pt; font-weight: bold; margin: 0; }\n    .title { font-size: 11pt; line-height: 15pt; margin: 0; }\n    .contact { font-size: 9pt; line-height: 13pt; margin: 0 0 8pt 0; }\n    .meta { font-size: 8.5pt; line-height: 12pt; margin: 0; }\n    .note { font-size: 9pt; line-height: 13pt; margin: 3pt 0 0 0; }\n    h2 { font-size: 11pt; line-height: 16pt; font-weight: bold; margin: 10pt 0 3pt 0; }\n    h3 { font-size: 10.5pt; line-height: 14pt; font-weight: bold; margin: 0; }\n    ul { margin: 0; padding: 0; list-style: none; }\n    li { margin: 0 0 0 5mm; padding-left: 3.2mm; text-indent: -3.2mm; }\n    li:before { content: \"\\2022\\00a0\\00a0\"; }\n    .keep { page-break-inside: avoid; }\n    .entry { margin: 0 0 6pt 0; }\n    .letter p { margin: 0 0 8pt 0; }\n    .job h1 { font-size: 16pt; line-height: 20pt; margin: 0 0 8pt 0; }\n    .job ul { margin: 0 0 6pt 0; }\n</style>\n</head>\n<body>\n<h1>Łukasz Nowak</h1>\n<p class=\"title\">Backend-udvikler</p>\n<div class=\"keep\">\n<h2>Erfaring</h2>\n<div class=\"entry\">\n<h3>Senior PHP-udvikler · Nordlys A/S</h3>\n<p class=\"meta\">april 2021 – nu — Aarhus</p>\n<p>Logistikplatform</p>\n<ul>\n<li>Byggede en &lt;ordre-API&gt;</li>\n</ul>\n<p class=\"note\">Fuld tid.</p>\n</div></div>\n<div class=\"keep\">\n<div class=\"entry\">\n<h3>Udvikler</h3>\n<p class=\"meta\">2018</p>\n</div></div>\n<div class=\"keep\">\n<h2>Projects</h2>\n<div class=\"entry\">\n<h3>recruiter</h3>\n<p>Jobsøgning med AI</p>\n</div></div>\n<div class=\"keep\">\n<h2>Kompetencer</h2>\n<ul>\n<li>PHP</li>\n<li>Laravel</li>\n</ul>\n</div>\n<div class=\"keep\">\n<h2>Languages</h2>\n<ul>\n<li>Dansk (modersmål)</li>\n</ul>\n</div>\n<div class=\"keep\">\n<h2>Uddannelse</h2>\n<p>Selvlært ved siden af.</p></div>\n<div class=\"keep\">\n<div class=\"entry\">\n<h3>Datamatiker · EAAA</h3>\n<p class=\"meta\">2015 – 2017 — Aarhus</p>\n</div></div>\n\n</body>\n</html>"
+            }
+        ],
+        "file_names": [
+            {
+                "kind": "resume",
+                "job_title": "Udvikler / PHP",
+                "company": "Acme: \"ApS\"",
+                "file_name": "Resume - Udvikler PHP - Acme ApS.pdf"
+            },
+            {
+                "kind": "application",
+                "job_title": "",
+                "company": "",
+                "file_name": "Application.pdf"
+            },
+            {
+                "kind": "job",
+                "job_title": " Udvikler ",
+                "company": "Acme",
+                "file_name": "Job ad - Udvikler - Acme.pdf"
+            },
+            {
+                "kind": "cv",
+                "job_title": "Udvikler",
+                "company": "",
+                "file_name": "CV - Udvikler.pdf"
+            },
+            {
+                "kind": "other",
+                "job_title": "Tab\there nbsp",
+                "company": "Ny\nlinje",
+                "file_name": "Application - Tab here nbsp - Ny linje.pdf"
+            },
+            {
+                "kind": "application",
+                "job_title": "Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel ",
+                "company": "Acme",
+                "file_name": "Application - Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel Lang titel Lang ti.pdf"
+            },
+            {
+                "kind": "resume",
+                "job_title": "Sygeplejerske – akut",
+                "company": "Region Sjælland|<Holbæk>",
+                "file_name": "Resume - Sygeplejerske – akut - Region Sjælland Holbæk.pdf"
+            }
+        ]
     }
 }

@@ -29,6 +29,17 @@ pub fn trim_chars<'a>(text: &'a str, characters: &str) -> &'a str {
     text.trim_matches(|c| characters.contains(c))
 }
 
+/// PHP's `rtrim($text, $characters)` with a plain list of characters (no ranges).
+pub fn trim_end_chars<'a>(text: &'a str, characters: &str) -> &'a str {
+    text.trim_end_matches(|c| characters.contains(c))
+}
+
+/// Whether PHP counts the string as true, as array_filter() without a callback keeps it: not ""
+/// and not "0".
+pub fn filled(text: &str) -> bool {
+    !text.is_empty() && text != "0"
+}
+
 /// PHP's `mb_substr($text, 0, $length)`: the first `length` characters.
 pub fn first_chars(text: &str, length: usize) -> String {
     text.chars().take(length).collect()

@@ -19,10 +19,12 @@ pub mod match_documents;
 pub mod match_result;
 pub mod match_score;
 pub mod pages;
+pub mod pdf_writer;
 pub mod reject_button;
 pub mod reject_reason;
 pub mod saved_match_row;
 pub mod score_cursor;
+pub mod tailored_resume;
 pub mod verdict_row;
 
 use serde::{Deserialize, Serialize};

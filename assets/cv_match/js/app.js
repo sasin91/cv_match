@@ -22,7 +22,9 @@
 
 import { confirmDialog, countUp, dropZone, flash, flip, reveal, toast } from "./ui.js";
 
-const PDFJS = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/4.10.38/";
+// pdf.js 4.10.38 (Mozilla, Apache 2.0), which reads an uploaded CV's text: served by the
+// desktop app from its own files (cv_match/pdfjs), so uploads work offline.
+const PDFJS = new URL("../pdfjs/", import.meta.url).href;
 const CV_KEY = "cv_match.cv";
 // The free match keeps only the CV text, since it reads it on every match.
 const CV_TEXT_KEY = "cv_match.cv_text";

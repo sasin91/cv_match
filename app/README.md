@@ -23,6 +23,8 @@ PHP modules file by file, keeping their names, and is tested against what the PH
 | `src/profile.rs` | the profile as text (`Profile_fields::text` and its queries) |
 | `src/cv_match/joblog.rs`, `joblog_panel.rs` | `Joblog.php` (with `danish_postcodes.php`, read as it is) and `Joblog_panel.php` |
 | `src/extension.rs` | (new) ships `extension/jobnet-joblog` and writes it out for the browser |
+| `src/cv_match/pdf_writer.rs`, `tailored_resume.rs` | `Pdf_writer.php`, and the part of `Tailored_resume.php` its résumé layout uses |
+| `src/pdf/` | (new) stands in for dompdf: lays the page out on A4 as dompdf 3.1 did and writes the PDF |
 
 The PHP files named here are in [sasin91/recruiter](https://github.com/sasin91/recruiter). What the
 app builds in from there is copied into `../assets` (cv_match's css and js, Trongate MX, the
@@ -45,11 +47,24 @@ one local user who is always signed in:
 - Not interested and Bring back;
 - the free keyword match of new posts against your profile or a pasted CV;
 - a match's Jobnet joblog panel, and what the Jobnet extension asks for (the history, a joblog
-  entry, marking a match as on Jobnet).
+  entry, marking a match as on Jobnet, the PDFs it attaches);
+- the application, the tailored résumé, the CV and the job post as PDFs (`POST cv_match/pdf`);
+- reading an uploaded PDF CV in the browser with pdf.js, which the app serves itself
+  (`assets/cv_match/pdfjs`), so it works offline.
 
-What isn't ported yet (the AI match, fetching a post from a link, writing, PDFs, the Apply
-dialog) answers with "... isn't in the desktop app yet.", which the page shows
-as its error.
+What isn't ported yet (the AI match, fetching a post from a link, writing, the Apply dialog)
+answers with "... isn't in the desktop app yet.", which the page shows as its error.
+
+## PDFs
+
+`pdf_writer` reads a document the way `Pdf_writer.php` did and builds the same small page
+(`pdf::page`, which prints the same HTML; the parity tests compare it). Instead of handing that
+HTML to dompdf, `pdf::layout` places it on A4 the way dompdf 3.1 does: Helvetica, 16 mm side and
+18 mm top and bottom margins, the page's styles, dompdf's line boxes, margin collapsing and page
+breaks (div.keep, two-line orphans). Checked against dompdf's own PDFs of 120 generated letters,
+résumés, CVs and job posts, every line lands on the same page within 0.1 pt. Text with a letter
+Helvetica lacks is set in DejaVu Sans as in PHP, with only the letters used embedded
+(`assets/fonts`, Bitstream Vera licence).
 
 The server only answers requests whose Host is its own address, and only takes changes (POST)
 from its own pages and the Jobnet extension (their Origin), so other sites open in the browser
@@ -92,7 +107,8 @@ compares the answer with PHP's: 3,092 taxonomy lookups (the skill names of the 2
 in `eval/data/gold.jsonl`, plus typos and edge cases), the free reading of synthetic posts and
 CVs, all 28 post x CV matches (criteria, verdicts, score, Laya summary) and 27 texts read for how
 the post asks to be applied to, and the joblog: 343 deadlines, working hours, places and contact
-people, 16 saved matches filled in as joblog entries and 10 days applied in Danish time.
+people, 16 saved matches filled in as joblog entries and 10 days applied in Danish time; and
+the 53 PDF pages and 7 download names Pdf_writer makes of letters, résumés, CVs and job posts.
 
 The fixtures come from the PHP code itself, in a checkout of sasin91/recruiter. After changing
 the PHP side, write them again and let the Rust tests show what the port has to follow:
@@ -100,7 +116,8 @@ the PHP side, write them again and let the Rust tests show what the port has to 
     php app/tests/fixtures/generate.php ../recruiter
 
 `tests/server.rs` sends the page's requests to the server: the lists, a saved match, the free
-match, the joblog, the extension's calls, what isn't ported yet, and requests from other sites.
+match, the joblog, the extension's calls, the PDFs, what isn't ported yet, and requests from
+other sites.
 
 `tests/import.rs` imports from a real MariaDB with recruiter's `db/schema.sql` loaded. It empties that
 database's cv_match tables, so point it at a scratch database only:

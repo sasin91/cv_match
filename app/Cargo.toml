@@ -27,6 +27,10 @@ rust-embed = { version = "8", features = ["include-exclude"] }
 mime_guess = "2"
 chrono = "0.4"
 webbrowser = "1"
+pdf-writer = "0.15"
+subsetter = "0.2"
+ttf-parser = "0.25"
+miniz_oxide = "0.9"
 
 [profile.release]
 lto = "thin"
