@@ -6,7 +6,7 @@ use std::sync::LazyLock;
 use indexmap::IndexMap;
 use recruiter::cv_match::cv_matcher::{self, CvMatcher, Verdicts};
 use recruiter::cv_match::free_reader::{self, FreeReader, YearMonth};
-use recruiter::cv_match::match_score;
+use recruiter::cv_match::{apply_instructions, match_score};
 use recruiter::taxonomy::{self, Taxonomy};
 use serde::Serialize;
 use serde_json::Value;
@@ -217,6 +217,18 @@ fn scores_print_as_php_prints_them() {
             &format!("match_tag({score})"),
             &case["tag"],
             cv_matcher::match_tag(score),
+        );
+    }
+}
+
+#[test]
+fn application_instructions_are_read_as_php_reads_them() {
+    for case in cases("apply_instructions") {
+        let text = text(&case["text"]);
+        assert_same(
+            &format!("apply_instructions::read({text:?})"),
+            &case["found"],
+            apply_instructions::read(text),
         );
     }
 }

@@ -17,11 +17,16 @@ pub struct MatchScore {
 impl MatchScore {
     /// The score and tag as printed, or None when there is no score yet.
     pub fn from(score: Option<f64>, tag: &str) -> Option<Self> {
-        score.map(|score| Self {
+        score.map(|score| Self::of(score, tag))
+    }
+
+    /// The score and tag as printed.
+    pub fn of(score: f64, tag: &str) -> Self {
+        Self {
             percent: percent(score),
             tag: tag.to_string(),
             tag_name: tag_name(tag).to_string(),
-        })
+        }
     }
 }
 

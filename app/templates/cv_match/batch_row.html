@@ -1,0 +1,26 @@
+{#- A match as a row of "Jobs ranked by match" (views/batch_row.php): the row over the result,
+    with the application and résumé boxes of a saved match. js/app.js ranks the rows by
+    data-score. -#}
+<li class="batch-row" data-score="{{ row.percent }}" data-saved-id="{% if let Some(id) = result.saved_id %}{{ id }}{% endif %}">
+    <details>
+        <summary class="batch-summary">
+            <span class="batch-score {{ row.tag }}">{{ row.percent }}%</span>
+            <div class="batch-head">
+                <strong>{{ row.heading }}</strong>
+                <div class="muted">
+                    <span class="tag {{ row.tag }}">{{ row.tag }}</span>{% if !row.host.is_empty() %} · {{ row.host }}{% endif %}{% if !row.matched_at.is_empty() %} · matched before, <time datetime="{{ row.matched_at }}">{{ row.matched_at }}</time>{% endif %}{% if let Some(chip) = row.apply_chip %} · <span class="apply-chip{% if chip.trap %} trap{% endif %}">{{ chip.label }}</span>{% endif %}
+                </div>
+                <span class="batch-bar {{ row.tag }}" style="--value: {{ row.percent }}"></span>
+            </div>
+            <span class="chevron"></span>
+        </summary>
+        <div class="muted">{{ row.line }}</div>
+        {% include "cv_match/result_body.html" %}
+        {%- if let Some(documents) = result.documents %}
+            <div class="batch-documents">{% include "cv_match/documents.html" %}</div>
+        {%- endif %}
+    </details>
+    {%- if let Some(cv_found) = result.cv_found %}
+        {% include "cv_match/cv_found.html" %}
+    {%- endif %}
+</li>

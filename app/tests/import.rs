@@ -87,6 +87,10 @@ fn copies_only_my_rows_with_their_ids() {
         })
         .unwrap();
     assert_eq!((id, score, title.as_str()), (21, 0.814, "PHP-udvikler"));
+    let job_text: String = target
+        .query_row("SELECT job_text FROM cv_matches", [], |row| row.get(0))
+        .unwrap();
+    assert_eq!(job_text, "Vi søger en PHP-udvikler");
     let started: String = target
         .query_row("SELECT started_on FROM candidate_profile_entries", [], |row| row.get(0))
         .unwrap();

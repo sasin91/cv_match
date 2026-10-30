@@ -1,0 +1,18 @@
+{#- One document box of a saved match's application and résumé panel (views/document_box.php). -#}
+<div class="document" data-kind="{{ doc.kind }}" data-id="{{ doc.id }}"{% if !doc.written_at.is_empty() %} data-written-at="{{ doc.written_at }}"{% endif %} data-structured="{{ doc.structured }}">
+    <h4>{{ doc.title }}</h4>
+    {%- if let Some(send_to) = doc.send_to %}
+        <p class="apply-hint">The post asks for it by email: <a href="{{ send_to.mailto }}">{{ send_to.email }}</a>{% if !send_to.subject.is_empty() %} with the subject <code>{{ send_to.subject }}</code>{% endif %}.</p>
+    {%- endif %}
+    {%- if doc.off %}
+        <p class="muted">{{ doc.off_note }}</p>
+    {%- endif %}
+    <div class="actions">
+        <button type="button" class="write" data-off="{{ doc.off }}"{% if doc.off %} disabled{% endif %}><span class="label">{{ doc.write }}</span></button>
+        <button type="button" class="copy"{% if doc.text.is_empty() %} hidden{% endif %}>Copy to clipboard</button>
+        <button type="button" class="download-pdf"{% if doc.text.is_empty() %} hidden{% endif %}><span class="label">Download PDF</span></button>
+        <span class="muted status" aria-live="polite"></span>
+    </div>
+    <p class="compare" hidden></p>
+    <textarea rows="18"{% if doc.text.is_empty() %} hidden{% endif %}>{{ doc.text }}</textarea>
+</div>

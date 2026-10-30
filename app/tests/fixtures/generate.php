@@ -14,6 +14,7 @@ require_once "$root/taxonomy/php/Taxonomy.php";
 require_once "$root/modules/cv_match/Free_reader.php";
 require_once "$root/modules/cv_match/Cv_matcher.php";
 require_once "$root/modules/cv_match/Match_score.php";
+require_once "$root/modules/cv_match/Apply_instructions.php";
 
 // The day years_worked() counts "until now" from, fixed so the fixtures don't age.
 const NOW = '2026-10-30 12:00:00 UTC';
@@ -154,6 +155,30 @@ foreach ([0.0, 0.004, 0.005, 0.595, 0.6, 0.79999, 0.8, 0.845, 0.85, 1.0] as $sco
     $scores[] = ['score' => $score, 'percent' => Match_score::percent($score), 'tag' => Cv_matcher::match_tag($score)];
 }
 
+// ---------- Apply_instructions ----------
+
+$apply = [];
+foreach ([...array_values($posts), ...array_values($cvs),
+    "Send din ansøgning og CV til job@firma.dk. Skriv \"Backend 2026\" i emnefeltet.",
+    "Mærk din ansøgning \"Udvikler\" og send den til hr@kommune.dk senest 1. november.",
+    "To apply, email careers@acme.com with the subject 'Purple Elephant' and answer these questions:\n1. What did you build last?\n2. Why us?\n\nWe look forward to hearing from you.",
+    "Ansøgninger via LinkedIn Easy Apply tages ikke i betragtning. Send en mail til rekruttering@firma.dk og besvar følgende spørgsmål:\n- Hvorfor os?\n- Hvad er dit yndlingsværktøj?",
+    "Please start your cover letter with the word 'banana' so we know you read the whole post.",
+    "Send en mail til job@firma.dk med emnet \"Backend 2026\".",
+    "Send din ansøgning og CV til job@firma.dk.",
+    "Har du spørgsmål til stillingen, så kontakt Peter på peter@firma.dk eller 12345678.",
+    "If you have any questions, email jane@acme.com.",
+    "Vil du vide mere, så skriv til hr@firma.dk.",
+    "Klik på Søg stillingen for at ansøge. Ansøgningsfrist 1. november.",
+    "You know Mailchimp, email marketing and our CV parser.",
+    "Du skal svare på mails fra kunder.",
+    "Om jobbet\n\nSend en mail til job@firma.dk og besvar følgende spørgsmål:\n\n- Hvorfor os?\n- Hvad er dit yndlingsværktøj?\n\nVi holder samtaler løbende.",
+    "Send your CV to jobs@firma.dk.\r\nWrite ‘Rust rocks’ at the top of your application. Applications without it will not be considered.",
+    "Ansøg på mail: Skriv «Frontend» i emnelinjen og vedhæft CV. Svar på disse spørgsmål:\n• Hvad har du bygget?\n• Hvorfor os?",
+] as $text) {
+    $apply[] = ['text' => $text, 'found' => Apply_instructions::read($text)];
+}
+
 $out = [
     'now' => NOW,
     'rank' => $rank,
@@ -164,6 +189,7 @@ $out = [
     'years_asked' => $asked,
     'matches' => $matches,
     'scores' => $scores,
+    'apply_instructions' => $apply,
 ];
 file_put_contents(__DIR__ . '/parity.json', json_encode($out, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR) . "\n");
 echo count($rank), " rankings, ", count($readings), " readings, ", count($matches), " matches\n";

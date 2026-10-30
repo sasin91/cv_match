@@ -1,0 +1,9 @@
+{#- A batch of the saved matches as rows of the page's list, best first (views/history.php). A row
+    is a link to the match's own page, keeping the list, so it opens in a new tab too; the last
+    row is "Show more", loaded when it scrolls into view. -#}
+{%- for m in matches %}
+<li class="history-{{ m.tag }}" id="saved-match-{{ m.id }}"><a href="cv_match/{{ m.id }}{{ list_query }}" data-id="{{ m.id }}"><span class="history-title">{{ m.title }}</span><span class="history-meta">{{ m.about }} · <time datetime="{{ m.saved_at }}">{{ m.saved_on }}</time>{% if !m.done.is_empty() %} · {{ m.done }}{% endif %}</span></a></li>
+{%- endfor %}
+{%- if let Some(next) = next %}
+<li class="history-more"><a class="more" href="cv_match?{{ next }}" data-more="cv_match/history_more?{{ next }}">Show more</a></li>
+{%- endif %}

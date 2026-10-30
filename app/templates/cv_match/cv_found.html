@@ -1,0 +1,1 @@
+<template class="cv-found" data-status="{{ cv_found.status }}">{% for term in cv_found.terms %}<span class="chip">{{ term }}</span>{% endfor %}{% if !cv_found.more.is_empty() %}<span class="muted">{{ cv_found.more }}</span>{% endif %}</template>

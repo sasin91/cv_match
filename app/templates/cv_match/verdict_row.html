@@ -1,0 +1,22 @@
+<li class="item {{ row.verdict }}">
+    <span class="badge {{ row.verdict }}">{{ row.verdict }}</span>
+    <div>
+        <strong>{{ row.text }}</strong>
+        <div class="why">{{ row.reason }}{% if !row.evidence.is_empty() %}<q>{{ row.evidence }}</q>{% endif %}</div>
+        <div class="by muted">{{ row.decided_by }}</div>
+        {%- if !row.alternatives.is_empty() %}
+            <ul class="alternatives">
+                {%- for alternative in row.alternatives %}
+                <li class="item {{ alternative.verdict }}">
+                    <span class="badge {{ alternative.verdict }}">{{ alternative.verdict }}</span>
+                    <div>
+                        <strong>{{ alternative.text }}</strong>
+                        <div class="why">{{ alternative.reason }}{% if !alternative.evidence.is_empty() %}<q>{{ alternative.evidence }}</q>{% endif %}</div>
+                        <div class="by muted">{{ alternative.decided_by }}</div>
+                    </div>
+                </li>
+                {%- endfor %}
+            </ul>
+        {%- endif %}
+    </div>
+</li>

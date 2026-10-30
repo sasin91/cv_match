@@ -3,9 +3,25 @@
 //! A job post and a CV come in the shapes of the language model's extract_job and extract_cv
 //! answers, whether the model read them or Free_reader did, so Cv_matcher scores both the same.
 
+pub mod application_delivery;
+pub mod apply_instructions;
+pub mod apply_notice;
+pub mod batch_row;
+pub mod cv_match_model;
 pub mod cv_matcher;
+pub mod dates;
+pub mod document_box;
 pub mod free_reader;
+pub mod location_notice;
+pub mod match_documents;
+pub mod match_result;
 pub mod match_score;
+pub mod pages;
+pub mod reject_button;
+pub mod reject_reason;
+pub mod saved_match_row;
+pub mod score_cursor;
+pub mod verdict_row;
 
 use serde::{Deserialize, Serialize};
 

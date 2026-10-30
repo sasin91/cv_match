@@ -5,4 +5,6 @@ pub mod cv_match;
 pub mod db;
 pub mod import;
 pub mod php;
+pub mod profile;
+pub mod server;
 pub mod taxonomy;

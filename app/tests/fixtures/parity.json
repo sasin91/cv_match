@@ -92186,5 +92186,251 @@
             "percent": 100,
             "tag": "top"
         }
+    ],
+    "apply_instructions": [
+        {
+            "text": "Backend-udvikler til voksende SaaS-virksomhed\nVi søger en erfaren backend-udvikler, der vil være med til at bygge vores platform.\n\nOm jobbet\nDu bliver en del af et team på seks udviklere i Odense.\n\nDin profil\n- 3+ års erfaring med PHP\n- Erfaring med Laravel eller Symfony\n- Kendskab til MySQL og Redis\n- Docker og Kubernetes er en fordel\n- Du taler og skriver flydende dansk\n- Du er struktureret og ansvarlig\n\nVi tilbyder\n- Fleksible arbejdstider\n- Frokostordning og pension",
+            "found": null
+        },
+        {
+            "text": "Senior Frontend Developer (React)\nWe are looking for a senior frontend developer to join our product team in Copenhagen.\n\nWhat you bring\n• 5 years of experience with JavaScript and TypeScript\n• Strong knowledge of React and Next.js\n• Experience with Tailwind CSS\n• Vue.js is a plus\n• You are proactive and curious\n\nWhat we offer\n• Hybrid work\n• Learning budget",
+            "found": null
+        },
+        {
+            "text": "Social- og sundhedsassistent til hjemmeplejen\nVi har en ledig stilling som social- og sundhedsassistent i dag- og aftenvagt.\n\nVi forventer, at du\n- er uddannet social- og sundhedsassistent\n- har kørekort B\n- har flere års erfaring fra ældreplejen\n- er mødestabil og har godt humør\n\nAnsøgning\nSend din ansøgning senest 1. december.",
+            "found": null
+        },
+        {
+            "text": "Lagermedarbejder\nVi søger en lagermedarbejder med truckcertifikat. Du har gerne erfaring med SAP og lagerstyring.\nArbejdstiden er 37 timer om ugen. Kørekort B er et krav.",
+            "found": null
+        },
+        {
+            "text": "Fullstack udvikler – PHP og Vue\nHos os får du ansvar fra dag ét.\n\nKvalifikationer\n- 2-4 års erfaring som udvikler\n- PHP, Vue.js og Nuxt\n- Git og CI/CD\n- Erfaring med Trongate er en fordel\n- English at a professional level\n\nOm os\nVi er 40 ansatte i Slagelse.",
+            "found": null
+        },
+        {
+            "text": "Projektleeder til byggeriet\nRequirements\n- Projektledelse\n- Erfaring med AutoCAD\n- Kubernets\n- Microsoft Office 365",
+            "found": null
+        },
+        {
+            "text": "",
+            "found": null
+        },
+        {
+            "text": "Anders Testesen\nSoftwareudvikler\n\nProfil\nBackend-udvikler med fokus på PHP, Laravel og MySQL. Arbejder med Docker og Git hver dag.\n\nErhvervserfaring\nSoftwareudvikler, Testfirma ApS\nSeptember 2019 – nu\n- PHP, Laravel, Vue.js, Redis\n\nWebudvikler, Eksempel A/S\n03/2015 - 08/2019\n- JavaScript, jQuery, MySQL\n\nUddannelse\nDatamatiker, Erhvervsakademi\n2012 - 2014\n\nSprog\nDansk, Engelsk",
+            "found": null
+        },
+        {
+            "text": "Jane Example\nFrontend Developer\n\nExperience\nFrontend Developer at Sample Ltd\nJan 2021 - present\nReact, TypeScript, Next.js, Tailwind CSS\n\nJunior Developer at Demo Inc\n2018 - 2020\nJavaScript, HTML, CSS\n\nEducation\nBSc Computer Science\n2015 - 2018",
+            "found": null
+        },
+        {
+            "text": "Mette Prøve\nSocial- og sundhedsassistent\n\nErfaring\nSocial- og sundhedsassistent, Prøve Kommune\n2017 - i dag\nSocial- og sundhedshjælper, Plejehjemmet Eksempel\nmaj 2012 til dec. 2016\n\nUddannelse\nSocial- og sundhedsassistent\n2015 - 2017\n\nKørekort B",
+            "found": null
+        },
+        {
+            "text": "Ole Tom\nLagermedarbejder med truckcertifikat",
+            "found": null
+        },
+        {
+            "text": "Send din ansøgning og CV til job@firma.dk. Skriv \"Backend 2026\" i emnefeltet.",
+            "found": {
+                "by_email": true,
+                "email": "job@firma.dk",
+                "subject": "Backend 2026",
+                "keyword": "",
+                "asks": [
+                    "subject"
+                ],
+                "lines": [
+                    "Send din ansøgning og CV til job@firma.dk.",
+                    "Skriv \"Backend 2026\" i emnefeltet."
+                ],
+                "trap": true
+            }
+        },
+        {
+            "text": "Mærk din ansøgning \"Udvikler\" og send den til hr@kommune.dk senest 1. november.",
+            "found": {
+                "by_email": true,
+                "email": "hr@kommune.dk",
+                "subject": "Udvikler",
+                "keyword": "",
+                "asks": [
+                    "subject"
+                ],
+                "lines": [
+                    "Mærk din ansøgning \"Udvikler\" og send den til hr@kommune.dk senest 1. november."
+                ],
+                "trap": true
+            }
+        },
+        {
+            "text": "To apply, email careers@acme.com with the subject 'Purple Elephant' and answer these questions:\n1. What did you build last?\n2. Why us?\n\nWe look forward to hearing from you.",
+            "found": {
+                "by_email": true,
+                "email": "careers@acme.com",
+                "subject": "Purple Elephant",
+                "keyword": "",
+                "asks": [
+                    "subject",
+                    "questions"
+                ],
+                "lines": [
+                    "To apply, email careers@acme.com with the subject 'Purple Elephant' and answer these questions:",
+                    "1. What did you build last?",
+                    "2. Why us?"
+                ],
+                "trap": true
+            }
+        },
+        {
+            "text": "Ansøgninger via LinkedIn Easy Apply tages ikke i betragtning. Send en mail til rekruttering@firma.dk og besvar følgende spørgsmål:\n- Hvorfor os?\n- Hvad er dit yndlingsværktøj?",
+            "found": {
+                "by_email": true,
+                "email": "rekruttering@firma.dk",
+                "subject": "",
+                "keyword": "",
+                "asks": [
+                    "questions",
+                    "no_easy_apply"
+                ],
+                "lines": [
+                    "Ansøgninger via LinkedIn Easy Apply tages ikke i betragtning.",
+                    "Send en mail til rekruttering@firma.dk og besvar følgende spørgsmål:",
+                    "- Hvorfor os?",
+                    "- Hvad er dit yndlingsværktøj?"
+                ],
+                "trap": true
+            }
+        },
+        {
+            "text": "Please start your cover letter with the word 'banana' so we know you read the whole post.",
+            "found": {
+                "by_email": false,
+                "email": "",
+                "subject": "",
+                "keyword": "banana",
+                "asks": [
+                    "keyword",
+                    "proof"
+                ],
+                "lines": [
+                    "Please start your cover letter with the word 'banana' so we know you read the whole post."
+                ],
+                "trap": true
+            }
+        },
+        {
+            "text": "Send en mail til job@firma.dk med emnet \"Backend 2026\".",
+            "found": {
+                "by_email": true,
+                "email": "job@firma.dk",
+                "subject": "Backend 2026",
+                "keyword": "",
+                "asks": [
+                    "subject"
+                ],
+                "lines": [
+                    "Send en mail til job@firma.dk med emnet \"Backend 2026\"."
+                ],
+                "trap": true
+            }
+        },
+        {
+            "text": "Send din ansøgning og CV til job@firma.dk.",
+            "found": {
+                "by_email": true,
+                "email": "job@firma.dk",
+                "subject": "",
+                "keyword": "",
+                "asks": [],
+                "lines": [
+                    "Send din ansøgning og CV til job@firma.dk."
+                ],
+                "trap": false
+            }
+        },
+        {
+            "text": "Har du spørgsmål til stillingen, så kontakt Peter på peter@firma.dk eller 12345678.",
+            "found": null
+        },
+        {
+            "text": "If you have any questions, email jane@acme.com.",
+            "found": null
+        },
+        {
+            "text": "Vil du vide mere, så skriv til hr@firma.dk.",
+            "found": null
+        },
+        {
+            "text": "Klik på Søg stillingen for at ansøge. Ansøgningsfrist 1. november.",
+            "found": null
+        },
+        {
+            "text": "You know Mailchimp, email marketing and our CV parser.",
+            "found": null
+        },
+        {
+            "text": "Du skal svare på mails fra kunder.",
+            "found": null
+        },
+        {
+            "text": "Om jobbet\n\nSend en mail til job@firma.dk og besvar følgende spørgsmål:\n\n- Hvorfor os?\n- Hvad er dit yndlingsværktøj?\n\nVi holder samtaler løbende.",
+            "found": {
+                "by_email": true,
+                "email": "job@firma.dk",
+                "subject": "",
+                "keyword": "",
+                "asks": [
+                    "questions"
+                ],
+                "lines": [
+                    "Send en mail til job@firma.dk og besvar følgende spørgsmål:",
+                    "- Hvorfor os?",
+                    "- Hvad er dit yndlingsværktøj?"
+                ],
+                "trap": true
+            }
+        },
+        {
+            "text": "Send your CV to jobs@firma.dk.\r\nWrite ‘Rust rocks’ at the top of your application. Applications without it will not be considered.",
+            "found": {
+                "by_email": true,
+                "email": "jobs@firma.dk",
+                "subject": "",
+                "keyword": "Rust rocks",
+                "asks": [
+                    "no_easy_apply",
+                    "proof"
+                ],
+                "lines": [
+                    "Send your CV to jobs@firma.dk.",
+                    "Write ‘Rust rocks’ at the top of your application.",
+                    "Applications without it will not be considered."
+                ],
+                "trap": true
+            }
+        },
+        {
+            "text": "Ansøg på mail: Skriv «Frontend» i emnelinjen og vedhæft CV. Svar på disse spørgsmål:\n• Hvad har du bygget?\n• Hvorfor os?",
+            "found": {
+                "by_email": true,
+                "email": "",
+                "subject": "Frontend",
+                "keyword": "",
+                "asks": [
+                    "subject",
+                    "questions"
+                ],
+                "lines": [
+                    "Ansøg på mail: Skriv «Frontend» i emnelinjen og vedhæft CV.",
+                    "Svar på disse spørgsmål:",
+                    "• Hvad har du bygget?",
+                    "• Hvorfor os?"
+                ],
+                "trap": true
+            }
+        }
     ]
 }
