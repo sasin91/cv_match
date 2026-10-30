@@ -55,8 +55,12 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: app
-      # The same version as the sqlx crate; rust-cache keeps it between runs.
-      - run: cargo install sqlx-cli@0.9.0 --locked --no-default-features --features sqlite
+      # sqlx-cli at the sqlx version Cargo.lock has, so it checks .sqlx the way the macros read it;
+      # rust-cache keeps it between runs.
+      - name: Install sqlx-cli at Cargo.lock's sqlx version
+        run: |
+          version=$(awk '/^name = "sqlx"$/ { getline; gsub(/"/, "", $3); print $3 }' Cargo.lock)
+          cargo install "sqlx-cli@$version" --locked --no-default-features --features sqlite
       - run: mkdir -p target && sqlx database reset -y
       - run: cargo sqlx prepare --check -- --all-targets
 
