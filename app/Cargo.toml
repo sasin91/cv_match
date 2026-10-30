@@ -2,7 +2,7 @@
 name = "recruiter"
 version = "0.1.0"
 edition = "2024"
-description = "Recruiter's cv_match as a local desktop app: the matching core ported from the PHP modules"
+description = "Recruiter's cv_match as a local desktop app"
 publish = false
 
 [dependencies]
@@ -12,6 +12,11 @@ serde_json = "1"
 indexmap = { version = "2", features = ["serde"] }
 regex = "1"
 unicode-normalization = "0.1"
+# SQLite built in, so the exe needs no sqlite3.dll.
+rusqlite = { version = "0.41", features = ["bundled"] }
+# Only for importing from the PHP app's MariaDB; the pure-Rust zlib keeps the build C-free.
+mysql = { version = "28", default-features = false, features = ["minimal-rust"] }
+dirs = "6"
 
 [profile.release]
 lto = "thin"
