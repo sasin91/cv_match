@@ -10,6 +10,7 @@ use recruiter::account::key_vault::KeyVault;
 use recruiter::db;
 use recruiter::server::{self, AppState};
 use recruiter::taxonomy::Taxonomy;
+use serde_json::{Value, json};
 use sqlx::{Executor, SqlitePool};
 use tower::ServiceExt;
 
@@ -146,15 +147,19 @@ async fn the_free_match_reads_both_texts_and_saves_nothing() {
 }
 
 #[tokio::test]
-async fn what_isnt_ported_yet_says_so() {
-    let (status, answer) = send(post_json("/match/fetch_job", r#"{"url": "https://x.dk"}"#)).await;
+async fn a_link_to_this_computer_or_the_home_network_is_not_fetched() {
+    for url in [
+        "http://127.0.0.1:8765/match",
+        "http://192.168.1.1/",
+        "http://localhost/",
+    ] {
+        let (status, answer) = send(post_json("/match/fetch_job", &json!({ "url": url }).to_string())).await;
+        assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{url}");
+        assert!(answer.contains("error"), "{answer}");
+    }
+    let (status, answer) = send(get("/match/nonsense")).await;
     assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
-    assert_eq!(
-        answer,
-        r#"{"error":"Fetching a job post from a link isn't in the desktop app yet."}"#
-    );
-    let (status, _) = send(get("/match/application_delivery/21")).await;
-    assert_eq!(status, StatusCode::NOT_IMPLEMENTED);
+    assert_eq!(answer, r#"{"error":"match/nonsense isn't in the desktop app."}"#);
 }
 
 #[tokio::test]
@@ -495,4 +500,312 @@ async fn checking_without_a_key_says_so() {
     let app = app().await;
     let page = followed(&app, post_form("/account/submit_check", "")).await;
     assert!(page.contains("no key to check: save one first."), "{page}");
+}
+
+// ---------- the AI match and writing, on a stand-in for a local model ----------
+
+/// A stand-in for an OpenAI-compatible model on 127.0.0.1: it answers each kind of request by
+/// the schema it asks for, and counts the requests.
+async fn stand_in_model() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
+    use axum::routing::post;
+    let calls = Arc::new(std::sync::atomic::AtomicUsize::new(0));
+    let counted = calls.clone();
+    let app = axum::Router::new().route(
+        "/v1/chat/completions",
+        post(move |axum::Json(body): axum::Json<Value>| {
+            let counted = counted.clone();
+            async move {
+                counted.fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let required = &body["response_format"]["json_schema"]["schema"]["required"];
+                let asks = |key: &str| required.as_array().unwrap().iter().any(|k| k == key);
+                let user = body["messages"][1]["content"].as_str().unwrap_or("").to_string();
+                let answer = if asks("requirements") {
+                    job_answer()
+                } else if asks("experience_years") {
+                    cv_answer()
+                } else if asks("verdicts") {
+                    judged(&user)
+                } else if asks("application") {
+                    json!({ "post_language": "Danish", "employer_needs": "x", "standout": [], "application": "Kære Firma\n\nJeg søger stillingen." })
+                } else {
+                    resume_answer()
+                };
+                axum::Json(json!({
+                    "choices": [{ "finish_reason": "stop", "message": { "content": answer.to_string(), "refusal": null } }]
+                }))
+            }
+        }),
+    );
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = format!("http://{}/v1", listener.local_addr().unwrap());
+    tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    (address, calls)
+}
+
+fn job_answer() -> Value {
+    let requirement = |value: &str, kind: &str| json!({ "value": value, "english": value, "kind": kind, "required": true, "alt_group": "", "min_years": 0, "min_level": "" });
+    json!({
+        "text_en": "We seek a PHP developer who lives near Copenhagen.",
+        "job_title": "PHP-udvikler",
+        "job_title_en": "PHP developer",
+        "company": "Firma A/S",
+        "requirements": [requirement("PHP", "skill"), requirement("Erfaring med betalingsløsninger", "experience"), requirement("Bosat nær København", "location")],
+        "responsibilities": ["Udvikle API'er"],
+    })
+}
+
+fn cv_answer() -> Value {
+    json!({
+        "name": "Mette Sørensen", "location": "Slagelse, 4200", "title": ["Udvikler"], "skill": ["PHP", "Laravel"],
+        "language": ["Danish"], "certificate": [], "education": [], "experience_years": 8, "responsibilities": [],
+        "text_en": "Mette Sørensen, developer. PHP, Laravel. Built payment flows.",
+    })
+}
+
+/// Every requirement the user message lists ("- [id] (kind) text") as met.
+fn judged(user: &str) -> Value {
+    let verdicts: Vec<Value> = user
+        .lines()
+        .filter_map(|line| line.strip_prefix("- [")?.split(']').next())
+        .map(
+            |id| json!({ "id": id, "verdict": "met", "evidence": "Built payment flows", "reason": "Shown in the CV." }),
+        )
+        .collect();
+    json!({ "verdicts": verdicts })
+}
+
+fn resume_answer() -> Value {
+    json!({
+        "post_language": "Danish", "employer_needs": "x", "standout": [],
+        "keywords": [{ "term": "PHP", "basis": "8 years of PHP" }],
+        "left_out": ["Go"],
+        "resume": {
+            "name": "Mette Sørensen", "title": "PHP-udvikler", "location": "Slagelse", "phone": "", "email": "", "links": [],
+            "intro": ["Backend-udvikler med 8 års PHP."],
+            "experience": [{ "title": "Udvikler", "organisation": "Firma", "location": "", "starts": "2017", "ends": "nu", "summary": "", "bullets": ["Byggede betalingsløsninger"], "note": "" }],
+            "projects": [], "skills": ["PHP"], "languages": ["Dansk"], "education_note": "", "education": [],
+            "experience_heading": "Erfaring", "skills_heading": "Kompetencer", "education_heading": "Uddannelse",
+            "languages_heading": "Sprog", "projects_heading": "",
+        },
+    })
+}
+
+/// The seeded app with a local model saved as the user's key.
+async fn app_with_model() -> (axum::Router, SqlitePool, Arc<std::sync::atomic::AtomicUsize>) {
+    let db = seeded().await;
+    let user_id = server::local_user(&db).await.unwrap();
+    let vault = KeyVault::in_memory();
+    let (base_url, calls) = stand_in_model().await;
+    recruiter::account::account_model::save(&db, &vault, user_id, "local", "stand-in", &base_url, "")
+        .await
+        .unwrap();
+    let app = server::router(Arc::new(AppState::new(
+        db.clone(),
+        TAXONOMY.clone(),
+        user_id,
+        PORT,
+        vault,
+    )));
+    (app, db, calls)
+}
+
+fn post_html(path: &str, json: &Value) -> Request<Body> {
+    let mut request = post_json(path, &json.to_string());
+    request
+        .headers_mut()
+        .insert(header::ACCEPT, "text/html".parse().unwrap());
+    request
+}
+
+/// The saved id a result prints.
+fn saved_id(result: &str) -> i64 {
+    let start = result.find(r#"data-saved-id=""#).unwrap() + r#"data-saved-id=""#.len();
+    result[start..].split('"').next().unwrap().parse().unwrap()
+}
+
+#[tokio::test]
+async fn the_ai_match_reads_judges_scores_and_saves() {
+    let (app, db, _) = app_with_model().await;
+    let (_, page) = send_to(&app, get("/match")).await;
+    assert!(page.contains("aiReady: true"), "{page}");
+    assert!(!page.contains("You're using the free keyword match"));
+
+    let (status, job) = send_to(
+        &app,
+        post_json("/match/extract_job", r#"{"text": "PHP-udvikler søges"}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{job}");
+    let job: Value = serde_json::from_str(&job).unwrap();
+    assert_eq!(job["requirements"][1]["kind"], "experience");
+    let (_, profile) = send_to(&app, post_json("/match/extract_cv", r#"{"text": "Mette Sørensen"}"#)).await;
+    let profile: Value = serde_json::from_str(&profile).unwrap();
+    assert_eq!(profile["location"], "Slagelse, 4200");
+
+    let input = json!({ "job": job, "profile": profile, "job_text": "PHP-udvikler søges", "job_url": "", "cv_name": "", "cv_text": "Mette Sørensen, PHP" });
+    let (status, result) = send_to(&app, post_html("/match/match", &input)).await;
+    assert_eq!(status, StatusCode::OK, "{result}");
+    let id = saved_id(&result);
+    assert!(result.contains("Built payment flows"), "the model's evidence: {result}");
+    assert!(result.contains(r#"class="document" data-kind="application""#));
+    assert!(result.contains("For Laya"));
+    let found = recruiter::matches::match_model::find(&db, id, 3)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(found.cv_name, "Mette Sørensen", "the CV's own name");
+    assert_eq!(found.company, "Firma A/S");
+    let judged: Vec<&str> = found.items.iter().map(|item| item.decided_by.as_str()).collect();
+    assert!(judged.contains(&"llm"), "{judged:?}");
+
+    let (status, scored) = send_to(&app, post_json("/match/match", &input.to_string())).await;
+    assert_eq!(status, StatusCode::OK);
+    let scored: Value = serde_json::from_str(&scored).unwrap();
+    assert!(
+        scored["saved_id"].as_i64().unwrap() > id,
+        "JSON for the résumé's comparison"
+    );
+    assert!(scored["result"]["index"].as_f64().unwrap() > 0.0);
+}
+
+#[tokio::test]
+async fn writing_again_keeps_the_version_before_in_its_list() {
+    let (app, _, _) = app_with_model().await;
+    let (status, first) = send_to(
+        &app,
+        post_json("/match/write_application", r#"{"id": "21", "notes": "kort"}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{first}");
+    assert!(first.contains("Kære Firma"), "{first}");
+    assert!(!first.contains("Earlier versions"));
+    let (_, second) = send_to(
+        &app,
+        post_json("/match/write_application", r#"{"id": 21, "notes": ""}"#),
+    )
+    .await;
+    assert!(second.contains("Earlier versions (1)"), "{second}");
+    assert!(second.contains("by local/stand-in, with the notes “kort”"), "{second}");
+
+    let (_, saved) = send_to(&app, get("/match/saved/21")).await;
+    let saved: Value = serde_json::from_str(&saved).unwrap();
+    assert_eq!(saved["application_text"], "Kære Firma\n\nJeg søger stillingen.");
+    assert!(saved["application_written_at"].is_i64());
+    let earlier = saved["earlier_versions"][0]["id"].as_i64().unwrap();
+
+    let (status, content_type, ..) = pdf(
+        &app,
+        &json!({ "id": 21, "kind": "application", "document_id": earlier }).to_string(),
+    )
+    .await;
+    assert_eq!(
+        (status, content_type.as_str()),
+        (StatusCode::OK, "application/pdf"),
+        "an earlier version's PDF"
+    );
+    let (status, ..) = pdf(
+        &app,
+        &json!({ "id": 21, "kind": "resume", "document_id": earlier }).to_string(),
+    )
+    .await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "a version is only its own kind's");
+}
+
+#[tokio::test]
+async fn a_tailored_resume_comes_back_with_its_keywords_and_compares() {
+    let (app, db, _) = app_with_model().await;
+    let (status, resume) = send_to(&app, post_json("/match/tailor_resume", r#"{"id": 21}"#)).await;
+    assert_eq!(status, StatusCode::OK, "{resume}");
+    assert!(
+        resume.contains("Uses 1 of the post&#39;s keywords: PHP")
+            || resume.contains("Uses 1 of the post&#x27;s keywords: PHP"),
+        "{resume}"
+    );
+    assert!(resume.contains("Left out, since your CV doesn"));
+    assert!(resume.contains(r#"data-structured="true""#));
+    assert!(
+        resume.contains("Earlier versions (1)"),
+        "the seeded résumé stays: {resume}"
+    );
+    let fields = recruiter::matches::match_model::resume_fields(&db, 21)
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(fields.experience_heading, "Erfaring");
+    assert_eq!(
+        fields.projects_heading, "Projects",
+        "an empty heading is the English one"
+    );
+
+    let (status, line) = send_to(&app, get("/match/resume_comparison/21/22")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        line.contains("The tailored résumé scores 20% poor against this post; your CV scored 86% top."),
+        "{line}"
+    );
+    assert!(line.contains(r#"data-id="22""#));
+}
+
+#[tokio::test]
+async fn a_key_switched_off_for_a_use_says_so() {
+    let (app, db, calls) = app_with_model().await;
+    recruiter::account::account_model::save_uses(
+        &db,
+        3,
+        recruiter::matches::match_documents::Uses {
+            resume: true,
+            application: false,
+            job_evaluation: false,
+        },
+    )
+    .await
+    .unwrap();
+    let (status, answer) = send_to(&app, post_json("/match/write_application", r#"{"id": 21}"#)).await;
+    assert_eq!(status, StatusCode::PAYMENT_REQUIRED);
+    let answer: Value = serde_json::from_str(&answer).unwrap();
+    assert_eq!(answer["need_key"], true);
+    assert_eq!(
+        answer["error"],
+        "Your API key is switched off for writing job applications. Switch it on on the API key page."
+    );
+    // Evaluating job posts off: the free reader reads, and the match is still saved.
+    let (status, job) = send_to(
+        &app,
+        post_json(
+            "/match/extract_job",
+            r#"{"text": "PHP-udvikler\nDin profil\n- Erfaring med PHP"}"#,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(calls.load(std::sync::atomic::Ordering::SeqCst), 0, "no model call");
+    let input = json!({ "job": serde_json::from_str::<Value>(&job).unwrap(), "profile": { "skill": ["PHP"] }, "job_text": "PHP-udvikler", "cv_text": "PHP" });
+    let (_, scored) = send_to(&app, post_json("/match/match", &input.to_string())).await;
+    let scored: Value = serde_json::from_str(&scored).unwrap();
+    assert!(scored["saved_id"].is_i64(), "{scored}");
+    let (_, result) = send_to(&app, get("/match/result/21")).await;
+    assert!(
+        result.contains("Your API key isn&#39;t on for writing the application.")
+            || result.contains("Your API key isn&#x27;t on for writing the application."),
+        "{result}"
+    );
+}
+
+#[tokio::test]
+async fn without_a_key_the_ai_endpoints_ask_for_one() {
+    let (status, answer) = send(post_json("/match/write_application", r#"{"id": 21}"#)).await;
+    assert_eq!(status, StatusCode::PAYMENT_REQUIRED);
+    assert!(answer.contains("Add your OpenAI or Anthropic API key, or a local model, on the API key page"));
+}
+
+#[tokio::test]
+async fn the_apply_dialog_says_how_to_send_the_application() {
+    let (status, dialog) = send(get("/match/application_delivery/21")).await;
+    assert_eq!(status, StatusCode::OK, "{dialog}");
+    assert!(dialog.contains("Apply by email"));
+    assert!(dialog.contains(r#"value="job@firma.dk""#));
+    assert!(dialog.contains(r#"href="mailto:job@firma.dk?subject=Backend""#));
+    assert!(dialog.contains("Write the application first (Write application)."));
+    let (status, _) = send(get("/match/application_delivery/99")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
 }

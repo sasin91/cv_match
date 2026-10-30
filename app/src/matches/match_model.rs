@@ -9,11 +9,14 @@ use serde::Serialize;
 use sqlx::SqlitePool;
 use sqlx::sqlite::SqliteConnection;
 
+use super::Job;
 use super::apply_instructions::{self, ApplyInstructions};
 use super::document_box::{APPLICATION, RESUME};
+use super::matcher::{Groups, Score, Verdicts};
 use super::reject_reason::Rejection;
 use super::score_cursor;
 use super::tailored_resume::{ResumeEntry, TailoredResume};
+use crate::php;
 
 /// The integration a match's Jobnet joblog status is kept under.
 pub const JOBNET_JOBLOG: &str = "jobnet_joblog";
@@ -21,6 +24,26 @@ pub const JOBNET_JOBLOG: &str = "jobnet_joblog";
 /// How much of a résumé's links its head keeps, in characters (match_resumes.links is a
 /// varchar(1000) in MariaDB, so the PHP app cuts it there).
 const LINKS_MAX_CHARS: usize = 1000;
+
+/// The longest each of a saved match's texts is kept, in characters: MariaDB's column lengths,
+/// which the PHP app cuts to.
+mod lengths {
+    /// job_title, company and cv_name.
+    pub const NAME: usize = 255;
+    pub const JOB_URL: usize = 2048;
+    /// An item's text, reason and evidence.
+    pub const ITEM: usize = 500;
+    pub const DECIDED_BY: usize = 16;
+}
+
+/// The decimals a match's score is kept with.
+const SCORE_DECIMALS: i32 = 4;
+
+/// The verdicts an item can be saved with; anything else is saved as missing.
+const VERDICTS: [&str; 3] = ["met", "partial", "missing"];
+
+/// What an item without a verdict is saved with.
+const NO_VERDICT_REASON: &str = "No verdict returned.";
 
 /// The Jobnet statuses that mean the candidate applied (Joblog.php's APPLIED_STATUSES).
 pub const APPLIED_STATUSES: [&str; 2] = ["Soegt", "Samtale"];
@@ -54,7 +77,7 @@ pub const LISTS: [(&str, &str, &str); 5] = [
 ];
 
 /// One scored item of a saved match: the "why" behind its score.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SavedItem {
     pub criterion: String,
     pub text: String,
@@ -65,7 +88,7 @@ pub struct SavedItem {
 }
 
 /// A saved match's state in an outside service (Jobnet's joblog).
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Integration {
     pub status: String,
     pub external_id: Option<String>,
@@ -82,8 +105,31 @@ pub struct Document {
     pub written_at: i64,
 }
 
+/// A version of a document with who wrote it and the notes it was written with, as the
+/// "Earlier versions" list shows it.
+#[derive(Debug, Clone, PartialEq, Serialize)]
+pub struct Version {
+    pub id: i64,
+    pub kind: String,
+    pub text: String,
+    pub written_by: String,
+    pub notes: String,
+    pub written_at: i64,
+}
+
+/// A match about to be saved: the post as read, where it came from, and the CV it was matched
+/// with.
+#[derive(Debug, Clone, Copy)]
+pub struct NewMatch<'a> {
+    pub job: &'a Job,
+    pub job_url: &'a str,
+    pub job_text: &'a str,
+    pub cv_name: &'a str,
+    pub cv_text: &'a str,
+}
+
 /// A saved match with everything the page shows of it.
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SavedMatch {
     pub id: i64,
     pub trongate_user_id: Option<i64>,
@@ -111,6 +157,8 @@ pub struct SavedMatch {
     pub rejections: Vec<Rejection>,
     /// How the post asks to be applied to (apply_instructions::read of job_text).
     pub apply_instructions: Option<ApplyInstructions>,
+    /// The application's and résumé's versions before the newest, newest first.
+    pub earlier_versions: Vec<Version>,
 }
 
 /// A saved match as a list shows it (and the Jobnet extension lists it, as JSON).
@@ -187,6 +235,111 @@ impl From<ListedRow> for ListedMatch {
             rejections: Vec::new(),
         }
     }
+}
+
+/// Saves a match for the user: the post and CV, the score, and an item per criterion item with
+/// its verdict; the new match's id.
+pub async fn save(
+    db: &SqlitePool,
+    user_id: i64,
+    new: NewMatch<'_>,
+    groups: &Groups,
+    verdicts: &Verdicts,
+    score: &Score,
+    now: i64,
+) -> sqlx::Result<i64> {
+    let job_title = cut(&new.job.job_title, lengths::NAME);
+    let company = cut(&new.job.company, lengths::NAME);
+    let job_url = (!new.job_url.is_empty()).then(|| cut(new.job_url, lengths::JOB_URL));
+    let cv_name = cut(new.cv_name, lengths::NAME);
+    let index = php::round_to(score.index, SCORE_DECIMALS);
+    let mut tx = db.begin().await?;
+    let id = sqlx::query_file!(
+        "queries/match_model/save.sql",
+        user_id,
+        job_title,
+        company,
+        job_url,
+        new.job_text,
+        cv_name,
+        new.cv_text,
+        index,
+        score.rank,
+        score.total,
+        score.tag,
+        now
+    )
+    .execute(&mut *tx)
+    .await?
+    .last_insert_rowid();
+    let mut order: i64 = 0;
+    for (criterion, list) in groups {
+        for item in list {
+            let saved = SavedItem::of(criterion, &item.text, verdicts.get(&item.id));
+            sqlx::query!(
+                r#"
+                INSERT INTO match_items (match_id, criterion, text, verdict, decided_by, reason, evidence, sort_order)
+                VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
+                "#,
+                id,
+                saved.criterion,
+                saved.text,
+                saved.verdict,
+                saved.decided_by,
+                saved.reason,
+                saved.evidence,
+                order
+            )
+            .execute(&mut *tx)
+            .await?;
+            order += 1;
+        }
+    }
+    tx.commit().await?;
+    Ok(id)
+}
+
+impl SavedItem {
+    /// An item as it is saved: its verdict (missing when it has none it may have), who decided
+    /// it ("llm", or the taxonomy's method) and why, cut to MariaDB's lengths.
+    fn of(criterion: &str, text: &str, verdict: Option<&super::matcher::Verdict>) -> Self {
+        let Some(verdict) = verdict else {
+            return SavedItem {
+                criterion: criterion.to_string(),
+                text: cut(text, lengths::ITEM),
+                verdict: "missing".to_string(),
+                decided_by: "llm".to_string(),
+                reason: NO_VERDICT_REASON.to_string(),
+                evidence: String::new(),
+            };
+        };
+        let known = VERDICTS.contains(&verdict.verdict.as_str());
+        let by_model = verdict.by.is_empty() || verdict.by == "llm";
+        let decided_by = if by_model {
+            "llm"
+        } else if verdict.method.is_empty() {
+            &verdict.by
+        } else {
+            &verdict.method
+        };
+        SavedItem {
+            criterion: criterion.to_string(),
+            text: cut(text, lengths::ITEM),
+            verdict: if known {
+                verdict.verdict.clone()
+            } else {
+                "missing".to_string()
+            },
+            decided_by: cut(decided_by, lengths::DECIDED_BY),
+            reason: cut(&verdict.reason, lengths::ITEM),
+            evidence: cut(&verdict.evidence, lengths::ITEM),
+        }
+    }
+}
+
+/// The first length characters of text (PHP's mb_substr).
+fn cut(text: &str, length: usize) -> String {
+    text.chars().take(length).collect()
 }
 
 /// The user's newest matches not rejected, for the extension's history.
@@ -353,6 +506,7 @@ pub async fn find(db: &SqlitePool, id: i64, user_id: i64) -> sqlx::Result<Option
         rejections: rejections(db, &[id]).await?.remove(&id).unwrap_or_default(),
         apply_instructions: apply_instructions::read(&row.job_text),
         job_text: row.job_text,
+        earlier_versions: earlier_versions(db, id).await?,
     }))
 }
 
@@ -362,6 +516,40 @@ pub async fn newest_document(db: &SqlitePool, id: i64, kind: &str) -> sqlx::Resu
     sqlx::query_file_as!(Document, "queries/match_model/newest_document.sql", id, kind)
         .fetch_optional(db)
         .await
+}
+
+/// The versions of a match's documents before the newest of their kind, newest first.
+async fn earlier_versions(db: &SqlitePool, id: i64) -> sqlx::Result<Vec<Version>> {
+    let versions = sqlx::query_file_as!(Version, "queries/match_model/versions.sql", id)
+        .fetch_all(db)
+        .await?;
+    let mut newest_seen: Vec<String> = Vec::new();
+    Ok(versions
+        .into_iter()
+        .filter(|version| {
+            let newest = !newest_seen.contains(&version.kind);
+            if newest {
+                newest_seen.push(version.kind.clone());
+            }
+            !newest
+        })
+        .collect())
+}
+
+/// One version of a match's documents by its id, or None when it isn't one of that match's.
+pub async fn version(db: &SqlitePool, id: i64, document_id: i64) -> sqlx::Result<Option<Version>> {
+    sqlx::query_as!(
+        Version,
+        r#"
+        SELECT id, kind, text, written_by, notes, written_at
+        FROM documents
+        WHERE id = ?1 AND match_id = ?2
+        "#,
+        document_id,
+        id
+    )
+    .fetch_optional(db)
+    .await
 }
 
 /// Whether the résumé `document_id` was written as fields (match_resumes).
@@ -653,7 +841,7 @@ pub async fn resume_fields(db: &SqlitePool, id: i64) -> sqlx::Result<Option<Tail
 }
 
 /// The résumé `document_id` as fields, or None when it was written as text only.
-async fn resume_fields_of(db: &SqlitePool, document_id: i64) -> sqlx::Result<Option<TailoredResume>> {
+pub async fn resume_fields_of(db: &SqlitePool, document_id: i64) -> sqlx::Result<Option<TailoredResume>> {
     let Some(head) = sqlx::query_file!("queries/match_model/resume_head.sql", document_id)
         .fetch_optional(db)
         .await?

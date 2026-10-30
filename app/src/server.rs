@@ -52,6 +52,8 @@ pub struct AppState {
     pub user_id: i64,
     pub key_vault: KeyVault,
     flash: Mutex<Option<String>>,
+    /// When the pages fetch_job read in its window were fetched, oldest first (unix seconds).
+    fetches: Mutex<Vec<i64>>,
     port: u16,
     /// Where the Jobnet extension was written for the browser to load, or why it couldn't be.
     pub extension_folder: Result<PathBuf, String>,
@@ -65,6 +67,7 @@ impl AppState {
             user_id,
             key_vault,
             flash: Mutex::new(None),
+            fetches: Mutex::new(Vec::new()),
             port,
             extension_folder: Err("The extension wasn't written out.".to_string()),
         }
@@ -76,6 +79,21 @@ impl AppState {
 
     pub fn set_flash(&self, message: String) {
         *self.flash.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(message);
+    }
+
+    /// Counts a page fetch at now, or says in how many minutes the next one may go, when
+    /// pages::MAX_FETCHES were fetched in the last pages::FETCH_WINDOW_SECONDS.
+    pub fn count_fetch(&self, now: i64) -> Result<(), i64> {
+        /// Seconds in a minute, which the wait is told in.
+        const MINUTE: i64 = 60;
+        let mut fetches = self.fetches.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        fetches.retain(|at| *at > now - pages::FETCH_WINDOW_SECONDS);
+        if fetches.len() >= pages::MAX_FETCHES {
+            let wait = fetches[0] + pages::FETCH_WINDOW_SECONDS - now;
+            return Err((wait + MINUTE - 1) / MINUTE);
+        }
+        fetches.push(now);
+        Ok(())
     }
 
     pub fn take_flash(&self) -> Option<String> {
@@ -117,6 +135,18 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/match/joblog_panel/{id}", get(pages::joblog_panel))
         .route("/match/joblog_status", post(pages::joblog_status))
         .route("/match/pdf", post(pages::pdf))
+        .route("/match/fetch_job", post(pages::fetch_job))
+        .route("/match/extract_job", post(pages::extract_job))
+        .route("/match/extract_cv", post(pages::extract_cv))
+        .route("/match/match", post(pages::r#match))
+        .route("/match/saved/{id}", get(pages::saved))
+        .route("/match/write_application", post(pages::write_application))
+        .route("/match/tailor_resume", post(pages::tailor_resume))
+        .route(
+            "/match/resume_comparison/{id}/{resume_id}",
+            get(pages::resume_comparison),
+        )
+        .route("/match/application_delivery/{id}", get(pages::application_delivery))
         .route("/joblog_extension", get(pages::joblog_extension))
         .route("/account", get(account::index))
         .route("/account/submit_key", post(account::submit_key))

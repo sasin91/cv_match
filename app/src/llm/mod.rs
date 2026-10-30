@@ -218,7 +218,7 @@ fn not_answered(provider: &str, error: &reqwest::Error) -> LlmException {
 
 /// An error and what caused it, as one line: reqwest's own message only says which request
 /// failed.
-fn error_chain(error: &reqwest::Error) -> String {
+pub(crate) fn error_chain(error: &reqwest::Error) -> String {
     let mut parts = vec![error.to_string()];
     let mut source = error.source();
     while let Some(cause) = source {

@@ -41,8 +41,15 @@ miniz_oxide = "0.9"
 # The user's API key, in Windows Credential Manager.
 keyring = "4"
 # The language models' APIs over HTTPS (rustls, with Windows' own certificate store), through
-# the system's proxy when one is set.
-reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "system-proxy"] }
+# the system's proxy when one is set; job post pages (Page_reader), compressed as servers send them.
+reqwest = { version = "0.13", default-features = false, features = ["rustls", "json", "system-proxy", "gzip", "brotli", "deflate"] }
+# Job posts fetched from a pasted link (Page_reader): the page's HTML as a tree, its entities
+# and the encodings older sites still send.
+scraper = "0.29"
+ego-tree = "0.11"
+url = "2"
+html-escape = "0.3"
+encoding_rs = "0.8"
 
 [profile.release]
 lto = "thin"

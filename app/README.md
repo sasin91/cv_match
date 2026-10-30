@@ -9,21 +9,25 @@ PHP modules file by file, keeping their names, and is tested against what the PH
 | Rust | Ported from |
 | --- | --- |
 | `src/taxonomy.rs` | `taxonomy/php/Taxonomy.php`, the lexical lookup (match ranks without the embedding model, so `Static_model` and `index.q8.bin` aren't needed) |
-| `src/match/free_reader.rs` | `modules/cv_match/Free_reader.php` (with `free_reader_ignore.php` and `free_reader_soft.php`) |
-| `src/match/matcher.rs` | `modules/cv_match/Cv_matcher.php` |
-| `src/match/match_score.rs` | `modules/cv_match/Match_score.php` |
+| `src/matches/free_reader.rs` | `modules/cv_match/Free_reader.php` (with `free_reader_ignore.php` and `free_reader_soft.php`) |
+| `src/matches/matcher.rs` | `modules/cv_match/Cv_matcher.php` |
+| `src/matches/match_score.rs` | `modules/cv_match/Match_score.php` |
 | `src/php.rs` | the PHP built-ins whose exact behaviour matters (`round`, `trim`) |
 | `src/db.rs`, `migrations/`, `queries/` | `db/schema.sql`'s match tables, for SQLite, and the longer queries |
 | `src/import.rs` | (new) the one-time copy from MariaDB |
-| `src/server.rs`, `src/match/pages.rs` | `Cv_match.php` (the page and its endpoints) |
-| `src/match/match_model.rs` | `Cv_match_model.php` |
-| `src/match/match_result.rs`, `saved_match_row.rs`, `batch_row.rs`, `verdict_row.rs`, `location_notice.rs`, `apply_notice.rs`, `reject_button.rs`, `reject_reason.rs`, `match_documents.rs`, `document_box.rs`, `score_cursor.rs` | the view models of the same names |
-| `src/match/apply_instructions.rs` | `Apply_instructions.php` |
+| `src/server.rs`, `src/matches/pages.rs` | `Cv_match.php` (the page and its endpoints) |
+| `src/matches/match_model.rs` | `Cv_match_model.php` |
+| `src/matches/match_result.rs`, `saved_match_row.rs`, `batch_row.rs`, `verdict_row.rs`, `location_notice.rs`, `apply_notice.rs`, `reject_button.rs`, `reject_reason.rs`, `match_documents.rs`, `document_box.rs`, `score_cursor.rs` | the view models of the same names |
+| `src/matches/apply_instructions.rs` | `Apply_instructions.php` |
 | `templates/match/*.html` | `modules/cv_match/views/*.php` |
 | `src/profile.rs` | the profile as text (`Profile_fields::text` and its queries) |
-| `src/match/joblog.rs`, `joblog_panel.rs` | `Joblog.php` (with `danish_postcodes.php`, read as it is) and `Joblog_panel.php` |
+| `src/matches/joblog.rs`, `joblog_panel.rs` | `Joblog.php` (with `danish_postcodes.php`, read as it is) and `Joblog_panel.php` |
 | `src/extension.rs` | (new) ships `extension/jobnet-joblog` and writes it out for the browser |
-| `src/match/pdf_writer.rs`, `tailored_resume.rs` | `Pdf_writer.php`, and the part of `Tailored_resume.php` its résumé layout uses |
+| `src/matches/pdf_writer.rs`, `tailored_resume.rs` | `Pdf_writer.php` and `Tailored_resume.php` |
+| `src/matches/match_prompts.rs` | `Match_prompts.php` (extract_job, extract_cv and the judging) |
+| `src/matches/ai_match.rs`, `document_writer.rs`, `llm_key.rs` | `Cv_match.php`'s `_ai_match`, `_write_application`, `_tailor_resume` and `llm()` |
+| `src/matches/page_reader.rs` | `Page_reader.php` (fetch_job) |
+| `src/matches/application_delivery.rs`, `cv_links.rs`, `resume_comparison.rs` | the Apply dialog and the résumé's comparison, of the same names |
 | `src/pdf/` | (new) stands in for dompdf: lays the page out on A4 as dompdf 3.1 did and writes the PDF |
 
 The PHP files named here are in [sasin91/recruiter](https://github.com/sasin91/recruiter). What the
@@ -46,6 +50,15 @@ one local user who is always signed in:
   résumé as written;
 - Not interested and Bring back;
 - the free keyword match of new posts against your profile or a pasted CV;
+- with your own key (below), the AI match: the post and CV read by the model (extract_job,
+  extract_cv), what the taxonomy can't decide judged by it, scored and saved; a post read from a
+  pasted link (fetch_job), public web pages only, never this computer or the home network;
+- the job application and the tailored résumé written for a saved match, each writing kept as
+  a new version: the box shows the newest, with the earlier ones listed under it (when, by which
+  model, with which notes) to copy or download as a PDF; the résumé's own match against the post
+  next to the CV's;
+- the Apply dialog: by email (recipient, subject, body, mailto link) or on the employer's site,
+  with the PDFs and your profile links;
 - a match's Jobnet joblog panel, and what the Jobnet extension asks for (the history, a joblog
   entry, marking a match as on Jobnet, the PDFs it attaches);
 - the application, the tailored résumé, the CV and the job post as PDFs (`POST match/pdf`);
@@ -53,8 +66,7 @@ one local user who is always signed in:
   (`assets/match/pdfjs`), so it works offline;
 - the API key page (http://127.0.0.1:8765/account), below.
 
-What isn't ported yet (the AI match, fetching a post from a link, writing, the Apply dialog)
-answers with "... isn't in the desktop app yet.", which the page shows as its error.
+Laya's own reading of a match (laya) is still empty: Laya comes into the app next.
 
 ## PDFs
 
@@ -90,7 +102,11 @@ gpt-5.4-mini (OpenAI) or claude-sonnet-5-5 (Anthropic). A call waits up to 180 s
 come back in the provider's own words for the page, and the log gets the status, the rate-limit
 headers and the body, with any key in it cut to its prefix.
 
-The match page doesn't use the key yet: that comes with the AI match.
+The match page runs each AI step on the key when it is switched on for that use: evaluating job
+posts (extract_job, extract_cv, the judging in match), writing applications, tailoring résumés.
+With evaluating switched off, the free reader reads the post and CV instead, so a match is still
+saved and can have its application and résumé written. Without a key for a use, the page says
+why (none saved, switched off, or gone from Credential Manager) and links to the API key page.
 
 ## The Jobnet extension
 
@@ -171,8 +187,9 @@ the PHP side, write them again and let the Rust tests show what the port has to 
     php app/tests/fixtures/generate.php ../recruiter
 
 `tests/server.rs` sends the page's requests to the server: the lists, a saved match, the free
-match, the joblog, the extension's calls, the PDFs, the API key page, what isn't ported yet, and
-requests from other sites. `tests/llm.rs` calls each adapter against a stand-in for its API on
+match, the AI match and writing against a stand-in for a local model on 127.0.0.1, the Apply
+dialog, the joblog, the extension's calls, the PDFs, the API key page, links that may not be
+fetched, and requests from other sites. `tests/llm.rs` calls each adapter against a stand-in for its API on
 127.0.0.1 and checks the request it sends and how it reads the answers and failures.
 
 `tests/import.rs` imports from a real MariaDB with recruiter's `db/schema.sql` loaded. It empties that

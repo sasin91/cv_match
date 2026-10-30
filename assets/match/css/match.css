@@ -480,6 +480,10 @@ details[open] > summary .chevron { transform: rotate(225deg); }
 .keywords ul { margin: 6px 0 0; padding-left: 20px; }
 .keywords p { margin: 6px 0 0; }
 .compare { margin: 0 0 8px; }
+/* A document's earlier versions, under its text: each with when and how it was written. */
+.versions { margin: 8px 0 0; }
+.versions .version { margin: 8px 0 16px; }
+.versions .version p { margin: 0 0 6px; font-size: 0.9em; }
 .notes { display: block; font-weight: 600; }
 .notes textarea { font-weight: normal; }
 

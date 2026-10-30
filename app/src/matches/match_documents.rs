@@ -99,11 +99,23 @@ pub fn written_of(found: &SavedMatch) -> (Written, Written) {
             text: found.application_text.clone().unwrap_or_default(),
             written_at: at(found.application_written_at),
             structured: false,
+            earlier: earlier_of(found, document_box::APPLICATION),
         },
         Written {
             text: found.resume_text.clone().unwrap_or_default(),
             written_at: at(found.resume_written_at),
             structured: found.resume_structured,
+            earlier: earlier_of(found, document_box::RESUME),
         },
     )
+}
+
+/// The match's earlier versions of one kind of document, newest first.
+fn earlier_of(found: &SavedMatch, kind: &str) -> Vec<super::match_model::Version> {
+    found
+        .earlier_versions
+        .iter()
+        .filter(|version| version.kind == kind)
+        .cloned()
+        .collect()
 }

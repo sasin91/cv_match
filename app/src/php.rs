@@ -16,8 +16,38 @@ pub fn round(value: f64) -> f64 {
     value.round()
 }
 
+/// PHP's `round($value, $places)`: round() on the value scaled to that many decimals.
+pub fn round_to(value: f64, places: i32) -> f64 {
+    let scale = 10f64.powi(places);
+    round(value * scale) / scale
+}
+
 /// The significant decimal digits PHP's round() trusts in a double.
 const SIGNIFICANT_DIGITS: i32 = 15;
+
+/// What PCRE's \s matches without Unicode properties, as PHP's patterns use it, /u or not:
+/// space, tab, newline, vertical tab, form feed and carriage return.
+pub fn is_pcre_space(c: char) -> bool {
+    matches!(c, ' ' | '\t' | '\n' | '\u{0B}' | '\u{0C}' | '\r')
+}
+
+/// PHP's `preg_replace('/\s+/u', ' ', $text)`.
+pub fn collapse_spaces(text: &str) -> String {
+    let mut out = String::with_capacity(text.len());
+    let mut in_space = false;
+    for c in text.chars() {
+        if is_pcre_space(c) {
+            if !in_space {
+                out.push(' ');
+            }
+            in_space = true;
+        } else {
+            out.push(c);
+            in_space = false;
+        }
+    }
+    out
+}
 
 /// PHP's `trim($text)`: only space, tab, newline, carriage return, NUL and vertical tab.
 pub fn trim(text: &str) -> &str {

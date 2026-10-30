@@ -3,25 +3,33 @@
 //! A job post and a CV come in the shapes of the language model's extract_job and extract_cv
 //! answers, whether the model read them or Free_reader did, so Cv_matcher scores both the same.
 
+pub mod ai_match;
 pub mod application_delivery;
 pub mod apply_instructions;
 pub mod apply_notice;
 pub mod batch_row;
+pub mod cv_links;
 pub mod dates;
 pub mod document_box;
+pub mod document_writer;
 pub mod free_reader;
 pub mod joblog;
 pub mod joblog_panel;
+pub mod llm_key;
 pub mod location_notice;
 pub mod match_documents;
 pub mod match_model;
+pub mod match_prompts;
 pub mod match_result;
 pub mod match_score;
 pub mod matcher;
+pub mod page_error;
+pub mod page_reader;
 pub mod pages;
 pub mod pdf_writer;
 pub mod reject_button;
 pub mod reject_reason;
+pub mod resume_comparison;
 pub mod saved_match_row;
 pub mod score_cursor;
 pub mod tailored_resume;
@@ -64,6 +72,10 @@ pub struct Requirement {
 #[serde(default)]
 pub struct Profile {
     pub name: String,
+    /// Where the candidate lives, as the CV gives it ("Slagelse, 4200"); the free reader leaves
+    /// it empty, and so does its JSON, as PHP's Free_reader has no location.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub location: String,
     pub text_en: String,
     pub title: Vec<String>,
     pub skill: Vec<String>,

@@ -1,11 +1,11 @@
-{#- One document box of a saved match's application and résumé panel (views/document_box.php). -#}
+{#- One document box of a saved match's application and résumé panel (views/document_box.php), and on its own as write_application's and tailor_resume's answer, which js/app.js puts in place of the box. Its earlier versions are listed under it, newest first. -#}
 <div class="document" data-kind="{{ doc.kind }}" data-id="{{ doc.id }}"{% if !doc.written_at.is_empty() %} data-written-at="{{ doc.written_at }}"{% endif %} data-structured="{{ doc.structured }}">
     <h4>{{ doc.title }}</h4>
     {%- if let Some(send_to) = doc.send_to %}
         <p class="apply-hint">The post asks for it by email: <a href="{{ send_to.mailto }}">{{ send_to.email }}</a>{% if !send_to.subject.is_empty() %} with the subject <code>{{ send_to.subject }}</code>{% endif %}.</p>
     {%- endif %}
     {%- if doc.off %}
-        <p class="muted">{{ doc.off_note }}</p>
+        <p class="muted">{{ doc.off_note }} Add it or switch it on on the <a href="account">API key page</a>.</p>
     {%- endif %}
     <div class="actions">
         <button type="button" class="write" data-off="{{ doc.off }}"{% if doc.off %} disabled{% endif %}><span class="label">{{ doc.write }}</span></button>
@@ -13,6 +13,39 @@
         <button type="button" class="download-pdf"{% if doc.text.is_empty() %} hidden{% endif %}><span class="label">Download PDF</span></button>
         <span class="muted status" aria-live="polite"></span>
     </div>
+    {%- if doc.keywords.is_some() || !doc.left_out.is_empty() %}
+        <div class="keywords">
+            {%- if let Some(keywords) = doc.keywords %}
+                <details>
+                    <summary>{{ keywords.summary }}</summary>
+                    <ul>
+                        {%- for keyword in keywords.items %}
+                            <li><strong>{{ keyword.term }}</strong>{% if !keyword.basis.is_empty() %}: from {{ keyword.basis }}{% endif %}</li>
+                        {%- endfor %}
+                    </ul>
+                </details>
+            {%- endif %}
+            {%- if !doc.left_out.is_empty() %}
+                <p class="muted">{{ doc.left_out }}</p>
+            {%- endif %}
+        </div>
+    {%- endif %}
     <p class="compare" hidden></p>
     <textarea rows="18"{% if doc.text.is_empty() %} hidden{% endif %}>{{ doc.text }}</textarea>
+    {%- if !doc.earlier.is_empty() %}
+        <details class="versions">
+            <summary>{{ doc.earlier_heading }} ({{ doc.earlier.len() }})</summary>
+            {%- for version in doc.earlier %}
+                <div class="version" data-document-id="{{ version.id }}">
+                    <p class="muted">Written <time datetime="{{ version.written_at }}" data-format="datetime">{{ version.written_at }}</time>{% if !version.written_by.is_empty() %} by {{ version.written_by }}{% endif %}{% if !version.notes.is_empty() %}, with the notes “{{ version.notes }}”{% endif %}.</p>
+                    <div class="actions">
+                        <button type="button" class="copy-version">Copy to clipboard</button>
+                        <button type="button" class="version-pdf"><span class="label">Download PDF</span></button>
+                        <span class="muted status" aria-live="polite"></span>
+                    </div>
+                    <textarea rows="10" readonly>{{ version.text }}</textarea>
+                </div>
+            {%- endfor %}
+        </details>
+    {%- endif %}
 </div>

@@ -312,6 +312,7 @@ fn saved_match(case: &Value) -> SavedMatch {
         rejections: Vec::new(),
         apply_instructions: apply_instructions::read(&job_text),
         job_text,
+        earlier_versions: Vec::new(),
     }
 }
 
