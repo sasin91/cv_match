@@ -384,12 +384,9 @@ pub async fn save_integration(
 /// Rejects one of the user's matches (not interested), with why; false when it isn't theirs.
 pub async fn reject(db: &SqlitePool, id: i64, user_id: i64, rows: &[Rejection], now: i64) -> sqlx::Result<bool> {
     let mut tx = db.begin().await?;
-    if !owns(&mut tx, id, user_id).await? {
+    if !mark_rejected(&mut tx, id, user_id, Some(now)).await? {
         return Ok(false);
     }
-    sqlx::query!(r#"UPDATE cv_matches SET rejected_at = ?1 WHERE id = ?2"#, now, id)
-        .execute(&mut *tx)
-        .await?;
     sqlx::query!(r#"DELETE FROM cv_match_rejections WHERE cv_match_id = ?1"#, id)
         .execute(&mut *tx)
         .await?;
@@ -414,12 +411,9 @@ pub async fn reject(db: &SqlitePool, id: i64, user_id: i64, rows: &[Rejection], 
 /// Brings back one of the user's rejected matches; false when it isn't theirs.
 pub async fn bring_back(db: &SqlitePool, id: i64, user_id: i64) -> sqlx::Result<bool> {
     let mut tx = db.begin().await?;
-    if !owns(&mut tx, id, user_id).await? {
+    if !mark_rejected(&mut tx, id, user_id, None).await? {
         return Ok(false);
     }
-    sqlx::query!(r#"UPDATE cv_matches SET rejected_at = NULL WHERE id = ?1"#, id)
-        .execute(&mut *tx)
-        .await?;
     sqlx::query!(r#"DELETE FROM cv_match_rejections WHERE cv_match_id = ?1"#, id)
         .execute(&mut *tx)
         .await?;
@@ -427,18 +421,21 @@ pub async fn bring_back(db: &SqlitePool, id: i64, user_id: i64) -> sqlx::Result<
     Ok(true)
 }
 
-async fn owns(db: &mut SqliteConnection, id: i64, user_id: i64) -> sqlx::Result<bool> {
-    sqlx::query_scalar!(
-        r#"
-        SELECT EXISTS (
-          SELECT 1 FROM cv_matches WHERE id = ?1 AND trongate_user_id IS ?2
-        ) AS "owns: bool"
-        "#,
+/// Sets when one of the user's matches was rejected (None: not rejected); false when it isn't
+/// theirs. It is the first statement of the reject and bring-back transactions, so each takes
+/// the database's write lock before it reads anything: a transaction that read first could find,
+/// once another one wrote, that SQLite won't let it write any more (SQLITE_BUSY), whatever the
+/// busy timeout.
+async fn mark_rejected(db: &mut SqliteConnection, id: i64, user_id: i64, at: Option<i64>) -> sqlx::Result<bool> {
+    let updated = sqlx::query!(
+        r#"UPDATE cv_matches SET rejected_at = ?1 WHERE id = ?2 AND trongate_user_id IS ?3"#,
+        at,
         id,
         user_id
     )
-    .fetch_one(db)
-    .await
+    .execute(db)
+    .await?;
+    Ok(updated.rows_affected() > 0)
 }
 
 /// A saved match's tailored résumé as fields (cv_match_resumes with its entries and lines), or
@@ -581,5 +578,43 @@ mod tests {
         let (second, next) = ids(&db, "all", 2, &next.unwrap()).await;
         assert_eq!(second, [3, 5]);
         assert_eq!(ids(&db, "all", 2, &next.unwrap()).await, (vec![6], None));
+    }
+
+    /// Rejects and bring-backs of one match sent at once, as from two open tabs.
+    const OVERLAPPING_REQUESTS: i64 = 40;
+
+    #[tokio::test(flavor = "multi_thread")]
+    async fn overlapping_rejects_and_bring_backs_all_save() {
+        // A file, not :memory:, so the pool has several connections, as the app does.
+        let path = std::env::temp_dir().join(format!("recruiter-overlap-{}.sqlite", std::process::id()));
+        let db = db::open(&path).await.unwrap();
+        db.execute(sqlx::raw_sql(SEED)).await.unwrap();
+        let requests: Vec<_> = (0..OVERLAPPING_REQUESTS)
+            .map(|n| {
+                let db = db.clone();
+                tokio::spawn(async move {
+                    if n % 2 == 0 {
+                        let why = Rejection {
+                            reason: "salary".to_string(),
+                            note: String::new(),
+                        };
+                        reject(&db, 1, 1, &[why], n).await
+                    } else {
+                        bring_back(&db, 1, 1).await
+                    }
+                })
+            })
+            .collect();
+        let mut answers = Vec::new();
+        for request in requests {
+            answers.push(request.await.unwrap());
+        }
+        db.close().await;
+        for suffix in ["", "-wal", "-shm"] {
+            let _ = std::fs::remove_file(format!("{}{suffix}", path.display()));
+        }
+        for answer in answers {
+            assert!(answer.unwrap(), "every request is for the user's own match");
+        }
     }
 }

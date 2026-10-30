@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE cv_matches SET rejected_at = ?1 WHERE id = ?2 AND trongate_user_id IS ?3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "b05a354dc8764113aab0fae7d55fcf2770e38e3b2e27b85c3c8b87ea062c79c0"
+}
