@@ -117,9 +117,9 @@ start-up and recorded in `schema_migrations`), with four changes:
   `cv_match_resume_entries`, `cv_match_resume_lines`) hang on the résumé version
   (`document_id`) instead of the match.
 
-Before it applies a migration to a database that already has data, the app copies the file next
-to it, as `recruiter.sqlite.before-<migration>`: if a migration goes wrong, close the app and put
-that copy back in place of `recruiter.sqlite`.
+While the app is new, `migrations/0001_schema.sql` is changed in place instead of getting new
+migrations. A database made from an older version of it is refused at start with a message
+saying so: delete `recruiter.sqlite` and run `recruiter import` again (below).
 
 To copy your data from the PHP app's MariaDB (Herd's copy of production, `recruiter_prod`):
 

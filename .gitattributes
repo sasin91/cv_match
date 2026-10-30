@@ -1,5 +1,8 @@
 # The .sqlx cache is keyed by each query's exact text, so the query files keep LF line endings
 # on Windows checkouts too; with CRLF their queries wouldn't be found in the cache.
 app/queries/** text eol=lf
+# The schema's text is kept with each database made from it (db.rs), so it reads the same on
+# every checkout.
+app/migrations/** text eol=lf
 # Written by `cargo sqlx prepare`; GitHub folds it in diffs.
 app/.sqlx/** linguist-generated=true
