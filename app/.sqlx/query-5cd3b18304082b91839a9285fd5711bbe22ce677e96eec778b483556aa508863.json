@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT text\n        FROM candidate_profile_lines\n        WHERE candidate_id = ?1 AND entry_id IS NULL AND kind = ?2\n        ORDER BY sort_order, id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "text",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "candidate_profile_lines",
+            "name": "text"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "5cd3b18304082b91839a9285fd5711bbe22ce677e96eec778b483556aa508863"
+}

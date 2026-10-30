@@ -3,8 +3,9 @@
 //! (the recruiter-desktop workflow runs it with a MariaDB service). The test empties that
 //! database's cv_match tables, so never point it at real data.
 
-use mysql::prelude::Queryable;
 use recruiter::{db, import};
+use sqlx::mysql::MySqlConnection;
+use sqlx::{AssertSqlSafe, Connection, Executor, SqlitePool};
 
 const ME: &str = "me@example.com";
 
@@ -51,75 +52,74 @@ fn source() -> String {
     std::env::var("RECRUITER_TEST_MYSQL").expect("RECRUITER_TEST_MYSQL names the test MariaDB")
 }
 
-fn seed(url: &str) {
-    let mut conn = mysql::Conn::new(mysql::Opts::from_url(url).unwrap()).unwrap();
-    conn.query_drop(SEED).unwrap();
+async fn seed(url: &str) {
+    let mut conn = MySqlConnection::connect(url).await.unwrap();
+    conn.execute(sqlx::raw_sql(SEED)).await.unwrap();
 }
 
-fn count(target: &rusqlite::Connection, table: &str) -> i64 {
-    target
-        .query_row(&format!("SELECT COUNT(*) FROM {table}"), [], |row| row.get(0))
+async fn count(target: &SqlitePool, table: &str) -> i64 {
+    // Safe: the tests name the tables.
+    sqlx::query_scalar(AssertSqlSafe(format!("SELECT COUNT(*) FROM {table}")))
+        .fetch_one(target)
+        .await
         .unwrap()
 }
 
-#[test]
+#[tokio::test]
 #[ignore = "needs a MariaDB with db/schema.sql: set RECRUITER_TEST_MYSQL"]
-fn copies_only_my_rows_with_their_ids() {
+async fn copies_only_my_rows_with_their_ids() {
     let url = source();
-    seed(&url);
-    let mut target = db::open_in_memory().unwrap();
-    let report = import::import(&url, ME, &mut target).unwrap();
+    seed(&url).await;
+    let target = db::open_in_memory().await.unwrap();
+    let report = import::import(&url, ME, &target).await.unwrap();
 
     assert!(report.skipped_llm_key);
-    assert_eq!(count(&target, "candidates"), 1);
-    assert_eq!(count(&target, "cv_matches"), 1);
-    assert_eq!(count(&target, "cv_match_items"), 2);
-    assert_eq!(count(&target, "cv_match_integrations"), 1);
-    assert_eq!(count(&target, "cv_match_rejections"), 0);
-    assert_eq!(count(&target, "cv_match_resume_lines"), 2);
-    assert_eq!(count(&target, "candidate_profiles"), 1);
-    assert_eq!(count(&target, "candidate_profile_links"), 1);
-    assert_eq!(count(&target, "user_llm_keys"), 0);
+    assert_eq!(count(&target, "candidates").await, 1);
+    assert_eq!(count(&target, "cv_matches").await, 1);
+    assert_eq!(count(&target, "cv_match_items").await, 2);
+    assert_eq!(count(&target, "cv_match_integrations").await, 1);
+    assert_eq!(count(&target, "cv_match_rejections").await, 0);
+    assert_eq!(count(&target, "cv_match_resume_lines").await, 2);
+    assert_eq!(count(&target, "candidate_profiles").await, 1);
+    assert_eq!(count(&target, "candidate_profile_links").await, 1);
+    assert_eq!(count(&target, "user_llm_keys").await, 0);
 
-    let (id, score, title): (i64, f64, String) = target
-        .query_row("SELECT id, score, job_title FROM cv_matches", [], |row| {
-            Ok((row.get(0)?, row.get(1)?, row.get(2)?))
-        })
+    let saved = sqlx::query!(r#"SELECT id, score, job_title, job_text FROM cv_matches"#)
+        .fetch_one(&target)
+        .await
         .unwrap();
-    assert_eq!((id, score, title.as_str()), (21, 0.814, "PHP-udvikler"));
-    let job_text: String = target
-        .query_row("SELECT job_text FROM cv_matches", [], |row| row.get(0))
+    assert_eq!(
+        (saved.id, saved.score, saved.job_title.as_str()),
+        (21, 0.814, "PHP-udvikler")
+    );
+    assert_eq!(saved.job_text, "Vi søger en PHP-udvikler");
+    let started = sqlx::query_scalar!(r#"SELECT started_on FROM candidate_profile_entries"#)
+        .fetch_one(&target)
+        .await
         .unwrap();
-    assert_eq!(job_text, "Vi søger en PHP-udvikler");
-    let started: String = target
-        .query_row("SELECT started_on FROM candidate_profile_entries", [], |row| row.get(0))
+    assert_eq!(started.as_deref(), Some("2017-01-01"));
+    let entry = sqlx::query_scalar!(r#"SELECT entry_id FROM cv_match_resume_lines WHERE kind = 'bullet'"#)
+        .fetch_one(&target)
+        .await
         .unwrap();
-    assert_eq!(started, "2017-01-01");
-    let entry: i64 = target
-        .query_row(
-            "SELECT entry_id FROM cv_match_resume_lines WHERE kind = 'bullet'",
-            [],
-            |row| row.get(0),
-        )
-        .unwrap();
-    assert_eq!(entry, 31);
+    assert_eq!(entry, Some(31));
 }
 
-#[test]
+#[tokio::test]
 #[ignore = "needs a MariaDB with db/schema.sql: set RECRUITER_TEST_MYSQL"]
-fn refuses_a_second_import_and_an_unknown_email() {
+async fn refuses_a_second_import_and_an_unknown_email() {
     let url = source();
-    seed(&url);
-    let mut target = db::open_in_memory().unwrap();
+    seed(&url).await;
+    let target = db::open_in_memory().await.unwrap();
     assert!(matches!(
-        import::import(&url, "nobody@example.com", &mut target),
+        import::import(&url, "nobody@example.com", &target).await,
         Err(import::Error::NoSuchUser(_))
     ));
-    assert_eq!(count(&target, "trongate_users"), 0);
-    import::import(&url, ME, &mut target).unwrap();
+    assert_eq!(count(&target, "trongate_users").await, 0);
+    import::import(&url, ME, &target).await.unwrap();
     assert!(matches!(
-        import::import(&url, ME, &mut target),
+        import::import(&url, ME, &target).await,
         Err(import::Error::AlreadyImported)
     ));
-    assert_eq!(count(&target, "cv_matches"), 1);
+    assert_eq!(count(&target, "cv_matches").await, 1);
 }

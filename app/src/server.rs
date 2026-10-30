@@ -9,7 +9,7 @@
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
-use std::sync::{Arc, Mutex, MutexGuard};
+use std::sync::{Arc, Mutex};
 
 use axum::Router;
 use axum::body::Body;
@@ -18,8 +18,8 @@ use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use rusqlite::Connection;
 use rust_embed::RustEmbed;
+use sqlx::SqlitePool;
 
 use crate::cv_match::pages;
 use crate::extension;
@@ -46,7 +46,7 @@ struct PublicJs;
 /// What every request shares: the database, the taxonomy, the local user and the message the
 /// next page shows (Trongate's flashdata).
 pub struct AppState {
-    db: Mutex<Connection>,
+    db: SqlitePool,
     pub taxonomy: Arc<Taxonomy>,
     pub user_id: i64,
     flash: Mutex<Option<String>>,
@@ -56,9 +56,9 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(db: Connection, taxonomy: Arc<Taxonomy>, user_id: i64, port: u16) -> Self {
+    pub fn new(db: SqlitePool, taxonomy: Arc<Taxonomy>, user_id: i64, port: u16) -> Self {
         AppState {
-            db: Mutex::new(db),
+            db,
             taxonomy,
             user_id,
             flash: Mutex::new(None),
@@ -67,8 +67,8 @@ impl AppState {
         }
     }
 
-    pub fn db(&self) -> MutexGuard<'_, Connection> {
-        self.db.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+    pub fn db(&self) -> &SqlitePool {
+        &self.db
     }
 
     pub fn set_flash(&self, message: String) {
@@ -84,12 +84,18 @@ impl AppState {
 }
 
 /// The local user: the one imported, or a new one on a fresh database.
-pub fn local_user(db: &Connection) -> rusqlite::Result<i64> {
-    db.execute(
-        "INSERT INTO trongate_users (id) SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM trongate_users)",
-        [],
-    )?;
-    db.query_row("SELECT MIN(id) FROM trongate_users", [], |row| row.get(0))
+pub async fn local_user(db: &SqlitePool) -> sqlx::Result<i64> {
+    sqlx::query!(
+        r#"
+        INSERT INTO trongate_users (id)
+        SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM trongate_users)
+        "#
+    )
+    .execute(db)
+    .await?;
+    sqlx::query_scalar!(r#"SELECT MIN(id) AS "id!: i64" FROM trongate_users"#)
+        .fetch_one(db)
+        .await
 }
 
 pub fn router(state: Arc<AppState>) -> Router {

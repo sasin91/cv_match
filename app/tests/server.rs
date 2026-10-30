@@ -9,6 +9,7 @@ use http_body_util::BodyExt;
 use recruiter::db;
 use recruiter::server::{self, AppState};
 use recruiter::taxonomy::Taxonomy;
+use sqlx::{Executor, SqlitePool};
 use tower::ServiceExt;
 
 const PORT: u16 = server::DEFAULT_PORT;
@@ -36,15 +37,21 @@ INSERT INTO cv_match_resume_lines (cv_match_id, entry_id, kind, text, sort_order
 VALUES (21, 1, 'bullet', 'Byggede en API', 0), (21, NULL, 'skill', 'PHP', 1);
 ";
 
-fn app() -> axum::Router {
-    let db = db::open_in_memory().unwrap();
-    db.execute_batch(SEED).unwrap();
-    let user_id = server::local_user(&db).unwrap();
+/// An in-memory database with SEED in it.
+async fn seeded() -> SqlitePool {
+    let db = db::open_in_memory().await.unwrap();
+    db.execute(sqlx::raw_sql(SEED)).await.unwrap();
+    db
+}
+
+async fn app() -> axum::Router {
+    let db = seeded().await;
+    let user_id = server::local_user(&db).await.unwrap();
     server::router(Arc::new(AppState::new(db, TAXONOMY.clone(), user_id, PORT)))
 }
 
 async fn send(request: Request<Body>) -> (StatusCode, String) {
-    send_to(&app(), request).await
+    send_to(&app().await, request).await
 }
 
 /// Sends to one app, so a later request sees what an earlier one saved.
@@ -174,7 +181,7 @@ async fn the_page_css_and_js_are_served() {
         "/cv_match_module/js/app.js",
         "/js/trongate-mx.min.js",
     ] {
-        let response = app().oneshot(get(path)).await.unwrap();
+        let response = app().await.oneshot(get(path)).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK, "{path}");
     }
 }
@@ -185,7 +192,7 @@ async fn pdf_js_is_served_from_the_app_for_offline_uploads() {
         "/cv_match_module/pdfjs/pdf.min.mjs",
         "/cv_match_module/pdfjs/pdf.worker.min.mjs",
     ] {
-        let response = app().oneshot(get(path)).await.unwrap();
+        let response = app().await.oneshot(get(path)).await.unwrap();
         assert_eq!(response.status(), StatusCode::OK, "{path}");
         // Browsers only run a module whose type is JavaScript.
         let mime = response.headers()[header::CONTENT_TYPE].to_str().unwrap();
@@ -211,7 +218,7 @@ async fn pdf(app: &axum::Router, json: &str) -> (StatusCode, String, String, Vec
 
 #[tokio::test]
 async fn a_saved_match_downloads_as_a_pdf_named_for_the_job() {
-    let app = app();
+    let app = app().await;
     let (status, mime, disposition, body) = pdf(
         &app,
         r#"{"id": "21", "kind": "application", "text": "Kære Firma\n\nJeg søger."}"#,
@@ -243,7 +250,7 @@ async fn a_saved_match_downloads_as_a_pdf_named_for_the_job() {
 
 #[tokio::test]
 async fn a_pdf_without_text_or_kind_says_why() {
-    let app = app();
+    let app = app().await;
     for (json, status, error) in [
         (
             r#"{"id": 22, "kind": "application"}"#,
@@ -301,7 +308,7 @@ async fn the_joblog_is_filled_in_from_the_saved_match() {
 
 #[tokio::test]
 async fn the_extension_marks_a_match_as_on_jobnet() {
-    let app = app();
+    let app = app().await;
     let (_, history) = send_to(&app, get("/cv_match/history")).await;
     let history: serde_json::Value = serde_json::from_str(&history).unwrap();
     assert_eq!(history["matches"][0]["id"], 21);
@@ -383,12 +390,11 @@ async fn the_extension_setup_page_says_where_it_is() {
     );
 }
 
-#[test]
-fn a_resume_written_as_fields_is_read_back_whole() {
+#[tokio::test]
+async fn a_resume_written_as_fields_is_read_back_whole() {
     use recruiter::cv_match::cv_match_model;
-    let db = db::open_in_memory().unwrap();
-    db.execute_batch(SEED).unwrap();
-    let resume = cv_match_model::resume_fields(&db, 21).unwrap().unwrap();
+    let db = seeded().await;
+    let resume = cv_match_model::resume_fields(&db, 21).await.unwrap().unwrap();
     assert_eq!(resume.name, "Mette Sørensen");
     assert_eq!(resume.intro, ["Backend-udvikler."]);
     assert!(resume.links.is_empty());
@@ -396,5 +402,5 @@ fn a_resume_written_as_fields_is_read_back_whole() {
     assert_eq!(resume.experience[0].bullets, ["Byggede en API"]);
     assert_eq!(resume.skills, ["PHP"]);
     assert_eq!(resume.experience_heading, "Experience");
-    assert_eq!(cv_match_model::resume_fields(&db, 22).unwrap(), None);
+    assert_eq!(cv_match_model::resume_fields(&db, 22).await.unwrap(), None);
 }
