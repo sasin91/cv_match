@@ -77,7 +77,8 @@ The AI features run on your own key, saved on the API key page (`account`, porte
 recruiter's account page): an OpenAI key, an Anthropic key, or a local OpenAI-compatible server
 such as Ollama (`http://localhost:11434/v1`) or LM Studio (`http://localhost:1234/v1`), which
 needs a model name and usually no key. The key goes in Windows Credential Manager (service
-`Recruiter`, user `user_llm_keys:1`), never in the database; `user_llm_keys` keeps the provider,
+`Recruiter`, user `user_llm_keys:1@` and the database file's full path, so each database has its
+own key), never in the database; `user_llm_keys` keeps the provider,
 model, address, the key's last 4 characters and what the key is used for. "Check key" sends one
 tiny request and says whether it was answered.
 

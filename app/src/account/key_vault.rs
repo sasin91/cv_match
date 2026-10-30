@@ -1,6 +1,7 @@
 //! Where the user's API key is kept, in place of modules/account/Key_vault.php's encryption with
 //! the server's secret: Windows Credential Manager (through the keyring crate), so the key is
-//! never in the database file. Tests keep keys in memory instead.
+//! never in the database file. Each database file has its own credential, so a second database
+//! (--database) can't replace the first one's key. Tests keep keys in memory instead.
 
 use std::collections::HashMap;
 use std::sync::Mutex;
@@ -9,8 +10,9 @@ use std::sync::Mutex;
 const SERVICE: &str = "Recruiter";
 
 pub enum KeyVault {
-    /// Windows Credential Manager (the system's secret store on other platforms).
-    CredentialManager,
+    /// Windows Credential Manager (the system's secret store on other platforms), for the
+    /// database at this full path.
+    CredentialManager { database: String },
     /// Keys in this process only, for tests: user id => key.
     InMemory(Mutex<HashMap<i64, String>>),
 }
@@ -23,7 +25,7 @@ impl KeyVault {
     /// Keeps key as the user's, replacing any kept before.
     pub fn save(&self, user_id: i64, key: &str) -> Result<(), String> {
         match self {
-            KeyVault::CredentialManager => entry(user_id)?.set_password(key).map_err(failed),
+            KeyVault::CredentialManager { database } => entry(database, user_id)?.set_password(key).map_err(failed),
             KeyVault::InMemory(keys) => {
                 lock(keys).insert(user_id, key.to_string());
                 Ok(())
@@ -34,7 +36,7 @@ impl KeyVault {
     /// The user's key, or None when none is kept.
     pub fn key_for(&self, user_id: i64) -> Result<Option<String>, String> {
         match self {
-            KeyVault::CredentialManager => match entry(user_id)?.get_password() {
+            KeyVault::CredentialManager { database } => match entry(database, user_id)?.get_password() {
                 Ok(key) => Ok(Some(key)),
                 Err(keyring::Error::NoEntry) => Ok(None),
                 Err(e) => Err(failed(e)),
@@ -46,7 +48,7 @@ impl KeyVault {
     /// Forgets the user's key; none kept is fine.
     pub fn delete(&self, user_id: i64) -> Result<(), String> {
         match self {
-            KeyVault::CredentialManager => match entry(user_id)?.delete_credential() {
+            KeyVault::CredentialManager { database } => match entry(database, user_id)?.delete_credential() {
                 Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
                 Err(e) => Err(failed(e)),
             },
@@ -58,9 +60,13 @@ impl KeyVault {
     }
 }
 
-/// The user's credential in Credential Manager: Recruiter, user_llm_keys:{id}.
-fn entry(user_id: i64) -> Result<keyring::Entry, String> {
-    keyring::Entry::new(SERVICE, &format!("user_llm_keys:{user_id}")).map_err(failed)
+/// The user's credential in Credential Manager: Recruiter, user_llm_keys:{id}@{database}.
+fn entry(database: &str, user_id: i64) -> Result<keyring::Entry, String> {
+    keyring::Entry::new(SERVICE, &credential_user(database, user_id)).map_err(failed)
+}
+
+fn credential_user(database: &str, user_id: i64) -> String {
+    format!("user_llm_keys:{user_id}@{database}")
 }
 
 fn failed(e: keyring::Error) -> String {
@@ -86,5 +92,13 @@ mod tests {
         vault.delete(1).unwrap();
         vault.delete(1).unwrap();
         assert_eq!(vault.key_for(1).unwrap(), None);
+    }
+
+    #[test]
+    fn each_database_has_its_own_credential() {
+        assert_ne!(
+            credential_user(r"C:\Users\me\AppData\Roaming\Recruiter\recruiter.sqlite", 1),
+            credential_user(r"C:\Users\me\scratch.sqlite", 1)
+        );
     }
 }

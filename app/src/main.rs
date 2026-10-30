@@ -83,7 +83,9 @@ fn run_server(args: &[String]) -> ExitCode {
         Arc::new(Taxonomy::load()),
         user_id,
         port,
-        KeyVault::CredentialManager,
+        KeyVault::CredentialManager {
+            database: full_path(&database),
+        },
     );
     let folder = database
         .parent()
@@ -168,6 +170,15 @@ fn run_import(args: &[String]) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// The database file's full path, which names its key's credential; as given when it can't be
+/// resolved.
+fn full_path(database: &std::path::Path) -> String {
+    std::fs::canonicalize(database)
+        .unwrap_or_else(|_| database.to_path_buf())
+        .display()
+        .to_string()
 }
 
 /// The async runtime the database and the server run on, or None (said why) when it can't start.
