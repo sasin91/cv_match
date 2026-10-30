@@ -11,8 +11,12 @@ SELECT
   m.points,
   m.max_points,
   m.tag,
-  m.application_text IS NOT NULL AS "has_application: bool",
-  m.resume_text IS NOT NULL AS "has_resume: bool",
+  EXISTS (
+    SELECT 1 FROM documents d WHERE d.cv_match_id = m.id AND d.kind = 'application'
+  ) AS "has_application: bool",
+  EXISTS (
+    SELECT 1 FROM documents d WHERE d.cv_match_id = m.id AND d.kind = 'resume'
+  ) AS "has_resume: bool",
   m.created_at,
   (
     SELECT i.text

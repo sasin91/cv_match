@@ -31,11 +31,11 @@ VALUES (21, 'requirements', 'PHP', 'met', 'exact', 'Named in the CV.', 0),
        (21, 'location', 'Bor i København', 'missing', 'llm', 'Lives in Slagelse.', 1);
 INSERT INTO cv_match_rejections (cv_match_id, reason, note, created_at) VALUES (22, 'commute', '1h each way', 0);
 UPDATE cv_matches SET rejected_at = 1 WHERE id = 22;
-UPDATE cv_matches SET resume_text = 'Mette Sørensen' WHERE id = 21;
-INSERT INTO cv_match_resumes (cv_match_id, name, intro) VALUES (21, 'Mette Sørensen', 'Backend-udvikler.');
-INSERT INTO cv_match_resume_entries (id, cv_match_id, section, title, sort_order) VALUES (1, 21, 'experience', 'Udvikler', 0);
-INSERT INTO cv_match_resume_lines (cv_match_id, entry_id, kind, text, sort_order)
-VALUES (21, 1, 'bullet', 'Byggede en API', 0), (21, NULL, 'skill', 'PHP', 1);
+INSERT INTO documents (id, cv_match_id, kind, text, written_at) VALUES (5, 21, 'resume', 'Mette Sørensen', 1760000200);
+INSERT INTO cv_match_resumes (document_id, name, intro) VALUES (5, 'Mette Sørensen', 'Backend-udvikler.');
+INSERT INTO cv_match_resume_entries (id, document_id, section, title, sort_order) VALUES (1, 5, 'experience', 'Udvikler', 0);
+INSERT INTO cv_match_resume_lines (document_id, entry_id, kind, text, sort_order)
+VALUES (5, 1, 'bullet', 'Byggede en API', 0), (5, NULL, 'skill', 'PHP', 1);
 ";
 
 /// An in-memory database with SEED in it.

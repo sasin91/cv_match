@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "-- A saved match's tailored résumé roles, projects and schools, in order. ?1 the match.\nSELECT id, section, title, organisation, location, starts, ends, summary, note\nFROM cv_match_resume_entries\nWHERE cv_match_id = ?1\nORDER BY sort_order, id\n",
+  "query": "-- A tailored résumé's roles, projects and schools, in order. ?1 the résumé (documents.id).\nSELECT id, section, title, organisation, location, starts, ends, summary, note\nFROM cv_match_resume_entries\nWHERE document_id = ?1\nORDER BY sort_order, id\n",
   "describe": {
     "columns": [
       {
@@ -118,5 +118,5 @@
       false
     ]
   },
-  "hash": "174e11df4f2844d96916cbf0949f8d92a05b292a36c8e83e1c4c001c906ad84d"
+  "hash": "6353aa4b97075bb455489f276b0c96ee2b7249d89de9b844ba6ca0b3360cb462"
 }

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "-- A tailored résumé's head. ?1 the résumé (documents.id), then its fields in the columns' order.\nINSERT INTO cv_match_resumes (\n  document_id,\n  name,\n  title,\n  location,\n  phone,\n  email,\n  links,\n  intro,\n  education_note,\n  experience_heading,\n  skills_heading,\n  education_heading,\n  languages_heading,\n  projects_heading\n)\nVALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 14
+    },
+    "nullable": []
+  },
+  "hash": "7bff431c02bd6e0d02baf523563a84e789990b6842375d90163b9a85a332a6e9"
+}

@@ -104,12 +104,22 @@ Reload on the extension. Its manifest `key` fixes its ID, the one `src/extension
 
 The app keeps its data in one SQLite file, `%APPDATA%\Recruiter\recruiter.sqlite` on Windows.
 Its tables are cv_match's MariaDB tables with the same names (`migrations/`, applied in order at
-start-up and recorded in `schema_migrations`), with three changes for one local user:
+start-up and recorded in `schema_migrations`), with four changes:
 
 - `trongate_users` keeps only `id`, and `candidates` drops the login columns.
 - `user_llm_keys.uses` (a SET) is three yes/no columns, `use_for_resume`,
   `use_for_application` and `use_for_job_evaluation`; `base_url` is set for a local model.
 - The API key itself goes in Windows Credential Manager, so the table has no key column.
+- The documents written for a match (its application and tailored résumé) are versions in
+  `documents` instead of `cv_matches.application_text` and `resume_text`, so writing one again
+  keeps the one before; the newest is the one shown. Each version records the model that wrote
+  it (`written_by`) and the notes it was written with. The résumé's fields (`cv_match_resumes`,
+  `cv_match_resume_entries`, `cv_match_resume_lines`) hang on the résumé version
+  (`document_id`) instead of the match.
+
+Before it applies a migration to a database that already has data, the app copies the file next
+to it, as `recruiter.sqlite.before-<migration>`: if a migration goes wrong, close the app and put
+that copy back in place of `recruiter.sqlite`.
 
 To copy your data from the PHP app's MariaDB (Herd's copy of production, `recruiter_prod`):
 
@@ -117,7 +127,8 @@ To copy your data from the PHP app's MariaDB (Herd's copy of production, `recrui
 
 `--from mysql://user:pass@host:3306/db` reads another database and `--database file` writes
 another SQLite file. Only the candidate with that email is copied, with every id as it was, all
-in one transaction. It refuses a database that already has your data. Your LLM key isn't
+in one transaction, each written application and résumé as its first version. It refuses a
+database that already has your data. Your LLM key isn't
 copied, because it is encrypted with the server's secret: add it again on the API key page.
 
 ### Queries

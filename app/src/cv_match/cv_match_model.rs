@@ -1,5 +1,7 @@
 //! Saved matches in the database (cv_matches with cv_match_items, cv_match_integrations,
-//! cv_match_rejections and the tailored résumé tables), ported from modules/cv_match/Cv_match_model.php.
+//! cv_match_rejections, the documents written for them and the tailored résumé tables), ported
+//! from modules/cv_match/Cv_match_model.php. Unlike the PHP app, a document written again is a
+//! new version (documents) rather than written over the one before; the newest is the one shown.
 
 use std::collections::HashMap;
 
@@ -14,6 +16,16 @@ use super::tailored_resume::{ResumeEntry, TailoredResume};
 
 /// The integration a match's Jobnet joblog status is kept under.
 pub const JOBNET_JOBLOG: &str = "jobnet_joblog";
+
+/// The kind of document that is a match's job application (documents.kind).
+pub const APPLICATION: &str = "application";
+
+/// The kind of document that is a match's tailored résumé (documents.kind).
+pub const RESUME: &str = "resume";
+
+/// How much of a résumé's links its head keeps, in characters (cv_match_resumes.links is a
+/// varchar(1000) in MariaDB, so the PHP app cuts it there).
+const LINKS_MAX_CHARS: usize = 1000;
 
 /// The Jobnet statuses that mean the candidate applied (Joblog.php's APPLIED_STATUSES).
 pub const APPLIED_STATUSES: [&str; 2] = ["Soegt", "Samtale"];
@@ -67,6 +79,14 @@ pub struct Integration {
     pub updated_at: i64,
 }
 
+/// One version of a document written for a saved match.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Document {
+    pub id: i64,
+    pub text: String,
+    pub written_at: i64,
+}
+
 /// A saved match with everything the page shows of it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct SavedMatch {
@@ -82,13 +102,14 @@ pub struct SavedMatch {
     pub points: i64,
     pub max_points: i64,
     pub tag: String,
+    /// The newest application's text and when it was written (documents), None when none is.
     pub application_text: Option<String>,
     pub application_written_at: Option<i64>,
     pub resume_text: Option<String>,
     pub resume_written_at: Option<i64>,
     pub rejected_at: Option<i64>,
     pub created_at: i64,
-    /// Its tailored résumé was written as fields (cv_match_resumes).
+    /// Its newest tailored résumé was written as fields (cv_match_resumes).
     pub resume_structured: bool,
     pub items: Vec<SavedItem>,
     pub jobnet_joblog: Option<Integration>,
@@ -307,6 +328,12 @@ pub async fn find(db: &SqlitePool, id: i64, user_id: i64) -> sqlx::Result<Option
     )
     .fetch_all(db)
     .await?;
+    let application = newest_document(db, id, APPLICATION).await?;
+    let resume = newest_document(db, id, RESUME).await?;
+    let resume_structured = match &resume {
+        Some(resume) => has_resume_fields(db, resume.id).await?,
+        None => false,
+    };
     Ok(Some(SavedMatch {
         id: row.id,
         trongate_user_id: row.trongate_user_id,
@@ -319,19 +346,202 @@ pub async fn find(db: &SqlitePool, id: i64, user_id: i64) -> sqlx::Result<Option
         points: row.points,
         max_points: row.max_points,
         tag: row.tag,
-        application_text: row.application_text,
-        application_written_at: row.application_written_at,
-        resume_text: row.resume_text,
-        resume_written_at: row.resume_written_at,
+        application_written_at: application.as_ref().map(|document| document.written_at),
+        application_text: application.map(|document| document.text),
+        resume_written_at: resume.as_ref().map(|document| document.written_at),
+        resume_text: resume.map(|document| document.text),
         rejected_at: row.rejected_at,
         created_at: row.created_at,
-        resume_structured: row.resume_structured,
+        resume_structured,
         items,
         jobnet_joblog: integration(db, id, JOBNET_JOBLOG).await?,
         rejections: rejections(db, &[id]).await?.remove(&id).unwrap_or_default(),
         apply_instructions: apply_instructions::read(&row.job_text),
         job_text: row.job_text,
     }))
+}
+
+/// The newest version of one kind (APPLICATION, RESUME) of a match's documents, or None when
+/// none is written.
+pub async fn newest_document(db: &SqlitePool, id: i64, kind: &str) -> sqlx::Result<Option<Document>> {
+    sqlx::query_file_as!(Document, "queries/cv_match_model/newest_document.sql", id, kind)
+        .fetch_optional(db)
+        .await
+}
+
+/// Whether the résumé `document_id` was written as fields (cv_match_resumes).
+async fn has_resume_fields(db: &SqlitePool, document_id: i64) -> sqlx::Result<bool> {
+    sqlx::query_scalar!(
+        r#"SELECT EXISTS (SELECT 1 FROM cv_match_resumes WHERE document_id = ?1) AS "has: bool""#,
+        document_id
+    )
+    .fetch_one(db)
+    .await
+}
+
+/// Saves a new version of a match's application; the one before stays. `written_by` is the
+/// provider and model that wrote it, `notes` what the user asked for.
+pub async fn save_application(
+    db: &SqlitePool,
+    id: i64,
+    text: &str,
+    written_by: &str,
+    notes: &str,
+    now: i64,
+) -> sqlx::Result<Document> {
+    let mut conn = db.acquire().await?;
+    save_document(&mut conn, id, APPLICATION, text, written_by, notes, now).await
+}
+
+/// Saves a new version of a match's tailored résumé: its fields (TailoredResume) and its plain
+/// text, in one transaction. The version before keeps its own.
+#[allow(clippy::too_many_arguments)]
+pub async fn save_resume_fields(
+    db: &SqlitePool,
+    id: i64,
+    resume: &TailoredResume,
+    text: &str,
+    written_by: &str,
+    notes: &str,
+    now: i64,
+) -> sqlx::Result<Document> {
+    let mut tx = db.begin().await?;
+    let document = save_document(&mut tx, id, RESUME, text, written_by, notes, now).await?;
+    save_resume_head(&mut tx, document.id, resume).await?;
+    let sections = [
+        ("experience", &resume.experience),
+        ("projects", &resume.projects),
+        ("education", &resume.education),
+    ];
+    for (section, entries) in sections {
+        for (order, entry) in entries.iter().enumerate() {
+            save_resume_entry(&mut tx, document.id, section, order as i64, entry).await?;
+        }
+    }
+    for (kind, lines) in [("skill", &resume.skills), ("language", &resume.languages)] {
+        for (order, line) in lines.iter().enumerate() {
+            save_resume_line(&mut tx, document.id, None, kind, line, order as i64).await?;
+        }
+    }
+    tx.commit().await?;
+    Ok(document)
+}
+
+/// Adds a version of one kind of a match's documents.
+async fn save_document(
+    db: &mut SqliteConnection,
+    id: i64,
+    kind: &str,
+    text: &str,
+    written_by: &str,
+    notes: &str,
+    now: i64,
+) -> sqlx::Result<Document> {
+    let document_id = sqlx::query!(
+        r#"
+        INSERT INTO documents (cv_match_id, kind, text, written_by, notes, written_at)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        "#,
+        id,
+        kind,
+        text,
+        written_by,
+        notes,
+        now
+    )
+    .execute(db)
+    .await?
+    .last_insert_rowid();
+    Ok(Document {
+        id: document_id,
+        text: text.to_string(),
+        written_at: now,
+    })
+}
+
+/// A résumé's head: links " · "-joined (cut as MariaDB would), intro paragraphs blank-line-joined.
+async fn save_resume_head(db: &mut SqliteConnection, document_id: i64, resume: &TailoredResume) -> sqlx::Result<()> {
+    let links: String = resume.links.join(" · ").chars().take(LINKS_MAX_CHARS).collect();
+    let intro = resume.intro.join("\n\n");
+    sqlx::query_file!(
+        "queries/cv_match_model/save_resume_head.sql",
+        document_id,
+        resume.name,
+        resume.title,
+        resume.location,
+        resume.phone,
+        resume.email,
+        links,
+        intro,
+        resume.education_note,
+        resume.experience_heading,
+        resume.skills_heading,
+        resume.education_heading,
+        resume.languages_heading,
+        resume.projects_heading
+    )
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+/// One of a résumé's roles, projects or schools, with its bullets.
+async fn save_resume_entry(
+    db: &mut SqliteConnection,
+    document_id: i64,
+    section: &str,
+    order: i64,
+    entry: &ResumeEntry,
+) -> sqlx::Result<()> {
+    let entry_id = sqlx::query!(
+        r#"
+        INSERT INTO cv_match_resume_entries
+          (document_id, section, title, organisation, location, starts, ends, summary, note, sort_order)
+        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+        "#,
+        document_id,
+        section,
+        entry.title,
+        entry.organisation,
+        entry.location,
+        entry.starts,
+        entry.ends,
+        entry.summary,
+        entry.note,
+        order
+    )
+    .execute(&mut *db)
+    .await?
+    .last_insert_rowid();
+    for (n, bullet) in entry.bullets.iter().enumerate() {
+        save_resume_line(db, document_id, Some(entry_id), "bullet", bullet, n as i64).await?;
+    }
+    Ok(())
+}
+
+/// One of a résumé's bullets (entry_id set), skills or languages.
+async fn save_resume_line(
+    db: &mut SqliteConnection,
+    document_id: i64,
+    entry_id: Option<i64>,
+    kind: &str,
+    text: &str,
+    order: i64,
+) -> sqlx::Result<()> {
+    sqlx::query!(
+        r#"
+        INSERT INTO cv_match_resume_lines (document_id, entry_id, kind, text, sort_order)
+        VALUES (?1, ?2, ?3, ?4, ?5)
+        "#,
+        document_id,
+        entry_id,
+        kind,
+        text,
+        order
+    )
+    .execute(db)
+    .await?;
+    Ok(())
 }
 
 /// A match's state in one integration, or None.
@@ -438,10 +648,18 @@ async fn mark_rejected(db: &mut SqliteConnection, id: i64, user_id: i64, at: Opt
     Ok(updated.rows_affected() > 0)
 }
 
-/// A saved match's tailored résumé as fields (cv_match_resumes with its entries and lines), or
-/// None when it was written as text only.
+/// A saved match's newest tailored résumé as fields (cv_match_resumes with its entries and
+/// lines), or None when none is written or it was written as text only.
 pub async fn resume_fields(db: &SqlitePool, id: i64) -> sqlx::Result<Option<TailoredResume>> {
-    let Some(head) = sqlx::query_file!("queries/cv_match_model/resume_head.sql", id)
+    match newest_document(db, id, RESUME).await? {
+        Some(resume) => resume_fields_of(db, resume.id).await,
+        None => Ok(None),
+    }
+}
+
+/// The résumé `document_id` as fields, or None when it was written as text only.
+async fn resume_fields_of(db: &SqlitePool, document_id: i64) -> sqlx::Result<Option<TailoredResume>> {
+    let Some(head) = sqlx::query_file!("queries/cv_match_model/resume_head.sql", document_id)
         .fetch_optional(db)
         .await?
     else {
@@ -465,7 +683,7 @@ pub async fn resume_fields(db: &SqlitePool, id: i64) -> sqlx::Result<Option<Tail
     };
 
     let mut entries: Vec<(i64, String, ResumeEntry)> =
-        sqlx::query_file!("queries/cv_match_model/resume_entries.sql", id)
+        sqlx::query_file!("queries/cv_match_model/resume_entries.sql", document_id)
             .fetch_all(db)
             .await?
             .into_iter()
@@ -488,10 +706,10 @@ pub async fn resume_fields(db: &SqlitePool, id: i64) -> sqlx::Result<Option<Tail
         r#"
         SELECT entry_id, kind, text
         FROM cv_match_resume_lines
-        WHERE cv_match_id = ?1
+        WHERE document_id = ?1
         ORDER BY sort_order, id
         "#,
-        id
+        document_id
     )
     .fetch_all(db)
     .await?;
@@ -578,6 +796,55 @@ mod tests {
         let (second, next) = ids(&db, "all", 2, &next.unwrap()).await;
         assert_eq!(second, [3, 5]);
         assert_eq!(ids(&db, "all", 2, &next.unwrap()).await, (vec![6], None));
+    }
+
+    #[tokio::test]
+    async fn writing_again_keeps_the_version_before_and_shows_the_newest() {
+        let db = db::open_in_memory().await.unwrap();
+        db.execute(sqlx::raw_sql(SEED)).await.unwrap();
+        save_application(&db, 1, "Dear Acme", "openai/gpt-5.4-mini", "", 10)
+            .await
+            .unwrap();
+        save_application(&db, 1, "Dear Acme team", "openai/gpt-5.4-mini", "shorter", 20)
+            .await
+            .unwrap();
+        let first = TailoredResume {
+            name: "Me".into(),
+            skills: vec!["PHP".into()],
+            experience: vec![ResumeEntry {
+                title: "Developer".into(),
+                bullets: vec!["Built things".into()],
+                ..ResumeEntry::default()
+            }],
+            ..TailoredResume::default()
+        };
+        let second = TailoredResume {
+            name: "Me".into(),
+            skills: vec!["Rust".into()],
+            ..TailoredResume::default()
+        };
+        let older = save_resume_fields(&db, 1, &first, "Me, PHP", "", "", 10).await.unwrap();
+        save_resume_fields(&db, 1, &second, "Me, Rust", "", "", 20)
+            .await
+            .unwrap();
+
+        let found = find(&db, 1, 1).await.unwrap().unwrap();
+        assert_eq!(
+            (found.application_text.as_deref(), found.application_written_at),
+            (Some("Dear Acme team"), Some(20))
+        );
+        assert_eq!(found.resume_text.as_deref(), Some("Me, Rust"));
+        assert!(found.resume_structured);
+        assert_eq!(resume_fields(&db, 1).await.unwrap(), Some(second));
+        assert_eq!(resume_fields_of(&db, older.id).await.unwrap(), Some(first));
+        let versions = sqlx::query_scalar!(r#"SELECT COUNT(*) FROM documents WHERE cv_match_id = 1"#)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(versions, 4);
+        let listed = best_first(&db, 1, 10, "", "all").await.unwrap();
+        assert!(listed.rows[0].has_application && listed.rows[0].has_resume);
+        assert!(!listed.rows[1].has_application && !listed.rows[1].has_resume);
     }
 
     /// Rejects and bring-backs of one match sent at once, as from two open tabs.

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "-- One of the user's saved matches. ?1 the match, ?2 the user.\nSELECT\n  id,\n  trongate_user_id,\n  job_title,\n  company,\n  job_url,\n  job_text,\n  cv_name,\n  cv_text,\n  score,\n  points,\n  max_points,\n  tag,\n  application_text,\n  application_written_at,\n  resume_text,\n  resume_written_at,\n  rejected_at,\n  created_at,\n  EXISTS (\n    SELECT 1 FROM cv_match_resumes r WHERE r.cv_match_id = cv_matches.id\n  ) AS \"resume_structured: bool\"\nFROM cv_matches\nWHERE id = ?1 AND trongate_user_id IS ?2\n",
+  "query": "-- The user's newest saved matches not rejected, for the extension's history.\n-- ?1 the user, ?2 the integration the Jobnet joblog is kept under, ?3 how many.\n-- Selects what best_first.sql selects, so both read into ListedRow.\nSELECT\n  m.id,\n  m.job_title,\n  m.company,\n  m.job_url,\n  m.cv_name,\n  m.score,\n  m.points,\n  m.max_points,\n  m.tag,\n  EXISTS (\n    SELECT 1 FROM documents d WHERE d.cv_match_id = m.id AND d.kind = 'application'\n  ) AS \"has_application: bool\",\n  EXISTS (\n    SELECT 1 FROM documents d WHERE d.cv_match_id = m.id AND d.kind = 'resume'\n  ) AS \"has_resume: bool\",\n  m.created_at,\n  (\n    SELECT i.text\n    FROM cv_match_items i\n    WHERE i.cv_match_id = m.id AND i.criterion = 'location' AND i.verdict = 'missing'\n    ORDER BY i.sort_order\n    LIMIT 1\n  ) AS location_missed,\n  j.status AS \"jobnet_status?\",\n  j.logged_at AS jobnet_logged_at,\n  m.rejected_at\nFROM cv_matches m\nLEFT JOIN cv_match_integrations j ON j.cv_match_id = m.id AND j.integration = ?2\nWHERE m.trongate_user_id IS ?1 AND m.rejected_at IS NULL\nORDER BY m.created_at DESC, m.id DESC\nLIMIT ?3\n",
   "describe": {
     "columns": [
       {
@@ -15,19 +15,8 @@
         }
       },
       {
-        "name": "trongate_user_id",
-        "ordinal": 1,
-        "type_info": "Integer",
-        "origin": {
-          "Table": {
-            "table": "cv_matches",
-            "name": "trongate_user_id"
-          }
-        }
-      },
-      {
         "name": "job_title",
-        "ordinal": 2,
+        "ordinal": 1,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -38,7 +27,7 @@
       },
       {
         "name": "company",
-        "ordinal": 3,
+        "ordinal": 2,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -49,7 +38,7 @@
       },
       {
         "name": "job_url",
-        "ordinal": 4,
+        "ordinal": 3,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -59,19 +48,8 @@
         }
       },
       {
-        "name": "job_text",
-        "ordinal": 5,
-        "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "cv_matches",
-            "name": "job_text"
-          }
-        }
-      },
-      {
         "name": "cv_name",
-        "ordinal": 6,
+        "ordinal": 4,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -81,19 +59,8 @@
         }
       },
       {
-        "name": "cv_text",
-        "ordinal": 7,
-        "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "cv_matches",
-            "name": "cv_text"
-          }
-        }
-      },
-      {
         "name": "score",
-        "ordinal": 8,
+        "ordinal": 5,
         "type_info": "Float",
         "origin": {
           "Table": {
@@ -104,7 +71,7 @@
       },
       {
         "name": "points",
-        "ordinal": 9,
+        "ordinal": 6,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -115,7 +82,7 @@
       },
       {
         "name": "max_points",
-        "ordinal": 10,
+        "ordinal": 7,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -126,7 +93,7 @@
       },
       {
         "name": "tag",
-        "ordinal": 11,
+        "ordinal": 8,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -136,63 +103,20 @@
         }
       },
       {
-        "name": "application_text",
-        "ordinal": 12,
-        "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "cv_matches",
-            "name": "application_text"
-          }
-        }
-      },
-      {
-        "name": "application_written_at",
-        "ordinal": 13,
+        "name": "has_application: bool",
+        "ordinal": 9,
         "type_info": "Integer",
-        "origin": {
-          "Table": {
-            "table": "cv_matches",
-            "name": "application_written_at"
-          }
-        }
+        "origin": "Expression"
       },
       {
-        "name": "resume_text",
-        "ordinal": 14,
-        "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "cv_matches",
-            "name": "resume_text"
-          }
-        }
-      },
-      {
-        "name": "resume_written_at",
-        "ordinal": 15,
+        "name": "has_resume: bool",
+        "ordinal": 10,
         "type_info": "Integer",
-        "origin": {
-          "Table": {
-            "table": "cv_matches",
-            "name": "resume_written_at"
-          }
-        }
-      },
-      {
-        "name": "rejected_at",
-        "ordinal": 16,
-        "type_info": "Integer",
-        "origin": {
-          "Table": {
-            "table": "cv_matches",
-            "name": "rejected_at"
-          }
-        }
+        "origin": "Expression"
       },
       {
         "name": "created_at",
-        "ordinal": 17,
+        "ordinal": 11,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -202,18 +126,55 @@
         }
       },
       {
-        "name": "resume_structured: bool",
-        "ordinal": 18,
+        "name": "location_missed",
+        "ordinal": 12,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cv_match_items",
+            "name": "text"
+          }
+        }
+      },
+      {
+        "name": "jobnet_status?",
+        "ordinal": 13,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "cv_match_integrations",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "name": "jobnet_logged_at",
+        "ordinal": 14,
         "type_info": "Integer",
-        "origin": "Expression"
+        "origin": {
+          "Table": {
+            "table": "cv_match_integrations",
+            "name": "logged_at"
+          }
+        }
+      },
+      {
+        "name": "rejected_at",
+        "ordinal": 15,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "cv_matches",
+            "name": "rejected_at"
+          }
+        }
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 3
     },
     "nullable": [
       false,
-      true,
       false,
       false,
       true,
@@ -224,14 +185,12 @@
       false,
       false,
       false,
-      true,
-      true,
-      true,
-      true,
-      true,
       false,
-      false
+      true,
+      true,
+      true,
+      true
     ]
   },
-  "hash": "32f19ab5cfb701a5aa17a1aeb5db059f92629d535e5096b7c98a6906a5ab4288"
+  "hash": "3de11970b2c9f3aca0e47ab2b363e188e2bd3360e1119ff9a0e47f021da20b40"
 }

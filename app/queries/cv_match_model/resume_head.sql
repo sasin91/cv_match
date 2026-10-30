@@ -1,4 +1,4 @@
--- A saved match's tailored résumé head. ?1 the match.
+-- A tailored résumé's head. ?1 the résumé (documents.id).
 SELECT
   name,
   title,
@@ -14,4 +14,4 @@ SELECT
   languages_heading,
   projects_heading
 FROM cv_match_resumes
-WHERE cv_match_id = ?1
+WHERE document_id = ?1

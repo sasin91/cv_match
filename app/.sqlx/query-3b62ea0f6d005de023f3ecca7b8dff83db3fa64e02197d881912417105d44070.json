@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO cv_match_resume_lines (document_id, entry_id, kind, text, sort_order)\n        VALUES (?1, ?2, ?3, ?4, ?5)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "3b62ea0f6d005de023f3ecca7b8dff83db3fa64e02197d881912417105d44070"
+}
