@@ -17,7 +17,8 @@ const ORIGIN: &str = "http://127.0.0.1:8765";
 
 static TAXONOMY: LazyLock<Arc<Taxonomy>> = LazyLock::new(|| Arc::new(Taxonomy::load()));
 
-/// A saved match with a missed location and an email instruction, and a rejected one.
+/// A saved match with a missed location, an email instruction and a résumé written as fields, and
+/// a rejected one.
 const SEED: &str = "
 INSERT INTO trongate_users (id) VALUES (3);
 INSERT INTO cv_matches (id, trongate_user_id, job_title, company, job_url, job_text, cv_name, cv_text, score, points, max_points, tag, created_at)
@@ -28,6 +29,11 @@ VALUES (21, 'requirements', 'PHP', 'met', 'exact', 'Named in the CV.', 0),
        (21, 'location', 'Bor i København', 'missing', 'llm', 'Lives in Slagelse.', 1);
 INSERT INTO cv_match_rejections (cv_match_id, reason, note, created_at) VALUES (22, 'commute', '1h each way', 0);
 UPDATE cv_matches SET rejected_at = 1 WHERE id = 22;
+UPDATE cv_matches SET resume_text = 'Mette Sørensen' WHERE id = 21;
+INSERT INTO cv_match_resumes (cv_match_id, name, intro) VALUES (21, 'Mette Sørensen', 'Backend-udvikler.');
+INSERT INTO cv_match_resume_entries (id, cv_match_id, section, title, sort_order) VALUES (1, 21, 'experience', 'Udvikler', 0);
+INSERT INTO cv_match_resume_lines (cv_match_id, entry_id, kind, text, sort_order)
+VALUES (21, 1, 'bullet', 'Byggede en API', 0), (21, NULL, 'skill', 'PHP', 1);
 ";
 
 fn app() -> axum::Router {
@@ -173,6 +179,96 @@ async fn the_page_css_and_js_are_served() {
     }
 }
 
+#[tokio::test]
+async fn pdf_js_is_served_from_the_app_for_offline_uploads() {
+    for path in [
+        "/cv_match_module/pdfjs/pdf.min.mjs",
+        "/cv_match_module/pdfjs/pdf.worker.min.mjs",
+    ] {
+        let response = app().oneshot(get(path)).await.unwrap();
+        assert_eq!(response.status(), StatusCode::OK, "{path}");
+        // Browsers only run a module whose type is JavaScript.
+        let mime = response.headers()[header::CONTENT_TYPE].to_str().unwrap();
+        assert!(mime.contains("javascript"), "{path}: {mime}");
+    }
+}
+
+/// A saved match's PDF: its status, Content-Type and Content-Disposition, and its bytes.
+async fn pdf(app: &axum::Router, json: &str) -> (StatusCode, String, String, Vec<u8>) {
+    let response = app.clone().oneshot(post_json("/cv_match/pdf", json)).await.unwrap();
+    let status = response.status();
+    let header_of = |name| {
+        response
+            .headers()
+            .get(name)
+            .map(|value: &header::HeaderValue| value.to_str().unwrap().to_string())
+            .unwrap_or_default()
+    };
+    let (mime, disposition) = (header_of(header::CONTENT_TYPE), header_of(header::CONTENT_DISPOSITION));
+    let body = response.into_body().collect().await.unwrap().to_bytes().to_vec();
+    (status, mime, disposition, body)
+}
+
+#[tokio::test]
+async fn a_saved_match_downloads_as_a_pdf_named_for_the_job() {
+    let app = app();
+    let (status, mime, disposition, body) = pdf(
+        &app,
+        r#"{"id": "21", "kind": "application", "text": "Kære Firma\n\nJeg søger."}"#,
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    assert_eq!(mime, "application/pdf");
+    assert_eq!(
+        disposition,
+        "attachment; filename=\"Application - PHP-udvikler - Firma A S.pdf\"; filename*=UTF-8''Application%20-%20PHP-udvikler%20-%20Firma%20A%20S.pdf"
+    );
+    assert!(body.starts_with(b"%PDF-"));
+
+    // The job post and the CV are always the saved text; the job post's name is in Danish too.
+    let (status, _, disposition, _) = pdf(&app, r#"{"id": 22, "kind": "job"}"#).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(
+        disposition.contains("filename*=UTF-8''Job%20ad%20-%20Mekaniker.pdf"),
+        "{disposition}"
+    );
+    let (status, _, _, _) = pdf(&app, r#"{"id": 21, "kind": "cv", "text": "ignored"}"#).await;
+    assert_eq!(status, StatusCode::OK);
+
+    // A résumé written as fields is laid out from them.
+    let (status, _, disposition, body) = pdf(&app, r#"{"id": 21, "kind": "resume"}"#).await;
+    assert_eq!(status, StatusCode::OK, "{}", String::from_utf8_lossy(&body));
+    assert!(disposition.contains("Resume%20-%20PHP-udvikler"));
+}
+
+#[tokio::test]
+async fn a_pdf_without_text_or_kind_says_why() {
+    let app = app();
+    for (json, status, error) in [
+        (
+            r#"{"id": 22, "kind": "application"}"#,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "There is no text to export yet.",
+        ),
+        (
+            r#"{"id": 21, "kind": "letter"}"#,
+            StatusCode::UNPROCESSABLE_ENTITY,
+            "Choose the application, the résumé, the CV or the job post.",
+        ),
+        (
+            r#"{"id": 99, "kind": "job"}"#,
+            StatusCode::NOT_FOUND,
+            "That saved match was not found.",
+        ),
+    ] {
+        let (answer_status, mime, _, body) = pdf(&app, json).await;
+        assert_eq!(answer_status, status, "{json}");
+        assert_eq!(mime, "application/json");
+        let answer: serde_json::Value = serde_json::from_slice(&body).unwrap();
+        assert_eq!(answer["error"], error, "{json}");
+    }
+}
+
 /// The Jobnet extension's origin (extension::ID).
 const EXTENSION: &str = "chrome-extension://jijhihfppobcoconjjllmffbohpffbll";
 
@@ -285,4 +381,20 @@ async fn the_extension_setup_page_says_where_it_is() {
         page.contains("The app couldn't put the extension in a folder for your browser."),
         "{page}"
     );
+}
+
+#[test]
+fn a_resume_written_as_fields_is_read_back_whole() {
+    use recruiter::cv_match::cv_match_model;
+    let db = db::open_in_memory().unwrap();
+    db.execute_batch(SEED).unwrap();
+    let resume = cv_match_model::resume_fields(&db, 21).unwrap().unwrap();
+    assert_eq!(resume.name, "Mette Sørensen");
+    assert_eq!(resume.intro, ["Backend-udvikler."]);
+    assert!(resume.links.is_empty());
+    assert_eq!(resume.experience.len(), 1);
+    assert_eq!(resume.experience[0].bullets, ["Byggede en API"]);
+    assert_eq!(resume.skills, ["PHP"]);
+    assert_eq!(resume.experience_heading, "Experience");
+    assert_eq!(cv_match_model::resume_fields(&db, 22).unwrap(), None);
 }

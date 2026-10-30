@@ -9,7 +9,8 @@
  *
  * Run it again whenever the PHP side changes; the Rust tests then show what
  * the port has to follow. Inputs are the skill names in eval/data/gold.jsonl
- * (public job ads) and the synthetic posts and CVs below.
+ * (public job ads) and the synthetic posts and CVs below, and the documents
+ * Pdf_writer lays out as pages for its PDFs.
  */
 $root = rtrim($argv[1] ?? '', '/\\');
 if ($root === '' || !is_file("$root/modules/cv_match/Cv_matcher.php")) {
@@ -22,6 +23,7 @@ require_once "$root/modules/cv_match/Cv_matcher.php";
 require_once "$root/modules/cv_match/Match_score.php";
 require_once "$root/modules/cv_match/Apply_instructions.php";
 require_once "$root/modules/cv_match/Joblog.php";
+require_once "$root/modules/cv_match/Pdf_writer.php";
 
 // The day years_worked() counts "until now" from, fixed so the fixtures don't age.
 const NOW = '2026-10-30 12:00:00 UTC';
@@ -286,6 +288,74 @@ foreach ([gmmktime(0, 59, 0, 3, 29, 2026), gmmktime(1, 0, 0, 3, 29, 2026), gmmkt
     }
 }
 
+// ---------- Pdf_writer: the pages its PDFs are laid out from ----------
+
+$pdf_texts = [
+    "Kære Acme\r\n\r\nJeg søger **stillingen**.\n\nVenlig hilsen\nJonas Hansen",
+    "Jonas Hansen\njonas@example.com | +45 12 34 56 78\n\nProfil\nBackend-udvikler med 9 års erfaring i PHP & Laravel.\n\nErfaring\nTech Lead, Acme ApS (2019 - 2023)\n- Ledte et team på 4 <udviklere>\n- Opgraderede Symfony 6 til 7\n\nKOMPETENCER\n- PHP, Laravel, Kubernetes",
+    "https://example.dk/job/1\n\nVi søger en <udvikler>.\nDu har:\n- PHP\n- Laravel\n\nSøg nu.",
+    // Roles with a dates line, a school, a heading straight after a heading, a heading last.
+    "Mette Sørensen\nAarhus\nmette@example.dk\n\nErfaring\n\nSenior udvikler · Nordlys A/S\napril 2021 – nu\n- Byggede en ordre-API\n- Mentor for 3 juniorer\n\nUdvikler\nFirma ApS, 2018-2021\n- Laravel\n\nUddannelse\nDatamatiker\n- EAAA, 2017\n\nSprog\nInteresser\nLøb og klatring.\nOg brætspil.\n\nReferencer:",
+    // Bullets in other marks, a paragraph after bullets, trailing spaces, a lone carriage return.
+    "Navn\n\nResumé\n• Første   \n* Anden\n– Tredje\nEt afsnit efter punkterne.\rEn linje mere.\n\n\n\nSidste afsnit, med komma.",
+    // A letter outside Windows-1252, and white space no-break spaces keep.
+    "Dear Łukasz → hi\n\n\u{a0}Indrykket\u{a0}linje\n   \nAfsnit med *stjerne* og **fed** og ** ikke**.",
+    "",
+    "   \n\n  ",
+    "Kun et navn",
+    "Navn\nKontakt\n- tidlig punkt\n\nHeading Med Fem Ord Her\n- a\n\nEt spørgsmål?\n- b\n\n0\n- c",
+];
+$pdf = ['html' => [], 'resume_fields_html' => [], 'file_names' => []];
+foreach ($pdf_texts as $text) {
+    foreach (['application', 'resume', 'cv', 'job', 'other'] as $kind) {
+        $pdf['html'][] = ['kind' => $kind, 'text' => $text, 'title' => 'Ansøgning: Acme & "Co"',
+            'html' => Pdf_writer::html($kind, $text, 'Ansøgning: Acme & "Co"')];
+    }
+}
+$entry = fn(array $more) => $more + ['title' => '', 'organisation' => '', 'location' => '', 'starts' => '', 'ends' => '',
+    'summary' => '', 'bullets' => [], 'note' => ''];
+$fields = [
+    'name' => ' Mette  Sørensen ',
+    'title' => 'Backend-udvikler',
+    'location' => 'Aarhus',
+    'phone' => '+45 22 33 44 55',
+    'email' => 'mette@example.dk',
+    'links' => ['github.com/mette', ''],
+    'intro' => ['Backend-udvikler med 7 års erfaring i PHP.', 'Bor i Aarhus.'],
+    'experience' => [
+        $entry(['title' => 'Senior PHP-udvikler', 'organisation' => 'Nordlys A/S', 'location' => 'Aarhus', 'starts' => 'april 2021',
+            'ends' => 'nu', 'summary' => 'Logistikplatform', 'bullets' => ['Byggede en <ordre-API>', 7], 'note' => 'Fuld tid.']),
+        $entry(['title' => 'Udvikler', 'starts' => '2018']),
+        $entry(['organisation' => 'dropped: no title']),
+    ],
+    'projects' => [$entry(['title' => 'recruiter', 'summary' => 'Jobsøgning med AI'])],
+    'skills' => ['PHP', 'Laravel'],
+    'languages' => ['Dansk (modersmål)'],
+    'education_note' => 'Selvlært ved siden af.',
+    'education' => [
+        $entry(['title' => 'Datamatiker', 'organisation' => 'EAAA', 'location' => 'Aarhus', 'starts' => '2015', 'ends' => '2017']),
+    ],
+    'experience_heading' => 'Erfaring',
+    'skills_heading' => 'Kompetencer',
+    'education_heading' => 'Uddannelse',
+    'languages_heading' => '',
+];
+foreach ([
+    $fields,
+    ['skills' => [], 'languages' => [], 'projects' => [], 'education' => [], 'education_note' => '', 'title' => '', 'links' => []] + $fields,
+    ['name' => 'Łukasz Nowak', 'location' => '', 'phone' => '', 'email' => '', 'links' => ['0'], 'intro' => []] + $fields,
+] as $answer) {
+    $resume = Tailored_resume::clean($answer);
+    $pdf['resume_fields_html'][] = ['resume' => $resume, 'title' => 'Résumé: Acme',
+        'html' => Pdf_writer::resume_fields_html($resume, 'Résumé: Acme')];
+}
+foreach ([['resume', 'Udvikler / PHP', 'Acme: "ApS"'], ['application', '', ''], ['job', ' Udvikler ', 'Acme'], ['cv', 'Udvikler', ''],
+          ['other', "Tab\there\u{a0}nbsp", "Ny\nlinje"], ['application', str_repeat('Lang titel ', 20), 'Acme'],
+          ['resume', 'Sygeplejerske – akut', 'Region Sjælland|<Holbæk>']] as [$kind, $job_title, $company]) {
+    $pdf['file_names'][] = ['kind' => $kind, 'job_title' => $job_title, 'company' => $company,
+        'file_name' => Pdf_writer::file_name($kind, $job_title, $company)];
+}
+
 $out = [
     'now' => NOW,
     'rank' => $rank,
@@ -298,6 +368,7 @@ $out = [
     'scores' => $scores,
     'apply_instructions' => $apply,
     'joblog' => $joblog,
+    'pdf' => $pdf,
 ];
 file_put_contents(__DIR__ . '/parity.json', json_encode($out, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR) . "\n");
 echo count($rank), " rankings, ", count($readings), " readings, ", count($matches), " matches\n";

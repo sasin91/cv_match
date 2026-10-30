@@ -7,7 +7,8 @@ use indexmap::IndexMap;
 use recruiter::cv_match::cv_match_model::{Integration, SavedItem, SavedMatch};
 use recruiter::cv_match::cv_matcher::{self, CvMatcher, Verdicts};
 use recruiter::cv_match::free_reader::{self, FreeReader, YearMonth};
-use recruiter::cv_match::{apply_instructions, joblog, match_score};
+use recruiter::cv_match::tailored_resume::TailoredResume;
+use recruiter::cv_match::{apply_instructions, joblog, match_score, pdf_writer};
 use recruiter::taxonomy::{self, Taxonomy};
 use serde::Serialize;
 use serde_json::Value;
@@ -344,6 +345,45 @@ fn a_saved_match_fills_the_joblog_as_php_fills_it() {
             &format!("joblog::applied_on({case})"),
             &case["applied_on"],
             joblog::applied_on(jobnet.as_ref()),
+        );
+    }
+}
+
+fn pdf_cases(name: &str) -> &'static Vec<Value> {
+    FIXTURES["pdf"][name]
+        .as_array()
+        .unwrap_or_else(|| panic!("parity.json has no pdf.{name}"))
+}
+
+#[test]
+fn the_pdf_pages_are_laid_out_as_php_lays_them_out() {
+    for case in pdf_cases("html") {
+        let (kind, input, title) = (text(&case["kind"]), text(&case["text"]), text(&case["title"]));
+        assert_eq!(
+            pdf_writer::html(kind, input, title),
+            text(&case["html"]),
+            "html({kind:?}, {input:?})"
+        );
+    }
+    for case in pdf_cases("resume_fields_html") {
+        let resume: TailoredResume = serde_json::from_value(case["resume"].clone()).unwrap();
+        assert_eq!(
+            pdf_writer::resume_fields_html(&resume, text(&case["title"])),
+            text(&case["html"]),
+            "resume_fields_html({:?})",
+            resume.name
+        );
+    }
+}
+
+#[test]
+fn pdf_file_names_are_the_ones_php_gives() {
+    for case in pdf_cases("file_names") {
+        let (kind, job_title, company) = (text(&case["kind"]), text(&case["job_title"]), text(&case["company"]));
+        assert_eq!(
+            pdf_writer::file_name(kind, job_title, company),
+            text(&case["file_name"]),
+            "file_name({kind:?}, {job_title:?}, {company:?})"
         );
     }
 }

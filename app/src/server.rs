@@ -28,11 +28,13 @@ use crate::taxonomy::Taxonomy;
 /// The port the app listens on unless told otherwise, fixed so the Jobnet extension can find it.
 pub const DEFAULT_PORT: u16 = 8765;
 
-/// modules/cv_match's css/ and js/, served under cv_match_module/ as Trongate serves them.
+/// modules/cv_match's css/ and js/, served under cv_match_module/ as Trongate serves them, and
+/// pdf.js beside them, which js/app.js reads uploaded PDFs with.
 #[derive(RustEmbed)]
 #[folder = "../assets/cv_match/"]
 #[include = "css/*"]
 #[include = "js/*"]
+#[include = "pdfjs/*.mjs"]
 struct CvMatchAssets;
 
 /// Trongate MX, served under js/.
@@ -105,6 +107,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/cv_match/joblog/{id}", get(pages::joblog))
         .route("/cv_match/joblog_panel/{id}", get(pages::joblog_panel))
         .route("/cv_match/joblog_status", post(pages::joblog_status))
+        .route("/cv_match/pdf", post(pages::pdf))
         .route("/joblog_extension", get(pages::joblog_extension))
         .route("/cv_match_module/{*path}", get(cv_match_asset))
         .route("/js/{*path}", get(public_js))

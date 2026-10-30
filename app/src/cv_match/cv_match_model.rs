@@ -1,5 +1,5 @@
-//! Saved matches in the database (cv_matches with cv_match_items, cv_match_integrations and
-//! cv_match_rejections), ported from modules/cv_match/Cv_match_model.php.
+//! Saved matches in the database (cv_matches with cv_match_items, cv_match_integrations,
+//! cv_match_rejections and the tailored résumé tables), ported from modules/cv_match/Cv_match_model.php.
 
 use std::collections::HashMap;
 
@@ -9,6 +9,7 @@ use serde::Serialize;
 use super::apply_instructions::{self, ApplyInstructions};
 use super::reject_reason::Rejection;
 use super::score_cursor;
+use super::tailored_resume::{ResumeEntry, TailoredResume};
 
 /// The integration a match's Jobnet joblog status is kept under.
 pub const JOBNET_JOBLOG: &str = "jobnet_joblog";
@@ -425,4 +426,105 @@ fn owns(db: &Connection, id: i64, user_id: i64) -> rusqlite::Result<bool> {
         params![id, user_id],
         |row| row.get(0),
     )
+}
+
+/// A saved match's tailored résumé as fields (cv_match_resumes with its entries and lines), or
+/// None when it was written as text only.
+pub fn resume_fields(db: &Connection, id: i64) -> rusqlite::Result<Option<TailoredResume>> {
+    let head = db
+        .query_row(
+            "SELECT name, title, location, phone, email, links, intro, education_note, experience_heading,
+                    skills_heading, education_heading, languages_heading, projects_heading
+             FROM cv_match_resumes WHERE cv_match_id = ?1",
+            [id],
+            |row| {
+                let links: String = row.get("links")?;
+                let intro: String = row.get("intro")?;
+                Ok(TailoredResume {
+                    name: row.get("name")?,
+                    title: row.get("title")?,
+                    location: row.get("location")?,
+                    phone: row.get("phone")?,
+                    email: row.get("email")?,
+                    links: split_unless_empty(&links, " · "),
+                    intro: split_unless_empty(&intro, "\n\n"),
+                    education_note: row.get("education_note")?,
+                    experience_heading: row.get("experience_heading")?,
+                    skills_heading: row.get("skills_heading")?,
+                    education_heading: row.get("education_heading")?,
+                    languages_heading: row.get("languages_heading")?,
+                    projects_heading: row.get("projects_heading")?,
+                    ..TailoredResume::default()
+                })
+            },
+        )
+        .optional()?;
+    let Some(mut resume) = head else {
+        return Ok(None);
+    };
+
+    let mut statement = db.prepare(
+        "SELECT id, section, title, organisation, location, starts, ends, summary, note
+         FROM cv_match_resume_entries WHERE cv_match_id = ?1 ORDER BY sort_order, id",
+    )?;
+    let mut entries: Vec<(i64, String, ResumeEntry)> = statement
+        .query_map([id], |row| {
+            Ok((
+                row.get("id")?,
+                row.get("section")?,
+                ResumeEntry {
+                    title: row.get("title")?,
+                    organisation: row.get("organisation")?,
+                    location: row.get("location")?,
+                    starts: row.get("starts")?,
+                    ends: row.get("ends")?,
+                    summary: row.get("summary")?,
+                    bullets: Vec::new(),
+                    note: row.get("note")?,
+                },
+            ))
+        })?
+        .collect::<rusqlite::Result<_>>()?;
+
+    let mut statement = db.prepare(
+        "SELECT entry_id, kind, text FROM cv_match_resume_lines WHERE cv_match_id = ?1 ORDER BY sort_order, id",
+    )?;
+    let lines = statement.query_map([id], |row| {
+        Ok((
+            row.get::<_, Option<i64>>(0)?,
+            row.get::<_, String>(1)?,
+            row.get::<_, String>(2)?,
+        ))
+    })?;
+    for line in lines {
+        let (entry_id, kind, text) = line?;
+        match kind.as_str() {
+            "bullet" => {
+                if let Some((.., entry)) = entries.iter_mut().find(|(id, ..)| Some(*id) == entry_id) {
+                    entry.bullets.push(text);
+                }
+            }
+            "skill" => resume.skills.push(text),
+            "language" => resume.languages.push(text),
+            _ => {}
+        }
+    }
+    for (_, section, entry) in entries {
+        match section.as_str() {
+            "experience" => resume.experience.push(entry),
+            "projects" => resume.projects.push(entry),
+            "education" => resume.education.push(entry),
+            _ => {}
+        }
+    }
+    Ok(Some(resume))
+}
+
+/// PHP's `$text === '' ? [] : explode($separator, $text)`.
+fn split_unless_empty(text: &str, separator: &str) -> Vec<String> {
+    if text.is_empty() {
+        Vec::new()
+    } else {
+        text.split(separator).map(str::to_string).collect()
+    }
 }
