@@ -16,3 +16,5 @@ file and with the same names, and tested against what the PHP code answers.
 
     cd app
     cargo run --release
+
+To open it on your phone through Tailscale, see [docs/phone.md](docs/phone.md).

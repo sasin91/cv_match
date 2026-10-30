@@ -36,7 +36,7 @@ lives in `../extension/jobnet-joblog`.
     cargo run --release
 
 serves the app on http://127.0.0.1:8765/cv_match and opens it in your default browser
-(`--port`, `--database file`, `--no-browser`). It is the PHP app's match page with the same CSS
+(`--port`, `--database file`, `--no-browser`, and `--tailscale-name` for your phone: see ../docs/phone.md). It is the PHP app's match page with the same CSS
 and JS (`assets/cv_match/css`, `js`, and Trongate MX from `assets/js`, built into the exe), for
 one local user who is always signed in:
 

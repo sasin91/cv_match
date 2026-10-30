@@ -1,7 +1,9 @@
 //! recruiter: the desktop app's command line.
 //!
 //!   recruiter [--port 8765] [--database path\to\recruiter.sqlite] [--no-browser]
-//!       serves the app on 127.0.0.1 and opens it in the default browser
+//!             [--tailscale-name pc.tailnet.ts.net]
+//!       serves the app on 127.0.0.1 and opens it in the default browser; with --tailscale-name
+//!       it also answers `tailscale serve` for that name, so a phone can open it (docs/phone.md)
 //!   recruiter import --email you@example.com [--from mysql://root@127.0.0.1:3306/recruiter_prod]
 //!                    [--database path\to\recruiter.sqlite]
 
@@ -16,7 +18,7 @@ use recruiter::{db, extension, import};
 /// Herd's MariaDB with the production copy, as set up on Jonas's PC.
 const DEFAULT_SOURCE: &str = "mysql://root@127.0.0.1:3306/recruiter_prod";
 
-const USAGE: &str = "usage: recruiter [--port <port>] [--database <file>] [--no-browser]
+const USAGE: &str = "usage: recruiter [--port <port>] [--database <file>] [--no-browser] [--tailscale-name <name>]
        recruiter import --email <email> [--from <mysql url>] [--database <file>]";
 
 fn main() -> ExitCode {
@@ -35,6 +37,7 @@ fn run_server(args: &[String]) -> ExitCode {
     let mut port = server::DEFAULT_PORT;
     let mut database = db::default_path();
     let mut browser = true;
+    let mut tailscale_name = None;
     let mut args = args.iter();
     while let Some(flag) = args.next() {
         if flag == "--no-browser" {
@@ -54,6 +57,7 @@ fn run_server(args: &[String]) -> ExitCode {
                 }
             },
             "--database" => database = PathBuf::from(value),
+            "--tailscale-name" => tailscale_name = Some(value.trim().to_ascii_lowercase()),
             _ => {
                 eprintln!("unknown option {flag}\n{USAGE}");
                 return ExitCode::FAILURE;
@@ -86,6 +90,8 @@ fn run_server(args: &[String]) -> ExitCode {
         eprintln!("Couldn't write the Jobnet extension to {}: {e}", folder.display());
         format!("It couldn't be written to {}: {e}", folder.display())
     });
+    let phone_address = tailscale_name.as_ref().map(|name| format!("https://{name}/cv_match"));
+    state.tailscale_name = tailscale_name;
     let state = Arc::new(state);
     let address = format!("http://127.0.0.1:{port}/cv_match");
     runtime.block_on(async {
@@ -94,6 +100,9 @@ fn run_server(args: &[String]) -> ExitCode {
             "Recruiter is running at {address} (data in {}). Close this window to stop it.",
             database.display()
         );
+        if let Some(phone_address) = &phone_address {
+            println!("On your phone, with Tailscale on and `tailscale serve` set up: {phone_address}");
+        }
         if browser && webbrowser::open(&address).is_err() {
             println!("Open {address} in your browser.");
         }
