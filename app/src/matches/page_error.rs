@@ -39,7 +39,7 @@ impl IntoResponse for PageError {
 
 impl From<sqlx::Error> for PageError {
     fn from(e: sqlx::Error) -> Self {
-        eprintln!("match: {e}");
+        crate::log_line!("match: {e}");
         Self::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("The database couldn't answer: {e}"),
@@ -49,7 +49,7 @@ impl From<sqlx::Error> for PageError {
 
 impl From<askama::Error> for PageError {
     fn from(e: askama::Error) -> Self {
-        eprintln!("match: {e}");
+        crate::log_line!("match: {e}");
         Self::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("The page couldn't be printed: {e}"),

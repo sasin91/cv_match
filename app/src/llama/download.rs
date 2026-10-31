@@ -205,7 +205,7 @@ impl Downloads {
         *progress = match outcome {
             Ok(()) => Progress::Finished { what },
             Err(why) => {
-                eprintln!("llama: downloading {what} failed: {why}");
+                crate::log_line!("llama: downloading {what} failed: {why}");
                 Progress::Failed { what, why }
             }
         };
@@ -242,7 +242,7 @@ pub async fn download_server(folder: &Path, inventory: &Inventory, downloads: &D
             .map_err(|e| format!("Unzipping {} stopped: {e}", asset.name))?
             .map_err(|e| format!("Couldn't unzip {}: {e}", asset.name))?;
         if let Err(e) = std::fs::remove_file(&zip_path) {
-            eprintln!("llama: {} couldn't be deleted after unzipping: {e}", zip_path.display());
+            crate::log_line!("llama: {} couldn't be deleted after unzipping: {e}", zip_path.display());
         }
     }
     if !staging.join(SERVER_FILE).is_file() {

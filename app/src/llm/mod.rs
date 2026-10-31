@@ -173,7 +173,7 @@ fn http_client(base_url: &str) -> Result<reqwest::Client, LlmException> {
         builder
     };
     builder.build().map_err(|e| {
-        eprintln!("llm: couldn't make the HTTP client: {}", error_chain(&e));
+        crate::log_line!("llm: couldn't make the HTTP client: {}", error_chain(&e));
         LlmException::new(format!("The app couldn't make its HTTP client: {}", error_chain(&e)))
     })
 }

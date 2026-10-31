@@ -402,7 +402,7 @@ pub async fn fetch_job(context: &Context, url: &str) -> Result<Page, ServiceErro
         ));
     }
     page_reader::read(url).await.map_err(|why| {
-        eprintln!("match (fetch_job): {url}: {why}");
+        crate::log_line!("match (fetch_job): {url}: {why}");
         ServiceError::new(ErrorKind::Invalid, why)
     })
 }

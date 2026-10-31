@@ -181,7 +181,7 @@ pub async fn check_key(context: &Context, provider: &str) -> Result<String, Serv
     llm.structured(CHECK_SYSTEM, CHECK_USER, &schema, Effort::Low)
         .await
         .map_err(|e| {
-            eprintln!("account/check_key: {}", e.details());
+            crate::log_line!("account/check_key: {}", e.details());
             ServiceError::new(
                 ErrorKind::Llm { retryable: e.retryable },
                 format!("The check failed: {e}"),
@@ -260,7 +260,7 @@ fn readable(context: &Context, saved: &[Saved]) -> (Vec<SavedKey>, Option<String
             let unreadable = match account_model::with_key(&context.key_vault, context.user_id, saved) {
                 Ok(key) => key.is_none(),
                 Err(e) => {
-                    eprintln!("account: {e} (saved {} key)", saved.provider);
+                    crate::log_line!("account: {e} (saved {} key)", saved.provider);
                     vault_error.get_or_insert(e.to_string());
                     false
                 }

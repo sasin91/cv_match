@@ -156,7 +156,7 @@ async fn score_and_save(matching: &Matching<'_>, new: NewMatch<'_>, verdicts: &V
     match saved {
         Ok(id) => answer.saved_id = Some(id),
         Err(e) => {
-            eprintln!("match (saving a match): {e}");
+            crate::log_line!("match (saving a match): {e}");
             answer.save_error = Some(format!("The match wasn't saved: {e}"));
         }
     }

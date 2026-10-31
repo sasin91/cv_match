@@ -228,7 +228,7 @@ async fn findings(context: &Context) -> Result<Findings, PageError> {
 
 /// Why the dashboard couldn't be read, logged.
 fn dashboard_error(why: String) -> PageError {
-    eprintln!("match: the dashboard couldn't be read: {why}");
+    crate::log_line!("match: the dashboard couldn't be read: {why}");
     PageError::new(StatusCode::INTERNAL_SERVER_ERROR, why)
 }
 
@@ -425,7 +425,7 @@ pub async fn open_edge(State(state): State<Arc<AppState>>) -> Answer {
         ));
     }
     crate::extension::open_extensions_page().map_err(|e| {
-        eprintln!("joblog_extension: open_edge: {e}");
+        crate::log_line!("joblog_extension: open_edge: {e}");
         PageError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!(

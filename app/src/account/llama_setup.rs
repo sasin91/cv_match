@@ -106,7 +106,7 @@ pub async fn index(State(state): State<Arc<AppState>>) -> Response {
     match LlamaSetupPage::new(view, state.take_flash()).render() {
         Ok(html) => Html(html).into_response(),
         Err(e) => {
-            eprintln!("llama_setup: the page couldn't be printed: {e}");
+            crate::log_line!("llama_setup: the page couldn't be printed: {e}");
             failure(format!("The page couldn't be printed: {e}"))
         }
     }

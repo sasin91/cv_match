@@ -31,7 +31,9 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use recruiter::account::key_vault::KeyVault;
+use recruiter::app_log;
 use recruiter::context::{Context, DatabaseFile};
+use recruiter::instance::{self, Running};
 use recruiter::dev_reload::DevReload;
 use recruiter::laya::laya_client::{self, LayaClient};
 use recruiter::llama::{self, hardware::Inventory, llama_server::LlamaServer};
@@ -65,7 +67,7 @@ fn database_arg(args: &[String]) -> Option<PathBuf> {
         [] => Some(db::default_path()),
         [flag, value] if flag == "--database" => Some(PathBuf::from(value)),
         _ => {
-            eprintln!("{USAGE}");
+            recruiter::log_line!("{USAGE}");
             None
         }
     }
@@ -101,14 +103,15 @@ fn run_scan(args: &[String]) -> ExitCode {
     let Some(database) = database_arg(args) else {
         return ExitCode::FAILURE;
     };
+    open_log(database.parent().unwrap_or(std::path::Path::new(".")));
     let Some(runtime) = runtime() else {
         return ExitCode::FAILURE;
     };
     if let Err(e) = runtime.block_on(db::open(&database)) {
-        eprintln!("Couldn't open {}: {e}", database.display());
+        recruiter::log_line!("Couldn't open {}: {e}", database.display());
         return ExitCode::FAILURE;
     }
-    eprintln!("The job scan isn't in the desktop app yet, so nothing was scanned.");
+    recruiter::log_line!("The job scan isn't in the desktop app yet, so nothing was scanned.");
     ExitCode::FAILURE
 }
 
@@ -120,7 +123,7 @@ fn run_cleanup(args: &[String]) -> ExitCode {
     };
     // Held until the database's files are removed, so no Recruiter starts on it meanwhile.
     let Ok(held) = cleanup::hold(&database, cleanup::Hold::Cleanup) else {
-        eprintln!(
+        recruiter::log_line!(
             "Recruiter is running on {}. Close its window, then run the cleanup again.",
             database.display()
         );
@@ -196,9 +199,9 @@ fn run_cleanup(args: &[String]) -> ExitCode {
         println!("Done. To remove Recruiter itself, delete its program file.");
         ended_by_hand(ExitCode::SUCCESS)
     } else {
-        eprintln!("These couldn't be removed:");
+        recruiter::log_line!("These couldn't be removed:");
         for why in &failed {
-            eprintln!("- {why}");
+            recruiter::log_line!("- {why}");
         }
         ended_by_hand(ExitCode::FAILURE)
     }
@@ -253,7 +256,7 @@ fn run_server(args: &[String]) -> ExitCode {
         }
         if flag == "--dev" {
             if !cfg!(debug_assertions) {
-                eprintln!(
+                recruiter::log_line!(
                     "--dev is for debug builds (cargo dev, or cargo run -- --dev); release builds have the CSS and JS built in."
                 );
                 return ExitCode::FAILURE;
@@ -262,14 +265,14 @@ fn run_server(args: &[String]) -> ExitCode {
             continue;
         }
         let Some(value) = args.next() else {
-            eprintln!("{flag} needs a value\n{USAGE}");
+            recruiter::log_line!("{flag} needs a value\n{USAGE}");
             return ExitCode::FAILURE;
         };
         match flag.as_str() {
             "--port" => match value.parse() {
                 Ok(value) => port = value,
                 Err(_) => {
-                    eprintln!("--port needs a number\n{USAGE}");
+                    recruiter::log_line!("--port needs a number\n{USAGE}");
                     return ExitCode::FAILURE;
                 }
             },
@@ -278,17 +281,37 @@ fn run_server(args: &[String]) -> ExitCode {
             "--llama" => llama_folder = Some(PathBuf::from(value)),
             "--tailscale-name" => tailscale_name = Some(value.trim().to_ascii_lowercase()),
             _ => {
-                eprintln!("unknown option {flag}\n{USAGE}");
+                recruiter::log_line!("unknown option {flag}\n{USAGE}");
                 return ExitCode::FAILURE;
             }
         }
     }
+    let data_folder = database.parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
+    open_log(&data_folder);
     let Some(runtime) = runtime() else {
         return ExitCode::FAILURE;
     };
+    // The home page opens the setup wizard on a new database, and the match page after that.
+    let address = format!("http://127.0.0.1:{port}/");
+    match runtime.block_on(instance::running_on(port, &shown_path(&database))) {
+        Running::None => {}
+        Running::Same => {
+            recruiter::say!("Recruiter is already running at {address}.");
+            if browser && webbrowser::open(&address).is_err() {
+                recruiter::say!("Open {address} in your browser.");
+            }
+            return ExitCode::SUCCESS;
+        }
+        Running::Other { database: running } => {
+            recruiter::log_line!(
+                "Port {port} is taken by a Recruiter on another database ({running}). Close it, or start this one with --port and another number."
+            );
+            return ended_by_hand(ExitCode::FAILURE);
+        }
+    }
     // Held while the app runs, so `recruiter cleanup` won't remove the database under it.
     let Ok(_held) = cleanup::hold(&database, cleanup::Hold::Running) else {
-        eprintln!(
+        recruiter::log_line!(
             "Recruiter's cleanup is running on {}. Let it finish, then start Recruiter again.",
             database.display()
         );
@@ -298,14 +321,14 @@ fn run_server(args: &[String]) -> ExitCode {
     let db = match runtime.block_on(db::open(&database)) {
         Ok(db) => db,
         Err(e) => {
-            eprintln!("Couldn't open {}: {e}", database.display());
+            recruiter::log_line!("Couldn't open {}: {e}", database.display());
             return ended_by_hand(ExitCode::FAILURE);
         }
     };
     let user_id = match runtime.block_on(server::local_user(&db)) {
         Ok(id) => id,
         Err(e) => {
-            eprintln!("Couldn't read the local user: {e}");
+            recruiter::log_line!("Couldn't read the local user: {e}");
             return ended_by_hand(ExitCode::FAILURE);
         }
     };
@@ -320,11 +343,10 @@ fn run_server(args: &[String]) -> ExitCode {
         made_now,
     };
     context.scan_schedule = scan_schedule(&database);
-    let data_folder = database.parent().unwrap_or(std::path::Path::new("."));
     let laya_folder = laya_folder.unwrap_or_else(|| data_folder.join(laya_client::FOLDER));
     context.laya = LayaClient::from_folder(&laya_folder);
     if context.laya.is_none() {
-        println!(
+        recruiter::say!(
             "No Laya model in {} (no {}), so matches go on without Laya.",
             laya_folder.display(),
             laya_client::ONNX_FILE
@@ -332,14 +354,14 @@ fn run_server(args: &[String]) -> ExitCode {
     }
     let llama_folder = llama_folder.unwrap_or_else(|| data_folder.join(llama::FOLDER));
     let inventory = Inventory::detect();
-    println!(
+    recruiter::say!(
         "This computer, for the app's own model: {inventory}. Its llama folder is {}.",
         llama_folder.display()
     );
     context.llama = Some(LlamaServer::new(&llama_folder, inventory));
     let folder = data_folder.join(extension::FOLDER);
     context.extension_folder = extension::write(&folder).map_err(|e| {
-        eprintln!("Couldn't write the Jobnet extension to {}: {e}", folder.display());
+        recruiter::log_line!("Couldn't write the Jobnet extension to {}: {e}", folder.display());
         format!("It couldn't be written to {}: {e}", folder.display())
     });
     let mut state = AppState::new(Arc::new(context), port);
@@ -347,29 +369,27 @@ fn run_server(args: &[String]) -> ExitCode {
     state.tailscale_name = tailscale_name;
     state.dev_reload = dev.then(DevReload::new);
     let state = Arc::new(state);
-    // The home page opens the setup wizard on a new database, and the match page after that.
-    let address = format!("http://127.0.0.1:{port}/");
     runtime.block_on(async {
         tokio::spawn(preload_laya(Arc::clone(&state.context)));
         let serving = tokio::spawn(server::serve(state));
-        println!(
+        recruiter::say!(
             "Recruiter is running at {address} (data in {}). Close this window to stop it.",
             database.display()
         );
         if let Some(phone_address) = &phone_address {
-            println!("On your phone, with Tailscale on and `tailscale serve` set up: {phone_address}");
+            recruiter::say!("On your phone, with Tailscale on and `tailscale serve` set up: {phone_address}");
         }
         if browser && webbrowser::open(&address).is_err() {
-            println!("Open {address} in your browser.");
+            recruiter::say!("Open {address} in your browser.");
         }
         match serving.await {
             Ok(Ok(())) => ExitCode::SUCCESS,
             Ok(Err(e)) => {
-                eprintln!("Couldn't serve on port {port}: {e}. Is Recruiter already running? Then open {address}.");
+                recruiter::log_line!("Couldn't serve on port {port}: {e}. Is Recruiter already running? Then open {address}.");
                 ended_by_hand(ExitCode::FAILURE)
             }
             Err(e) => {
-                eprintln!("The server stopped: {e}");
+                recruiter::log_line!("The server stopped: {e}");
                 ended_by_hand(ExitCode::FAILURE)
             }
         }
@@ -384,12 +404,12 @@ async fn preload_laya(context: Arc<Context>) {
     };
     let started = Instant::now();
     match laya.load().await {
-        Ok(_) => println!(
+        Ok(_) => recruiter::say!(
             "Laya is loaded from {} ({:.1} s).",
             laya.folder().display(),
             started.elapsed().as_secs_f64()
         ),
-        Err(e) => eprintln!("{e}"),
+        Err(e) => recruiter::log_line!("{e}"),
     }
 }
 
@@ -397,7 +417,7 @@ async fn preload_laya(context: Arc<Context>) {
 fn scan_schedule(database: &std::path::Path) -> ScanSchedule {
     // The AppImage on Linux: the program's own path is inside it, and gone once it ends.
     let exe = scan_schedule::running_program().unwrap_or_else(|e| {
-        eprintln!(
+        recruiter::log_line!(
             "This program's own path couldn't be read ({e}), so the job scan's task runs recruiter.exe from PATH."
         );
         PathBuf::from("recruiter.exe")
@@ -431,9 +451,19 @@ fn full_path(database: &std::path::Path) -> String {
         .to_string()
 }
 
+/// Opens the log next to the database (app_log), or says why it can't be.
+fn open_log(folder: &std::path::Path) {
+    if let Err(e) = app_log::open(folder) {
+        recruiter::log_line!(
+            "The log file couldn't be opened in {}: {e}. What the app says goes only to this window.",
+            folder.display()
+        );
+    }
+}
+
 /// The async runtime the database and the server run on, or None (said why) when it can't start.
 fn runtime() -> Option<tokio::runtime::Runtime> {
     tokio::runtime::Runtime::new()
-        .map_err(|e| eprintln!("Couldn't start: {e}"))
+        .map_err(|e| recruiter::log_line!("Couldn't start: {e}"))
         .ok()
 }

@@ -68,7 +68,7 @@ pub async fn is_first_run(context: &Context) -> sqlx::Result<bool> {
 /// to the wizard then go on without the link.
 pub async fn first_run_or_logged(context: &Context) -> bool {
     is_first_run(context).await.unwrap_or_else(|e| {
-        eprintln!("setup: whether this is the first run couldn't be read: {e}");
+        crate::log_line!("setup: whether this is the first run couldn't be read: {e}");
         false
     })
 }

@@ -50,14 +50,14 @@ impl ServiceError {
     /// the message shown.
     pub fn failed(where_: &str, message: impl Into<String>) -> Self {
         let message = message.into();
-        eprintln!("{where_}: {message}");
+        crate::log_line!("{where_}: {message}");
         Self::new(ErrorKind::Failed, message)
     }
 
     /// The app's own failure, logged under where with the message shown.
     pub fn internal(where_: &str, message: impl Into<String>) -> Self {
         let message = message.into();
-        eprintln!("{where_}: {message}");
+        crate::log_line!("{where_}: {message}");
         Self::new(ErrorKind::Internal, message)
     }
 
@@ -68,7 +68,7 @@ impl ServiceError {
 
     /// A failed model call, logged with the provider's answer.
     pub fn llm(where_: &str, e: &LlmException) -> Self {
-        eprintln!("{where_}: {}", e.details());
+        crate::log_line!("{where_}: {}", e.details());
         Self::new(ErrorKind::Llm { retryable: e.retryable }, e.message.clone())
     }
 }
@@ -83,7 +83,7 @@ impl std::error::Error for ServiceError {}
 
 impl From<sqlx::Error> for ServiceError {
     fn from(e: sqlx::Error) -> Self {
-        eprintln!("database: {e}");
+        crate::log_line!("database: {e}");
         Self::new(ErrorKind::Internal, format!("The database couldn't answer: {e}"))
     }
 }

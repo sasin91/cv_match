@@ -191,7 +191,7 @@ fn schedule_view(step: ScheduleStep) -> ScheduleView {
 
 /// The page when it can't be shown: what went wrong, logged too.
 fn failure(message: &str) -> Response {
-    eprintln!("setup: {message}");
+    crate::log_line!("setup: {message}");
     (StatusCode::INTERNAL_SERVER_ERROR, message.to_string()).into_response()
 }
 

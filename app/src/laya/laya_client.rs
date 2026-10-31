@@ -145,7 +145,7 @@ pub async fn reading(laya: Option<&LayaClient>, summary: &str) -> LayaReading {
             laya_error: None,
         },
         Err(e) => {
-            eprintln!("match (Laya): {e}");
+            crate::log_line!("match (Laya): {e}");
             LayaReading {
                 laya: None,
                 laya_error: Some(e),
