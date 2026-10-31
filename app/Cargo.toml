@@ -23,7 +23,7 @@ dirs = "6"
 # Lookaround in some patterns (Apply_instructions), which the regex crate lacks.
 fancy-regex = "0.20"
 axum = "0.8"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "process", "time"] }
 askama = "0.16"
 # The page's CSS and JS, read from ../assets while developing and built into the exe for release.
 rust-embed = { version = "8", features = ["include-exclude"] }
@@ -48,6 +48,18 @@ html-escape = "0.3"
 encoding_rs = "0.8"
 # Laya on ONNX Runtime, run in this process (ONNX Runtime linked in statically).
 laya-server = { path = "../laya-server" }
+
+# The memory and graphics card a llama.cpp model is weighed against (DXGI), and the job object
+# that ends llama-server with the app.
+[target.'cfg(windows)'.dependencies]
+windows = { version = "0.62", features = [
+    "Win32_Foundation",
+    "Win32_Graphics_Dxgi",
+    "Win32_Security",
+    "Win32_System_JobObjects",
+    "Win32_System_SystemInformation",
+    "Win32_System_Threading",
+] }
 
 [profile.release]
 lto = "thin"

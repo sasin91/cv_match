@@ -5,6 +5,7 @@ pub mod account;
 pub mod db;
 pub mod extension;
 pub mod laya;
+pub mod llama;
 pub mod llm;
 pub mod matches;
 pub mod pdf;

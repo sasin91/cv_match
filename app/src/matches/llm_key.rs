@@ -6,6 +6,7 @@
 use super::match_documents::Uses;
 use super::page_error::PageError;
 use crate::account::account_model::{self, KeyFor, USES};
+use crate::llama;
 use crate::llm::Llm;
 use crate::server::AppState;
 
@@ -32,8 +33,9 @@ pub async fn llm(state: &AppState, use_: &str) -> Result<KeyedLlm, PageError> {
     let Some(key) = llm_settings(state, use_).await? else {
         return Err(PageError::need_key(missing_key_message(state, use_).await?));
     };
-    let llm =
-        Llm::use_key(&key.provider, &key.api_key, &key.model, &key.base_url).map_err(|e| PageError::llm(use_, &e))?;
+    let llm = llama::use_key(state.llama.as_ref(), &key)
+        .await
+        .map_err(|e| PageError::llm(use_, &e))?;
     let written_by = format!("{}/{}", key.provider, llm.model());
     Ok(KeyedLlm { llm, written_by })
 }

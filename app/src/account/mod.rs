@@ -1,6 +1,7 @@
 //! account: the API key page for the one local user.
 //! The AI features of the CV match run on the user's own OpenAI or Anthropic API key, or on a
-//! local OpenAI-compatible server (Ollama, LM Studio). The key is kept in Windows Credential
+//! local OpenAI-compatible server (Ollama, LM Studio), or on a GGUF model the app runs itself with
+//! llama.cpp (the llama module), which needs no key. The key is kept in Windows Credential
 //! Manager and never shown again; only its last 4 characters are. Its uses (tailoring résumés,
 //! writing applications, evaluating job posts) can each be switched off.
 //!
@@ -8,6 +9,7 @@
 
 pub mod account_model;
 pub mod key_vault;
+pub mod llama_panel;
 pub mod saved_key;
 
 use std::sync::Arc;
@@ -21,8 +23,10 @@ use serde::Deserialize;
 use serde_json::json;
 
 use self::account_model::{PROVIDERS, Saved};
+use self::llama_panel::LlamaPanel;
 use self::saved_key::SavedKey;
-use crate::llm::{self, ANTHROPIC, Effort, LOCAL, Llm, OPENAI};
+use crate::llama;
+use crate::llm::{self, ANTHROPIC, Effort, LLAMA_CPP, LOCAL, OPENAI};
 use crate::matches::match_documents::Uses;
 use crate::server::AppState;
 
@@ -68,6 +72,8 @@ struct AccountPage {
     base_url: String,
     model_placeholder: String,
     base_url_placeholder: &'static str,
+    /// This app's own model, when the app has a llama folder.
+    llama: Option<LlamaPanel>,
 }
 
 /// The key form's fields.
@@ -103,7 +109,8 @@ pub async fn submit_key(State(state): State<Arc<AppState>>, Form(form): Form<Key
         api_key: form.api_key.trim().to_string(),
         base_url: form.base_url.trim().to_string(),
     };
-    let errors = validation_errors(&form);
+    let mut errors = validation_errors(&form);
+    errors.extend(llama_model_errors(&state, &form));
     if !errors.is_empty() {
         return page(&state, Some(&form), errors).await;
     }
@@ -112,6 +119,12 @@ pub async fn submit_key(State(state): State<Arc<AppState>>, Form(form): Form<Key
     } else {
         ""
     };
+    // The app's own model has no key to keep.
+    let api_key = if form.provider == LLAMA_CPP {
+        ""
+    } else {
+        form.api_key.as_str()
+    };
     let saved = account_model::save(
         state.db(),
         &state.key_vault,
@@ -119,7 +132,7 @@ pub async fn submit_key(State(state): State<Arc<AppState>>, Form(form): Form<Key
         &form.provider,
         &form.model,
         base_url,
-        &form.api_key,
+        api_key,
     )
     .await;
     match saved {
@@ -168,7 +181,8 @@ async fn check(state: &AppState) -> Result<String, String> {
         .await
         .map_err(|e| logged("The check couldn't read your key", &e.to_string()))?
         .ok_or_else(|| "There's no key to check: save one first.".to_string())?;
-    let llm = Llm::use_key(&key.provider, &key.api_key, &key.model, &key.base_url)
+    let llm = llama::use_key(state.llama.as_ref(), &key)
+        .await
         .map_err(|e| logged("The check failed", &e.details()))?;
     let schema = json!({
         "type": "object",
@@ -218,6 +232,7 @@ async fn page(state: &AppState, typed: Option<&KeyForm>, errors: Vec<String>) ->
         base_url: typed.map_or_else(|| saved_field(|saved| &saved.base_url), |form| form.base_url.clone()),
         model_placeholder: model_placeholder(),
         base_url_placeholder: BASE_URL_PLACEHOLDER,
+        llama: state.llama.as_ref().map(|server| LlamaPanel::from(server.overview())),
         saved: saved.as_ref().map(SavedKey::from),
     };
     match page.render() {
@@ -251,7 +266,7 @@ fn model_placeholder() -> String {
 fn validation_errors(form: &KeyForm) -> Vec<String> {
     let mut errors = Vec::new();
     if !PROVIDERS.iter().any(|(name, _)| *name == form.provider) {
-        errors.push("Pick OpenAI, Anthropic or a local model.".to_string());
+        errors.push("Pick OpenAI, Anthropic, a local model or this app's own model.".to_string());
     }
     errors.extend(model_errors(form));
     errors.extend(key_errors(form));
@@ -287,7 +302,7 @@ fn is_model_name_character(c: char) -> bool {
 fn key_errors(form: &KeyForm) -> Vec<String> {
     let key = &form.api_key;
     let length = key.chars().count();
-    let needs_key = form.provider != LOCAL;
+    let needs_key = form.provider != LOCAL && form.provider != LLAMA_CPP;
     if key.is_empty() {
         return if needs_key {
             vec!["The API key field is required.".to_string()]
@@ -334,6 +349,30 @@ fn base_url_errors(base_url: &str) -> Vec<String> {
         )];
     }
     Vec::new()
+}
+
+/// For this app's own model: a named model must be a file in the models folder. Blank is the one
+/// that fits best.
+fn llama_model_errors(state: &AppState, form: &KeyForm) -> Vec<String> {
+    if form.provider != LLAMA_CPP {
+        return Vec::new();
+    }
+    let Some(server) = &state.llama else {
+        return vec!["The app was started without its llama folder.".to_string()];
+    };
+    let named = &form.model;
+    let found = named.is_empty()
+        || server
+            .models()
+            .iter()
+            .any(|model| model.name.eq_ignore_ascii_case(named));
+    if found {
+        return Vec::new();
+    }
+    vec![format!(
+        "There's no {named} in {}. Name a .gguf file there, or leave the model blank.",
+        server.models_folder().display()
+    )]
 }
 
 /// Logs what failed and returns the message the page shows.
@@ -389,7 +428,7 @@ mod tests {
         );
         assert_eq!(
             validation_errors(&form("gemini", "", "sk-proj-0123456789abcdef", "")),
-            ["Pick OpenAI, Anthropic or a local model."]
+            ["Pick OpenAI, Anthropic, a local model or this app's own model."]
         );
     }
 
@@ -406,6 +445,12 @@ mod tests {
         );
         // Only a local model reads the address.
         assert!(validation_errors(&form(OPENAI, "", "sk-proj-0123456789abcdef", "nonsense")).is_empty());
+    }
+
+    #[test]
+    fn this_apps_own_model_needs_no_key_name_or_address() {
+        assert!(validation_errors(&form(LLAMA_CPP, "", "", "")).is_empty());
+        assert!(validation_errors(&form(LLAMA_CPP, "Qwen3-8B-Q4_K_M.gguf", "", "")).is_empty());
     }
 
     #[test]

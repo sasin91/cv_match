@@ -32,6 +32,9 @@ pub const OPENAI: &str = "openai";
 pub const ANTHROPIC: &str = "anthropic";
 /// The provider name of an OpenAI-compatible server on this computer or network, at base_url.
 pub const LOCAL: &str = "local";
+/// The provider name of a GGUF model the app runs itself with llama.cpp's llama-server (the llama
+/// module), which then answers as a LOCAL server.
+pub const LLAMA_CPP: &str = "llama_cpp";
 
 /// The model a key runs on when the user doesn't name one: the extraction bake-off's OpenAI
 /// pick, and a Claude model that takes the effort setting the anthropic adapter sends. A local
@@ -96,6 +99,11 @@ impl Llm {
                 ));
             }
             LOCAL => Adapter::Openai(Openai::local(api_key, model, base_url)?),
+            LLAMA_CPP => {
+                return Err(LlmException::new(
+                    "The app's own model runs through its llama-server; start it with llama::use_key.",
+                ));
+            }
             _ => return Err(LlmException::new(format!("Unknown LLM provider \"{provider}\"."))),
         };
         Ok(Llm { adapter })
