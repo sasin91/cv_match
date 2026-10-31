@@ -32,3 +32,10 @@ a.button.primary { background: var(--accent); border-color: var(--accent); color
 .setup-step.done h2::before { content: "✓ "; color: var(--accent); }
 .setup-step.waiting { opacity: 0.6; }
 .setup-finish { margin: 24px 0; }
+
+
+/* The setup wizard's download progress bar. */
+.download-progress progress {
+    width: 100%;
+    height: 1rem;
+}
