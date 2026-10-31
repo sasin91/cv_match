@@ -75,6 +75,9 @@ fn run_install(args: &[String]) -> ExitCode {
     let Some(runtime) = runtime() else {
         return ended_by_hand(ExitCode::FAILURE);
     };
+    // Whole, even before the file exists: the shortcut starts in the install folder, so a
+    // relative path would name another file there.
+    let database = std::path::absolute(&database).unwrap_or(database);
     let database = PathBuf::from(shown_path(&database));
     let named = (!args.is_empty()).then_some(database.as_path());
     let installed = match runtime.block_on(install::install(&database, named)) {
