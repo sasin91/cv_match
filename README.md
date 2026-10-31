@@ -33,20 +33,22 @@ The first build downloads ONNX Runtime for Laya (from cdn.pyke.io) and links it 
     .\target\release\recruiter.exe
 
 On the first start the app makes an empty database, `%APPDATA%\Recruiter\recruiter.sqlite`,
-writes the Jobnet extension next to it and opens the setup wizard (http://127.0.0.1:8765/setup):
+writes the Jobnet extension next to it and opens the dashboard (http://127.0.0.1:8765/match). It
+has an alert while no AI model is in use, and a row each for the AI model, your profile, Laya, the
+job scan and the Jobnet extension, saying what is set up and linking to what is missing. Under them
+are how many matches each list holds and the shortlist's best three, then the match form.
+
+The links go to the setup (http://127.0.0.1:8765/setup), whose steps are:
 
 1. where the database is;
 2. an AI model: this app's own llama.cpp model when the PC's graphics card has room for a good
    one (Qwen3 4B or bigger, at least half of it on the card), else an OpenAI key (gpt-5.4-mini)
-   or a Claude key; the steps are /llama_setup and /account, which come back to the wizard;
+   or a Claude key; the steps are /llama_setup and /account, which come back to the setup while
+   the database has no profile or saved matches;
 3. your CV, read by that model into your profile, which the match page matches with;
 4. how often the job scan runs by itself: a Task Scheduler task, `Recruiter\Job scan`, running
-   `recruiter.exe scan` (the scan itself isn't ported yet, so for now a run only says so);
-5. then the match page.
+   `recruiter.exe scan` (the scan itself isn't ported yet, so for now a run only says so).
 
-Until step 5, http://127.0.0.1:8765/match redirects to the wizard too. It does so again at the next
-start while the database has no profile or saved matches. A database with either opens on /match
-instead; the wizard stays at /setup.
 Close its window to stop it. `recruiter.exe --help` lists the options.
 
 If the app refuses, at start, a database made from an older schema, move `recruiter.sqlite`
@@ -174,11 +176,13 @@ With a real key saved on the API key page, check these by hand after a change:
       Settings > Apps > Installed apps; with a job scan task, its action runs the installed copy.
       Uninstall it there: the window lists what was removed and waits for Enter, the folder goes
       a few seconds later, and `%APPDATA%\Recruiter` stays.
-- [ ] **The setup wizard:** start with `--database` naming a new file. The browser opens /setup,
-      which suggests the app's own model on a PC with a good graphics card, else an OpenAI key.
+- [ ] **The dashboard and the setup:** start with `--database` naming a new file. The browser
+      opens /match with the "No AI model is set up" alert and the missing rows; Set one up opens
+      /setup, which suggests the app's own model on a PC with a good graphics card, else an OpenAI key.
       Set one up and land back on /setup; read a PDF CV into the profile; pick how often to check
       for new jobs, and `Recruiter\Job scan` shows in Task Scheduler (run it once: no console
-      window opens). Go to the match page, which has the CV filled in.
+      window opens). Go to the dashboard: the alert is gone, the rows say which model and whose profile, and
+      the match form has the CV filled in.
 - [ ] **The lists:** after a few matches, http://127.0.0.1:8765/match shows them under
       Shortlist, All and the other lists. Show more loads more.
 - [ ] **The free match:** paste a job post's text, with evaluating set to no key on the key page.
