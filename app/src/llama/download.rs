@@ -30,6 +30,10 @@ const CONNECT_SECONDS: u64 = 15;
 /// How long the download may stall between two pieces before it counts as failed, in seconds.
 const STALL_SECONDS: u64 = 60;
 
+/// The folder inside the llama folder that llama.cpp's zips are unzipped into before they are
+/// all there.
+const STAGING_FOLDER: &str = ".llama-cpp-download";
+
 /// The suffix of a file being downloaded.
 const PART_SUFFIX: &str = ".part";
 
@@ -215,11 +219,17 @@ pub async fn download_server(folder: &Path, inventory: &Inventory, downloads: &D
         .map_err(|e| format!("GitHub's answer about llama.cpp's release couldn't be read: {e}"))?;
     let build = Build::for_computer(inventory);
     let assets = assets_for(build, &release.assets)?;
-    std::fs::create_dir_all(folder).map_err(|e| format!("Couldn't make {}: {e}", folder.display()))?;
+    // Every zip is unzipped into the staging folder first, and moved into the llama folder only
+    // when all of them are, so a half-finished download never looks like an installed llama.cpp.
+    let staging = folder.join(STAGING_FOLDER);
+    if staging.exists() {
+        std::fs::remove_dir_all(&staging).map_err(|e| format!("Couldn't clear {}: {e}", staging.display()))?;
+    }
+    std::fs::create_dir_all(&staging).map_err(|e| format!("Couldn't make {}: {e}", staging.display()))?;
     for asset in &assets {
         let zip_path = folder.join(&asset.name);
         download_file(&client, &asset.browser_download_url, &zip_path, downloads).await?;
-        let (zip, into) = (zip_path.clone(), folder.to_path_buf());
+        let (zip, into) = (zip_path.clone(), staging.clone());
         tokio::task::spawn_blocking(move || unzip(&zip, &into))
             .await
             .map_err(|e| format!("Unzipping {} stopped: {e}", asset.name))?
@@ -228,13 +238,13 @@ pub async fn download_server(folder: &Path, inventory: &Inventory, downloads: &D
             eprintln!("llama: {} couldn't be deleted after unzipping: {e}", zip_path.display());
         }
     }
-    if !folder.join(SERVER_FILE).is_file() {
+    if !staging.join(SERVER_FILE).is_file() {
         return Err(format!(
-            "llama.cpp {} was unzipped, but there's no {SERVER_FILE} in {}.",
-            release.tag_name,
-            folder.display()
+            "llama.cpp {} was unzipped, but there's no {SERVER_FILE} in it.",
+            release.tag_name
         ));
     }
+    move_into(&staging, folder).map_err(|e| format!("Couldn't move llama.cpp into {}: {e}", folder.display()))?;
     println!(
         "llama: llama.cpp {} ({}) is in {}.",
         release.tag_name,
@@ -294,6 +304,22 @@ fn part_path(to: &Path) -> PathBuf {
     let mut name = to.file_name().unwrap_or_default().to_os_string();
     name.push(PART_SUFFIX);
     to.with_file_name(name)
+}
+
+/// Moves everything in staging into folder, replacing what is there by the same name, and
+/// removes staging.
+fn move_into(staging: &Path, folder: &Path) -> io::Result<()> {
+    for entry in std::fs::read_dir(staging)? {
+        let entry = entry?;
+        let target = folder.join(entry.file_name());
+        if target.is_dir() {
+            std::fs::remove_dir_all(&target)?;
+        } else if target.exists() {
+            std::fs::remove_file(&target)?;
+        }
+        std::fs::rename(entry.path(), &target)?;
+    }
+    std::fs::remove_dir(staging)
 }
 
 /// Unzips zip into folder, refusing entries that would land outside it.
@@ -400,6 +426,21 @@ mod tests {
             }
         );
         downloads.begin("Qwen3-8B-Q4_K_M.gguf").unwrap();
+    }
+
+    #[test]
+    fn a_staged_install_replaces_the_old_one() {
+        let folder = std::env::temp_dir().join(format!("recruiter-staging-{}", std::process::id()));
+        let staging = folder.join(STAGING_FOLDER);
+        std::fs::create_dir_all(&staging).unwrap();
+        std::fs::write(folder.join(SERVER_FILE), b"old").unwrap();
+        std::fs::write(staging.join(SERVER_FILE), b"new").unwrap();
+        std::fs::write(staging.join("ggml-vulkan.dll"), b"dll").unwrap();
+        move_into(&staging, &folder).unwrap();
+        assert_eq!(std::fs::read(folder.join(SERVER_FILE)).unwrap(), b"new");
+        assert!(folder.join("ggml-vulkan.dll").is_file());
+        assert!(!staging.exists());
+        std::fs::remove_dir_all(&folder).unwrap();
     }
 
     #[test]
