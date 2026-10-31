@@ -11,5 +11,7 @@ pub mod llm;
 pub mod matches;
 pub mod pdf;
 pub mod profile;
+pub mod scan_schedule;
 pub mod server;
+pub mod setup;
 pub mod taxonomy;

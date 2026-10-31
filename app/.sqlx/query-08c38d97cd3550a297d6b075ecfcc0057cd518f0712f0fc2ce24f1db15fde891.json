@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM candidate_profile_entries WHERE candidate_id = ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "08c38d97cd3550a297d6b075ecfcc0057cd518f0712f0fc2ce24f1db15fde891"
+}

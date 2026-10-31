@@ -11,6 +11,7 @@ pub mod account_model;
 pub mod key_vault;
 pub mod llama_panel;
 pub mod llama_setup;
+pub mod model_advice;
 pub mod saved_key;
 
 use std::sync::Arc;
@@ -25,10 +26,12 @@ use serde_json::json;
 
 use self::account_model::{PROVIDERS, Saved, UseChoices};
 use self::llama_panel::LlamaPanel;
+use self::model_advice::ModelAdvice;
 use self::saved_key::{KeyUse, SavedKey};
 use crate::llama;
 use crate::llm::{self, ANTHROPIC, Effort, LLAMA_CPP, LOCAL, OPENAI};
 use crate::server::AppState;
+use crate::setup;
 
 /// Where the page is, and where its forms send the browser back to.
 const PAGE: &str = "/account";
@@ -74,6 +77,10 @@ struct AccountPage {
     base_url_placeholder: &'static str,
     /// This app's own model, when the app has a llama folder.
     llama: Option<LlamaPanel>,
+    /// Which model to run the AI on, shown while no key is saved.
+    advice: ModelAdvice,
+    /// The setup wizard isn't finished, so the page links back to it.
+    setup_unfinished: bool,
 }
 
 /// The key form's fields.
@@ -142,11 +149,13 @@ pub async fn submit_key(State(state): State<Arc<AppState>>, Form(form): Form<Key
         api_key,
     )
     .await;
+    let label = account_model::provider_label(&form.provider);
     match saved {
-        Ok(()) => state.set_flash(format!(
-            "Your {} key is saved. Pick below what it is used for.",
-            account_model::provider_label(&form.provider)
-        )),
+        Ok(()) if setup::first_run_or_logged(&state).await => {
+            state.set_flash(format!("Your {label} key is saved, for every use."));
+            return Redirect::to(setup::PAGE).into_response();
+        }
+        Ok(()) => state.set_flash(format!("Your {label} key is saved. Pick below what it is used for.")),
         Err(e) => flash_failure(&state, "Your key couldn't be saved", &e),
     }
     Redirect::to(PAGE).into_response()
@@ -221,10 +230,12 @@ async fn page(state: &AppState, typed: Option<&KeyForm>, errors: Vec<String>) ->
     };
     let (saved_keys, vault_error) = readable(state, &saved);
     drop(together);
+    let setup_unfinished = setup::first_run_or_logged(state).await;
+    let advice = ModelAdvice::from(state.llama.as_ref());
     let provider = typed
         .map(|form| form.provider.as_str())
         .filter(|provider| !provider.is_empty())
-        .unwrap_or_else(|| provider_to_add(&saved));
+        .unwrap_or_else(|| provider_to_add(&saved, advice.local_first()));
     let saved_of_provider = saved.iter().find(|saved| saved.provider == provider);
     let saved_field = |field: fn(&Saved) -> &str| saved_of_provider.map(field).unwrap_or("").to_string();
     let page = AccountPage {
@@ -250,6 +261,8 @@ async fn page(state: &AppState, typed: Option<&KeyForm>, errors: Vec<String>) ->
         model_placeholder: model_placeholder(),
         base_url_placeholder: BASE_URL_PLACEHOLDER,
         llama: state.llama.as_ref().map(|server| LlamaPanel::from(server.overview())),
+        advice,
+        setup_unfinished,
     };
     match page.render() {
         Ok(html) => Html(html).into_response(),
@@ -257,11 +270,21 @@ async fn page(state: &AppState, typed: Option<&KeyForm>, errors: Vec<String>) ->
     }
 }
 
-/// The first provider without a saved key, for the form to add; OpenAI when all have one.
-fn provider_to_add(saved: &[Saved]) -> &'static str {
-    PROVIDERS
-        .iter()
-        .map(|(name, _)| *name)
+/// The providers in the order the form suggests them: this app's own model first when this
+/// computer has room for a good one (model_advice), else OpenAI first. Never Anthropic first.
+fn suggestion_order(local_first: bool) -> [&'static str; PROVIDERS.len()] {
+    if local_first {
+        [LLAMA_CPP, OPENAI, ANTHROPIC, LOCAL]
+    } else {
+        [OPENAI, ANTHROPIC, LOCAL, LLAMA_CPP]
+    }
+}
+
+/// The first provider without a saved key in suggestion_order, for the form to add; OpenAI when
+/// all have one.
+fn provider_to_add(saved: &[Saved], local_first: bool) -> &'static str {
+    suggestion_order(local_first)
+        .into_iter()
         .find(|name| !saved.iter().any(|saved| saved.provider == *name))
         .unwrap_or(OPENAI)
 }
@@ -482,6 +505,22 @@ mod tests {
     fn this_apps_own_model_needs_no_key_name_or_address() {
         assert!(validation_errors(&form(LLAMA_CPP, "", "", "")).is_empty());
         assert!(validation_errors(&form(LLAMA_CPP, "Qwen3-8B-Q4_K_M.gguf", "", "")).is_empty());
+    }
+
+    #[test]
+    fn the_form_suggests_the_apps_own_model_only_when_it_fits_and_never_anthropic_first() {
+        assert_eq!(provider_to_add(&[], true), LLAMA_CPP);
+        assert_eq!(provider_to_add(&[], false), OPENAI);
+        let saved = |provider: &str| Saved {
+            provider: provider.to_string(),
+            model: String::new(),
+            base_url: String::new(),
+            key_hint: String::new(),
+            uses: Default::default(),
+            updated_at: 0,
+        };
+        assert_eq!(provider_to_add(&[saved(LLAMA_CPP)], true), OPENAI);
+        assert_eq!(provider_to_add(&[saved(OPENAI)], false), ANTHROPIC);
     }
 
     #[test]

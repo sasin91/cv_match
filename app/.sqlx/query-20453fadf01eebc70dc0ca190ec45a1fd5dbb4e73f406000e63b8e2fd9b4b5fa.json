@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT candidates.name, candidate_profiles.filled_from_cv_name, candidate_profiles.filled_from_cv_at\n        FROM candidates\n        JOIN candidate_profiles ON candidate_profiles.candidate_id = candidates.id\n        WHERE candidates.trongate_user_id = ?1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "name",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "candidates",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "filled_from_cv_name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "candidate_profiles",
+            "name": "filled_from_cv_name"
+          }
+        }
+      },
+      {
+        "name": "filled_from_cv_at",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "candidate_profiles",
+            "name": "filled_from_cv_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "20453fadf01eebc70dc0ca190ec45a1fd5dbb4e73f406000e63b8e2fd9b4b5fa"
+}

@@ -199,11 +199,6 @@ fn list_tabs(current: &str) -> Vec<ListTab> {
         .collect()
 }
 
-/// GET /: the match page is the app's front page.
-pub async fn home() -> Redirect {
-    Redirect::to("/match")
-}
-
 /// GET match: the match page.
 pub async fn index(State(state): State<Arc<AppState>>, Query(query): Query<ListQuery>) -> Answer {
     match_page(&state, &query, None).await

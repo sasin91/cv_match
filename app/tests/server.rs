@@ -613,7 +613,9 @@ async fn stand_in_model() -> (String, Arc<std::sync::atomic::AtomicUsize>) {
                 let required = &body["response_format"]["json_schema"]["schema"]["required"];
                 let asks = |key: &str| required.as_array().unwrap().iter().any(|k| k == key);
                 let user = body["messages"][1]["content"].as_str().unwrap_or("").to_string();
-                let answer = if asks("requirements") {
+                let answer = if asks("entries") {
+                    profile_answer()
+                } else if asks("requirements") {
                     job_answer()
                 } else if asks("experience_years") {
                     cv_answer()
@@ -645,6 +647,16 @@ fn job_answer() -> Value {
         "company": "Firma A/S",
         "requirements": [requirement("PHP", "skill"), requirement("Erfaring med betalingsløsninger", "experience"), requirement("Bosat nær København", "location")],
         "responsibilities": ["Udvikle API'er"],
+    })
+}
+
+fn profile_answer() -> Value {
+    json!({
+        "name": "Mette Sørensen", "email": "mette@example.com", "phone": "", "title": "Udvikler", "location": "Slagelse",
+        "about": ["Backend-udvikler."],
+        "entries": [{ "section": "experience", "title": "Udvikler", "organisation": "Firma", "location": "", "url": "",
+                      "started": "2017-01", "ended": "", "summary": "", "bullets": ["Byggede betalingsløsninger"], "note": "" }],
+        "skills": ["PHP"], "languages": [], "certificates": [],
     })
 }
 
@@ -909,4 +921,116 @@ async fn edge_isnt_opened_without_an_extension_folder() {
     let (status, answer) = send(post_json("/joblog_extension/open_edge", "{}")).await;
     assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
     assert!(answer.contains("There is no extension folder to load."), "{answer}");
+}
+
+/// A new database's app: nothing in it but the local user.
+async fn new_app(vault: KeyVault) -> (axum::Router, SqlitePool) {
+    let db = db::open_in_memory().await.unwrap();
+    let user_id = server::local_user(&db).await.unwrap();
+    let app = server::router(Arc::new(AppState::new(
+        db.clone(),
+        TAXONOMY.clone(),
+        user_id,
+        PORT,
+        vault,
+    )));
+    (app, db)
+}
+
+/// Where a request redirects to.
+async fn redirect_of(app: &axum::Router, request: Request<Body>) -> String {
+    let response = app.clone().oneshot(request).await.unwrap();
+    assert_eq!(response.status(), StatusCode::SEE_OTHER);
+    response.headers()[header::LOCATION].to_str().unwrap().to_string()
+}
+
+#[tokio::test]
+async fn a_new_database_opens_the_setup_and_a_used_one_the_match_page() {
+    let (new, _) = new_app(KeyVault::in_memory()).await;
+    assert_eq!(redirect_of(&new, get("/")).await, "/setup");
+    assert_eq!(redirect_of(&app().await, get("/")).await, "/match");
+}
+
+#[tokio::test]
+async fn the_setup_suggests_an_api_key_without_room_for_a_model_and_waits_for_it_to_read_the_cv() {
+    let (app, _) = new_app(KeyVault::in_memory()).await;
+    let (status, page) = send_to(&app, get("/setup")).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert!(page.contains("Suggested: an OpenAI API key."), "{page}");
+    assert!(page.contains("<code>gpt-5.4-mini</code>"));
+    assert!(page.contains("Set up an AI model first"));
+    assert!(!page.contains(r#"action="setup/submit_cv""#));
+    let (_, account) = send_to(&app, get("/account")).await;
+    assert!(account.contains(r#"<a href="setup">Back to the setup</a>"#));
+    assert!(account.contains(r#"<option value="openai" selected>OpenAI</option>"#));
+}
+
+#[tokio::test]
+async fn the_setup_reads_the_cv_into_the_profile_the_match_page_uses() {
+    let vault = KeyVault::in_memory();
+    let (app, db) = new_app(vault).await;
+    // The key saved on the first run goes back to the setup.
+    let (base_url, _) = stand_in_model().await;
+    let key = format!("provider=local&model=stand-in&api_key=&base_url={base_url}");
+    assert_eq!(
+        redirect_of(&app, post_form("/account/submit_key", &key)).await,
+        "/setup"
+    );
+    let (_, page) = send_to(&app, get("/setup")).await;
+    assert!(page.contains("A local model (Ollama, LM Studio), stand-in"), "{page}");
+    assert!(page.contains(r#"action="setup/submit_cv""#));
+
+    let (status, short) = send_to(&app, post_form("/setup/submit_cv", "cv_text=Mette&cv_name=cv.pdf")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(short.contains("must be at least 100 characters"), "{short}");
+    assert!(
+        short.contains(">Mette</textarea>"),
+        "the text comes back as it was posted"
+    );
+
+    let cv = "Mette Sørensen, udvikler i Slagelse. ".repeat(4);
+    let form = format!("cv_text={}&cv_name=cv.pdf", cv.replace(' ', "+"));
+    assert_eq!(redirect_of(&app, post_form("/setup/submit_cv", &form)).await, "/setup");
+    let (_, page) = send_to(&app, get("/setup")).await;
+    assert!(page.contains("Your profile is filled in from the CV"), "{page}");
+    assert!(
+        page.contains("Your profile: Mette Sørensen, read from cv.pdf on "),
+        "{page}"
+    );
+    assert!(page.contains(r#"name="replace""#));
+    let profile = recruiter::profile::text_for_user(&db, 1).await.unwrap().unwrap();
+    assert!(profile.contains("Udvikler · Firma"), "{profile}");
+    // With a profile it is set up, so the home page is the match page, which matches with it.
+    assert_eq!(redirect_of(&app, get("/")).await, "/match");
+    let (_, match_page) = send_to(&app, get("/match")).await;
+    assert!(match_page.contains("Byggede betalingsløsninger"));
+
+    let (_, again) = send_to(&app, post_form("/setup/submit_cv", &form)).await;
+    assert!(
+        again.contains("Tick &#34;Replace my profile&#34;") || again.contains("Tick &quot;Replace my profile&quot;"),
+        "{again}"
+    );
+}
+
+#[tokio::test]
+async fn the_setup_schedules_the_job_scan_and_stops_it() {
+    let (app, _) = new_app(KeyVault::in_memory()).await;
+    assert_eq!(
+        redirect_of(&app, post_form("/setup/submit_schedule", "hours=8")).await,
+        "/setup"
+    );
+    let (_, page) = send_to(&app, get("/setup")).await;
+    assert!(page.contains("The job scan runs every 8 hours while you"), "{page}");
+    assert!(page.contains("The job scan runs by itself: every 8 hours"));
+    assert!(page.contains(r#"<option value="8" selected>Every 8 hours</option>"#));
+    redirect_of(&app, post_form("/setup/submit_schedule", "hours=5")).await;
+    let (_, refused) = send_to(&app, get("/setup")).await;
+    assert!(
+        refused.contains("5 hours isn&#39;t one of the intervals offered.") || refused.contains("5 hours isn&#x27;t"),
+        "{refused}"
+    );
+    redirect_of(&app, post_form("/setup/submit_unschedule", "")).await;
+    let (_, stopped) = send_to(&app, get("/setup")).await;
+    assert!(stopped.contains("no longer runs by itself"));
+    assert!(!stopped.contains("runs by itself: every"));
 }

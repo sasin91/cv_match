@@ -30,6 +30,8 @@ use crate::extension;
 use crate::laya::laya_client::LayaClient;
 use crate::llama::llama_server::LlamaServer;
 use crate::matches::pages;
+use crate::scan_schedule::ScanSchedule;
+use crate::setup;
 use crate::taxonomy::Taxonomy;
 
 /// The port the app listens on unless told otherwise, fixed so the Jobnet extension can find it.
@@ -72,6 +74,19 @@ pub struct AppState {
     pub tailscale_name: Option<String>,
     /// Reloads the browser's page when the app restarts, with `--dev` while developing.
     pub dev_reload: Option<DevReload>,
+    /// The database file, for the setup wizard.
+    pub database: DatabaseFile,
+    /// When the job scan runs by itself (Task Scheduler; in memory unless main sets it).
+    pub scan_schedule: ScanSchedule,
+}
+
+/// The database file the app runs on.
+#[derive(Debug, Clone, Default)]
+pub struct DatabaseFile {
+    /// Its full path, or "" for an in-memory one.
+    pub path: String,
+    /// Made by this start of the app, rather than found.
+    pub made_now: bool,
 }
 
 impl AppState {
@@ -89,6 +104,8 @@ impl AppState {
             llama: None,
             tailscale_name: None,
             dev_reload: None,
+            database: DatabaseFile::default(),
+            scan_schedule: ScanSchedule::in_memory(),
         }
     }
 
@@ -140,7 +157,11 @@ pub async fn local_user(db: &SqlitePool) -> sqlx::Result<i64> {
 
 pub fn router(state: Arc<AppState>) -> Router {
     let mut router = Router::new()
-        .route("/", get(pages::home))
+        .route("/", get(setup::home))
+        .route("/setup", get(setup::index))
+        .route("/setup/submit_cv", post(setup::submit_cv))
+        .route("/setup/submit_schedule", post(setup::submit_schedule))
+        .route("/setup/submit_unschedule", post(setup::submit_unschedule))
         .route("/match", get(pages::index))
         .route("/match/{id}", get(pages::show))
         .route("/match/history_list", get(pages::history_list))

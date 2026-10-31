@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS (SELECT 1 FROM matches WHERE trongate_user_id = ?1) AS \"has!: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "has!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f63920f88b98d1a557d2a8df0e8056251303d3beffea1a28c1ee52bf98c17d3f"
+}

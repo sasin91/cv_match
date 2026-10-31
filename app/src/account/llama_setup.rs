@@ -21,6 +21,7 @@ use crate::llama::llama_server::LlamaServer;
 use crate::llama::model_choice::{self, Fit};
 use crate::llm::LLAMA_CPP;
 use crate::server::AppState;
+use crate::setup;
 
 /// Where the wizard is.
 const PAGE: &str = "/llama_setup";
@@ -31,8 +32,12 @@ const SERVER_DOWNLOAD: &str = "llama.cpp";
 /// How often the page reloads itself while a download runs, in seconds.
 const REFRESH_SECONDS: u32 = 2;
 
-/// Percent, for the download's progress.
+/// Percent, for the download's progress and the card's share of a model.
 const PERCENT: u64 = 100;
+
+/// The share of a model's layers that must be on the graphics card for it to be suggested as
+/// this app's own model, in percent: with less, most of it runs on the CPU, which is slow.
+const MIN_CARD_SHARE_PERCENT: u64 = 50;
 
 /// A catalog model as the wizard lists it.
 #[derive(Clone)]
@@ -49,6 +54,9 @@ pub struct CatalogRow {
     pub recommended: bool,
     /// In the models folder already.
     pub downloaded: bool,
+    /// Good enough for the AI match (catalog::is_good_enough) and whole or partly on the
+    /// graphics card, so it answers in reasonable time.
+    pub good_enough: bool,
 }
 
 /// The running or last download.
@@ -86,6 +94,8 @@ struct LlamaSetupPage {
     to_download: Vec<CatalogRow>,
     /// The downloaded models, for the list of the one to use (the recommended one selected).
     downloaded: Vec<CatalogRow>,
+    /// The setup wizard isn't finished, so the page links back to it.
+    setup_unfinished: bool,
 }
 
 /// The model forms' field.
@@ -100,7 +110,8 @@ pub async fn index(State(state): State<Arc<AppState>>) -> Response {
     let Some(server) = &state.llama else {
         return failure("The app was started without its llama folder.");
     };
-    let page = page_of(server, state.take_flash());
+    let mut page = page_of(server, state.take_flash());
+    page.setup_unfinished = setup::first_run_or_logged(&state).await;
     match page.render() {
         Ok(html) => Html(html).into_response(),
         Err(e) => failure(&format!("The page couldn't be printed: {e}")),
@@ -154,7 +165,15 @@ pub async fn use_model(State(state): State<Arc<AppState>>, Form(form): Form<Mode
         "",
     )
     .await;
+    let first_run = setup::first_run_or_logged(&state).await;
     match saved {
+        Ok(()) if first_run => {
+            state.set_flash(format!(
+                "This app's own model runs on {}. It starts on the first AI call, which reads your CV below.",
+                form.file
+            ));
+            Redirect::to(setup::PAGE).into_response()
+        }
         Ok(()) => {
             state.set_flash(format!(
                 "This app's own model runs on {}. Pick below what it is used for, and press Check to load it.",
@@ -195,7 +214,7 @@ where
 
 fn page_of(server: &LlamaServer, flash: Option<String>) -> LlamaSetupPage {
     let overview = server.overview();
-    let card_usable = server.card_usable().unwrap_or(false);
+    let card_usable = card_usable_for_weighing(server);
     let inventory = server.inventory();
     let models_folder = server.models_folder();
     let download = download_view(&server.downloads.progress());
@@ -224,6 +243,7 @@ fn page_of(server: &LlamaServer, flash: Option<String>) -> LlamaSetupPage {
         recommended,
         to_download,
         downloaded,
+        setup_unfinished: false,
     }
 }
 
@@ -252,9 +272,36 @@ fn catalog_rows(server: &LlamaServer, card_usable: bool) -> Vec<CatalogRow> {
                 too_big: fit == Fit::TooBig,
                 recommended: recommended.as_deref() == Some(model.file),
                 downloaded: downloaded.iter().any(|name| name == model.file),
+                good_enough: catalog::is_good_enough(model) && runs_mostly_on_the_card(fit, model.layers),
             }
         })
         .collect()
+}
+
+/// Whether a model of layers with this fit has at least MIN_CARD_SHARE_PERCENT of them on the
+/// graphics card, so it answers in reasonable time.
+fn runs_mostly_on_the_card(fit: Fit, layers: u32) -> bool {
+    match fit {
+        Fit::Gpu => true,
+        Fit::Split { gpu_layers } => u64::from(gpu_layers) * PERCENT >= u64::from(layers) * MIN_CARD_SHARE_PERCENT,
+        Fit::Memory | Fit::TooBig => false,
+    }
+}
+
+/// The model to suggest as this app's own: the recommended one when it is good enough, else the
+/// smallest good-enough one, which has the most of itself on the card; None when this computer has no room for a good model, so an OpenAI
+/// or Claude key is the better suggestion.
+pub fn good_local_model(server: &LlamaServer) -> Option<CatalogRow> {
+    let rows = catalog_rows(server, card_usable_for_weighing(server));
+    let recommended = rows.iter().find(|row| row.recommended && row.good_enough);
+    recommended.or_else(|| rows.iter().find(|row| row.good_enough)).cloned()
+}
+
+/// Whether the card counts when models are weighed: as llama_server says, and also when the
+/// llama-server there lacks the card's compute library, since the wizard downloads the build
+/// that has it.
+fn card_usable_for_weighing(server: &LlamaServer) -> bool {
+    server.card_usable().unwrap_or(true)
 }
 
 /// The catalog as the page lists it: the recommended model, the ones still to download, and the
@@ -366,5 +413,40 @@ mod tests {
         assert_eq!(page.build_label, Build::Vulkan.label());
         assert_eq!(page.card_problem, None);
         assert!(page.render().is_ok());
+    }
+
+    #[test]
+    fn a_computer_without_room_on_its_card_for_a_good_model_gets_none() {
+        let folder = std::env::temp_dir().join("recruiter-llama-advice-test");
+        let card = |vram_tenths: u64| Inventory {
+            memory_bytes: 16 * GIB,
+            gpu: Some(Gpu {
+                name: "A card".to_string(),
+                vendor: GpuVendor::Nvidia,
+                vram_bytes: vram_tenths * GIB / 10,
+            }),
+        };
+        let jonas = LlamaServer::new(&folder, card(79));
+        assert_eq!(
+            good_local_model(&jonas).map(|row| row.file),
+            Some("Qwen3-8B-Q4_K_M.gguf")
+        );
+        // Only the 1.7B fits whole on a 4 GB card; under half of the 4B fits on it.
+        let small_card = LlamaServer::new(&folder, card(40));
+        assert_eq!(good_local_model(&small_card).map(|row| row.file), None);
+        // On 5 GB most of the 4B is on the card, though the 1.7B is the recommended fit.
+        let five_gb = LlamaServer::new(&folder, card(50));
+        assert_eq!(
+            good_local_model(&five_gb).map(|row| row.file),
+            Some("Qwen3-4B-Q4_K_M.gguf")
+        );
+        let no_card = LlamaServer::new(
+            &folder,
+            Inventory {
+                memory_bytes: 16 * GIB,
+                gpu: None,
+            },
+        );
+        assert_eq!(good_local_model(&no_card).map(|row| row.file), None);
     }
 }

@@ -1,0 +1,115 @@
+{#- The first-run wizard: the database, the AI model, the CV, the job
+    scan's schedule, then the dashboard. -#}
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <base href="/">
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Set up Recruiter</title>
+    <link rel="stylesheet" href="match_module/css/match.css">
+    <link rel="stylesheet" href="match_module/css/account.css">
+</head>
+<body>
+<header class="site-header">
+    <a class="brand" href="match">Recruiter</a>
+    <nav><a href="match">CV match</a> <a href="account">API key</a></nav>
+</header>
+<main class="narrow">
+    <h1>Set up Recruiter</h1>
+    <p class="muted">Four steps, then the match page. Everything stays on this computer.</p>
+
+    {%- if let Some(flash) = flash %}
+    <p class="notice">{{ flash }}</p>
+    {%- endif %}
+
+    <section class="saved-key setup-step done" id="database">
+        <h2>1. Your data</h2>
+        <p>{% if database.made_now %}A new database was made for you at{% else %}Your data is kept in{% endif %} <code>{{ database.path }}</code>.</p>
+        <p class="muted small">Your matches, profile and settings are in this one file. Your API keys are in Windows Credential Manager, not in it.</p>
+    </section>
+
+    <section class="saved-key setup-step{% if !ai_saved.is_empty() %} done{% endif %}" id="ai">
+        <h2>2. An AI model</h2>
+        {%- if ai_saved.is_empty() %}
+        <p class="muted">The AI reads your CV and the job posts, and writes applications and résumés.</p>
+        {% include "account/model_advice.html" %}
+        {%- if advice.local.is_some() %}
+        <p class="muted small"><a href="account">Use an OpenAI or Claude API key instead</a></p>
+        {%- else %}
+        <p><a class="button primary" href="account">Add an API key</a></p>
+        {%- endif %}
+        {%- else %}
+        <p>The AI runs on:</p>
+        <ul>
+            {%- for saved in ai_saved %}
+            <li>{{ saved }}</li>
+            {%- endfor %}
+        </ul>
+        <p class="muted small"><a href="account">Change it on the API key page</a></p>
+        {%- endif %}
+    </section>
+
+    <section class="saved-key setup-step{% if cv.done.is_some() %} done{% else if !cv.can_read %} waiting{% endif %}" id="cv">
+        <h2>3. Your CV</h2>
+        {%- if let Some(done) = cv.done %}
+        <p>Your profile: {{ done }}. The match page matches with it, and applications and résumés are written from it.</p>
+        {%- endif %}
+        {%- if let Some(error) = cv.error %}
+        <ul class="validation-errors"><li>{{ error }}</li></ul>
+        {%- endif %}
+        {%- if cv.can_read %}
+        <details{% if cv.done.is_none() || cv.error.is_some() %} open{% endif %}>
+            <summary>{% if cv.done.is_some() %}Read another CV into your profile{% else %}Read your CV into your profile{% endif %}</summary>
+            <form method="post" action="setup/submit_cv" class="stack" id="cv-form">
+                <label for="cv_file">CV (a PDF or text file, or paste it)</label>
+                <input type="file" id="cv_file" accept=".pdf,.txt,.md,application/pdf,text/plain">
+                <input type="hidden" name="cv_name" id="cv_name" value="{{ cv.cv_name }}">
+                <textarea name="cv_text" id="cv_text" rows="10" aria-label="CV text" maxlength="{{ cv.max_length }}" required>{{ cv.cv_text }}</textarea>
+                <span class="muted small">Read by your AI model, which takes up to a minute. Leave out your CPR number, health, union membership and photos.</span>
+                {%- if cv.done.is_some() %}
+                <label><input type="checkbox" name="replace" value="1" required> Replace my profile with what this CV says</label>
+                {%- endif %}
+                <button type="submit" class="primary">Read the CV into my profile</button>
+            </form>
+        </details>
+        {%- else if cv.done.is_none() %}
+        <p class="muted">Set up an AI model first: reading the CV runs on it.</p>
+        {%- endif %}
+    </section>
+
+    <section class="saved-key setup-step{% if schedule.done.is_some() %} done{% endif %}" id="schedule">
+        <h2>4. Checking for new jobs</h2>
+        {%- if let Some(done) = schedule.done %}
+        <p>The job scan runs by itself: {{ done }}, while you're signed in to Windows.</p>
+        {%- else %}
+        <p class="muted">Windows Task Scheduler can run the job scan by itself, so new posts are waiting when you open the app. </p>
+        <p class="muted small">The job scan itself comes in the next update; until then each run only notes that it isn't there yet.</p>
+        {%- endif %}
+        {%- if let Some(error) = schedule.error %}
+        <p class="notice">Task Scheduler couldn't be read: {{ error }}</p>
+        {%- endif %}
+        <form method="post" action="setup/submit_schedule" class="stack">
+            <label for="hours">How often</label>
+            <select name="hours" id="hours">
+                {%- for interval in schedule.intervals %}
+                <option value="{{ interval.hours }}"{% if interval.selected %} selected{% endif %}>{{ interval.label }}</option>
+                {%- endfor %}
+            </select>
+            <button type="submit"{% if schedule.done.is_none() %} class="primary"{% endif %}>{% if schedule.done.is_some() %}Change{% else %}Check for new jobs{% endif %}</button>
+        </form>
+        {%- if schedule.done.is_some() %}
+        <form method="post" action="setup/submit_unschedule" class="inline">
+            <button type="submit">Stop checking by itself</button>
+        </form>
+        {%- endif %}
+        {%- if !schedule.task_run.is_empty() %}
+        <p class="muted small">The task runs <code>{{ schedule.task_run }}</code>.</p>
+        {%- endif %}
+    </section>
+
+    <p class="setup-finish"><a class="button primary" href="match">Go to the match page</a></p>
+</main>
+<script type="module" src="match_module/js/setup.js"></script>
+</body>
+</html>

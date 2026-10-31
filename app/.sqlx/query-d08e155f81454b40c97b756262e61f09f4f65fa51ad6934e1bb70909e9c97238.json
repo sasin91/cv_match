@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO candidate_profile_lines (candidate_id, entry_id, kind, text, sort_order)\n            VALUES (?1, ?2, ?3, ?4, ?5)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "d08e155f81454b40c97b756262e61f09f4f65fa51ad6934e1bb70909e9c97238"
+}

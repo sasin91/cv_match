@@ -1,0 +1,14 @@
+{#- Which model to run the AI on (model_advice::ModelAdvice): this app's
+    own when the computer has room for a good one, else an API key. -#}
+<div class="model-advice">
+    {%- if let Some(local) = advice.local %}
+    <p><strong>Suggested: this app's own model.</strong> It runs on this computer, so it needs no API key and costs nothing per use, and your CV and the job posts stay here. This computer ({{ advice.computer }}) runs <strong>{{ local.label }}</strong> ({{ local.size }}): it {{ local.fit }}.</p>
+    <p><a class="button primary" href="llama_setup">Set up this app's own model</a></p>
+    <p class="muted small">Or use an OpenAI or Anthropic (Claude) API key below; it answers faster and better, and you pay the provider for what you use.</p>
+    {%- else %}
+    <p><strong>Suggested: an OpenAI API key.</strong> {% if advice.computer.is_empty() %}This app has no llama folder, so it can't run a model of its own.{% else %}This computer ({{ advice.computer }}) has no room on a graphics card for a model good enough for the AI match, so one of its own would be slow or weak.{% endif %} An OpenAI key runs on <code>{{ advice.openai_model }}</code> by default; a Claude key works too.</p>
+    {%- if !advice.computer.is_empty() %}
+    <p class="muted small">You can still <a href="llama_setup">run a small model on this computer</a>.</p>
+    {%- endif %}
+    {%- endif %}
+</div>

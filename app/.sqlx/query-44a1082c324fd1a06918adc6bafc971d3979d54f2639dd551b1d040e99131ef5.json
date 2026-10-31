@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO candidate_profile_entries\n              (candidate_id, section, title, organisation, location, url, started_on, ended_on, summary, note, sort_order, created_at, updated_at)\n            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)\n            RETURNING id AS \"id!: i64\"\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "candidate_profile_entries",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 12
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "44a1082c324fd1a06918adc6bafc971d3979d54f2639dd551b1d040e99131ef5"
+}

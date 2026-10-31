@@ -9,11 +9,26 @@ main.narrow { max-width: 480px; }
 }
 .stack button { margin-top: 16px; align-self: flex-start; }
 .validation-errors { color: var(--missing); padding-left: 20px; }
-.saved-key { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 16px 0; }
-.saved-key p { margin-top: 0; }
+.saved-key, .model-advice { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 16px; margin: 16px 0; }
+.saved-key p, .model-advice p { margin-top: 0; }
 .key-uses { margin-bottom: 16px; }
 .key-uses fieldset { border: 0; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 6px; }
 .key-uses legend { font-weight: 600; margin-bottom: 4px; }
 .key-uses fieldset label { margin-top: 0; font-weight: normal; }
 .small { font-size: 0.85rem; }
 form.inline { display: inline; }
+a.button {
+  display: inline-block; padding: 8px 18px; border-radius: 8px; border: 1px solid var(--line);
+  background: var(--panel); color: var(--text); text-decoration: none;
+}
+a.button.primary { background: var(--accent); border-color: var(--accent); color: #fff; font-weight: 600; }
+.stack textarea {
+  font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); color: var(--text);
+}
+
+/* The setup wizard: one box per step, the done ones ticked. */
+.setup-step h2 { margin: 0 0 8px; font-size: 1.1rem; }
+.setup-step.done h2::before { content: "✓ "; color: var(--accent); }
+.setup-step.waiting { opacity: 0.6; }
+.setup-finish { margin: 24px 0; }

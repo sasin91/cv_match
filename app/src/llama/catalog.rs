@@ -77,6 +77,16 @@ pub const MODELS: [CatalogModel; 4] = [
     },
 ];
 
+/// The smallest catalog model whose answers are good enough for the AI match and the writing.
+/// A computer that can only run smaller ones on its graphics card is pointed to an OpenAI or
+/// Claude key instead.
+pub const SMALLEST_GOOD_MODEL: &str = "Qwen3-4B-Q4_K_M.gguf";
+
+/// Whether model is SMALLEST_GOOD_MODEL or bigger.
+pub fn is_good_enough(model: &CatalogModel) -> bool {
+    find(SMALLEST_GOOD_MODEL).is_some_and(|smallest| model.bytes >= smallest.bytes)
+}
+
 /// The catalog model with this file name.
 pub fn find(file: &str) -> Option<&'static CatalogModel> {
     MODELS.iter().find(|model| model.file == file)
@@ -93,5 +103,11 @@ mod tests {
             "https://huggingface.co/Qwen/Qwen3-8B-GGUF/resolve/main/Qwen3-8B-Q4_K_M.gguf"
         );
         assert_eq!(find("nonsense.gguf"), None);
+    }
+
+    #[test]
+    fn the_smallest_model_isnt_good_enough_and_the_rest_are() {
+        let good: Vec<bool> = MODELS.iter().map(is_good_enough).collect();
+        assert_eq!(good, [false, true, true, true]);
     }
 }
