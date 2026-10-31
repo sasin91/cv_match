@@ -259,7 +259,7 @@ fn catalog_rows(server: &LlamaServer, card_usable: bool) -> Vec<CatalogRow> {
         .map(|(model, _)| model.name.clone())
         .ok();
     let downloaded: Vec<String> = server.models().into_iter().map(|model| model.name).collect();
-    catalog::MODELS
+    let rows = catalog::MODELS
         .iter()
         .zip(&as_files)
         .map(|(model, file): (&CatalogModel, _)| {
@@ -275,7 +275,25 @@ fn catalog_rows(server: &LlamaServer, card_usable: bool) -> Vec<CatalogRow> {
                 good_enough: catalog::is_good_enough(model) && runs_mostly_on_the_card(fit, model.layers),
             }
         })
-        .collect()
+        .collect();
+    recommend_a_good_one(rows)
+}
+
+/// Moves the recommendation to the smallest good-enough model (the one with the most of itself
+/// on the card) when the best fit isn't good enough and another is, so the wizard downloads the
+/// model the API key page and the setup suggest.
+fn recommend_a_good_one(mut rows: Vec<CatalogRow>) -> Vec<CatalogRow> {
+    let recommended_is_good = rows.iter().any(|row| row.recommended && row.good_enough);
+    let Some(good) = rows.iter().position(|row| row.good_enough) else {
+        return rows;
+    };
+    if recommended_is_good {
+        return rows;
+    }
+    for (index, row) in rows.iter_mut().enumerate() {
+        row.recommended = index == good;
+    }
+    rows
 }
 
 /// Whether a model of layers with this fit has at least MIN_CARD_SHARE_PERCENT of them on the
@@ -288,13 +306,12 @@ fn runs_mostly_on_the_card(fit: Fit, layers: u32) -> bool {
     }
 }
 
-/// The model to suggest as this app's own: the recommended one when it is good enough, else the
-/// smallest good-enough one, which has the most of itself on the card; None when this computer has no room for a good model, so an OpenAI
+/// The model to suggest as this app's own: the recommended one (recommend_a_good_one), when it
+/// is good enough; None when this computer has no room for a good model, so an OpenAI
 /// or Claude key is the better suggestion.
 pub fn good_local_model(server: &LlamaServer) -> Option<CatalogRow> {
     let rows = catalog_rows(server, card_usable_for_weighing(server));
-    let recommended = rows.iter().find(|row| row.recommended && row.good_enough);
-    recommended.or_else(|| rows.iter().find(|row| row.good_enough)).cloned()
+    rows.into_iter().find(|row| row.recommended && row.good_enough)
 }
 
 /// Whether the card counts when models are weighed: as llama_server says, and also when the
@@ -440,6 +457,9 @@ mod tests {
             good_local_model(&five_gb).map(|row| row.file),
             Some("Qwen3-4B-Q4_K_M.gguf")
         );
+        // The download wizard recommends the same one.
+        let page = page_of(&five_gb, None);
+        assert_eq!(page.recommended.map(|row| row.file), Some("Qwen3-4B-Q4_K_M.gguf"));
         let no_card = LlamaServer::new(
             &folder,
             Inventory {
