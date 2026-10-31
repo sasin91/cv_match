@@ -1,0 +1,39 @@
+{#- The job searches (job_scan::index). -#}
+{% include "job_scan/header.html" %}
+<main class="narrow">
+    <h1>Job scan</h1>
+    <p class="muted">Save what you're looking for, and the job scan looks for new job posts on the job sites for you. Every post it finds is matched with your profile and saved with your matches, and a good match gets a tailored résumé and a job application right away. It searches on your own OpenAI key.</p>
+
+    {%- if let Some(flash) = flash %}
+    <p class="notice">{{ flash }}</p>
+    {%- endif %}
+    {%- if let Some(problem) = problem %}
+    <p class="notice alert">{{ problem }}</p>
+    {%- endif %}
+
+    <p class="actions-bar">
+        <a class="button primary" href="job_scan/create">New job search</a>
+        {%- if !searches.is_empty() %}
+        <form class="inline" method="post" action="job_scan/submit_scan"><input type="hidden" name="back" value="job_scan"><button type="submit">Scan now</button></form>
+        {%- endif %}
+    </p>
+
+    {%- if searches.is_empty() %}
+    <p class="muted">You have no job searches yet.</p>
+    {%- else %}
+    <ul class="searches">
+        {%- for s in searches %}
+        <li class="search-card">
+            <a href="job_scan/search/{{ s.id }}"><strong>{{ s.name }}</strong></a>
+            {%- if let Some(chip) = s.chip %}
+            <span class="chip {{ chip.class }}">{{ chip.label }}</span>
+            {%- endif %}
+            <br>
+            <span class="muted small">{{ s.meta }}</span>
+        </li>
+        {%- endfor %}
+    </ul>
+    {%- endif %}
+</main>
+</body>
+</html>

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT domain FROM job_search_sites WHERE job_search_id = ?1 ORDER BY domain",
+  "describe": {
+    "columns": [
+      {
+        "name": "domain",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "job_search_sites",
+            "name": "domain"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "eabc6ac50185fa7c0c85b4a185503372300f42516c1998a0984d97d788d49209"
+}

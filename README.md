@@ -47,7 +47,8 @@ The links go to the setup (http://127.0.0.1:8765/setup), whose steps are:
    the database has no profile or saved matches;
 3. your CV, read by that model into your profile, which the match page matches with;
 4. how often the job scan runs by itself: a Task Scheduler task, `Recruiter\Job scan`, running
-   `recruiter.exe scan` (the scan itself isn't ported yet, so for now a run only says so).
+   `recruiter.exe scan`, which scans every active job search (Job scan in the menu) for new
+   posts and matches them with your profile. The dashboard's Scan now runs the same scan.
 
 Close its window to stop it. `recruiter.exe --help` lists the options.
 
@@ -201,6 +202,12 @@ With a real key saved on the API key page, check these by hand after a change:
       for new jobs, and `Recruiter\Job scan` shows in Task Scheduler (run it once: no console
       window opens). Go to the dashboard: the alert is gone, the rows say which model and whose profile, and
       the match form has the CV filled in.
+- [ ] **The job scan:** with your OpenAI key picked for evaluating job posts, make a job search
+      under Job scan, then press Scan now on the dashboard. The Job scan row says "Scanning now",
+      and after a few minutes (reload) the last scan's result; the search's page lists the posts it
+      found, matched, with a tailored résumé and application from its score up. Run
+      `recruiter.exe scan` right after: it says every search was scanned less than an hour ago.
+      Dismiss a post: its match is in the Rejected list.
 - [ ] **The lists:** after a few matches, http://127.0.0.1:8765/match shows them under
       Shortlist, All and the other lists. Show more loads more.
 - [ ] **The free match:** paste a job post's text, with evaluating set to no key on the key page.

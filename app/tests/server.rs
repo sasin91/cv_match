@@ -944,14 +944,8 @@ async fn the_app_opens_on_the_dashboard_which_says_what_is_missing() {
     assert_eq!(status, StatusCode::OK, "{page}");
     assert!(page.contains("No AI model is set up."), "{page}");
     assert!(page.contains("3 things need your attention."), "{page}");
-    assert!(
-        page.contains(r#"<a class="status-fix" href="setup#ai">Set one up</a>"#),
-        "{page}"
-    );
-    assert!(
-        page.contains(r#"<a class="status-fix" href="setup#cv">Read your CV</a>"#),
-        "{page}"
-    );
+    assert!(page.contains(r#"<a href="setup#ai">Set one up</a>"#), "{page}");
+    assert!(page.contains(r#"<a href="setup#cv">Read your CV</a>"#), "{page}");
     assert!(page.contains("Nothing on the shortlist."), "{page}");
     let (_, rejected) = send_to(&new, get("/match?list=rejected")).await;
     assert!(rejected.contains("No AI model is set up."));
@@ -1054,4 +1048,115 @@ async fn the_setup_schedules_the_job_scan_and_stops_it() {
     let (_, stopped) = send_to(&app, get("/setup")).await;
     assert!(stopped.contains("no longer runs by itself"));
     assert!(!stopped.contains("runs by itself: every"));
+}
+
+/// The page any form's redirect leads to.
+async fn followed_to(app: &axum::Router, request: Request<Body>) -> String {
+    let location = redirect_of(app, request).await;
+    send_to(app, get(&location)).await.1
+}
+
+#[tokio::test]
+async fn a_job_search_is_made_listed_and_scanned_only_on_an_openai_key() {
+    let (app, db) = new_app(KeyVault::in_memory()).await;
+    // Nothing to scan yet: the dashboard says so and offers no Scan now.
+    let (_, page) = send_to(&app, get("/match")).await;
+    assert!(page.contains("There is no job search to scan yet."), "{page}");
+    assert!(!page.contains("job_scan/submit_scan"), "{page}");
+
+    // The form says what's wrong, and keeps what was typed.
+    let (status, form) = send_to(
+        &app,
+        post_form("/job_scan/submit/0", "name=Backend&tailor_from_score=60"),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(form.contains("Say what to look for."), "{form}");
+    assert!(form.contains(r#"value="Backend""#), "{form}");
+
+    let saved =
+        "name=Backend&keywords=PHP+udvikler&location=Odense&remote_ok=1&sites=jobnet.dk&tailor_from_score=60&active=1";
+    let search = followed_to(&app, post_form("/job_scan/submit/0", saved)).await;
+    assert!(search.contains("Your job search is saved."), "{search}");
+    assert!(
+        search.contains("PHP udvikler · Odense · remote too · on jobnet.dk · tailors from 60"),
+        "{search}"
+    );
+    assert!(search.contains("No job posts found yet."), "{search}");
+    let (_, list) = send_to(&app, get("/job_scan")).await;
+    assert!(list.contains("Backend"), "{list}");
+    assert!(list.contains("0 found, 0 matched · not scanned yet"), "{list}");
+
+    // A local model can't search the web: Scan now says so, and nothing is scanned.
+    let (base_url, _) = stand_in_model().await;
+    let key = format!("provider=local&model=stand-in&api_key=&base_url={base_url}");
+    send_to(&app, post_form("/account/submit_key", &key)).await;
+    let back = followed_to(&app, post_form("/job_scan/submit_scan", "back=job_scan")).await;
+    assert!(back.contains("which only OpenAI"), "{back}");
+    let runs: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM job_search_runs")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(runs, 0);
+    let (_, page) = send_to(&app, get("/match")).await;
+    assert!(page.contains("only OpenAI"), "{page}");
+    assert!(!page.contains("job_scan/submit_scan"), "{page}");
+
+    // Unknown searches are the not-found page; Scan now never goes back off the app.
+    let (status, _) = send_to(&app, get("/job_scan/search/99")).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+    let response = app
+        .clone()
+        .oneshot(post_form("/job_scan/submit_scan", "back=https://example.com"))
+        .await
+        .unwrap();
+    assert_eq!(response.headers()[header::LOCATION], "/match");
+}
+
+#[tokio::test]
+async fn dismissing_a_found_post_rejects_its_match_and_rejecting_the_match_dismisses_it() {
+    let (app, db) = new_app(KeyVault::in_memory()).await;
+    let saved = "name=Backend&keywords=PHP&tailor_from_score=60&active=1";
+    followed_to(&app, post_form("/job_scan/submit/0", saved)).await;
+    db.execute(sqlx::raw_sql(
+        r#"
+        INSERT INTO matches (id, trongate_user_id, job_title, company, job_text, cv_text, score, points, max_points, tag, created_at)
+        VALUES (5, 1, 'PHP developer', 'Acme', 'post', 'cv', 0.8, 8, 10, 'good', 100);
+        INSERT INTO scanned_job_posts (id, job_search_id, url, url_hash, title, status, match_id, found_at)
+        VALUES (1, 1, 'https://jobnet.dk/1', 'x', 'PHP developer', 'matched', 5, 100);
+        "#,
+    ))
+    .await
+    .unwrap();
+    let (_, search) = send_to(&app, get("/job_scan/search/1")).await;
+    assert!(
+        search.contains("80<span class=\"visually-hidden\"> of 100</span> · Good match"),
+        "{search}"
+    );
+    assert!(search.contains("Open the match"), "{search}");
+
+    assert_eq!(
+        redirect_of(&app, post_form("/job_scan/submit_dismiss/1", "")).await,
+        "/job_scan/search/1"
+    );
+    let rejected: Option<i64> = sqlx::query_scalar("SELECT rejected_at FROM matches WHERE id = 5")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert!(rejected.is_some());
+    redirect_of(&app, post_form("/job_scan/submit_dismiss/1", "undo=1")).await;
+    let status: String = sqlx::query_scalar("SELECT status FROM scanned_job_posts WHERE id = 1")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(status, "matched");
+
+    // Rejected on the match page, the post is dismissed with it.
+    let reject = "reasons%5B%5D=salary";
+    send_to(&app, post_form("/match/submit_reject/5", reject)).await;
+    let status: String = sqlx::query_scalar("SELECT status FROM scanned_job_posts WHERE id = 1")
+        .fetch_one(&db)
+        .await
+        .unwrap();
+    assert_eq!(status, "dismissed");
 }

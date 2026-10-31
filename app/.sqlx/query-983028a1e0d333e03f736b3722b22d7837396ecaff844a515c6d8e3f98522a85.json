@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT EXISTS (\n          SELECT 1 FROM job_search_runs WHERE finished_at IS NULL AND started_at > ?1\n        ) AS \"running!: bool\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "running!: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "983028a1e0d333e03f736b3722b22d7837396ecaff844a515c6d8e3f98522a85"
+}

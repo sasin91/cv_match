@@ -51,6 +51,8 @@ ego-tree = "0.11"
 url = "2"
 html-escape = "0.3"
 encoding_rs = "0.8"
+# A found job post's url_hash (job_scan), sha1 of its normalised url as recruiter keeps it.
+sha1 = "0.10"
 # The llama.cpp release the setup wizard downloads, unzipped into the llama folder.
 zip = { version = "9", default-features = false, features = ["deflate"] }
 # Laya on ONNX Runtime, run in this process (ONNX Runtime linked in statically).

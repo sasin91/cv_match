@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE scanned_job_posts SET status = ?2 WHERE match_id = ?1 AND status = ?3",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "f80d366a188cb272dff0fce8076104431051d409e4012eaf147d0dbe5dba8338"
+}

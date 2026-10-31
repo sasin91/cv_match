@@ -17,6 +17,20 @@ pub fn day(at: i64) -> String {
         .unwrap_or_default()
 }
 
+/// "21 Oct 08:12" in this computer's time zone.
+pub fn short_moment(at: i64) -> String {
+    DateTime::<Utc>::from_timestamp(at, 0)
+        .map(|at| at.with_timezone(&Local).format("%-d %b %H:%M").to_string())
+        .unwrap_or_default()
+}
+
+/// "21 Oct 2026 08:12" in this computer's time zone.
+pub fn moment(at: i64) -> String {
+    DateTime::<Utc>::from_timestamp(at, 0)
+        .map(|at| at.with_timezone(&Local).format("%-d %b %Y %H:%M").to_string())
+        .unwrap_or_default()
+}
+
 /// The year of a moment in UTC.
 pub fn utc_year(at: i64) -> i32 {
     DateTime::<Utc>::from_timestamp(at, 0).map_or(1970, |at| at.year())

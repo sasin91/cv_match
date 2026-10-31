@@ -1,0 +1,56 @@
+{#- A job search and the posts it found (job_scan::search). -#}
+{% include "job_scan/header.html" %}
+<main>
+    <p><a href="job_scan">&larr; Job scan</a></p>
+    <h1>{{ search.name }}</h1>
+    <p class="muted">{{ summary.line }}</p>
+
+    {%- if let Some(flash) = flash %}
+    <p class="notice">{{ flash }}</p>
+    {%- endif %}
+
+    {%- if !search.active %}
+    <p class="notice">This search is off, so it isn't scanned. Turn it on under Edit.</p>
+    {%- else if !search.paused_reason.is_empty() %}
+    <p class="notice alert">{{ search.paused_reason }}</p>
+    {%- else if let Some(problem) = problem %}
+    <p class="notice alert">{{ problem }}</p>
+    {%- endif %}
+
+    {%- if let Some(last) = summary.last_scan %}
+    <p class="small muted">
+        Last scan {{ last.when }}:
+        {% if last.is_error() %}<span class="error-text">{{ last.text }}</span>{% else %}{{ last.text }}{% endif %}
+        {{ last.usage }}
+    </p>
+    {%- endif %}
+
+    <p class="actions-bar">
+        {%- if search.active %}
+        <form class="inline" method="post" action="job_scan/submit_scan"><input type="hidden" name="back" value="job_scan/search/{{ search.id }}"><button type="submit" class="primary">Scan now</button></form>
+        {%- endif %}
+        <a class="button" href="job_scan/edit/{{ search.id }}">Edit</a>
+        {%- if dismissed %}
+        <a href="job_scan/search/{{ search.id }}">Hide dismissed posts</a>
+        {%- else %}
+        <a href="job_scan/search/{{ search.id }}?dismissed=1">Show dismissed posts</a>
+        {%- endif %}
+    </p>
+
+    <form class="add-post" method="post" action="job_scan/submit_add/{{ search.id }}">
+        <label for="url">Add a job post by its link</label>
+        <div class="add-row">
+            <input type="url" name="url" id="url" required placeholder="https://…">
+            <button type="submit" class="primary">Add and match</button>
+        </div>
+    </form>
+
+    {%- if posts.is_empty() && first_batch %}
+    <p class="muted" id="no-posts">No job posts found yet.</p>
+    {%- endif %}
+    <div class="posts">
+        {% include "job_scan/posts.html" %}
+    </div>
+</main>
+</body>
+</html>

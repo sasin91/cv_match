@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            UPDATE job_searches\n            SET name = ?2, keywords = ?3, location = ?4, remote_ok = ?5, tailor_from_score = ?6,\n                active = ?7,\n                paused_reason = CASE WHEN ?7 = 1 THEN '' ELSE paused_reason END,\n                updated_at = ?8\n            WHERE id = ?1\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "7162c77ffff78f834fcda2d8b28314ba9d192e6bb2c1a4697ccbd68d4d0aa3c4"
+}
