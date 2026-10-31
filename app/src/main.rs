@@ -63,7 +63,7 @@ fn main() -> ExitCode {
 
 /// Whether this program was started as Recruiter-setup.exe, the release's installer.
 fn started_as_setup() -> bool {
-    std::env::current_exe().is_ok_and(|exe| install::is_setup_name(&exe))
+    install::running_program().is_ok_and(|exe| install::is_setup_name(&exe))
 }
 
 /// `recruiter install`: installs this program, then starts the installed copy in a window of
@@ -92,7 +92,7 @@ fn run_install(args: &[String]) -> ExitCode {
     }
     match start_in_own_window(&installed.exe, &installed.arguments) {
         Ok(()) => {
-            println!("Recruiter is starting from the Start menu's copy, and opens its dashboard in your browser.");
+            println!("Recruiter is starting from the installed copy, and opens its dashboard in your browser.");
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -357,7 +357,7 @@ fn scan_schedule(database: &std::path::Path) -> ScanSchedule {
         );
         PathBuf::from("recruiter.exe")
     });
-    ScanSchedule::task_scheduler(&exe, std::path::Path::new(&shown_path(database)))
+    ScanSchedule::system(&exe, std::path::Path::new(&shown_path(database)))
 }
 
 /// The database file's full path as people and other programs read it: without the \\?\ that

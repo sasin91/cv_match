@@ -128,7 +128,7 @@ pub async fn submit_cv(State(state): State<Arc<AppState>>, Form(form): Form<CvFo
 pub async fn submit_schedule(State(state): State<Arc<AppState>>, Form(form): Form<ScheduleForm>) -> Response {
     let message = match state.scan_schedule.register(form.hours).await {
         Ok(()) => format!(
-            "The job scan runs {} while you're signed in to Windows.",
+            "The job scan runs {} while you're signed in.",
             setup_steps::interval_label(form.hours).to_lowercase()
         ),
         Err(why) => format!("The job scan couldn't be scheduled: {why}"),

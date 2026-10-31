@@ -1,6 +1,6 @@
 # cv_match
 
-Recruiter's CV match as a desktop app: one program for Windows (or any desktop) that keeps your
+Recruiter's CV match as a desktop app: one program for Windows or Linux that keeps your
 saved matches in SQLite, serves the match page on http://127.0.0.1:8765 in your own browser, and
 works with Jobnet's joblog through its browser extension. One local user, no sign-in.
 
@@ -129,6 +129,22 @@ program and keeps your data, which is how an update goes in; close Recruiter fir
 Uninstall it from Windows' installed apps, or with `recruiter.exe uninstall`. It removes the
 program, the shortcut and the job scan's task, and keeps the database, the models and the API
 keys.
+
+### On Linux (and WSL)
+
+Build it the same way (`cargo build --release` in `app/`), or take `Recruiter-x86_64.AppImage` from
+a release. `recruiter install` (or running `Recruiter-setup.AppImage`) copies the program, or the
+AppImage, to `~/.local/lib/recruiter/recruiter`, links `~/.local/bin/recruiter` to it and adds a
+Recruiter launcher to the applications menu, which starts it in a terminal. The database is
+`~/.local/share/Recruiter/recruiter.sqlite`, and API keys go in the keyring (the Secret Service:
+GNOME Keyring or KWallet), which has to be running to save one.
+
+The job scan's schedule is a systemd user timer, `recruiter-scan.timer`, in
+`~/.config/systemd/user` (`systemctl --user list-timers` shows it). Without systemd (WSL with
+systemd off, say) the setup says it couldn't be scheduled. On WSL, turn systemd on in
+`/etc/wsl.conf` (`[boot]` `systemd=true`); an AppImage there may need
+`--appimage-extract-and-run` when FUSE is missing. `recruiter uninstall` removes the program, the
+link, the launcher and the timer, and keeps the data. macOS isn't covered yet.
 
 ### Starting it at login
 

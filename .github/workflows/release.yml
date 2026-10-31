@@ -1,9 +1,14 @@
 name: release
 
-# The Windows program for a release: pushing a tag like v0.2.0 builds the app and attaches it to
-# that tag's GitHub release twice, as recruiter.exe and as Recruiter-setup.exe. They are the same
-# program; started under the setup name (a double-click) it installs itself (app/src/install.rs).
-# Run by hand, it builds the same two files as a workflow artifact instead.
+# The programs for a release: pushing a tag like v0.2.0 builds the app and attaches it to that
+# tag's GitHub release.
+#
+# - Windows: recruiter.exe and Recruiter-setup.exe, the same program; started under the setup name
+#   (a double-click) it installs itself (app/src/install.rs).
+# - Linux: Recruiter-x86_64.AppImage and Recruiter-setup.AppImage, likewise. Built on the oldest
+#   Ubuntu runner, so the AppImage runs on distributions with an older glibc too.
+#
+# Run by hand, it builds the same files as workflow artifacts instead.
 on:
   push:
     tags: ['v*']
@@ -44,4 +49,49 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: recruiter-windows
+          path: app/dist/
+
+  linux:
+    name: Linux AppImage
+    runs-on: ubuntu-22.04
+    defaults:
+      run:
+        working-directory: app
+    env:
+      SQLX_OFFLINE: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
+      - run: cargo build --release
+      - name: Make the AppImage
+        # appimagetool is itself an AppImage; the runner has no FUSE, so it unpacks itself to run.
+        env:
+          APPIMAGE_EXTRACT_AND_RUN: 1
+          ARCH: x86_64
+        run: |
+          mkdir -p AppDir/usr/bin dist
+          cp target/release/recruiter AppDir/usr/bin/recruiter
+          ln -s usr/bin/recruiter AppDir/AppRun
+          cp ../extension/jobnet-joblog/icons/icon-128.png AppDir/recruiter.png
+          printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Recruiter' \
+            'Comment=Match your CV with job posts' 'Exec=recruiter' 'Icon=recruiter' \
+            'Terminal=true' 'Categories=Office;' > AppDir/recruiter.desktop
+          curl -fsSL -o appimagetool \
+            https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
+          chmod +x appimagetool
+          ./appimagetool AppDir dist/Recruiter-x86_64.AppImage
+          cp dist/Recruiter-x86_64.AppImage dist/Recruiter-setup.AppImage
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            app/dist/Recruiter-x86_64.AppImage
+            app/dist/Recruiter-setup.AppImage
+      - if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: recruiter-linux
           path: app/dist/
