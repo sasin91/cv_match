@@ -28,6 +28,7 @@ PHP modules file by file, keeping their names, and is tested against what the PH
 | `src/matches/ai_match.rs`, `document_writer.rs`, `llm_key.rs` | `Cv_match.php`'s `_ai_match`, `_write_application`, `_tailor_resume` and `llm()` |
 | `src/matches/page_reader.rs` | `Page_reader.php` (fetch_job) |
 | `src/matches/application_delivery.rs`, `cv_links.rs`, `resume_comparison.rs` | the Apply dialog and the résumé's comparison, of the same names |
+| `src/laya/laya_client.rs` | `modules/laya/Laya_client.php`, on `laya-server`'s model in this process instead of over HTTP |
 | `src/pdf/` | (new) stands in for dompdf: lays the page out on A4 as dompdf 3.1 did and writes the PDF |
 
 The PHP files named here are in [sasin91/recruiter](https://github.com/sasin91/recruiter). What the
@@ -40,8 +41,8 @@ lives in `../extension/jobnet-joblog`.
     cargo run --release
 
 serves the app on http://127.0.0.1:8765/match and opens it in your default browser
-(`--port`, `--database file`, `--no-browser`). It is the PHP app's match page with the same CSS
-and JS (`assets/match/css`, `js`, and Trongate MX from `assets/js`, built into the exe), for
+(`--port`, `--database file`, `--laya folder`, `--no-browser`). It is the PHP app's match page
+with the same CSS and JS (`assets/match/css`, `js`, and Trongate MX from `assets/js`, built into the exe), for
 one local user who is always signed in:
 
 - the saved matches by list (Shortlist, All, Applied not on Jobnet yet, On Jobnet, Rejected),
@@ -64,9 +65,30 @@ one local user who is always signed in:
 - the application, the tailored résumé, the CV and the job post as PDFs (`POST match/pdf`);
 - reading an uploaded PDF CV in the browser with pdf.js, which the app serves itself
   (`assets/match/pdfjs`), so it works offline;
-- the API key page (http://127.0.0.1:8765/account), below.
+- the API key page (http://127.0.0.1:8765/account), below;
+- Laya's reading of the free match and the AI match, when its model is there (below).
 
-Laya's own reading of a match (laya) is still empty: Laya comes into the app next.
+## Laya
+
+Laya reads a match's requirement verdicts (the Laya summary) and answers how likely the CV meets
+every requirement and how good a fit it is, 0 to 4; the result shows it as one line under the
+score. The model is `laya-server`'s, run inside the app on ONNX Runtime (linked into the exe), so
+no Laya service or Python is needed. It needs the exported English checkpoint in one folder,
+`%APPDATA%\Recruiter\laya` (next to the database, or `--laya folder`):
+
+    laya\rl_agent_config.json
+    laya\tokenizer\            (tokenizer.json, tokenizer_config.json, ...)
+    laya\laya.onnx
+    laya\laya.onnx.data         (1.7 GB)
+
+that is, the checkpoint folder and the two files `export.py` writes (see
+`../laya-server/README.md`, "One-time: export the model"). Without `laya.onnx` there, the app
+says so at start and the matches go on without a Laya line, as the PHP app does without
+`LAYA_URL`. The
+model loads in the background at start (a few seconds, about 1.5 GB of memory); a match made
+before then waits for it. When it can't load or answer, the result says why under the score and
+the log has it too; the score doesn't depend on it. The PHP app's per-visitor limit
+(`Laya_limit`) isn't ported: the model answers only you.
 
 ## PDFs
 
@@ -179,7 +201,10 @@ in `eval/data/gold.jsonl`, plus typos and edge cases), the free reading of synth
 CVs, all 28 post x CV matches (criteria, verdicts, score, Laya summary) and 27 texts read for how
 the post asks to be applied to, and the joblog: 343 deadlines, working hours, places and contact
 people, 16 saved matches filled in as joblog entries and 10 days applied in Danish time; and
-the 53 PDF pages and 7 download names Pdf_writer makes of letters, résumés, CVs and job posts.
+the 53 PDF pages and 7 download names Pdf_writer makes of letters, résumés, CVs and job posts;
+and Laya's two questions, 11 of its answers as Laya_client reads them and the line Match_result
+prints for each and for a failure. The model itself isn't in the repo, so the tests never run
+it; `laya-server`'s own tests check it against Python's laya when its files are there.
 
 The fixtures come from the PHP code itself, in a checkout of sasin91/recruiter. After changing
 the PHP side, write them again and let the Rust tests show what the port has to follow:

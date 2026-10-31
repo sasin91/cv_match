@@ -19,6 +19,8 @@ use super::matcher::{Groups, Part, Score, Verdicts};
 use super::reject_button::RejectButton;
 use super::verdict_row::{self, VerdictRow};
 use super::{Job, Profile, dates};
+use crate::laya::laya_client::LayaReading;
+use crate::php;
 
 /// The groups' names, in the order a saved match's unknown criterion falls back from.
 pub const GROUP_NAMES: [(&str, &str); 5] = [
@@ -50,11 +52,47 @@ pub struct Filter {
     pub count: usize,
 }
 
+/// What the Laya line says when Laya didn't answer: why, then that the score stands.
+pub const LAYA_FAILED: &str = "No Laya reading this time. {error} The score above doesn't depend on it.";
+
+/// Laya's probability as a percentage.
+const PERCENT: f64 = 100.0;
+
+/// The decimals the Laya line shows fit with.
+const FIT_DECIMALS_SHOWN: i32 = 1;
+
 /// Laya's answer as a line; no text without Laya.
 #[derive(Debug, Clone, Default, PartialEq)]
 pub struct LayaLine {
     pub text: String,
     pub failed: bool,
+}
+
+impl LayaLine {
+    pub fn from(reading: &LayaReading) -> Self {
+        if let Some(laya) = &reading.laya {
+            let meets = php::round(laya.meets * PERCENT) as i64;
+            let fit = format!(
+                "{:.*}",
+                FIT_DECIMALS_SHOWN as usize,
+                php::round_to(laya.fit, FIT_DECIMALS_SHOWN)
+            );
+            return LayaLine {
+                text: format!(
+                    "Laya: {meets}% likely to meet every requirement, fit {fit} of 4 ({}).",
+                    laya.fit_label
+                ),
+                failed: false,
+            };
+        }
+        match reading.laya_error.as_deref().filter(|error| !error.is_empty()) {
+            Some(error) => LayaLine {
+                text: LAYA_FAILED.replace("{error}", error),
+                failed: true,
+            },
+            None => LayaLine::default(),
+        }
+    }
 }
 
 /// What the free match found in the CV, for the CV panel.
@@ -97,6 +135,7 @@ pub struct Fresh<'a> {
     pub soft_skills: Vec<String>,
     pub apply_instructions: Option<&'a ApplyInstructions>,
     pub saved_id: Option<i64>,
+    pub laya: &'a LayaReading,
 }
 
 impl MatchResult {
@@ -120,7 +159,7 @@ impl MatchResult {
             filters: filters(&sections),
             sections,
             soft_skills: fresh.soft_skills.clone(),
-            laya: LayaLine::default(),
+            laya: LayaLine::from(fresh.laya),
             laya_input: laya_input.to_string(),
             documents,
             job_url: String::new(),

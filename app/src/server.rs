@@ -23,6 +23,7 @@ use sqlx::SqlitePool;
 
 use crate::account::{self, key_vault::KeyVault};
 use crate::extension;
+use crate::laya::laya_client::LayaClient;
 use crate::matches::pages;
 use crate::taxonomy::Taxonomy;
 
@@ -57,6 +58,8 @@ pub struct AppState {
     port: u16,
     /// Where the Jobnet extension was written for the browser to load, or why it couldn't be.
     pub extension_folder: Result<PathBuf, String>,
+    /// Laya's model, when its folder has one.
+    pub laya: Option<LayaClient>,
 }
 
 impl AppState {
@@ -70,6 +73,7 @@ impl AppState {
             fetches: Mutex::new(Vec::new()),
             port,
             extension_folder: Err("The extension wasn't written out.".to_string()),
+            laya: None,
         }
     }
 
