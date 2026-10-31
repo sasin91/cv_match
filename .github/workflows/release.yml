@@ -5,8 +5,8 @@ name: release
 #
 # - Windows: recruiter.exe and Recruiter-setup.exe, the same program; started under the setup name
 #   (a double-click) it installs itself (app/src/install.rs).
-# - Linux: Recruiter-x86_64.AppImage and Recruiter-setup.AppImage, likewise. Built on the oldest
-#   Ubuntu runner, so the AppImage runs on distributions with an older glibc too.
+# - Linux: Recruiter-x86_64.AppImage, which runs from wherever it is kept (nothing to install).
+#   Built on the oldest Ubuntu runner, so it runs on distributions with an older glibc too.
 #
 # Run by hand, it builds the same files as workflow artifacts instead.
 on:
@@ -83,13 +83,11 @@ jobs:
             https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool
           ./appimagetool AppDir dist/Recruiter-x86_64.AppImage
-          cp dist/Recruiter-x86_64.AppImage dist/Recruiter-setup.AppImage
       - if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
             app/dist/Recruiter-x86_64.AppImage
-            app/dist/Recruiter-setup.AppImage
       - if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: actions/upload-artifact@v4
         with:

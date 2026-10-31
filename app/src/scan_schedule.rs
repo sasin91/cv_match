@@ -105,6 +105,13 @@ pub fn systemd_timer(hours: u32) -> String {
     )
 }
 
+/// The program a service file's ExecStart runs (the quoted path exec_start writes first).
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn systemd_program_in(service: &str) -> Option<PathBuf> {
+    let quoted = service.lines().find_map(|line| line.strip_prefix("ExecStart=\""))?;
+    quoted.split('"').next().map(PathBuf::from)
+}
+
 /// The interval a timer file notes, in hours; None for a file without the note.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn systemd_interval_in(timer: &str) -> Option<u32> {
@@ -153,7 +160,7 @@ impl ScanSchedule {
     /// The registered task's interval in hours, or None when there is no task.
     pub async fn interval_hours(&self) -> Result<Option<u32>, String> {
         match &self.store {
-            Store::System(_) => system::interval_hours().await,
+            Store::System(command) => system::interval_hours(command).await,
             Store::InMemory(interval) => Ok(*lock(interval)),
         }
     }
@@ -211,7 +218,7 @@ fn interval_in(xml: &str) -> Option<u32> {
 mod system {
     use super::*;
 
-    pub async fn interval_hours() -> Result<Option<u32>, String> {
+    pub async fn interval_hours(_: &ScanCommand) -> Result<Option<u32>, String> {
         let answer = schtasks(&["/Query", "/TN", TASK_NAME, "/XML"]).await?;
         Ok(answer
             .ok()
@@ -273,12 +280,30 @@ mod system {
         Ok(units_folder()?.join(format!("{SYSTEMD_UNIT}.{kind}")))
     }
 
-    pub async fn interval_hours() -> Result<Option<u32>, String> {
-        match tokio::fs::read_to_string(unit("timer")?).await {
-            Ok(timer) => Ok(Some(systemd_interval_in(&timer).unwrap_or(DEFAULT_INTERVAL_HOURS))),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(format!("The job scan's timer couldn't be read: {e}")),
+    /// The timer's interval. When the program its service runs is gone (the AppImage was moved,
+    /// say), the service is pointed at command's, so the scan doesn't run a missing file. A
+    /// service whose program is there is left alone: another copy (a build while developing, on
+    /// another database) mustn't take the schedule over.
+    pub async fn interval_hours(command: &ScanCommand) -> Result<Option<u32>, String> {
+        let timer = match tokio::fs::read_to_string(unit("timer")?).await {
+            Ok(timer) => timer,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(format!("The job scan's timer couldn't be read: {e}")),
+        };
+        let service = unit("service")?;
+        let current = tokio::fs::read_to_string(&service).await.unwrap_or_default();
+        let gone = systemd_program_in(&current).is_none_or(|program| !program.exists());
+        if gone && current != command.systemd_service() {
+            let repointed = match tokio::fs::write(&service, command.systemd_service()).await {
+                Ok(()) => systemctl(&["daemon-reload"]).await,
+                Err(e) => Err(format!("{} couldn't be written: {e}", service.display())),
+            };
+            match repointed {
+                Ok(()) => println!("The job scan's timer now runs {}.", command.exec_start()),
+                Err(why) => eprintln!("scan_schedule: the job scan's service couldn't be moved to this program: {why}"),
+            }
         }
+        Ok(Some(systemd_interval_in(&timer).unwrap_or(DEFAULT_INTERVAL_HOURS)))
     }
 
     pub async fn register(command: &ScanCommand, hours: u32) -> Result<(), String> {
@@ -350,7 +375,7 @@ mod system {
     const NOT_HERE: &str =
         "The job scan can't be scheduled on this system yet. Run `recruiter scan` from cron or launchd instead.";
 
-    pub async fn interval_hours() -> Result<Option<u32>, String> {
+    pub async fn interval_hours(_: &ScanCommand) -> Result<Option<u32>, String> {
         Ok(None)
     }
 
@@ -430,6 +455,16 @@ mod tests {
             "{}",
             command.systemd_service()
         );
+    }
+
+    #[test]
+    fn the_program_a_service_runs_is_read_back() {
+        let command = ScanCommand {
+            exe: PathBuf::from("/home/me/Apps/Recruiter-x86_64.AppImage"),
+            database: PathBuf::from("/home/me/r.sqlite"),
+        };
+        assert_eq!(systemd_program_in(&command.systemd_service()), Some(command.exe));
+        assert_eq!(systemd_program_in("[Service]\nExecStart=/usr/bin/true\n"), None);
     }
 
     #[tokio::test]

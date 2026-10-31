@@ -132,19 +132,18 @@ keys.
 
 ### On Linux (and WSL)
 
-Build it the same way (`cargo build --release` in `app/`), or take `Recruiter-x86_64.AppImage` from
-a release. `recruiter install` (or running `Recruiter-setup.AppImage`) copies the program, or the
-AppImage, to `~/.local/lib/recruiter/recruiter`, links `~/.local/bin/recruiter` to it and adds a
-Recruiter launcher to the applications menu, which starts it in a terminal. The database is
-`~/.local/share/Recruiter/recruiter.sqlite`, and API keys go in the keyring (the Secret Service:
-GNOME Keyring or KWallet), which has to be running to save one.
+Take `Recruiter-x86_64.AppImage` from a release (or build it with `cargo build --release` in
+`app/`), make it executable and run it from wherever you keep it. There is nothing to install:
+delete the file to remove it. Tools like AppImageLauncher can add it to the applications menu. The
+database is `~/.local/share/Recruiter/recruiter.sqlite`, and API keys go in the keyring (the
+Secret Service: GNOME Keyring or KWallet), which has to be running to save one.
 
 The job scan's schedule is a systemd user timer, `recruiter-scan.timer`, in
-`~/.config/systemd/user` (`systemctl --user list-timers` shows it). Without systemd (WSL with
-systemd off, say) the setup says it couldn't be scheduled. On WSL, turn systemd on in
-`/etc/wsl.conf` (`[boot]` `systemd=true`); an AppImage there may need
-`--appimage-extract-and-run` when FUSE is missing. `recruiter uninstall` removes the program, the
-link, the launcher and the timer, and keeps the data. macOS isn't covered yet.
+`~/.config/systemd/user` (`systemctl --user list-timers` shows it), running the AppImage file
+itself. Move the AppImage and the next start points the timer at its new place. Without systemd
+(WSL with systemd off, say) the setup says it couldn't be scheduled; on WSL, turn systemd on in
+`/etc/wsl.conf` (`[boot]` `systemd=true`). Where FUSE is missing, run the AppImage with
+`--appimage-extract-and-run`. macOS isn't covered yet.
 
 ### Starting it at login
 

@@ -351,7 +351,8 @@ async fn preload_laya(state: Arc<AppState>) {
 
 /// The job scan's Task Scheduler task, running this recruiter.exe on database.
 fn scan_schedule(database: &std::path::Path) -> ScanSchedule {
-    let exe = std::env::current_exe().unwrap_or_else(|e| {
+    // The AppImage on Linux: the program's own path is inside it, and gone once it ends.
+    let exe = install::running_program().unwrap_or_else(|e| {
         eprintln!(
             "This program's own path couldn't be read ({e}), so the job scan's task runs recruiter.exe from PATH."
         );

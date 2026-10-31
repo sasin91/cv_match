@@ -14,13 +14,12 @@
 //! `recruiter uninstall` undoes the four and leaves the data: the database, the models and the
 //! API keys stay, and it says where.
 //!
-//! On Linux the same command copies the program (or the AppImage it runs from) to
-//! ~/.local/lib/recruiter/recruiter, links ~/.local/bin/recruiter to it, adds a launcher to the
-//! applications menu (~/.local/share/applications/recruiter.desktop) and moves the job scan's
-//! systemd timer to the copy. macOS isn't covered yet.
+//! Only Windows installs. On Linux Recruiter is an AppImage, which runs from wherever it is kept
+//! and is removed by deleting it, so there install and uninstall only say so. macOS isn't covered
+//! yet.
 //!
-//! The plain parts (paths, the registry values, the shortcut's script, the launcher) are functions
-//! of their own, so the tests check them on any computer.
+//! The plain parts (paths, the registry values, the shortcut's script) are functions of their
+//! own, so the tests check them on any computer.
 
 use std::path::{Path, PathBuf};
 
@@ -35,9 +34,6 @@ pub const SETUP_SUFFIX: &str = "-setup";
 
 /// The name in the Start menu and the installed apps list.
 const DISPLAY_NAME: &str = "Recruiter";
-
-/// Recruiter's name in Linux's folders, files and commands.
-const LINUX_NAME: &str = "recruiter";
 
 /// Who the installed apps list says made it.
 const PUBLISHER: &str = "sasin91";
@@ -58,48 +54,26 @@ const CLEAN_UP_WAIT_PINGS: u32 = 3;
 /// Where Recruiter is installed, and the files it adds beside it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Layout {
-    /// %LOCALAPPDATA%\Programs\Recruiter; ~/.local/lib/recruiter on Linux.
+    /// %LOCALAPPDATA%\Programs\Recruiter
     pub folder: PathBuf,
-    /// The Start menu's shortcut, %APPDATA%\Microsoft\Windows\Start Menu\Programs\Recruiter.lnk;
-    /// on Linux the launcher, ~/.local/share/applications/recruiter.desktop.
+    /// The Start menu's shortcut: %APPDATA%\Microsoft\Windows\Start Menu\Programs\Recruiter.lnk
     pub shortcut: PathBuf,
-    /// Linux: ~/.local/bin/recruiter, a link to the program, so `recruiter` runs it.
-    pub command_link: Option<PathBuf>,
 }
 
 impl Layout {
-    /// The Windows layout for this user: under local_data (%LOCALAPPDATA%) and roaming_data
-    /// (%APPDATA%).
+    /// The layout for this user: under local_data (%LOCALAPPDATA%) and roaming_data (%APPDATA%).
     pub fn under(local_data: &Path, roaming_data: &Path) -> Self {
         Layout {
             folder: local_data.join("Programs").join(DISPLAY_NAME),
             shortcut: roaming_data
                 .join(r"Microsoft\Windows\Start Menu\Programs")
                 .join(format!("{DISPLAY_NAME}.lnk")),
-            command_link: None,
-        }
-    }
-
-    /// The Linux layout for the user whose home folder is home.
-    pub fn linux_under(home: &Path) -> Self {
-        let local = home.join(".local");
-        Layout {
-            folder: local.join("lib").join(LINUX_NAME),
-            shortcut: local
-                .join("share")
-                .join("applications")
-                .join(format!("{LINUX_NAME}.desktop")),
-            command_link: Some(local.join("bin").join(LINUX_NAME)),
         }
     }
 
     /// This user's layout, or None when the system doesn't say where their folders are.
     pub fn for_this_user() -> Option<Self> {
-        if cfg!(windows) {
-            Some(Layout::under(&dirs::data_local_dir()?, &dirs::data_dir()?))
-        } else {
-            Some(Layout::linux_under(&dirs::home_dir()?))
-        }
+        Some(Layout::under(&dirs::data_local_dir()?, &dirs::data_dir()?))
     }
 
     /// The installed program.
@@ -117,8 +91,7 @@ pub fn running_program() -> std::io::Result<PathBuf> {
     }
 }
 
-/// Whether the program at exe was started as the installer: Recruiter-setup.exe, or
-/// Recruiter-setup.AppImage.
+/// Whether the program at exe was started as the installer: Recruiter-setup.exe.
 pub fn is_setup_name(exe: &Path) -> bool {
     exe.file_stem()
         .and_then(|stem| stem.to_str())
@@ -184,19 +157,6 @@ fn command_line(arguments: &[String]) -> String {
         .join(" ")
 }
 
-/// The Linux launcher (a desktop entry) for the installed program, started with arguments in a
-/// terminal, whose window is the one to close to stop it.
-pub fn desktop_entry(layout: &Layout, arguments: &[String]) -> String {
-    let mut exec = vec![layout.exe().display().to_string()];
-    exec.extend(arguments.iter().cloned());
-    format!(
-        "[Desktop Entry]\nType=Application\nName={DISPLAY_NAME}\n\
-         Comment=Match your CV with job posts\nExec={}\nTerminal=true\nCategories=Office;\n",
-        // The program's path is always quoted: the desktop entry spec splits on spaces.
-        format!(r#""{}" {}"#, exec[0], command_line(&exec[1..])).trim_end()
-    )
-}
-
 /// The PowerShell that makes the Start menu's shortcut to the installed program, started with
 /// arguments.
 pub fn shortcut_script(layout: &Layout, arguments: &[String]) -> String {
@@ -240,6 +200,7 @@ pub struct Installed {
 /// there is one) running the copy on database. named_database is the database when it isn't the
 /// default one, which the shortcut then opens too. Starting the copy is the caller's.
 pub async fn install(database: &Path, named_database: Option<&Path>) -> Result<Installed, String> {
+    system::can_install()?;
     let layout = Layout::for_this_user()
         .ok_or("The system didn't say where your home folders are, so there's nowhere to install to.")?;
     let running = running_program().map_err(|e| format!("This program's own path couldn't be read: {e}"))?;
@@ -290,6 +251,7 @@ pub struct Uninstalled {
 
 /// Undoes install, keeping the data next to database.
 pub async fn uninstall(database: &Path) -> Result<Uninstalled, String> {
+    system::can_install()?;
     let layout = Layout::for_this_user()
         .ok_or("The system didn't say where your home folders are, so there's nothing to find.")?;
     refuse_while_running()?;
@@ -346,8 +308,8 @@ async fn copy_program(running: &Path, layout: &Layout) -> Result<(), String> {
     if layout.exe().exists() {
         refuse_while_running()?;
     }
-    // Copied beside it, then renamed over it: Linux won't write into a program that is running
-    // (a scan, say), but lets a new file take its name.
+    // Copied beside it, then renamed over it, so a copy that fails halfway never leaves half a
+    // program in its place.
     let partial = layout.folder.join(format!("{EXE_NAME}.partial"));
     let failed = |e: std::io::Error| {
         format!(
@@ -395,6 +357,10 @@ mod system {
     const CREATE_NO_WINDOW: u32 = 0x0800_0000;
     /// A process that isn't attached to this console (DETACHED_PROCESS).
     const DETACHED_PROCESS: u32 = 0x0000_0008;
+
+    pub fn can_install() -> Result<(), String> {
+        Ok(())
+    }
 
     /// Adds the Start menu's shortcut and the installed apps list's entry; says what it did.
     pub async fn add_to_system(layout: &Layout, arguments: &[String]) -> Result<Vec<String>, String> {
@@ -498,86 +464,22 @@ mod system {
     }
 }
 
-/// Linux: a launcher in the applications menu and a link on the PATH.
-#[cfg(target_os = "linux")]
-mod system {
-    use std::path::Path;
-
-    use super::{Layout, desktop_entry};
-
-    /// Adds the launcher and the command's link; says what it did.
-    pub async fn add_to_system(layout: &Layout, arguments: &[String]) -> Result<Vec<String>, String> {
-        let mut done = Vec::new();
-        write(&layout.shortcut, &desktop_entry(layout, arguments))
-            .map_err(|e| format!("The launcher couldn't be written to {}: {e}", layout.shortcut.display()))?;
-        done.push("Added Recruiter to the applications menu.".to_string());
-        if let Some(link) = &layout.command_link {
-            remove_if_ours(link, layout)?;
-            if let Some(folder) = link.parent() {
-                std::fs::create_dir_all(folder).map_err(|e| format!("{} couldn't be made: {e}", folder.display()))?;
-            }
-            match std::os::unix::fs::symlink(layout.exe(), link) {
-                Ok(()) => done.push(format!("Linked {} to it, so `recruiter` runs it.", link.display())),
-                // Something else of that name is the user's: leave it.
-                Err(e) if e.kind() == std::io::ErrorKind::AlreadyExists => {
-                    eprintln!(
-                        "install: {} is something else, so it was left as it is.",
-                        link.display()
-                    )
-                }
-                Err(e) => return Err(format!("{} couldn't be linked: {e}", link.display())),
-            }
-        }
-        Ok(done)
-    }
-
-    /// Removes what add_to_system added; says what it removed.
-    pub async fn remove_from_system(layout: &Layout) -> Result<Vec<String>, String> {
-        let mut done = Vec::new();
-        match std::fs::remove_file(&layout.shortcut) {
-            Ok(()) => done.push("Removed Recruiter from the applications menu.".to_string()),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
-            Err(e) => return Err(format!("The launcher couldn't be removed: {e}")),
-        }
-        if let Some(link) = &layout.command_link
-            && remove_if_ours(link, layout)?
-        {
-            done.push(format!("Removed {}.", link.display()));
-        }
-        Ok(done)
-    }
-
-    pub fn remove_folder_after_exit(_: &Path) -> Result<(), String> {
-        Ok(())
-    }
-
-    /// Removes link when it is a link to the installed program; whether it did.
-    fn remove_if_ours(link: &Path, layout: &Layout) -> Result<bool, String> {
-        match std::fs::read_link(link) {
-            Ok(target) if target == layout.exe() => std::fs::remove_file(link)
-                .map(|()| true)
-                .map_err(|e| format!("{} couldn't be removed: {e}", link.display())),
-            _ => Ok(false),
-        }
-    }
-
-    fn write(path: &Path, text: &str) -> std::io::Result<()> {
-        if let Some(folder) = path.parent() {
-            std::fs::create_dir_all(folder)?;
-        }
-        std::fs::write(path, text)
-    }
-}
-
-/// Elsewhere (macOS) there's no installer yet.
-#[cfg(not(any(windows, target_os = "linux")))]
+/// Elsewhere nothing is installed: on Linux the AppImage runs where it is kept.
+#[cfg(not(windows))]
 mod system {
     use std::path::Path;
 
     use super::Layout;
 
-    const NOT_HERE: &str =
-        "Installing is only for Windows and Linux so far. On this computer, run the program where it is.";
+    const NOT_HERE: &str = if cfg!(target_os = "linux") {
+        "On Linux Recruiter needs no installing: run the AppImage from wherever you keep it, and delete it to remove it. Your data stays in ~/.local/share/Recruiter."
+    } else {
+        "Installing is only for Windows so far. On this computer, run the program where it is."
+    };
+
+    pub fn can_install() -> Result<(), String> {
+        Err(NOT_HERE.to_string())
+    }
 
     pub async fn add_to_system(_: &Layout, _: &[String]) -> Result<Vec<String>, String> {
         Err(NOT_HERE.to_string())
@@ -649,27 +551,6 @@ mod tests {
             "{script}"
         );
         assert!(script.ends_with("$shortcut.Save()"), "{script}");
-    }
-
-    #[test]
-    fn the_linux_launcher_runs_the_installed_copy_in_a_terminal() {
-        let layout = Layout::linux_under(Path::new("/home/me"));
-        assert_eq!(
-            layout.exe(),
-            PathBuf::from("/home/me/.local/lib/recruiter").join(EXE_NAME)
-        );
-        assert_eq!(
-            layout.command_link,
-            Some(PathBuf::from("/home/me/.local/bin/recruiter"))
-        );
-        let plain = desktop_entry(&layout, &[]);
-        assert!(
-            plain.contains(&format!("Exec=\"{}\"\n", layout.exe().display())),
-            "{plain}"
-        );
-        assert!(plain.contains("Terminal=true"), "{plain}");
-        let named = desktop_entry(&layout, &arguments_for(Some(Path::new("/home/me/My data/r.sqlite"))));
-        assert!(named.contains(r#" --database "/home/me/My data/r.sqlite""#), "{named}");
     }
 
     #[test]
