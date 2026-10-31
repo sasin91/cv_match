@@ -24,27 +24,32 @@ Once, before the first build:
 2. Clone this repository. Run every `cargo` command from inside `app\`: the repository root has
    no `Cargo.toml`, and cargo would pick up one in a parent folder instead.
 
-Build and start it:
+Build it:
 
     cd app
     cargo build --release
-    .\target\release\recruiter.exe
 
 The first build downloads ONNX Runtime for Laya (from cdn.pyke.io) and links it into the exe.
-The app makes `%APPDATA%\Recruiter\recruiter.sqlite`, writes the Jobnet extension next to it,
-and opens http://127.0.0.1:8765/match. Close its window to stop it. `recruiter.exe --help` lists
-the options.
 
 ### Your data
 
-With your local MariaDB copy of production (`recruiter_prod`) running, import your candidate
-once, before you save anything in the app:
+Import your candidate before the first start. On its first start, the app creates its local
+user, and the import refuses a database that already has one. With your local MariaDB copy of
+production (`recruiter_prod`) running:
 
     .\target\release\recruiter.exe import --email you@example.com
 
-It refuses a database that already has your data. To import again, stop the app, move
-`%APPDATA%\Recruiter\recruiter.sqlite` aside, and run the import again. The same applies when the
-app refuses a database made from an older schema at start.
+This makes `%APPDATA%\Recruiter\recruiter.sqlite`. To import again, stop the app, move that file
+aside, and run the import again. The same applies when the app refuses, at start, a database
+made from an older schema.
+
+### Starting it
+
+    .\target\release\recruiter.exe
+
+The app writes the Jobnet extension next to the database and opens
+http://127.0.0.1:8765/match. Close its window to stop it. `recruiter.exe --help` lists the
+options.
 
 ### The API key
 
