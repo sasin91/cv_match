@@ -1,11 +1,11 @@
 //! Which language model a match endpoint runs on: the user's own key from the API key page,
-//! for the use it is switched on for (account_model::USES). The desktop app has no server key to
+//! picked for the use (account_model::USES). The desktop app has no server key to
 //! fall back to, so without a key for that use the page is told why and pointed to the API key
 //! page.
 
 use super::match_documents::Uses;
 use super::page_error::PageError;
-use crate::account::account_model::{self, KeyFor, USES};
+use crate::account::account_model::{self, APPLICATION, JOB_EVALUATION, KeyFor, RESUME, USES};
 use crate::llama;
 use crate::llm::Llm;
 use crate::server::AppState;
@@ -16,15 +16,18 @@ pub struct KeyedLlm {
     pub written_by: String,
 }
 
-/// The user's key settings when the key is switched on for use, else None.
+/// The user's key settings for the key picked for use, else None.
 pub async fn llm_settings(state: &AppState, use_: &str) -> Result<Option<KeyFor>, PageError> {
-    let key = key_for(state).await?;
-    Ok(key.filter(|key| key.uses.of(use_)))
+    key_for(state, use_).await
 }
 
 /// For each use, whether there's a key to use for it, for the page.
 pub async fn ai_uses(state: &AppState) -> Result<Uses, PageError> {
-    Ok(key_for(state).await?.map(|key| key.uses).unwrap_or_default())
+    Ok(Uses {
+        resume: key_for(state, RESUME).await?.is_some(),
+        application: key_for(state, APPLICATION).await?.is_some(),
+        job_evaluation: key_for(state, JOB_EVALUATION).await?.is_some(),
+    })
 }
 
 /// The model on the user's key for use, or the 402 the page answers with a link to the API key
@@ -40,27 +43,28 @@ pub async fn llm(state: &AppState, use_: &str) -> Result<KeyedLlm, PageError> {
     Ok(KeyedLlm { llm, written_by })
 }
 
-/// Why there's no key to use: switched off for this use, saved but no longer in Windows
+/// Why there's no key to use: none picked for this use, the picked one no longer in Windows
 /// Credential Manager, or none saved.
 async fn missing_key_message(state: &AppState, use_: &str) -> Result<String, PageError> {
     let saved = account_model::saved(state.db(), state.user_id).await?;
-    let readable = key_for(state).await?.is_some();
-    let message = match saved {
-        Some(saved) if readable && !saved.uses.of(use_) => {
+    let message = match account_model::picked_for(&saved, use_) {
+        Some(picked) => {
+            eprintln!(
+                "match: user {}'s saved {} key isn't in Windows Credential Manager",
+                state.user_id, picked.provider
+            );
+            format!(
+                "Your saved {} key isn't in Windows Credential Manager anymore. Save it again on the API key page.",
+                account_model::provider_label(&picked.provider)
+            )
+        }
+        None if !saved.is_empty() => {
             let label = USES
                 .iter()
                 .find(|(name, _)| *name == use_)
                 .map(|(_, label)| lowercase_first(label))
                 .unwrap_or_default();
-            format!("Your API key is switched off for {label}. Switch it on on the API key page.")
-        }
-        Some(_) => {
-            eprintln!(
-                "match: user {}'s saved API key isn't in Windows Credential Manager",
-                state.user_id
-            );
-            "Your saved API key isn't in Windows Credential Manager anymore. Save it again on the API key page."
-                .to_string()
+            format!("None of your API keys is picked for {label}. Pick one on the API key page.")
         }
         None => "Add your OpenAI or Anthropic API key, or a local model, on the API key page to use the AI match."
             .to_string(),
@@ -77,8 +81,8 @@ fn lowercase_first(label: &str) -> String {
     }
 }
 
-async fn key_for(state: &AppState) -> Result<Option<KeyFor>, PageError> {
-    account_model::key_for(state.db(), &state.key_vault, state.user_id)
+async fn key_for(state: &AppState, use_: &str) -> Result<Option<KeyFor>, PageError> {
+    account_model::key_for(state.db(), &state.key_vault, state.user_id, use_)
         .await
         .map_err(|e| {
             eprintln!("match: the API key couldn't be read: {e}");

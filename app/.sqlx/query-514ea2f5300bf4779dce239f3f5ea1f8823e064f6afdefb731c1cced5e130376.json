@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "-- A new provider's key takes the uses no other key of the user's is on for; a key saved again\n-- keeps its own.\nINSERT INTO user_llm_keys (\n  trongate_user_id, provider, model, base_url, key_hint,\n  use_for_resume, use_for_application, use_for_job_evaluation, created_at, updated_at\n)\nVALUES (\n  ?1, ?2, ?3, ?4, ?5,\n  NOT EXISTS (SELECT 1 FROM user_llm_keys WHERE trongate_user_id = ?1 AND use_for_resume = 1),\n  NOT EXISTS (SELECT 1 FROM user_llm_keys WHERE trongate_user_id = ?1 AND use_for_application = 1),\n  NOT EXISTS (SELECT 1 FROM user_llm_keys WHERE trongate_user_id = ?1 AND use_for_job_evaluation = 1),\n  ?6, ?6\n)\nON CONFLICT (trongate_user_id, provider) DO UPDATE SET\n  model = excluded.model,\n  base_url = excluded.base_url,\n  key_hint = excluded.key_hint,\n  updated_at = excluded.updated_at\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 6
+    },
+    "nullable": []
+  },
+  "hash": "514ea2f5300bf4779dce239f3f5ea1f8823e064f6afdefb731c1cced5e130376"
+}

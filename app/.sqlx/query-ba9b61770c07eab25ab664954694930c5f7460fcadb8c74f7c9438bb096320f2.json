@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT provider, model, base_url, key_hint,\n       use_for_resume, use_for_application, use_for_job_evaluation,\n       updated_at\nFROM user_llm_keys\nWHERE trongate_user_id = ?1\n",
+  "query": "SELECT provider, model, base_url, key_hint,\n       use_for_resume, use_for_application, use_for_job_evaluation,\n       updated_at\nFROM user_llm_keys\nWHERE trongate_user_id = ?1\nORDER BY created_at, id\n",
   "describe": {
     "columns": [
       {
@@ -106,5 +106,5 @@
       false
     ]
   },
-  "hash": "eab7a527b5677938e8bdfd5b274822c2d23d34a7b522277276c267521c43fe49"
+  "hash": "ba9b61770c07eab25ab664954694930c5f7460fcadb8c74f7c9438bb096320f2"
 }
