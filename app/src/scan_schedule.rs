@@ -120,8 +120,48 @@ pub fn systemd_timer(hours: u32) -> String {
 fn windows_program_in(xml: &str) -> Option<PathBuf> {
     let start = xml.find("<Arguments>")? + "<Arguments>".len();
     let arguments = &xml[start..xml[start..].find("</Arguments>")? + start];
-    let arguments = arguments.replace("&quot;", "\"");
-    arguments.split('"').nth(1).map(PathBuf::from)
+    xml_text(arguments).split('"').nth(1).map(PathBuf::from)
+}
+
+/// XML text with its entities decoded: the five named ones and numeric ones like &#38; or &#x26;.
+#[cfg_attr(not(windows), allow(dead_code))]
+fn xml_text(xml: &str) -> String {
+    let mut text = String::with_capacity(xml.len());
+    let mut rest = xml;
+    while let Some(start) = rest.find('&') {
+        text.push_str(&rest[..start]);
+        rest = &rest[start..];
+        let decoded = rest.find(';').and_then(|end| {
+            let c = match &rest[1..end] {
+                "amp" => '&',
+                "lt" => '<',
+                "gt" => '>',
+                "quot" => '"',
+                "apos" => '\'',
+                entity => {
+                    let number = entity.strip_prefix('#')?;
+                    let code = match number.strip_prefix(['x', 'X']) {
+                        Some(hex) => u32::from_str_radix(hex, 16).ok()?,
+                        None => number.parse().ok()?,
+                    };
+                    char::from_u32(code)?
+                }
+            };
+            Some((c, end + 1))
+        });
+        match decoded {
+            Some((c, length)) => {
+                text.push(c);
+                rest = &rest[length..];
+            }
+            None => {
+                text.push('&');
+                rest = &rest[1..];
+            }
+        }
+    }
+    text.push_str(rest);
+    text
 }
 
 /// text in double quotes for a systemd command line: backslashes and quotes escaped, and % and $
@@ -556,6 +596,12 @@ mod tests {
         assert_eq!(windows_program_in(xml), Some(PathBuf::from(r"C:\Apps\recruiter.exe")));
         let escaped = "<Arguments>--headless &quot;D:\\r.exe&quot; scan</Arguments>";
         assert_eq!(windows_program_in(escaped), Some(PathBuf::from("D:\\r.exe")));
+        let ampersand = "<Arguments>--headless &quot;C:\\R&amp;D\\r.exe&quot; scan</Arguments>";
+        assert_eq!(windows_program_in(ampersand), Some(PathBuf::from("C:\\R&D\\r.exe")));
+        assert_eq!(
+            xml_text("a &lt;b&gt; &#38; &#x26; &apos; &unknown; & c"),
+            "a <b> & & ' &unknown; & c"
+        );
         assert_eq!(windows_program_in("<Task/>"), None);
     }
 
