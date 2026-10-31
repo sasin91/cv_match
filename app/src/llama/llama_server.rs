@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
+use super::download::Downloads;
 use super::gguf::{self, GgufFile};
 use super::hardware::Inventory;
 use super::model_choice::{self, Fit};
@@ -46,6 +47,15 @@ const HEALTH_CHECK_SECONDS: u64 = 2;
 /// The log lines shown when the server fails to start.
 const LOG_TAIL_LINES: usize = 12;
 
+/// program's full path on PATH, with links followed, when it is there.
+fn on_path(program: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path)
+        .map(|folder| folder.join(program))
+        .find(|candidate| candidate.is_file())
+        .map(|found| std::fs::canonicalize(&found).unwrap_or(found))
+}
+
 /// Where the running server answers, and the model it answers as.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Endpoint {
@@ -66,7 +76,8 @@ struct Running {
 /// with how it fits.
 pub struct Overview {
     pub folder: PathBuf,
-    pub server_found: bool,
+    /// The llama-server that runs, when there is one.
+    pub server: Option<PathBuf>,
     pub inventory: Inventory,
     /// Why the graphics card can't be used, when it can't.
     pub card_problem: Option<String>,
@@ -81,6 +92,8 @@ pub struct LlamaServer {
     folder: PathBuf,
     inventory: Inventory,
     running: Mutex<Option<Running>>,
+    /// The setup wizard's download.
+    pub downloads: Downloads,
 }
 
 impl LlamaServer {
@@ -91,6 +104,7 @@ impl LlamaServer {
             folder: std::path::absolute(folder).unwrap_or_else(|_| folder.to_path_buf()),
             inventory,
             running: Mutex::new(None),
+            downloads: Downloads::default(),
         }
     }
 
@@ -106,8 +120,14 @@ impl LlamaServer {
         &self.inventory
     }
 
-    fn server_path(&self) -> PathBuf {
-        self.folder.join(SERVER_FILE)
+    /// The llama-server to run: the llama folder's, else one already on this computer's PATH
+    /// (winget's llama.cpp, say), followed through its link to the folder its DLLs are in.
+    pub fn server_path(&self) -> Option<PathBuf> {
+        let own = self.folder.join(SERVER_FILE);
+        if own.is_file() {
+            return Some(own);
+        }
+        on_path(SERVER_FILE)
     }
 
     /// The models in the models folder.
@@ -116,15 +136,26 @@ impl LlamaServer {
     }
 
     /// The folder as the API key page shows it.
+    /// Whether the card can run a model, as model_choice::card_usable says for the llama-server
+    /// here. Before there is one, the card counts as usable: the setup wizard downloads the build
+    /// for it, so there is nothing missing to say yet.
+    pub fn card_usable(&self) -> Result<bool, String> {
+        let Some(server) = self.server_path() else {
+            return Ok(self.inventory.gpu.is_some());
+        };
+        let server_folder = server.parent().unwrap_or(&self.folder);
+        model_choice::card_usable(&self.inventory, &model_choice::compute_libraries(server_folder))
+    }
+
     pub fn overview(&self) -> Overview {
-        let card = model_choice::card_usable(&self.inventory, &model_choice::compute_libraries(&self.folder));
+        let card = self.card_usable();
         let card_usable = card.as_ref().is_ok_and(|usable| *usable);
         let models = self.models();
         let chosen =
             model_choice::choose(&models, "", &self.inventory, card_usable).map(|(model, _)| model.name.clone());
         Overview {
             folder: self.folder.clone(),
-            server_found: self.server_path().is_file(),
+            server: self.server_path(),
             inventory: self.inventory.clone(),
             card_problem: card.err(),
             models: models
@@ -138,14 +169,13 @@ impl LlamaServer {
     /// The server running named (a file in the models folder, or "" for the one that fits best),
     /// started or restarted with it when needed. Err says what's missing or why it didn't start.
     pub async fn start(&self, named: &str) -> Result<Endpoint, String> {
-        let server = self.server_path();
-        if !server.is_file() {
+        let Some(server) = self.server_path() else {
             return Err(format!(
-                "There's no {SERVER_FILE} in {}. Unzip a llama.cpp release for Windows there.",
+                "There's no {SERVER_FILE} in {}. Download it on the API key page's \"Set it up\" (/llama_setup).",
                 self.folder.display()
             ));
-        }
-        let card = model_choice::card_usable(&self.inventory, &model_choice::compute_libraries(&self.folder))?;
+        };
+        let card = self.card_usable()?;
         let models = self.models();
         let (model, fit) = model_choice::choose(&models, named, &self.inventory, card)?;
         let mut running = self.running.lock().await;
@@ -406,10 +436,26 @@ mod tests {
         let relative = LlamaServer::new(Path::new("llama"), Inventory::default());
         assert!(relative.folder().is_absolute() && relative.folder().ends_with("llama"));
         let overview = server.overview();
-        assert!(!overview.server_found);
+        assert_eq!(overview.server.is_some(), on_path(SERVER_FILE).is_some());
         assert_eq!(
             overview.chosen,
             Err("There's no .gguf model in the models folder yet.".to_string())
         );
+    }
+
+    #[test]
+    fn an_amd_card_is_not_said_to_lack_vulkan_before_llama_server_is_there() {
+        let folder = std::env::temp_dir().join("recruiter-llama-test-amd-no-server");
+        let amd = Inventory {
+            memory_bytes: 32 * GIB,
+            gpu: Some(crate::llama::hardware::Gpu {
+                name: "AMD Radeon RX 7600".to_string(),
+                vendor: crate::llama::hardware::GpuVendor::Amd,
+                vram_bytes: 8 * GIB,
+            }),
+        };
+        let server = LlamaServer::new(&folder, amd);
+        assert_eq!(server.card_usable(), Ok(true));
+        assert_eq!(server.overview().card_problem, None);
     }
 }
