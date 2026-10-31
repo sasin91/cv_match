@@ -870,3 +870,10 @@ async fn the_apply_dialog_says_how_to_send_the_application() {
     let (status, _) = send(get("/match/application_delivery/99")).await;
     assert_eq!(status, StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn edge_isnt_opened_without_an_extension_folder() {
+    let (status, answer) = send(post_json("/joblog_extension/open_edge", "{}")).await;
+    assert_eq!(status, StatusCode::INTERNAL_SERVER_ERROR);
+    assert!(answer.contains("There is no extension folder to load."), "{answer}");
+}

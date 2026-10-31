@@ -555,6 +555,28 @@ pub async fn joblog_extension(State(state): State<Arc<AppState>>) -> Answer {
     })
 }
 
+/// POST joblog_extension/open_edge: opens Edge's extensions page (edge://extensions), which the
+/// setup page can't link to, so the user can load the extension from the folder the page copied.
+pub async fn open_edge(State(state): State<Arc<AppState>>) -> Answer {
+    if let Err(why) = &state.extension_folder {
+        return Err(PageError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("There is no extension folder to load. {why}"),
+        ));
+    }
+    crate::extension::open_extensions_page().map_err(|e| {
+        eprintln!("joblog_extension: open_edge: {e}");
+        PageError::new(
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!(
+                "Edge couldn't be opened: {e} Open {} yourself.",
+                crate::extension::EDGE_EXTENSIONS_PAGE
+            ),
+        )
+    })?;
+    Ok(Json(json!({ "opened": true })).into_response())
+}
+
 /// pdf's body.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]

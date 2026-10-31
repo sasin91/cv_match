@@ -167,6 +167,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         )
         .route("/match/application_delivery/{id}", get(pages::application_delivery))
         .route("/joblog_extension", get(pages::joblog_extension))
+        .route("/joblog_extension/open_edge", post(pages::open_edge))
         .route("/account", get(account::index))
         .route("/account/submit_key", post(account::submit_key))
         .route("/account/submit_uses", post(account::submit_uses))
