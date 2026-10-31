@@ -9,7 +9,8 @@
 //! 4. How often the job scan runs by itself: a Task Scheduler task (scan_schedule).
 //! 5. The dashboard: the match page.
 //!
-//! The steps' state comes from setup_steps, so another front end can show the same steps.
+//! The steps' state and the forms' work come from setup_steps, so another front end can show and
+//! do the same steps.
 
 pub mod setup_steps;
 
@@ -24,7 +25,7 @@ use serde::Deserialize;
 
 use self::setup_steps::{AiStep, CvStep, DatabaseStep, ScheduleStep};
 use crate::account::model_advice::ModelAdvice;
-use crate::profile::profile_fill::{self, MAX_CV_LENGTH};
+use crate::profile::profile_fill::MAX_CV_LENGTH;
 use crate::scan_schedule::{DEFAULT_INTERVAL_HOURS, INTERVALS};
 use crate::server::AppState;
 
@@ -106,44 +107,26 @@ pub async fn index(State(state): State<Arc<AppState>>) -> Response {
 /// POST setup/submit_cv {cv_text, cv_name, replace}: reads the CV into the profile, replacing
 /// it; replace must be "1" when there is one. With an error the form comes back with the text.
 pub async fn submit_cv(State(state): State<Arc<AppState>>, Form(form): Form<CvForm>) -> Response {
-    let has_profile = match setup_steps::cv(&state.core).await {
-        Ok(step) => step.filled.is_some(),
-        Err(why) => return failure(&why),
-    };
-    let filled = if has_profile && form.replace != "1" {
-        Err("Tick \"Replace my profile\" to fill it in again from this CV.".to_string())
-    } else {
-        profile_fill::fill_from_cv(&state.core, &form.cv_text, &form.cv_name).await
-    };
-    match filled {
+    match setup_steps::read_cv(&state.core, &form.cv_text, &form.cv_name, form.replace == "1").await {
         Ok(message) => {
             state.set_flash(message);
             Redirect::to(PAGE).into_response()
         }
-        Err(why) => page(&state, Some((why, form))).await,
+        Err(e) => page(&state, Some((e.message, form))).await,
     }
 }
 
 /// POST setup/submit_schedule {hours}: registers the job scan's task to run every hours.
 pub async fn submit_schedule(State(state): State<Arc<AppState>>, Form(form): Form<ScheduleForm>) -> Response {
-    let message = match state.core.scan_schedule.register(form.hours).await {
-        Ok(()) => format!(
-            "The job scan runs {} while you're logged in to this computer.",
-            setup_steps::interval_label(form.hours).to_lowercase()
-        ),
-        Err(why) => format!("The job scan couldn't be scheduled: {why}"),
-    };
-    state.set_flash(message);
+    let said = setup_steps::schedule_scan(&state.core, form.hours).await;
+    state.set_flash(said.unwrap_or_else(|e| e.message));
     Redirect::to(PAGE).into_response()
 }
 
 /// POST setup/submit_unschedule: removes the job scan's task.
 pub async fn submit_unschedule(State(state): State<Arc<AppState>>) -> Response {
-    let message = match state.core.scan_schedule.remove().await {
-        Ok(()) => "The job scan no longer runs by itself.".to_string(),
-        Err(why) => format!("The job scan's task couldn't be removed: {why}"),
-    };
-    state.set_flash(message);
+    let said = setup_steps::unschedule_scan(&state.core).await;
+    state.set_flash(said.map_or_else(|e| e.message, str::to_string));
     Redirect::to(PAGE).into_response()
 }
 
