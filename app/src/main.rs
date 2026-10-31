@@ -1,9 +1,11 @@
 //! recruiter: the desktop app's command line.
 //!
-//!   recruiter [--port 8765] [--database path\to\recruiter.sqlite] [--laya path\to\laya] [--no-browser]
-//!             [--tailscale-name pc.tailnet.ts.net]
+//!   recruiter [--port 8765] [--database path\to\recruiter.sqlite] [--laya path\to\laya]
+//!             [--llama path\to\llama] [--no-browser] [--tailscale-name pc.tailnet.ts.net]
 //!       serves the app on 127.0.0.1 and opens it in the default browser, with Laya's model
 //!       from the laya folder next to the database unless --laya names another; with
+//!       the app's own llama.cpp model (llama-server and models\*.gguf) from the llama folder
+//!       next to the database unless --llama names another; with
 //!       --tailscale-name it also answers `tailscale serve` for that name, so a phone can open it
 //!       (docs/phone.md)
 //!
@@ -19,12 +21,13 @@ use std::time::Instant;
 use recruiter::account::key_vault::KeyVault;
 use recruiter::dev_reload::DevReload;
 use recruiter::laya::laya_client::{self, LayaClient};
+use recruiter::llama::{self, hardware::Inventory, llama_server::LlamaServer};
 use recruiter::server::{self, AppState};
 use recruiter::taxonomy::Taxonomy;
 use recruiter::{db, extension};
 
-const USAGE: &str = "usage: recruiter [--port <port>] [--database <file>] [--laya <folder>] [--no-browser]
-                 [--tailscale-name <name>] [--dev]";
+const USAGE: &str = "usage: recruiter [--port <port>] [--database <file>] [--laya <folder>] [--llama <folder>]
+                 [--no-browser] [--tailscale-name <name>] [--dev]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -41,6 +44,7 @@ fn run_server(args: &[String]) -> ExitCode {
     let mut port = server::DEFAULT_PORT;
     let mut database = db::default_path();
     let mut laya_folder = None;
+    let mut llama_folder = None;
     let mut browser = true;
     let mut tailscale_name = None;
     let mut dev = false;
@@ -74,6 +78,7 @@ fn run_server(args: &[String]) -> ExitCode {
             },
             "--database" => database = PathBuf::from(value),
             "--laya" => laya_folder = Some(PathBuf::from(value)),
+            "--llama" => llama_folder = Some(PathBuf::from(value)),
             "--tailscale-name" => tailscale_name = Some(value.trim().to_ascii_lowercase()),
             _ => {
                 eprintln!("unknown option {flag}\n{USAGE}");
@@ -115,6 +120,13 @@ fn run_server(args: &[String]) -> ExitCode {
             laya_client::ONNX_FILE
         );
     }
+    let llama_folder = llama_folder.unwrap_or_else(|| data_folder.join(llama::FOLDER));
+    let inventory = Inventory::detect();
+    println!(
+        "This computer, for the app's own model: {inventory}. Its llama folder is {}.",
+        llama_folder.display()
+    );
+    state.llama = Some(LlamaServer::new(&llama_folder, inventory));
     let folder = data_folder.join(extension::FOLDER);
     state.extension_folder = extension::write(&folder).map_err(|e| {
         eprintln!("Couldn't write the Jobnet extension to {}: {e}", folder.display());

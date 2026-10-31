@@ -6,6 +6,7 @@ pub mod db;
 pub mod dev_reload;
 pub mod extension;
 pub mod laya;
+pub mod llama;
 pub mod llm;
 pub mod matches;
 pub mod pdf;

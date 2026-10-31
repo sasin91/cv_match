@@ -28,6 +28,7 @@ use crate::account::{self, key_vault::KeyVault};
 use crate::dev_reload::{self, DevReload};
 use crate::extension;
 use crate::laya::laya_client::LayaClient;
+use crate::llama::llama_server::LlamaServer;
 use crate::matches::pages;
 use crate::taxonomy::Taxonomy;
 
@@ -64,6 +65,8 @@ pub struct AppState {
     pub extension_folder: Result<PathBuf, String>,
     /// Laya's model, when its folder has one.
     pub laya: Option<LayaClient>,
+    /// The llama folder, whose llama-server runs a "llama_cpp" key's model.
+    pub llama: Option<LlamaServer>,
     /// The PC's Tailscale name ("pc.tailnet.ts.net") that `tailscale serve` passes requests on
     /// from, or None when the app is only for this computer.
     pub tailscale_name: Option<String>,
@@ -83,6 +86,7 @@ impl AppState {
             port,
             extension_folder: Err("The extension wasn't written out.".to_string()),
             laya: None,
+            llama: None,
             tailscale_name: None,
             dev_reload: None,
         }

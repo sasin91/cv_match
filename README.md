@@ -62,6 +62,23 @@ Hard links save copying the 1.7 GB file, for example
 At start the app says whether it found the model. Without it, matches work as before with no
 Laya line.
 
+### The app's own model (llama.cpp)
+
+Instead of a key, the app can run a GGUF model itself. Unzip a llama.cpp release for Windows
+(github.com/ggml-org/llama.cpp/releases: `win-cuda` for an NVIDIA card, `win-vulkan` for AMD or
+others, `win-cpu` without a card) into `%APPDATA%\Recruiter\llama`, or point `--llama` at
+another folder, and put models next to it:
+
+    llama\llama-server.exe      and the DLLs from the same zip
+    llama\models\*.gguf         for example Qwen3-8B-Q4_K_M.gguf
+
+On the API key page pick **This app's own model (llama.cpp)**. With the model field blank the app
+picks the biggest model that fits the graphics card's memory with room for its context, or splits
+one between the card and memory; the page lists each model and how it fits this computer. The
+server starts on the first AI call (on a free port on 127.0.0.1), writes `llama\llama-server.log`,
+and stops when the app does. An NVIDIA or AMD card without CUDA, HIP or Vulkan in the folder is
+said on the page instead of quietly running on the CPU.
+
 ### The Jobnet extension
 
 In Edge, open `edge://extensions`, switch on Developer mode, choose **Load unpacked**, and pick
@@ -79,7 +96,7 @@ phone with Tailscale on.
 
 In Task Scheduler, create a task that runs at log on, with the action
 `<repo>\app\target\release\recruiter.exe`, and arguments `--no-browser` plus any of
-`--tailscale-name ...` or `--laya ...` you use.
+`--tailscale-name ...`, `--laya ...` or `--llama ...` you use.
 
 ## Developing
 
@@ -125,6 +142,9 @@ With a real key saved on the API key page, check these by hand after a change:
       refused.
 - [ ] **Writing:** on a saved match, write the application, then the tailored résumé. Each one
       appears in its box. Write one again with notes, and the earlier version is listed under it.
+- [ ] **The app's own model:** with llama-server and a .gguf in the llama folder, the API key
+      page lists the model and how it fits. Save "This app's own model" with the model blank,
+      press Check key (the first check loads the model), then run an AI match on it.
 - [ ] **PDFs:** Download PDF on the application, the résumé, the CV and the job post. Each opens as
       an A4 page with the expected file name.
 - [ ] **Apply:** open the Apply dialog on a match. It shows the email or the employer's site,

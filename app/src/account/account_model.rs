@@ -8,14 +8,15 @@ use std::fmt;
 use sqlx::SqlitePool;
 
 use super::key_vault::KeyVault;
-use crate::llm::{ANTHROPIC, LOCAL, OPENAI};
+use crate::llm::{ANTHROPIC, LLAMA_CPP, LOCAL, OPENAI};
 use crate::matches::match_documents::Uses;
 
 /// provider => what the page calls it.
-pub const PROVIDERS: [(&str, &str); 3] = [
+pub const PROVIDERS: [(&str, &str); 4] = [
     (OPENAI, "OpenAI"),
     (ANTHROPIC, "Anthropic (Claude)"),
     (LOCAL, "A local model (Ollama, LM Studio)"),
+    (LLAMA_CPP, "This app's own model (llama.cpp)"),
 ];
 
 /// What the key can be used for, each switched on or off by the user: purpose => what the page
