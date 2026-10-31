@@ -1,8 +1,7 @@
 //! The job application and the tailored résumé for a saved match, written by the language model
-//! from the CV and the post, ported from Cv_match.php's _write_application() and
-//! _tailor_resume(), for the page (and the job scan to come). Each is saved as a new version of
-//! the match's document (documents), with the model that wrote it and the candidate's notes.
-//! Never a URL.
+//! from the CV and the post, for the page (and the job scan to come). Each is saved as a new
+//! version of the match's document (documents), with the model that wrote it and the candidate's
+//! notes. Never a URL.
 
 use serde_json::{Value, json};
 use sqlx::SqlitePool;
@@ -56,7 +55,7 @@ pub struct Tailored {
 /// The candidate's notes as they are kept: trimmed, at most MAX_NOTES characters.
 pub fn notes(sent: &str) -> String {
     let cut: String = sent.chars().take(MAX_NOTES).collect();
-    crate::php::trim(&cut).to_string()
+    cut.trim().to_string()
 }
 
 /// The notes as a block to end the prompt with, or "" when there are none.
@@ -121,7 +120,7 @@ Write in the job post's own language (post_language), whatever language the CV a
         },
     });
     let answer = llm.llm.structured(&system, &user, &schema, Effort::Medium).await?;
-    let text = crate::php::trim(answer["application"].as_str().unwrap_or("")).to_string();
+    let text = answer["application"].as_str().unwrap_or("").trim().to_string();
     if text.is_empty() {
         return Err(WriteError::Empty("The model returned an empty application. Try again."));
     }

@@ -1,7 +1,6 @@
-//! The match page and the endpoints its JS calls, ported from modules/cv_match/Cv_match.php for
-//! the one local user (always signed in). The AI match and writing run on the user's own key
-//! (llm_key); errors answer JSON {error}, as the PHP endpoints answer theirs, so the page shows
-//! them.
+//! The match page and the endpoints its JS calls, for the one local user (always signed in). The AI
+//! match and writing run on the user's own key (llm_key); errors answer JSON {error}, which the
+//! page shows.
 
 use std::sync::Arc;
 
@@ -462,7 +461,7 @@ fn id_of(segment: &str) -> i64 {
     segment.parse().unwrap_or(0)
 }
 
-/// An id in a JSON body: the page sends it as text, the extension as a number (PHP's (int)).
+/// An id in a JSON body: the page sends it as text, the extension as a number.
 fn id_in_body(id: &serde_json::Value) -> i64 {
     match id {
         serde_json::Value::Number(id) => id.as_i64().or_else(|| id.as_f64().map(|id| id as i64)).unwrap_or(0),
@@ -594,8 +593,8 @@ pub async fn pdf(State(state): State<Arc<AppState>>, Json(input): Json<PdfInput>
         None => None,
     };
     let text = match &version {
-        Some(version) => crate::php::trim(&version.text).to_string(),
-        None => pdf_text(&found, kind, crate::php::trim(&input.text)),
+        Some(version) => version.text.trim().to_string(),
+        None => pdf_text(&found, kind, input.text.trim()),
     };
     if text.is_empty() {
         return Err(PageError::new(
@@ -643,7 +642,7 @@ pub async fn pdf(State(state): State<Arc<AppState>>, Json(input): Json<PdfInput>
 /// The text a PDF is made from: what the page sent, or the saved text when it sent none; the
 /// CV and the job post are always the saved text, the post under its link.
 fn pdf_text(found: &SavedMatch, kind: &str, sent: &str) -> String {
-    let saved = |text: Option<&str>| crate::php::trim(text.unwrap_or("")).to_string();
+    let saved = |text: Option<&str>| text.unwrap_or("").trim().to_string();
     let text = if sent.is_empty() || kind == "cv" || kind == "job" {
         match kind {
             "application" => saved(found.application_text.as_deref()),
@@ -668,7 +667,7 @@ fn pdf_title(found: &SavedMatch, kind: &str) -> String {
     if kind == "job" {
         let title: Vec<&str> = [found.job_title.as_str(), found.company.as_str()]
             .into_iter()
-            .filter(|part| crate::php::filled(part))
+            .filter(|part| !part.is_empty())
             .collect();
         return if title.is_empty() {
             "Job post".to_string()

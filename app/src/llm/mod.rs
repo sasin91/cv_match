@@ -1,4 +1,4 @@
-//! llm: language models behind one call, whatever the provider, ported from modules/llm/Llm.php.
+//! llm: language models behind one call, whatever the provider.
 //! Each provider is an adapter (openai, anthropic) that answers structured(); a local
 //! OpenAI-compatible server (Ollama, LM Studio) is the openai adapter at its own base_url. The
 //! desktop app has no server key: every call runs on the user's own key (Llm::use_key), which

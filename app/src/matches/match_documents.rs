@@ -1,7 +1,6 @@
-//! The "Application and résumé" panel of a saved match, ported from
-//! modules/cv_match/Match_documents.php: the notes for the AI, a box per document (DocumentBox),
-//! the Apply button and the Jobnet joblog. A match that wasn't saved gets the reason instead,
-//! since nothing can be written for it.
+//! The "Application and résumé" panel of a saved match: the notes for the AI, a box per document
+//! (DocumentBox), the Apply button and the Jobnet joblog. A match that wasn't saved gets the reason
+//! instead, since nothing can be written for it.
 
 use super::apply_instructions::ApplyInstructions;
 use super::document_box::{self, DocumentBox, Written};

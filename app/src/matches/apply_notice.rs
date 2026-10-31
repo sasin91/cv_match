@@ -1,5 +1,5 @@
 //! What the post asks of applicants beyond a click (apply_instructions), as the result prints it
-//! above the requirements, ported from modules/cv_match/Apply_notice.php: send it by email, with
+//! above the requirements: send it by email, with
 //! a subject line, a keyword or answers to questions, quoting the post. Often a filter for
 //! people who only press Easy Apply.
 

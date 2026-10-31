@@ -1,6 +1,6 @@
 //! Writing PDFs: a page (page::Page) laid out on A4 (layout) and written as a PDF file, in
-//! Helvetica, or in DejaVu Sans with only the letters used embedded (fonts). This stands in for
-//! dompdf, which the PHP app's Pdf_writer used.
+//! Helvetica, or in DejaVu Sans with only the letters used embedded (fonts). It lays pages out
+//! the way dompdf 3.1 does.
 
 pub mod fonts;
 pub mod layout;

@@ -1,6 +1,5 @@
-//! Saved matches in the database (matches with match_items, match_integrations,
-//! match_rejections, the documents written for them and the tailored résumé tables), ported
-//! from modules/cv_match/Cv_match_model.php. Unlike the PHP app, a document written again is a
+//! Saved matches in the database (matches with match_items, match_integrations, match_rejections,
+//! the documents written for them and the tailored résumé tables). A document written again is a
 //! new version (documents) rather than written over the one before; the newest is the one shown.
 
 use std::collections::HashMap;
@@ -12,21 +11,21 @@ use sqlx::sqlite::SqliteConnection;
 use super::Job;
 use super::apply_instructions::{self, ApplyInstructions};
 use super::document_box::{APPLICATION, RESUME};
+use super::match_score;
 use super::matcher::{Groups, Score, Verdicts};
 use super::reject_reason::Rejection;
 use super::score_cursor;
 use super::tailored_resume::{ResumeEntry, TailoredResume};
-use crate::php;
 
 /// The integration a match's Jobnet joblog status is kept under.
 pub const JOBNET_JOBLOG: &str = "jobnet_joblog";
 
-/// How much of a résumé's links its head keeps, in characters (match_resumes.links is a
-/// varchar(1000) in MariaDB, so the PHP app cuts it there).
+/// How much of a résumé's links its head keeps, in characters (the web app's
+/// match_resumes.links was a varchar(1000)).
 const LINKS_MAX_CHARS: usize = 1000;
 
-/// The longest each of a saved match's texts is kept, in characters: MariaDB's column lengths,
-/// which the PHP app cuts to.
+/// The longest each of a saved match's texts is kept, in characters: the web app's MariaDB
+/// column lengths.
 mod lengths {
     /// job_title, company and cv_name.
     pub const NAME: usize = 255;
@@ -45,7 +44,7 @@ const VERDICTS: [&str; 3] = ["met", "partial", "missing"];
 /// What an item without a verdict is saved with.
 const NO_VERDICT_REASON: &str = "No verdict returned.";
 
-/// The Jobnet statuses that mean the candidate applied (Joblog.php's APPLIED_STATUSES).
+/// The Jobnet statuses that mean the candidate applied (joblog's APPLIED_STATUSES).
 pub const APPLIED_STATUSES: [&str; 2] = ["Soegt", "Samtale"];
 
 /// The lists of saved matches by ?list=, each with its tab label and what the page says when it
@@ -252,7 +251,7 @@ pub async fn save(
     let company = cut(&new.job.company, lengths::NAME);
     let job_url = (!new.job_url.is_empty()).then(|| cut(new.job_url, lengths::JOB_URL));
     let cv_name = cut(new.cv_name, lengths::NAME);
-    let index = php::round_to(score.index, SCORE_DECIMALS);
+    let index = match_score::round_to(score.index, SCORE_DECIMALS);
     let mut tx = db.begin().await?;
     let id = sqlx::query_file!(
         "queries/match_model/save.sql",
@@ -337,7 +336,7 @@ impl SavedItem {
     }
 }
 
-/// The first length characters of text (PHP's mb_substr).
+/// The first length characters of text.
 fn cut(text: &str, length: usize) -> String {
     text.chars().take(length).collect()
 }
@@ -510,8 +509,8 @@ pub async fn find(db: &SqlitePool, id: i64, user_id: i64) -> sqlx::Result<Option
     }))
 }
 
-/// The newest version of one kind (document_box's APPLICATION, RESUME) of a match's documents, or None when
-/// none is written.
+/// The newest version of one kind (document_box's APPLICATION, RESUME) of a match's documents, or
+/// None when none is written.
 pub async fn newest_document(db: &SqlitePool, id: i64, kind: &str) -> sqlx::Result<Option<Document>> {
     sqlx::query_file_as!(Document, "queries/match_model/newest_document.sql", id, kind)
         .fetch_optional(db)
@@ -919,7 +918,7 @@ pub async fn resume_fields_of(db: &SqlitePool, document_id: i64) -> sqlx::Result
     Ok(Some(resume))
 }
 
-/// PHP's `$text === '' ? [] : explode($separator, $text)`.
+/// The text split at separator, or no parts for "".
 fn split_unless_empty(text: &str, separator: &str) -> Vec<String> {
     if text.is_empty() {
         Vec::new()

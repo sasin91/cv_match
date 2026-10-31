@@ -1,4 +1,4 @@
-//! The provider's HTTP answer, ported from modules/llm/Llm_response.php: status, headers and
+//! The provider's HTTP answer: status, headers and
 //! body. Every LlmException made after an answer carries it, so the log (and the user) can see
 //! why the request failed, such as which rate limit a 429 hit and when it resets, or what a
 //! refused or cut-short answer said. The body is kept as the provider sent it, for the adapters
@@ -127,7 +127,7 @@ fn redacted(text: &str) -> String {
     API_KEY_PATTERN.replace_all(text, "$1…").into_owned()
 }
 
-/// A JSON value as PHP's (string) cast prints it: a string as itself, a number as its digits.
+/// A JSON value as text: a string as itself, a number as its digits.
 fn text_of(value: &Value) -> String {
     match value {
         Value::String(text) => text.clone(),

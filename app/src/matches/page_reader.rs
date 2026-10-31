@@ -1,4 +1,4 @@
-//! Reads a job post from a link someone pasted, ported from modules/cv_match/Page_reader.php:
+//! Reads a job post from a link someone pasted:
 //! fetches the page without letting the link reach anything private, and turns the HTML into
 //! plain text before it goes anywhere near the language model.
 //!
@@ -24,8 +24,6 @@ use reqwest::Url;
 use scraper::{Html, Node};
 use serde::Serialize;
 use serde_json::Value;
-
-use crate::php;
 
 /// Most redirects followed for one link.
 const MAX_REDIRECTS: usize = 5;
@@ -137,6 +135,8 @@ static LD_JSON: LazyLock<Regex> = LazyLock::new(|| {
 static TITLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<title[^>]*>(.*?)</title>").expect("title"));
 static PAGE_TYPE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^(text/html|application/xhtml\+xml|text/plain)\b").expect("page type"));
+/// A run of whitespace, which a text node prints as one space.
+static WHITESPACE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").expect("whitespace"));
 static SPACES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[ \t]+").expect("spaces"));
 static AROUND_NEWLINE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r" *\n *").expect("around newline"));
 static BLANK_LINES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").expect("blank lines"));
@@ -407,14 +407,14 @@ fn visible_text(html: &str) -> PageText {
     for tag in ["main", "article"] {
         let marked = elements().find(|(node, element)| element.name() == tag && shown(node));
         if let Some((node, _)) = marked
-            && php::trim(&text_content(node, true)).chars().count() >= MIN_MAIN_TEXT
+            && text_content(node, true).trim().chars().count() >= MIN_MAIN_TEXT
         {
             root = node;
             break;
         }
     }
     PageText {
-        title: tidy(php::trim(&title)),
+        title: tidy(title.trim()),
         text: tidy(&text_of(root)),
     }
 }
@@ -448,7 +448,7 @@ fn text_of(node: ego_tree::NodeRef<Node>) -> String {
         return String::new();
     }
     match node.value() {
-        Node::Text(text) => return php::collapse_spaces(text),
+        Node::Text(text) => return WHITESPACE.replace_all(text, " ").into_owned(),
         Node::Element(_) | Node::Document | Node::Fragment => {}
         _ => return String::new(),
     }
@@ -458,8 +458,8 @@ fn text_of(node: ego_tree::NodeRef<Node>) -> String {
     };
     match element.name() {
         "br" => "\n".to_string(),
-        "li" => format!("\n- {}", php::trim(&text)),
-        "td" | "th" => format!("{} ", php::trim(&text)),
+        "li" => format!("\n- {}", text.trim()),
+        "td" | "th" => format!("{} ", text.trim()),
         tag if BLOCKS.contains(&tag) => format!("\n{text}\n"),
         _ => text,
     }
@@ -597,7 +597,7 @@ fn is_this_page(posting: &Value, html: &str, url: &str) -> bool {
         .contains(&title.to_lowercase())
 }
 
-/// A link's path, as PHP's parse_url gives it: of a full address, or of a relative one.
+/// A link's path: of a full address, or of a relative one.
 fn path_of(url: &str) -> String {
     match Url::parse(url) {
         Ok(parsed) if url.contains("://") => parsed.path().to_string(),
@@ -630,7 +630,7 @@ fn location(posting: &Value) -> String {
     tidy(&parts.join(", "))
 }
 
-/// A string or number as PHP prints it in a string; anything else as "".
+/// A string or number as text; anything else as "".
 fn scalar(value: &Value) -> String {
     match value {
         Value::String(text) => text.clone(),
@@ -645,7 +645,7 @@ fn tidy(text: &str) -> String {
     let text = SPACES.replace_all(&text, " ");
     let text = AROUND_NEWLINE.replace_all(&text, "\n");
     let text = BLANK_LINES.replace_all(&text, "\n\n");
-    php::trim(&text).chars().take(MAX_TEXT).collect()
+    text.trim().chars().take(MAX_TEXT).collect()
 }
 
 #[cfg(test)]
@@ -657,7 +657,6 @@ mod tests {
         to_text(html.as_bytes(), "text/html", "").unwrap()
     }
 
-    /// tests/a_page_becomes_the_visible_text_of_its.phpt.
     #[test]
     fn a_page_becomes_the_visible_text_of_its_job_post() {
         let html =
@@ -676,7 +675,6 @@ mod tests {
         );
     }
 
-    /// tests/a_jobposting_in_the_page_s_json_ld.phpt.
     #[test]
     fn a_jobposting_in_the_pages_json_ld_wins() {
         let description = "<p>Du har erfaring med PHP og Laravel.</p>".repeat(8);
@@ -697,7 +695,6 @@ mod tests {
         assert!(page.text.contains("Du har erfaring med PHP og Laravel."));
     }
 
-    /// tests/a_page_listing_several_jobpostings_gives_its_own.phpt.
     #[test]
     fn a_page_listing_several_jobpostings_gives_its_own() {
         let posting = |title: &str, url: &str| {
@@ -736,7 +733,6 @@ mod tests {
         assert_eq!(page.title, "Dataingeniør");
     }
 
-    /// tests/pages_in_other_encodings_come_out_as_utf.phpt.
     #[test]
     fn pages_in_other_encodings_come_out_as_utf8() {
         let (latin1, ..) =
@@ -752,7 +748,6 @@ mod tests {
         assert!(to_text(b"<html><body><script>app()</script></body></html>", "text/html", "").is_err());
     }
 
-    /// tests/only_public_addresses_are_fetched.phpt.
     #[test]
     fn only_public_addresses_are_fetched() {
         for ip in ["93.184.215.14", "1.1.1.1", "2606:4700:4700::1111"] {
@@ -787,7 +782,6 @@ mod tests {
         addresses.iter().map(|ip| ip.parse().unwrap()).collect()
     }
 
-    /// tests/a_pasted_url_is_checked_before_anything_is.phpt.
     #[test]
     fn a_pasted_url_is_checked_before_anything_is_fetched() {
         let refused = |url: &str, addresses: &[&str]| check_url(url, |_| ips(addresses)).is_err();

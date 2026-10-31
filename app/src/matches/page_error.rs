@@ -1,7 +1,7 @@
-//! An error the match page shows, as the PHP endpoints answer theirs (Cv_match.php's respond()):
-//! JSON {error} with its status, plus need_key when the user has no key to use for it and
-//! retryable when the language model may answer if asked again. Failures that aren't the user's
-//! input are written to the log as well, so they can be found after the page is closed.
+//! An error the match page shows: JSON {error} with its status, plus need_key when the user has no
+//! key to use for it and retryable when the language model may answer if asked again. Failures that
+//! aren't the user's input are written to the log as well, so they can be found after the page is
+//! closed.
 
 use axum::Json;
 use axum::http::StatusCode;

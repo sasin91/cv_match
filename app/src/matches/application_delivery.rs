@@ -1,5 +1,5 @@
 //! How the application for a saved match is delivered, the way the post asks for it, ready to
-//! print in the Apply dialog, ported from modules/cv_match/Application_delivery.php:
+//! print in the Apply dialog:
 //! - by email, when the post names an address to send applications to (apply_instructions): the
 //!   recipient, the subject (the one the post asks for, else the job title) and the body (the
 //!   written application) to copy, and a mailto link with the recipient and subject;
@@ -27,7 +27,7 @@ pub const TO_HINT: &str = "The address the post asks applications to be sent to.
 pub const NOT_WRITTEN: &str = "Write the application first (Write application).";
 pub const NO_CV: &str = "There is no CV saved.";
 pub const LINKS_HEADING: &str = "Your profile links";
-/// The desktop app has no page to add profile links on: they come with the profile import.
+/// The desktop app has no page to add profile links on yet.
 pub const NO_LINKS: &str =
     "No profile links came with your profile, and the CV of this match names none, so there are none to copy here.";
 pub const CV_LINKS: &str = "From the CV of this match. Profile links that come with your profile take their place.";
@@ -150,8 +150,8 @@ pub fn subject(found: &SavedMatch) -> String {
     }
 }
 
-/// "mailto:job@firma.dk?subject=Backend%202026": the address with its subject line, as PHP's
-/// rawurlencode writes them (keeping the @).
+/// "mailto:job@firma.dk?subject=Backend%202026": the address with its subject line,
+/// percent-encoded (rawurlencode, keeping the @).
 pub fn mailto(to: &str, subject: &str) -> String {
     let link = format!("mailto:{}", rawurlencode(to).replace("%40", "@"));
     if subject.is_empty() {
@@ -161,7 +161,7 @@ pub fn mailto(to: &str, subject: &str) -> String {
     }
 }
 
-/// PHP's rawurlencode: every byte but A-Z a-z 0-9 - _ . ~ as %XX.
+/// RFC 3986 percent-encoding: every byte but A-Z a-z 0-9 - _ . ~ as %XX.
 pub fn rawurlencode(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for byte in text.bytes() {
@@ -347,7 +347,7 @@ mod tests {
         }
     }
 
-    /// The fields, files and links as the phpt prints them.
+    /// The fields, files and links as printed lines.
     fn shown(delivery: &ApplicationDelivery) -> Vec<String> {
         let mut lines = vec![
             format!("{}: {}", delivery.by, delivery.heading),
@@ -396,7 +396,6 @@ mod tests {
         lines
     }
 
-    /// tests/an_application_is_delivered_by_email_or_on_the.phpt.
     #[test]
     fn an_application_is_delivered_by_email_or_on_the_form() {
         let links = [

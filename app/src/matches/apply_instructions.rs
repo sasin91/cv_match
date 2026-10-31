@@ -1,5 +1,4 @@
-//! How a job post asks to be applied to, when it asks for more than a click, ported from
-//! modules/cv_match/Apply_instructions.php.
+//! How a job post asks to be applied to, when it asks for more than a click.
 //!
 //! Some posts tell applicants to send an email (to an address, with a subject line, a keyword,
 //! or answers to a few questions) or to write a given word in the application, partly to sort
@@ -11,8 +10,6 @@ use std::sync::LazyLock;
 
 use fancy_regex::Regex;
 use serde::Serialize;
-
-use crate::php;
 
 /// What a post can ask for beyond sending the application, in plain words, in this order.
 pub const ASKS: [(&str, &str); 5] = [
@@ -270,13 +267,13 @@ fn follow_up(sentence: &str) -> Option<Found> {
 
 /// A line split into sentences; email addresses and "e.g." stay whole.
 fn sentences(line: &str) -> Vec<String> {
-    let line = php::trim(line);
+    let line = line.trim();
     if line.is_empty() {
         return Vec::new();
     }
     split(&SENTENCE_BREAK, line)
         .into_iter()
-        .map(|part| php::trim(&part).to_string())
+        .map(|part| part.trim().to_string())
         .filter(|part| !part.is_empty())
         .collect()
 }
@@ -301,7 +298,7 @@ fn questions_after(lines: &[String], index: usize, picked: &mut Vec<String>) -> 
         if found >= MAX_QUESTIONS {
             break;
         }
-        let line = php::trim(line);
+        let line = line.trim();
         if line.is_empty() {
             if found > 0 {
                 break;
@@ -337,7 +334,7 @@ fn quoted_after(sentences: &[String], patterns: &[&Regex]) -> String {
                 } else {
                     first
                 };
-                return php::trim(text).to_string();
+                return text.trim().to_string();
             }
         }
     }

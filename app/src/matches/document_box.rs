@@ -1,11 +1,11 @@
 //! The box for one document of a saved match, the job application or the tailored résumé, as
-//! the result prints it, ported from modules/cv_match/Document_box.php: its title, the Write
+//! the result prints it: its title, the Write
 //! button, the text already written (editable, with Copy and Download PDF), where the post
 //! wants the application sent, and a note when the key is switched off for writing it. Just
 //! after the résumé is written, with_keywords() adds the post's keywords it took over and the
 //! ones it left out (tailor_resume).
 //!
-//! Unlike the PHP app, writing again keeps the text before: the box lists the earlier versions
+//! Writing again keeps the text before: the box lists the earlier versions
 //! (documents), newest first, each with when and by which model it was written, the notes it was
 //! written with, and its text to copy or download as a PDF.
 
@@ -48,7 +48,7 @@ pub struct EarlierVersion {
     pub id: i64,
     /// ISO 8601, which the page shows in local time.
     pub written_at: String,
-    /// "openai/gpt-5.4-mini"; "" when it came from the PHP app.
+    /// "openai/gpt-5.4-mini"; "" when it came from the web app.
     pub written_by: String,
     pub notes: String,
     pub text: String,

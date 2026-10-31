@@ -1,14 +1,13 @@
 //! A saved match as an entry for Jobnet's joblog ("Opret joblog" on jobnet.dk), the log of
-//! applications Danish job seekers keep for the job centre, ported from
-//! modules/cv_match/Joblog.php. Jobnet has no way in for other sites, so the page (and the
-//! Jobnet extension) shows each field in Jobnet's own order and words, filled in from the
-//! match, for the candidate to copy over.
+//! applications Danish job seekers keep for the job centre. Jobnet has no way in for other sites,
+//! so the page (and the Jobnet extension) shows each field in Jobnet's own order and words, filled
+//! in from the match, for the candidate to copy over.
 //!
 //! read() fills the fields by rule from the saved match (no model call):
 //! - the job title, company and link come from the match;
 //! - the deadline, working hours, address, postcode and town, and contact person are read from
 //!   the post text (Danish or English). A postcode only counts when the town after it is that
-//!   postcode's town (danish_postcodes.php), so "2026 Vi tilbyder" isn't an address;
+//!   postcode's town (assets/danish_postcodes.json), so "2026 Vi tilbyder" isn't an address;
 //! - how far the application is: what the candidate last said (Ikke søgt until then) and, once
 //!   applied, the day they said so; the post was found as a posted job and is applied for
 //!   digitally;
@@ -27,7 +26,6 @@ use serde::ser::{SerializeMap, Serializer};
 use super::apply_instructions::ApplyInstructions;
 use super::match_model::{APPLIED_STATUSES, Integration, SavedMatch};
 use super::{dates, match_score};
-use crate::php;
 
 /// Jobnet's choices, by the value its form posts.
 pub const JOB_TYPES: [(&str, &str); 2] = [("Fuldtid", "Fuldtid"), ("Deltid", "Deltid")];
@@ -312,15 +310,11 @@ static DATES: LazyLock<Vec<(Regex, DateForm)>> = LazyLock::new(|| {
     ]
 });
 
-/// Danish postcodes and their towns, in the list's order (danish_postcodes.php, PostNord's list).
+/// Danish postcodes and their towns as [postcode, town] pairs, in the list's order: PostNord's
+/// list, via the ISC-licensed npm package dk-postals 1.0.0.
 static POSTCODES: LazyLock<Vec<(String, String)>> = LazyLock::new(|| {
-    include_str!("../../../assets/danish_postcodes.php")
-        .lines()
-        .filter_map(|line| {
-            let (code, town) = line.trim().strip_prefix('\'')?.split_once("' => '")?;
-            Some((code.to_string(), town.strip_suffix("',")?.to_string()))
-        })
-        .collect()
+    serde_json::from_str(include_str!("../../../assets/danish_postcodes.json"))
+        .expect("assets/danish_postcodes.json is a list of [postcode, town] pairs")
 });
 static TOWN_OF: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(|| {
     POSTCODES
@@ -412,8 +406,8 @@ pub fn read(saved: &SavedMatch) -> Entry {
     let (job_type, hours) = working_hours(&text);
     let (address, postal) = place(&text);
     let contact = contact(&text, &saved.company, saved.apply_instructions.as_ref());
-    let written = !php::trim(saved.application_text.as_deref().unwrap_or("")).is_empty();
-    let resume = !php::trim(saved.resume_text.as_deref().unwrap_or("")).is_empty();
+    let written = !saved.application_text.as_deref().unwrap_or("").trim().is_empty();
+    let resume = !saved.resume_text.as_deref().unwrap_or("").trim().is_empty();
     let jobnet = saved.jobnet_joblog.as_ref();
     let status = jobnet.map_or(NOT_APPLIED, |jobnet| jobnet.status.as_str());
     let part_time_hours = if job_type == "Deltid" { hours } else { String::new() };
@@ -426,7 +420,7 @@ pub fn read(saved: &SavedMatch) -> Entry {
                     text_field(
                         "occupation",
                         "Stilling eller arbejdsområde",
-                        php::trim(&saved.job_title),
+                        saved.job_title.trim(),
                         true,
                         "",
                     ),
@@ -453,7 +447,7 @@ pub fn read(saved: &SavedMatch) -> Entry {
             Section {
                 heading: "Om arbejdspladsen",
                 fields: vec![
-                    text_field("name", "Virksomhedens navn", php::trim(&saved.company), true, ""),
+                    text_field("name", "Virksomhedens navn", saved.company.trim(), true, ""),
                     text_field("companyAddress", "Adresse", &address, false, ""),
                     Field {
                         kind: "select",
@@ -481,7 +475,7 @@ pub fn read(saved: &SavedMatch) -> Entry {
                     text_field(
                         "jobAdLink",
                         "Link til jobannonce",
-                        php::trim(saved.job_url.as_deref().unwrap_or("")),
+                        saved.job_url.as_deref().unwrap_or("").trim(),
                         false,
                         "",
                     ),
@@ -535,7 +529,7 @@ pub fn read(saved: &SavedMatch) -> Entry {
             File {
                 kind: if resume { "resume" } else { "cv" },
                 label: "CV",
-                ready: !php::trim(&saved.cv_text).is_empty(),
+                ready: !saved.cv_text.trim().is_empty(),
                 note: Some(if resume {
                     "Det tilpassede CV"
                 } else {
@@ -546,7 +540,7 @@ pub fn read(saved: &SavedMatch) -> Entry {
             File {
                 kind: "job",
                 label: "Jobannonce",
-                ready: !php::trim(&text).is_empty(),
+                ready: !text.trim().is_empty(),
                 note: None,
                 missing: "Der er ikke gemt noget jobopslag.",
             },
@@ -604,7 +598,7 @@ pub fn deadline(text: &str, saved_at: i64) -> String {
         let window = whole_letters(&text[cue.end()..], DEADLINE_WINDOW);
         let after = sentence(window);
         if ONGOING
-            .is_match(&php::first_chars(after, ONGOING_WINDOW))
+            .is_match(&after.chars().take(ONGOING_WINDOW).collect::<String>())
             .unwrap_or(false)
             && !has_date(after)
         {
@@ -618,7 +612,7 @@ pub fn deadline(text: &str, saved_at: i64) -> String {
     String::new()
 }
 
-/// The first `bytes` bytes of text, cut back to a whole letter (PHP's mb_strcut).
+/// The first `bytes` bytes of text, cut back to a whole letter.
 fn whole_letters(text: &str, bytes: usize) -> &str {
     let mut end = bytes.min(text.len());
     while !text.is_char_boundary(end) {
@@ -691,7 +685,7 @@ fn month_number(name: &str) -> i64 {
         .map_or(0, |(_, number)| i64::from(*number))
 }
 
-/// PHP's checkdate(): a real day of the Gregorian calendar, in years 1 to 32767.
+/// A real day of the Gregorian calendar, in years 1 to 32767.
 fn checkdate(month: i64, day: i64, year: i64) -> bool {
     (1..=32_767).contains(&year)
         && u32::try_from(month).is_ok_and(|month| {
@@ -711,7 +705,7 @@ pub fn working_hours(text: &str) -> (&'static str, String) {
         && hours > 0.0
         && hours < FULL_TIME_HOURS
     {
-        return ("Deltid", MAX_PART_TIME_HOURS.min(php::round(hours) as i64).to_string());
+        return ("Deltid", MAX_PART_TIME_HOURS.min(hours.round() as i64).to_string());
     }
     let full = FULL_TIME.is_match(text).unwrap_or(false);
     let part = PART_TIME.is_match(text).unwrap_or(false);
@@ -772,7 +766,7 @@ fn town_words(text: &str) -> String {
     let text = text.to_lowercase();
     let text = KONGENS.replace_all(&text, "kongens ");
     let text = COPENHAGEN.replace_all(&text, "københavn");
-    php::trim(&NOT_TOWN_LETTERS.replace_all(&text, " ")).to_string()
+    NOT_TOWN_LETTERS.replace_all(&text, " ").trim().to_string()
 }
 
 /// Whether the words after a postcode name its town ("Aarhus" for "Aarhus C").
@@ -789,10 +783,10 @@ fn names_town(words: &str, town: &str) -> bool {
 
 /// The street address at the end of the text before a postcode: "Vestergade 12, 2. th.".
 fn street(before: &str) -> String {
-    let before = php::trim_chars(before, " \t,");
+    let before = before.trim_matches(|c| " \t,".contains(c));
     // The last part that starts with a street name and has a house number.
     let mut street: Vec<String> = Vec::new();
-    for part in before.split(',').rev().map(php::trim) {
+    for part in before.split(',').rev().map(str::trim) {
         // "Adresse: Vestergade 12": only the address.
         let part = LABEL.replace(part, "").into_owned();
         street.insert(0, part.clone());
@@ -819,7 +813,7 @@ pub struct Contact {
 pub fn contact(text: &str, company: &str, apply: Option<&ApplyInstructions>) -> Contact {
     let lines: Vec<&str> = text
         .split('\n')
-        .map(php::trim)
+        .map(str::trim)
         .filter(|line| !line.is_empty())
         .collect();
     let mut found = Contact::default();
@@ -931,7 +925,7 @@ pub fn notes(saved: &SavedMatch) -> String {
     }
     let notes = lines.join("\n");
     if notes.chars().count() > MAX_NOTES {
-        let cut = php::first_chars(&notes, MAX_NOTES - 1);
+        let cut = notes.chars().take(MAX_NOTES - 1).collect::<String>();
         return format!("{}…", cut.trim_end_matches([' ', '\t', '\n', '\r', '\0', '\x0B']));
     }
     notes

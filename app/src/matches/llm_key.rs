@@ -1,5 +1,4 @@
-//! Which language model a match endpoint runs on, ported from Cv_match.php's llm(),
-//! llm_settings(), ai_uses() and missing_key_message(): the user's own key from the API key page,
+//! Which language model a match endpoint runs on: the user's own key from the API key page,
 //! for the use it is switched on for (account_model::USES). The desktop app has no server key to
 //! fall back to, so without a key for that use the page is told why and pointed to the API key
 //! page.

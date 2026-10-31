@@ -1,6 +1,5 @@
-//! The profile links a CV names (LinkedIn, GitHub, a website), read by rule from its text, ported
-//! from modules/cv_match/Cv_links.php, for the Apply dialog when the candidate has no profile
-//! links saved.
+//! The profile links a CV names (LinkedIn, GitHub, a website), read by rule from its text, for the
+//! Apply dialog when the candidate has no profile links saved.
 //!
 //! Any http(s) address counts; without a scheme only linkedin.com/in/..., github.com/... and
 //! gitlab.com/... do, as "Node.js/React" would otherwise read as one.
@@ -96,7 +95,6 @@ fn with_scheme(address: &str) -> String {
 mod tests {
     use super::*;
 
-    /// tests/a_cv_s_own_links_are_offered_when_none_are_saved.phpt.
     #[test]
     fn a_cvs_own_links_are_read_in_its_order() {
         let cv = "Jonas Hansen\nSlagelse · jonas.kerwin.hansen@gmail.com\nFull CV online: sasin91.xyz/cv\n\

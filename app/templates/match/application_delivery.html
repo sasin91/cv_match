@@ -1,4 +1,4 @@
-{#- The Apply dialog's content for a saved match (views/application_delivery.php). Copy buttons name the field they copy (data-copy) and PDF buttons the document (data-pdf); js/app.js handles both. -#}
+{#- The Apply dialog's content for a saved match. Copy buttons name the field they copy (data-copy) and PDF buttons the document (data-pdf); js/app.js handles both. -#}
 <section class="application-delivery" data-id="{{ delivery.id }}">
     <h2 id="application-delivery-heading">{{ delivery.heading }}</h2>
     {%- if !delivery.intro.is_empty() %}

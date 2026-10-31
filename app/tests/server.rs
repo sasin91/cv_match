@@ -1,4 +1,4 @@
-//! The local server answers the match page's requests as the PHP app does, and only from its
+//! The local server answers the match page's requests as the page expects, and only from its
 //! own page.
 
 use std::sync::{Arc, LazyLock};

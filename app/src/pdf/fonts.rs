@@ -71,7 +71,7 @@ impl TrueType {
     }
 
     /// A glyph's advance width in ems, to the thousandth of an em as dompdf's font metrics
-    /// (.ufm) have it, so lines wrap where they wrapped in the PHP app.
+    /// (.ufm) have it, so lines wrap where dompdf wrapped them.
     pub fn advance(&self, glyph: GlyphId) -> f32 {
         thousandths(
             self.face.glyph_hor_advance(glyph).unwrap_or(0).into(),
@@ -151,8 +151,7 @@ const WINDOWS_1252_HIGH: [(char, u8); 27] = [
     ('Ÿ', 0x9F),
 ];
 
-/// The letter's byte in Windows-1252 (the PDF's WinAnsi encoding), or None when it has none,
-/// as PHP's iconv('UTF-8', 'Windows-1252') decides.
+/// The letter's byte in Windows-1252 (the PDF's WinAnsi encoding), or None when it has none.
 pub fn windows_1252(c: char) -> Option<u8> {
     let code = u32::from(c);
     let latin_1 = code < 0x80 || (0xA0..=0xFF).contains(&code);

@@ -2,8 +2,8 @@
 
 Laya's `POST /v1/systemone` on ONNX Runtime, in Rust: a drop-in for `python -m laya.serve`
 serving the English checkpoint, so Recruiter can run Laya on a PC without Python. It answers
-the same JSON as laya 0.4.0's ONNX backend (`model: "laya-rl-agent-onnx"`), and
-`modules/laya/Laya_client.php` talks to it unchanged.
+the same JSON as laya 0.4.0's ONNX backend (`model: "laya-rl-agent-onnx"`), so any laya-serve
+client talks to it unchanged.
 
 It is a port of laya 0.4.0's `build_head` / `build_sequence` / `collate_items` and the
 temperature and decoding rules of `ONNXAgent`. `tests/` checks it against fixtures recorded
@@ -68,7 +68,7 @@ The first build downloads a prebuilt ONNX Runtime (the `ort` crate does this).
 
 The app (`../app`) runs this crate's model in its own process: copy the checkpoint folder's
 `rl_agent_config.json` and `tokenizer\`, and `out\laya.onnx` with `out\laya.onnx.data`, into
-`%APPDATA%\Recruiter\laya` (see the app's README). The server below is only for the PHP app.
+`%APPDATA%\Recruiter\laya` (see the app's README). The server below is only for clients that call Laya over HTTP, such as the web app.
 
 ## Point Recruiter at it
 

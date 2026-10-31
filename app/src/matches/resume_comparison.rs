@@ -1,5 +1,5 @@
 //! The tailored résumé's own match against the post next to the CV's, as the résumé box prints
-//! it, ported from modules/cv_match/Resume_comparison.php: both scores, and the résumé's saved
+//! it: both scores, and the résumé's saved
 //! match to open.
 
 use super::match_model::SavedMatch;

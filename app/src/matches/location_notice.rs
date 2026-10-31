@@ -1,5 +1,5 @@
 //! Where the post asks the candidate to live or show up, when they likely don't, as the result
-//! prints it above the requirements, ported from modules/cv_match/Location_notice.php: the
+//! prints it above the requirements: the
 //! post's words and the reason. Such a match is capped just under "medium"
 //! (matcher::LOCATION_MISSED_INDEX), not hidden.
 

@@ -120,7 +120,7 @@ pub async fn links_for_user(db: &SqlitePool, user_id: i64) -> sqlx::Result<Vec<(
     }
 }
 
-/// The parts that aren't empty, joined (PHP's implode of array_filter).
+/// The parts that aren't empty (nor "0"), joined.
 fn join_present(parts: &[&str], glue: &str) -> String {
     parts
         .iter()

@@ -1,7 +1,7 @@
-//! Where the user's API key is kept, in place of modules/account/Key_vault.php's encryption with
-//! the server's secret: Windows Credential Manager (through the keyring crate), so the key is
-//! never in the database file. Each database file has its own credential, so a second database
-//! (--database) can't replace the first one's key. Tests keep keys in memory instead.
+//! Where the user's API key is kept, not in the database: Windows Credential Manager (through the
+//! keyring crate), so the key is never in the database file. Each database file has its own
+//! credential, so a second database (--database) can't replace the first one's key. Tests keep keys
+//! in memory instead.
 //!
 //! The key and its row in user_llm_keys are two stores, so whoever reads or changes them takes
 //! the vault's lock() first: a reader never pairs one key's row with another key.

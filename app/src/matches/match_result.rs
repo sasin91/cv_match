@@ -1,8 +1,8 @@
-//! A match as the page prints its result (templates/match/result.html), ported from
-//! modules/cv_match/Match_result.php: the score in its ring, the job, how the score is made up,
-//! a location the candidate likely misses, what the post asks of applicants, the Reject button
-//! of a saved match, the requirements by group with their verdicts and a filter by verdict, the
-//! soft skills, Laya's reading and, for a saved match, the application and résumé panel.
+//! A match as the page prints its result (templates/match/result.html): the score in its ring, the
+//! job, how the score is made up, a location the candidate likely misses, what the post asks of
+//! applicants, the Reject button of a saved match, the requirements by group with their verdicts
+//! and a filter by verdict, the soft skills, Laya's reading and, for a saved match, the application
+//! and résumé panel.
 //!
 //! from() takes a match just made (the free match); from_saved() a saved one, which keeps less:
 //! no part weights, no alternatives, no soft skills.
@@ -14,13 +14,12 @@ use super::apply_notice::ApplyNotice;
 use super::location_notice::LocationNotice;
 use super::match_documents::MatchDocuments;
 use super::match_model::SavedMatch;
-use super::match_score::MatchScore;
+use super::match_score::{self, MatchScore};
 use super::matcher::{Groups, Part, Score, Verdicts};
 use super::reject_button::RejectButton;
 use super::verdict_row::{self, VerdictRow};
 use super::{Job, Profile, dates};
 use crate::laya::laya_client::LayaReading;
-use crate::php;
 
 /// The groups' names, in the order a saved match's unknown criterion falls back from.
 pub const GROUP_NAMES: [(&str, &str); 5] = [
@@ -71,11 +70,11 @@ pub struct LayaLine {
 impl LayaLine {
     pub fn from(reading: &LayaReading) -> Self {
         if let Some(laya) = &reading.laya {
-            let meets = php::round(laya.meets * PERCENT) as i64;
+            let meets = (laya.meets * PERCENT).round() as i64;
             let fit = format!(
                 "{:.*}",
                 FIT_DECIMALS_SHOWN as usize,
-                php::round_to(laya.fit, FIT_DECIMALS_SHOWN)
+                match_score::round_to(laya.fit, FIT_DECIMALS_SHOWN)
             );
             return LayaLine {
                 text: format!(

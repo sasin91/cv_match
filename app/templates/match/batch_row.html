@@ -1,4 +1,4 @@
-{#- A match as a row of "Jobs ranked by match" (views/batch_row.php): the row over the result,
+{#- A match as a row of "Jobs ranked by match": the row over the result,
     with the application and résumé boxes of a saved match. js/app.js ranks the rows by
     data-score. -#}
 <li class="batch-row" data-score="{{ row.percent }}" data-saved-id="{% if let Some(id) = result.saved_id %}{{ id }}{% endif %}">

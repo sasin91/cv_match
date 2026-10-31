@@ -1,5 +1,5 @@
-//! The Rust port answers as the PHP app does: every case in tests/fixtures/parity.json was
-//! written by tests/fixtures/generate.php from the PHP modules.
+//! The matching core gives the expected answers: every case in tests/fixtures/parity.json, a
+//! fixed snapshot of what the web app answered. A change that alters an answer shows up here.
 
 use std::sync::LazyLock;
 
@@ -15,7 +15,7 @@ use recruiter::taxonomy::{self, Taxonomy};
 use serde::Serialize;
 use serde_json::{Value, json};
 
-/// The fixed day the fixtures count "until now" to (generate.php's NOW).
+/// The fixed day the fixtures count "until now" to (the snapshot's NOW).
 const NOW: YearMonth = YearMonth { year: 2026, month: 10 };
 
 /// How far two scores may drift apart: both sides compute in doubles, in the same order.
@@ -34,8 +34,7 @@ fn cases(name: &str) -> &'static Vec<Value> {
         .unwrap_or_else(|| panic!("parity.json has no {name}"))
 }
 
-/// Equal as PHP's json_encode would print them: numbers by value, and an empty PHP array as
-/// either [] or {}.
+/// Equal as JSON: numbers by value, and an empty list or map as either [] or {}.
 fn same(expected: &Value, actual: &Value) -> bool {
     match (expected, actual) {
         (Value::Number(a), Value::Number(b)) => {
@@ -54,7 +53,7 @@ fn assert_same(what: &str, expected: &Value, actual: impl Serialize) {
     let actual = serde_json::to_value(actual).unwrap();
     assert!(
         same(expected, &actual),
-        "{what}\n  PHP:  {}\n  Rust: {}",
+        "{what}\n  expected: {}\n  actual:   {}",
         serde_json::to_string(expected).unwrap(),
         serde_json::to_string(&actual).unwrap()
     );
@@ -65,7 +64,7 @@ fn text(value: &Value) -> &str {
 }
 
 #[test]
-fn words_and_content_words_split_as_php_does() {
+fn words_and_content_words_split_as_expected() {
     for case in cases("words") {
         let phrase = text(&case["text"]);
         assert_same(&format!("words({phrase:?})"), &case["words"], taxonomy::words(phrase));
@@ -78,7 +77,7 @@ fn words_and_content_words_split_as_php_does() {
 }
 
 #[test]
-fn edit_distance_counts_as_php_does() {
+fn edit_distance_counts_as_expected() {
     for case in cases("distances") {
         let (a, b) = (text(&case["a"]), text(&case["b"]));
         let max = case["max"].as_u64().unwrap() as usize;
@@ -91,7 +90,7 @@ fn edit_distance_counts_as_php_does() {
 }
 
 #[test]
-fn the_taxonomy_ranks_every_phrase_as_php_does() {
+fn the_taxonomy_ranks_every_phrase_as_expected() {
     for case in cases("rank") {
         let phrase = text(&case["phrase"]);
         let kind = case["kind"].as_str();
@@ -113,7 +112,7 @@ fn the_taxonomy_ranks_every_phrase_as_php_does() {
 }
 
 #[test]
-fn years_are_read_as_php_reads_them() {
+fn years_are_read_as_expected() {
     for case in cases("years_asked") {
         let line = text(&case["line"]);
         assert_same(
@@ -139,7 +138,7 @@ fn years_are_read_as_php_reads_them() {
 }
 
 #[test]
-fn the_free_reader_reads_posts_and_cvs_as_php_does() {
+fn the_free_reader_reads_posts_and_cvs_as_expected() {
     for case in cases("readings") {
         let name = text(&case["name"]);
         let input = text(&case["text"]);
@@ -159,7 +158,7 @@ fn the_free_reader_reads_posts_and_cvs_as_php_does() {
 }
 
 #[test]
-fn every_post_and_cv_match_as_php_matches_them() {
+fn every_post_and_cv_match_as_expected() {
     let posts: IndexMap<&str, &str> = cases("readings")
         .iter()
         .filter(|r| r["kind"] == "job")
@@ -209,7 +208,7 @@ fn every_post_and_cv_match_as_php_matches_them() {
 }
 
 #[test]
-fn scores_print_as_php_prints_them() {
+fn scores_print_as_expected() {
     for case in cases("scores") {
         let score = case["score"].as_f64().unwrap();
         assert_same(
@@ -222,7 +221,7 @@ fn scores_print_as_php_prints_them() {
 }
 
 #[test]
-fn application_instructions_are_read_as_php_reads_them() {
+fn application_instructions_are_read_as_expected() {
     for case in cases("apply_instructions") {
         let text = text(&case["text"]);
         assert_same(
@@ -240,7 +239,7 @@ fn joblog_cases(name: &str) -> &'static Vec<Value> {
 }
 
 #[test]
-fn joblog_deadlines_hours_places_and_contacts_are_read_as_php_reads_them() {
+fn joblog_deadlines_hours_places_and_contacts_are_read_as_expected() {
     for case in joblog_cases("deadlines") {
         let text = text(&case["text"]);
         let saved_at = case["saved_at"].as_i64().unwrap();
@@ -329,7 +328,7 @@ fn integration(case: &Value) -> Option<Integration> {
 }
 
 #[test]
-fn a_saved_match_fills_the_joblog_as_php_fills_it() {
+fn a_saved_match_fills_the_joblog_as_expected() {
     for case in joblog_cases("entries") {
         let saved = saved_match(&case["match"]);
         assert_same(
@@ -355,7 +354,7 @@ fn pdf_cases(name: &str) -> &'static Vec<Value> {
 }
 
 #[test]
-fn the_pdf_pages_are_laid_out_as_php_lays_them_out() {
+fn the_pdf_pages_are_laid_out_as_expected() {
     for case in pdf_cases("html") {
         let (kind, input, title) = (text(&case["kind"]), text(&case["text"]), text(&case["title"]));
         assert_eq!(
@@ -376,7 +375,7 @@ fn the_pdf_pages_are_laid_out_as_php_lays_them_out() {
 }
 
 #[test]
-fn pdf_file_names_are_the_ones_php_gives() {
+fn pdf_file_names_are_the_expected_ones() {
     for case in pdf_cases("file_names") {
         let (kind, job_title, company) = (text(&case["kind"]), text(&case["job_title"]), text(&case["company"]));
         assert_eq!(
@@ -387,14 +386,14 @@ fn pdf_file_names_are_the_ones_php_gives() {
     }
 }
 
-/// The Laya line as PHP's Match_result::laya() returns it.
+/// The Laya line as Match_result::laya() returns it.
 fn laya_line(reading: &LayaReading) -> Value {
     let line = LayaLine::from(reading);
     json!({"text": line.text, "failed": line.failed})
 }
 
 #[test]
-fn laya_is_asked_what_php_asks_it() {
+fn laya_is_asked_the_expected_questions() {
     assert_same(
         "Laya_client::questions()",
         &FIXTURES["laya"]["questions"],
@@ -403,7 +402,7 @@ fn laya_is_asked_what_php_asks_it() {
 }
 
 #[test]
-fn laya_answers_are_read_and_printed_as_php_reads_and_prints_them() {
+fn laya_answers_are_read_and_printed_as_expected() {
     let cases = FIXTURES["laya"]["answers"]
         .as_array()
         .expect("parity.json has laya answers");
@@ -424,7 +423,7 @@ fn laya_answers_are_read_and_printed_as_php_reads_and_prints_them() {
 }
 
 #[test]
-fn laya_errors_are_printed_as_php_prints_them() {
+fn laya_errors_are_printed_as_expected() {
     let cases = FIXTURES["laya"]["errors"]
         .as_array()
         .expect("parity.json has laya errors");
