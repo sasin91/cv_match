@@ -1,0 +1,9 @@
+[package]
+name = "xtask"
+version = "0.1.0"
+edition = "2024"
+description = "The app's developer commands, run through cargo aliases (`cargo dev`)"
+publish = false
+
+# Only the standard library, so `cargo dev` builds in a moment.
+[dependencies]

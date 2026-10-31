@@ -11,7 +11,7 @@
 //!
 //!   recruiter --dev ...
 //!       (debug builds only) reloads the page in the browser whenever the app restarts, for
-//!       app/dev.ps1, which restarts it under watchexec on every change
+//!       `cargo dev` (xtask/), which restarts it under watchexec on every change
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -57,7 +57,7 @@ fn run_server(args: &[String]) -> ExitCode {
         if flag == "--dev" {
             if !cfg!(debug_assertions) {
                 eprintln!(
-                    "--dev is for debug builds (app\\dev.ps1, or cargo run -- --dev); release builds have the CSS and JS built in."
+                    "--dev is for debug builds (cargo dev, or cargo run -- --dev); release builds have the CSS and JS built in."
                 );
                 return ExitCode::FAILURE;
             }
