@@ -18,8 +18,15 @@ use super::catalog::CatalogModel;
 use super::hardware::{GpuVendor, Inventory};
 use super::llama_server::SERVER_FILE;
 
-/// llama.cpp's latest release, as GitHub's API describes it.
-pub const LATEST_RELEASE: &str = "https://api.github.com/repos/ggml-org/llama.cpp/releases/latest";
+/// llama.cpp's releases, newest first, as GitHub's API lists them.
+pub const RELEASES: &str = "https://api.github.com/repos/ggml-org/llama.cpp/releases";
+
+/// How many of the newest releases are looked through for this computer's build. llama.cpp
+/// publishes a release before its builds are uploaded, so the newest can lack it for a while.
+const RELEASES_SEARCHED: usize = 10;
+
+/// The most files GitHub's API lists on one page.
+const ASSETS_PER_PAGE: usize = 100;
 
 /// What the app calls itself to GitHub, whose API refuses requests without a User-Agent.
 const USER_AGENT: &str = "recruiter-desktop";
@@ -46,8 +53,8 @@ pub struct Asset {
 
 #[derive(Debug, Deserialize)]
 struct Release {
+    id: u64,
     tag_name: String,
-    assets: Vec<Asset>,
 }
 
 /// A llama.cpp build for Windows, by the name part its zip carries.
@@ -81,6 +88,15 @@ impl Build {
         }
     }
 
+    /// Its name, as a sentence names it ("the Vulkan build").
+    fn name(self) -> &'static str {
+        match self {
+            Build::Cuda => "CUDA",
+            Build::Vulkan => "Vulkan",
+            Build::Cpu => "CPU",
+        }
+    }
+
     /// The text in the release zip's name, after "-bin-".
     fn marker(self) -> &'static str {
         match self {
@@ -102,8 +118,8 @@ pub fn assets_for(build: Build, assets: &[Asset]) -> Result<Vec<Asset>, String> 
     builds.sort_by(|a, b| a.name.cmp(&b.name));
     let Some(chosen) = builds.last() else {
         return Err(format!(
-            "llama.cpp's latest release has no {} for Windows.",
-            build.label()
+            "There's no Windows {} build of llama.cpp in the release.",
+            build.name()
         ));
     };
     let mut wanted = vec![(*chosen).clone()];
@@ -113,7 +129,7 @@ pub fn assets_for(build: Build, assets: &[Asset]) -> Result<Vec<Asset>, String> 
         let runtime = assets
             .iter()
             .find(|asset| asset.name == runtime_name)
-            .ok_or_else(|| format!("llama.cpp's latest release has no {runtime_name}."))?;
+            .ok_or_else(|| format!("There's no {runtime_name} in the release."))?;
         wanted.push(runtime.clone());
     }
     Ok(wanted)
@@ -208,17 +224,8 @@ fn client() -> Result<reqwest::Client, String> {
 /// Downloads llama.cpp's build for this computer into folder and unzips it there.
 pub async fn download_server(folder: &Path, inventory: &Inventory, downloads: &Downloads) -> Result<(), String> {
     let client = client()?;
-    let release: Release = client
-        .get(LATEST_RELEASE)
-        .send()
-        .await
-        .and_then(reqwest::Response::error_for_status)
-        .map_err(|e| format!("GitHub didn't list llama.cpp's latest release: {e}"))?
-        .json()
-        .await
-        .map_err(|e| format!("GitHub's answer about llama.cpp's release couldn't be read: {e}"))?;
     let build = Build::for_computer(inventory);
-    let assets = assets_for(build, &release.assets)?;
+    let (release, assets) = newest_release_with(&client, build).await?;
     // Every zip is unzipped into the staging folder first, and moved into the llama folder only
     // when all of them are, so a half-finished download never looks like an installed llama.cpp.
     let staging = folder.join(STAGING_FOLDER);
@@ -252,6 +259,60 @@ pub async fn download_server(folder: &Path, inventory: &Inventory, downloads: &D
         folder.display()
     );
     Ok(())
+}
+
+/// The newest of the last RELEASES_SEARCHED releases with build's zips, and those zips.
+async fn newest_release_with(client: &reqwest::Client, build: Build) -> Result<(Release, Vec<Asset>), String> {
+    let releases: Vec<Release> = get_json(client, &format!("{RELEASES}?per_page={RELEASES_SEARCHED}")).await?;
+    let mut skipped = Vec::new();
+    for release in releases {
+        match assets_for(build, &all_assets(client, release.id).await?) {
+            Ok(assets) => {
+                if !skipped.is_empty() {
+                    println!(
+                        "llama: {} has no Windows {} build yet, so {} is used.",
+                        skipped.join(", "),
+                        build.name(),
+                        release.tag_name
+                    );
+                }
+                return Ok((release, assets));
+            }
+            Err(_) => skipped.push(release.tag_name),
+        }
+    }
+    Err(format!(
+        "None of llama.cpp's last {RELEASES_SEARCHED} releases has a Windows {} build.",
+        build.name()
+    ))
+}
+
+/// Every file of a release, page by page.
+async fn all_assets(client: &reqwest::Client, release_id: u64) -> Result<Vec<Asset>, String> {
+    let mut assets = Vec::new();
+    for page in 1.. {
+        let url = format!("{RELEASES}/{release_id}/assets?per_page={ASSETS_PER_PAGE}&page={page}");
+        let listed: Vec<Asset> = get_json(client, &url).await?;
+        let last_page = listed.len() < ASSETS_PER_PAGE;
+        assets.extend(listed);
+        if last_page {
+            break;
+        }
+    }
+    Ok(assets)
+}
+
+/// url's JSON answer from GitHub's API.
+async fn get_json<T: serde::de::DeserializeOwned>(client: &reqwest::Client, url: &str) -> Result<T, String> {
+    client
+        .get(url)
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status)
+        .map_err(|e| format!("GitHub didn't list llama.cpp's releases: {e}"))?
+        .json()
+        .await
+        .map_err(|e| format!("GitHub's list of llama.cpp's releases couldn't be read: {e}"))
 }
 
 /// Downloads model into models_folder.
@@ -409,7 +470,22 @@ mod tests {
                 "cudart-llama-bin-win-cuda-13.1-x64.zip"
             ]
         );
-        assert!(assets_for(Build::Vulkan, &[]).unwrap_err().contains("Vulkan build"));
+        assert_eq!(
+            assets_for(Build::Vulkan, &[]).unwrap_err(),
+            "There's no Windows Vulkan build of llama.cpp in the release."
+        );
+        let b12020: Vec<Asset> = [
+            "llama-b12020-bin-win-cpu-x64.zip",
+            "llama-b12020-bin-win-rocm-10.0-x64.zip",
+            "llama-b12020-bin-win-vulkan-x64.zip",
+        ]
+        .into_iter()
+        .map(asset)
+        .collect();
+        assert_eq!(
+            names(&assets_for(Build::Vulkan, &b12020).unwrap()),
+            ["llama-b12020-bin-win-vulkan-x64.zip"]
+        );
     }
 
     #[test]
