@@ -31,12 +31,13 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use recruiter::account::key_vault::KeyVault;
+use recruiter::app_core::{AppCore, DatabaseFile};
 use recruiter::dev_reload::DevReload;
 use recruiter::install;
 use recruiter::laya::laya_client::{self, LayaClient};
 use recruiter::llama::{self, hardware::Inventory, llama_server::LlamaServer};
 use recruiter::scan_schedule::ScanSchedule;
-use recruiter::server::{self, AppState, DatabaseFile};
+use recruiter::server::{self, AppState};
 use recruiter::taxonomy::Taxonomy;
 use recruiter::{db, extension};
 
@@ -265,22 +266,21 @@ fn run_server(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let mut state = AppState::new(
+    let mut core = AppCore::new(
         db,
         Arc::new(Taxonomy::load()),
         user_id,
-        port,
         KeyVault::credential_manager(full_path(&database)),
     );
-    state.database = DatabaseFile {
+    core.database = DatabaseFile {
         path: shown_path(&database),
         made_now,
     };
-    state.scan_schedule = scan_schedule(&database);
+    core.scan_schedule = scan_schedule(&database);
     let data_folder = database.parent().unwrap_or(std::path::Path::new("."));
     let laya_folder = laya_folder.unwrap_or_else(|| data_folder.join(laya_client::FOLDER));
-    state.laya = LayaClient::from_folder(&laya_folder);
-    if state.laya.is_none() {
+    core.laya = LayaClient::from_folder(&laya_folder);
+    if core.laya.is_none() {
         println!(
             "No Laya model in {} (no {}), so matches go on without Laya.",
             laya_folder.display(),
@@ -293,12 +293,13 @@ fn run_server(args: &[String]) -> ExitCode {
         "This computer, for the app's own model: {inventory}. Its llama folder is {}.",
         llama_folder.display()
     );
-    state.llama = Some(LlamaServer::new(&llama_folder, inventory));
+    core.llama = Some(LlamaServer::new(&llama_folder, inventory));
     let folder = data_folder.join(extension::FOLDER);
-    state.extension_folder = extension::write(&folder).map_err(|e| {
+    core.extension_folder = extension::write(&folder).map_err(|e| {
         eprintln!("Couldn't write the Jobnet extension to {}: {e}", folder.display());
         format!("It couldn't be written to {}: {e}", folder.display())
     });
+    let mut state = AppState::new(Arc::new(core), port);
     let phone_address = tailscale_name.as_ref().map(|name| format!("https://{name}/match"));
     state.tailscale_name = tailscale_name;
     state.dev_reload = dev.then(DevReload::new);
@@ -306,7 +307,7 @@ fn run_server(args: &[String]) -> ExitCode {
     // The home page opens the setup wizard on a new database, and the match page after that.
     let address = format!("http://127.0.0.1:{port}/");
     runtime.block_on(async {
-        tokio::spawn(preload_laya(Arc::clone(&state)));
+        tokio::spawn(preload_laya(Arc::clone(&state.core)));
         let serving = tokio::spawn(server::serve(state));
         println!(
             "Recruiter is running at {address} (data in {}). Close this window to stop it.",
@@ -334,8 +335,8 @@ fn run_server(args: &[String]) -> ExitCode {
 
 /// Loads Laya's model in the background, so the first match needn't wait for it, and says how
 /// that went.
-async fn preload_laya(state: Arc<AppState>) {
-    let Some(laya) = &state.laya else {
+async fn preload_laya(core: Arc<AppCore>) {
+    let Some(laya) = &core.laya else {
         return;
     };
     let started = Instant::now();

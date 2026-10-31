@@ -2,6 +2,7 @@
 //! against the fixed expected answers in tests/fixtures/parity.json.
 
 pub mod account;
+pub mod app_core;
 pub mod dashboard;
 pub mod db;
 pub mod dev_reload;
@@ -15,5 +16,6 @@ pub mod pdf;
 pub mod profile;
 pub mod scan_schedule;
 pub mod server;
+pub mod service_error;
 pub mod setup;
 pub mod taxonomy;
