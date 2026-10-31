@@ -1,7 +1,7 @@
 //! A post a job search found as a card of the search's list (templates/job_scan/posts.html):
 //! what it is, how it matched, and its buttons, as recruiter's Found_post_card shapes it.
 
-use super::job_scan_model::{DISMISSED, FAILED, FoundPost, MATCHED, NOT_A_JOB};
+use super::job_scan_model::{DISMISSED, FAILED, FoundPost, MATCHED, MATCHING, NEW, NOT_A_JOB};
 use crate::matches::dates;
 use crate::matches::match_score::MatchScore;
 
@@ -39,6 +39,7 @@ pub struct FoundPostCard {
     /// "Likely disqualifier: Located close to Copenhagen" for a missed location, else "".
     pub disqualifier: String,
     pub match_link: Option<MatchLink>,
+    /// Failed, not a job post, or left unmatched by a scan that stopped: Try again.
     pub can_retry: bool,
     /// Dismiss, or Bring back for a dismissed post.
     pub dismiss_label: &'static str,
@@ -71,7 +72,7 @@ impl FoundPostCard {
                 url: format!("match/{id}"),
                 label: match_label(post),
             }),
-            can_retry: post.status == FAILED || post.status == NOT_A_JOB,
+            can_retry: [FAILED, NOT_A_JOB, NEW, MATCHING].contains(&post.status.as_str()),
             dismiss_label: if dismissed { "Bring back" } else { "Dismiss" },
             dismiss_undo: if dismissed { "1" } else { "" },
         }

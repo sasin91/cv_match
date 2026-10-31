@@ -177,6 +177,15 @@ pub async fn scan(context: Arc<Context>) -> Result<ScanReport, ServiceError> {
     let keyed = llm_key::llm(&context, JOB_EVALUATION).await?;
     let cv = profile_cv(&context).await?;
     let mut report = ScanReport::default();
+    // What an earlier scan found but didn't get to match, before it stopped.
+    let stopped_before = chrono::Utc::now().timestamp() - RUN_GIVE_UP_SECONDS;
+    for post_id in model::unfinished_posts(db, stopped_before).await? {
+        match match_post_with(&context, post_id, &cv).await {
+            Ok(true) => report.matched += 1,
+            Ok(false) => {}
+            Err(e) => report.problems.push(e.message),
+        }
+    }
     for search_id in model::scannable(db).await? {
         let now = chrono::Utc::now().timestamp();
         let Some(run_id) = model::start_run(db, search_id, now - MIN_SECONDS_BETWEEN_SCANS, now).await? else {
@@ -457,13 +466,31 @@ async fn match_post_with(context: &Arc<Context>, post_id: i64, cv: &ProfileCv) -
         set(DISMISSED, String::new(), Some(match_id), found).await?;
         return Ok(false);
     }
+    if dismissed_meanwhile(context, post_id, match_id).await? {
+        set(DISMISSED, String::new(), Some(match_id), found).await?;
+        return Ok(false);
+    }
     let mut errors = Vec::new();
     if tailors(saved.score, post.tailor_from_score) {
         errors.extend(write_document(context, &saved, RESUME).await);
         errors.extend(write_document(context, &saved, APPLICATION).await);
     }
     set(MATCHED, errors.join(" "), Some(match_id), found).await?;
-    Ok(true)
+    Ok(!dismissed_meanwhile(context, post_id, match_id).await?)
+}
+
+/// Whether the user dismissed the post while it was being matched; its new match is rejected
+/// then, as a dismissal rejects a post's match (search_service::dismiss).
+async fn dismissed_meanwhile(context: &Context, post_id: i64, match_id: i64) -> Result<bool, ServiceError> {
+    let db = context.db();
+    let dismissed = model::post_status(db, post_id)
+        .await?
+        .is_some_and(|(_, status)| status == DISMISSED);
+    if dismissed {
+        let now = chrono::Utc::now().timestamp();
+        match_model::reject(db, match_id, context.user_id, &[], now).await?;
+    }
+    Ok(dismissed)
 }
 
 /// What matching a fetched post came to.
@@ -615,7 +642,7 @@ pub async fn retry(context: Arc<Context>, post_id: i64) -> Result<(i64, &'static
     let Some((search_id, status)) = model::post_status(context.db(), post_id).await? else {
         return Err(ServiceError::new(ErrorKind::NotFound, "That post was not found."));
     };
-    if ![FAILED, NOT_A_JOB, model::NEW].contains(&status.as_str()) {
+    if ![FAILED, NOT_A_JOB, model::NEW, MATCHING].contains(&status.as_str()) {
         return Ok((search_id, "That post is matched already."));
     }
     match_in_background(context, post_id);

@@ -231,6 +231,8 @@ pub async fn dismiss(context: &Context, post_id: i64, undo: bool) -> Result<i64,
             let now = chrono::Utc::now().timestamp();
             match_model::reject(db, match_id, context.user_id, &[], now).await?;
         }
+        // Another search's post of the same job shares the match, and says the same.
+        model::follow_match(db, match_id, undo).await?;
     }
     Ok(search_id)
 }

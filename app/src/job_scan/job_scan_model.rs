@@ -429,6 +429,23 @@ pub async fn for_matching(db: &SqlitePool, post_id: i64) -> sqlx::Result<Option<
     }))
 }
 
+/// Posts left new or matching by a scan or a match that stopped before it finished (the program
+/// was closed): found before found_before and still not matched, oldest first.
+pub async fn unfinished_posts(db: &SqlitePool, found_before: i64) -> sqlx::Result<Vec<i64>> {
+    sqlx::query_scalar!(
+        r#"
+        SELECT p.id AS "id!"
+        FROM scanned_job_posts p
+        JOIN job_searches s ON s.id = p.job_search_id
+        WHERE p.status IN ('new', 'matching') AND p.found_at < ?1 AND s.active = 1
+        ORDER BY p.found_at, p.id
+        "#,
+        found_before
+    )
+    .fetch_all(db)
+    .await
+}
+
 /// A post's search and status, or None.
 pub async fn post_status(db: &SqlitePool, post_id: i64) -> sqlx::Result<Option<(i64, String)>> {
     let row = sqlx::query!(
@@ -440,7 +457,8 @@ pub async fn post_status(db: &SqlitePool, post_id: i64) -> sqlx::Result<Option<(
     Ok(row.map(|row| (row.job_search_id, row.status)))
 }
 
-/// Sets a post's status, and what goes with it: the error to show, or the saved match (with
+/// Sets a post's status, and what goes with it (a post the user dismissed meanwhile stays
+/// dismissed, with the rest saved): the error to show, or the saved match (with
 /// when), and the title and company the page gave when the scan didn't say them.
 pub async fn set_status(
     db: &SqlitePool,
@@ -457,7 +475,7 @@ pub async fn set_status(
     sqlx::query!(
         r#"
         UPDATE scanned_job_posts
-        SET status = ?2,
+        SET status = CASE WHEN status = 'dismissed' THEN status ELSE ?2 END,
             error = ?3,
             match_id = COALESCE(?4, match_id),
             matched_at = CASE WHEN ?4 IS NULL THEN matched_at ELSE ?5 END,
@@ -781,6 +799,15 @@ mod tests {
         assert_eq!(posts(&db, id, true, 10, "").await.unwrap().rows.len(), 2);
         dismiss(&db, first.unwrap(), true).await.unwrap();
         assert_eq!(post_status(&db, first.unwrap()).await.unwrap().unwrap().1, NEW);
+        assert_eq!(unfinished_posts(&db, 101).await.unwrap().len(), 2);
+        assert!(unfinished_posts(&db, 100).await.unwrap().is_empty());
+
+        // Dismissed while its match runs, a post stays dismissed when the match ends.
+        dismiss(&db, first.unwrap(), false).await.unwrap();
+        set_status(&db, first.unwrap(), MATCHED, "", None, &FoundAbout::default(), 200)
+            .await
+            .unwrap();
+        assert_eq!(post_status(&db, first.unwrap()).await.unwrap().unwrap().1, DISMISSED);
     }
 
     #[tokio::test]
