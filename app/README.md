@@ -212,10 +212,6 @@ dialog, the joblog, the extension's calls, the PDFs, the API key page, links tha
 fetched, and requests from other sites. `tests/llm.rs` calls each adapter against a stand-in for its API on
 127.0.0.1 and checks the request it sends and how it reads the answers and failures.
 
-`tests/import.rs` imports from a real MariaDB with the web app's schema (`tests/fixtures/mariadb_schema.sql`) loaded. It empties that
-database's match tables, so point it at a scratch database only:
+`recruiter import` has no automated test: it is a one-off move off the web app.
 
-    RECRUITER_TEST_MYSQL=mysql://test:test@127.0.0.1:3306/recruiter_test cargo test --test import -- --ignored --test-threads=1
-
-CI (`.github/workflows/app.yml`) runs that against a MariaDB service, runs fmt, clippy and the
-tests on Windows, and checks `.sqlx/` is what the queries are.
+CI (`.github/workflows/app.yml`) runs fmt, clippy and the tests on Windows, and checks `.sqlx/` is what the queries are.

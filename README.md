@@ -130,4 +130,4 @@ The parity tests compare the matching with a fixed snapshot of expected answers
 (`app/tests/fixtures/parity.json`). When a change is meant to move an answer, update the
 snapshot in the same commit.
 
-`app/README.md` has more on the tests, including the MariaDB import test.
+`app/README.md` has more on the tests.
