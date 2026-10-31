@@ -221,11 +221,13 @@ fn page_of(server: &LlamaServer, flash: Option<String>) -> LlamaSetupPage {
     let models_folder = server.models_folder();
     let download = download_view(&server.downloads.progress());
     let busy = download.as_ref().is_some_and(|download| download.running);
+    let rows = catalog_rows(server, card_usable);
+    let good_model_fits_card = rows.iter().any(|row| row.good_enough);
     let ModelLists {
         recommended,
         to_download,
         downloaded,
-    } = model_lists(catalog_rows(server, card_usable));
+    } = model_lists(rows);
     LlamaSetupPage {
         flash,
         poll_milliseconds: POLL_MILLISECONDS,
@@ -239,7 +241,7 @@ fn page_of(server: &LlamaServer, flash: Option<String>) -> LlamaSetupPage {
             .map(|path| path.display().to_string())
             .unwrap_or_default(),
         build_label: Build::for_computer(inventory).label(),
-        card_problem: overview.card_problem,
+        card_problem: card_problem(server, overview.card_problem, good_model_fits_card),
         download,
         busy,
         recommended,
@@ -316,11 +318,29 @@ pub fn good_local_model(server: &LlamaServer) -> Option<CatalogRow> {
     rows.into_iter().find(|row| row.recommended && row.good_enough)
 }
 
-/// Whether the card counts when models are weighed: as llama_server says, and also when the
-/// llama-server there lacks the card's compute library, since the wizard downloads the build
-/// that has it.
+/// Whether the card counts when models are weighed: whenever there is one, since the build the
+/// wizard downloads for it (CUDA for NVIDIA, Vulkan for any other card) drives it, even when the
+/// llama-server there now lacks its compute library (card_problem then says to download it).
 fn card_usable_for_weighing(server: &LlamaServer) -> bool {
-    server.card_usable().unwrap_or(true)
+    server.inventory().gpu.is_some()
+}
+
+/// Why the llama-server there can't drive the card, so the wizard offers its build: llama_server's
+/// own complaint for an NVIDIA or AMD card, and for an Intel or other card (which llama_server
+/// quietly runs without) when the card is big enough for a good model. None when it can.
+fn card_problem(server: &LlamaServer, overview_problem: Option<String>, good_model_fits_card: bool) -> Option<String> {
+    if overview_problem.is_some() {
+        return overview_problem;
+    }
+    let gpu = server.inventory().gpu.as_ref()?;
+    let driven = server.server_path().is_none() || server.card_usable().unwrap_or(false);
+    if driven || !good_model_fits_card {
+        return None;
+    }
+    Some(format!(
+        "The llama-server here can't use {}, so models would run on the CPU.",
+        gpu.name
+    ))
 }
 
 /// The catalog as the page lists it: the recommended model, the ones still to download, and the
@@ -507,5 +527,31 @@ mod tests {
             },
         );
         assert_eq!(good_local_model(&no_card).map(|row| row.file), None);
+    }
+
+    #[test]
+    fn an_intel_card_counts_and_a_llama_server_that_cant_drive_it_is_said() {
+        let folder = std::env::temp_dir().join(format!("recruiter-llama-intel-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let arc = Inventory {
+            memory_bytes: 32 * GIB,
+            gpu: Some(Gpu {
+                name: "Intel Arc A770".to_string(),
+                vendor: GpuVendor::Intel,
+                vram_bytes: 16 * GIB,
+            }),
+        };
+        let server = LlamaServer::new(&folder, arc);
+        // Before llama.cpp is downloaded.
+        assert!(good_local_model(&server).is_some());
+        // A CPU-only llama-server: still weighed for the card, with a note to download its build.
+        std::fs::write(folder.join(crate::llama::llama_server::SERVER_FILE), b"cpu build").unwrap();
+        assert!(good_local_model(&server).is_some());
+        let page = page_of(&server, None);
+        assert_eq!(
+            page.card_problem.as_deref(),
+            Some("The llama-server here can't use Intel Arc A770, so models would run on the CPU.")
+        );
+        std::fs::remove_dir_all(&folder).unwrap();
     }
 }
