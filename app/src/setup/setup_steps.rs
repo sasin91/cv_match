@@ -1,4 +1,4 @@
-//! The setup wizard's steps as data, outside the web pages, so another front end (a native UI
+//! The setup wizard's steps as data and its forms' work, outside the web pages, so another front end (a native UI
 //! later) can show the same steps from the same functions: where the database is, which model
 //! the AI runs on, the profile read from the CV, and the job scan's schedule.
 //!
@@ -10,8 +10,10 @@ use crate::account::account_model::{self, RESUME};
 use crate::account::model_advice::ModelAdvice;
 use crate::app_core::AppCore;
 use crate::matches::llm_key;
+use crate::profile::profile_fill;
 use crate::profile::profile_model::{self, FilledFrom};
 use crate::scan_schedule::INTERVALS;
+use crate::service_error::{ErrorKind, ServiceError};
 
 /// The database step: the file the app keeps everything in.
 #[derive(Debug, Clone, PartialEq)]
@@ -140,4 +142,46 @@ pub async fn schedule(core: &AppCore) -> ScheduleStep {
         error,
         task_run: core.scan_schedule.task_run(),
     }
+}
+
+/// Reads the CV into the profile, replacing it; replace must be true when there is a profile
+/// already. Ok is what to say.
+pub async fn read_cv(core: &AppCore, cv_text: &str, cv_name: &str, replace: bool) -> Result<String, ServiceError> {
+    let has_profile = cv(core)
+        .await
+        .map_err(|why| ServiceError::internal("setup/read_cv", why))?
+        .filled
+        .is_some();
+    if has_profile && !replace {
+        return Err(ServiceError::new(
+            ErrorKind::Invalid,
+            "Tick \"Replace my profile\" to fill it in again from this CV.",
+        ));
+    }
+    profile_fill::fill_from_cv(core, cv_text, cv_name).await
+}
+
+/// Registers the job scan's task to run every hours. Ok is what to say.
+pub async fn schedule_scan(core: &AppCore, hours: u32) -> Result<String, ServiceError> {
+    core.scan_schedule.register(hours).await.map_err(|why| {
+        ServiceError::failed(
+            "setup/schedule_scan",
+            format!("The job scan couldn't be scheduled: {why}"),
+        )
+    })?;
+    Ok(format!(
+        "The job scan runs {} while you're logged in to this computer.",
+        interval_label(hours).to_lowercase()
+    ))
+}
+
+/// Removes the job scan's task. Ok is what to say.
+pub async fn unschedule_scan(core: &AppCore) -> Result<&'static str, ServiceError> {
+    core.scan_schedule.remove().await.map_err(|why| {
+        ServiceError::failed(
+            "setup/unschedule_scan",
+            format!("The job scan's task couldn't be removed: {why}"),
+        )
+    })?;
+    Ok("The job scan no longer runs by itself.")
 }

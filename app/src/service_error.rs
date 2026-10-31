@@ -1,5 +1,5 @@
-//! Why the app's work (matches::match_service) couldn't be done, in words to show the user, with
-//! what kind of failure it is. The web server answers it with a status (matches::page_error); a
+//! Why the app's work (matches::match_service, account::account_service and the others) couldn't
+//! be done, in words to show the user, with what kind of failure it is. The web server answers it with a status (matches::page_error); a
 //! desktop window shows the message. Failures that aren't the user's input are written to the
 //! log when they are made, so they can be found after the page or window is closed.
 
@@ -46,17 +46,18 @@ impl ServiceError {
         Self::new(ErrorKind::NotFound, "That saved match was not found.")
     }
 
-    /// A failure on the app's side, logged under where (the work's name) with the message shown.
+    /// A failure on the app's side, logged under where (the work's name, like "match/pdf") with
+    /// the message shown.
     pub fn failed(where_: &str, message: impl Into<String>) -> Self {
         let message = message.into();
-        eprintln!("match ({where_}): {message}");
+        eprintln!("{where_}: {message}");
         Self::new(ErrorKind::Failed, message)
     }
 
     /// The app's own failure, logged under where with the message shown.
     pub fn internal(where_: &str, message: impl Into<String>) -> Self {
         let message = message.into();
-        eprintln!("match ({where_}): {message}");
+        eprintln!("{where_}: {message}");
         Self::new(ErrorKind::Internal, message)
     }
 
@@ -67,7 +68,7 @@ impl ServiceError {
 
     /// A failed model call, logged with the provider's answer.
     pub fn llm(where_: &str, e: &LlmException) -> Self {
-        eprintln!("match ({where_}): {}", e.details());
+        eprintln!("{where_}: {}", e.details());
         Self::new(ErrorKind::Llm { retryable: e.retryable }, e.message.clone())
     }
 }
@@ -82,7 +83,7 @@ impl std::error::Error for ServiceError {}
 
 impl From<sqlx::Error> for ServiceError {
     fn from(e: sqlx::Error) -> Self {
-        eprintln!("match: {e}");
+        eprintln!("database: {e}");
         Self::new(ErrorKind::Internal, format!("The database couldn't answer: {e}"))
     }
 }

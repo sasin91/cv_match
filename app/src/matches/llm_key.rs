@@ -38,7 +38,7 @@ pub async fn llm(core: &AppCore, use_: &str) -> Result<KeyedLlm, ServiceError> {
     };
     let llm = llama::use_key(core.llama.as_ref(), &key)
         .await
-        .map_err(|e| ServiceError::llm(use_, &e))?;
+        .map_err(|e| ServiceError::llm(&format!("llm ({use_})"), &e))?;
     let written_by = format!("{}/{}", key.provider, llm.model());
     Ok(KeyedLlm { llm, written_by })
 }

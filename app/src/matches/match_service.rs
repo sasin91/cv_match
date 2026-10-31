@@ -316,7 +316,7 @@ pub async fn pdf(
         Some(fields) => pdf_writer::resume_pdf(fields, &title),
         None => pdf_writer::pdf(kind, &text, &title),
     };
-    let bytes = made.map_err(|e| ServiceError::internal("pdf", format!("The PDF couldn't be made: {e}")))?;
+    let bytes = made.map_err(|e| ServiceError::internal("match/pdf", format!("The PDF couldn't be made: {e}")))?;
     Ok(PdfFile {
         name: pdf_writer::file_name(kind, &found.job_title, &found.company),
         bytes,
@@ -404,7 +404,7 @@ pub async fn extract_job(core: &AppCore, text: &str) -> Result<Job, ServiceError
     let keyed = llm_key::llm(core, JOB_EVALUATION).await?;
     match_prompts::read_job(&keyed.llm, text)
         .await
-        .map_err(|e| ServiceError::llm("extract_job", &e))
+        .map_err(|e| ServiceError::llm("match/extract_job", &e))
 }
 
 /// The CV as a structured profile, read by the model, or by the free reader when the key is off
@@ -416,7 +416,7 @@ pub async fn extract_cv(core: &AppCore, text: &str) -> Result<Profile, ServiceEr
     let keyed = llm_key::llm(core, JOB_EVALUATION).await?;
     match_prompts::read_cv(&keyed.llm, text)
         .await
-        .map_err(|e| ServiceError::llm("extract_cv", &e))
+        .map_err(|e| ServiceError::llm("match/extract_cv", &e))
 }
 
 /// A read job post and a read CV, with their texts, to match.
@@ -453,7 +453,7 @@ pub async fn ai_match(core: &AppCore, request: &MatchRequest) -> Result<AiMatch,
     let llm = keyed.as_ref().map(|keyed| &keyed.llm);
     ai_match::ai_match(&matching, llm, new, &request.profile, Default::default())
         .await
-        .map_err(|e| ServiceError::llm("match", &e))
+        .map_err(|e| ServiceError::llm("match/match", &e))
 }
 
 /// The AI match as its result shows it, with the application and résumé panel of its saved match.
@@ -508,9 +508,9 @@ pub async fn write(core: Arc<AppCore>, id: i64, notes: &str, kind: &'static str)
         }
     });
     let work = if kind == RESUME {
-        "tailor_resume"
+        "match/tailor_resume"
     } else {
-        "write_application"
+        "match/write_application"
     };
     let (keywords, left_out) = writing
         .await
