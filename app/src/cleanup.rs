@@ -1,0 +1,220 @@
+//! `recruiter cleanup`: what the app leaves outside its program file, removed. The program itself
+//! is never installed, so removing Recruiter is deleting its file; this takes away the rest, after
+//! saying what it found:
+//!
+//! - the job scan's schedule (Task Scheduler's task, or the systemd user timer), which would
+//!   otherwise keep running a program that is gone;
+//! - the API keys in Credential Manager (or the keyring);
+//! - what the app wrote or downloaded next to the database: the Jobnet extension's files,
+//!   llama.cpp and its models, Laya's model;
+//! - and only when asked again, the database itself, with its -wal and -shm files.
+//!
+//! The data folder itself goes too when it is the default one (%APPDATA%\Recruiter) and nothing
+//! else is left in it; a folder that --database names is never removed, only the app's own
+//! files in it.
+
+use std::path::{Path, PathBuf};
+
+use crate::account::key_vault::KeyVault;
+use crate::scan_schedule::ScanSchedule;
+use crate::{extension, laya, llama};
+
+/// What the cleanup found.
+pub struct Found {
+    pub database: PathBuf,
+    /// The job scan's interval, when it is scheduled.
+    pub schedule: Option<u32>,
+    /// The schedule couldn't be read.
+    pub schedule_error: Option<String>,
+    /// The providers whose keys are kept ("" is the key from before providers).
+    pub keys: Vec<&'static str>,
+    pub keys_error: Option<String>,
+    /// The folders the app wrote next to the database that are there.
+    pub folders: Vec<PathBuf>,
+    /// The database's files that are there.
+    pub database_files: Vec<PathBuf>,
+}
+
+impl Found {
+    /// Whether anything but the database is there to remove.
+    pub fn anything_besides_the_database(&self) -> bool {
+        self.schedule.is_some() || !self.keys.is_empty() || !self.folders.is_empty()
+    }
+}
+
+/// The folders the app writes next to database.
+pub fn app_folders(database: &Path) -> Vec<PathBuf> {
+    let data_folder = database.parent().unwrap_or(Path::new("."));
+    [extension::FOLDER, llama::FOLDER, laya::laya_client::FOLDER]
+        .iter()
+        .map(|name| data_folder.join(name))
+        .collect()
+}
+
+/// The database's own files: the file, and SQLite's -wal, -shm and -journal beside it.
+pub fn database_files(database: &Path) -> Vec<PathBuf> {
+    let mut files = vec![database.to_path_buf()];
+    for suffix in ["-wal", "-shm", "-journal"] {
+        let mut name = database.as_os_str().to_owned();
+        name.push(suffix);
+        files.push(PathBuf::from(name));
+    }
+    files
+}
+
+/// Looks for what the app left for database, whose keys vault keeps for user_id.
+pub async fn find(database: &Path, schedule: &ScanSchedule, vault: &KeyVault, user_id: i64) -> Found {
+    let (schedule, schedule_error) = match schedule.interval_hours().await {
+        Ok(hours) => (hours, None),
+        Err(why) => (None, Some(why)),
+    };
+    let (keys, keys_error) = match vault.kept(user_id) {
+        Ok(keys) => (keys, None),
+        Err(why) => (Vec::new(), Some(why)),
+    };
+    Found {
+        database: database.to_path_buf(),
+        schedule,
+        schedule_error,
+        keys,
+        keys_error,
+        folders: app_folders(database)
+            .into_iter()
+            .filter(|folder| folder.exists())
+            .collect(),
+        database_files: database_files(database)
+            .into_iter()
+            .filter(|file| file.exists())
+            .collect(),
+    }
+}
+
+/// Removes the schedule, the keys and the app's folders; what couldn't be removed, said why.
+pub async fn remove_besides_the_database(
+    found: &Found,
+    schedule: &ScanSchedule,
+    vault: &KeyVault,
+    user_id: i64,
+) -> Vec<String> {
+    let mut failed = Vec::new();
+    if found.schedule.is_some()
+        && let Err(why) = schedule.remove().await
+    {
+        failed.push(format!("The job scan's schedule: {why}"));
+    }
+    for provider in &found.keys {
+        if let Err(why) = vault.delete(user_id, provider) {
+            failed.push(format!("The {} key: {why}", key_name(provider)));
+        }
+    }
+    for folder in &found.folders {
+        if let Err(e) = std::fs::remove_dir_all(folder) {
+            failed.push(format!("{}: {e}", folder.display()));
+        }
+    }
+    failed
+}
+
+/// Removes the database's files; what couldn't be removed, said why.
+pub fn remove_database(found: &Found) -> Vec<String> {
+    found
+        .database_files
+        .iter()
+        .filter_map(|file| {
+            std::fs::remove_file(file)
+                .err()
+                .map(|e| format!("{}: {e}", file.display()))
+        })
+        .collect()
+}
+
+/// Removes the data folder when it is default_folder and empty; whether it did.
+pub fn remove_default_folder(database: &Path, default_folder: &Path) -> bool {
+    let Some(folder) = database.parent() else {
+        return false;
+    };
+    // remove_dir only removes an empty folder.
+    same_folder(folder, default_folder) && std::fs::remove_dir(folder).is_ok()
+}
+
+fn same_folder(a: &Path, b: &Path) -> bool {
+    match (std::fs::canonicalize(a), std::fs::canonicalize(b)) {
+        (Ok(a), Ok(b)) => a == b,
+        _ => a == b,
+    }
+}
+
+/// What the cleanup calls a provider's key.
+pub fn key_name(provider: &str) -> &'static str {
+    crate::account::account_model::PROVIDERS
+        .iter()
+        .find(|(name, _)| *name == provider)
+        .map(|(_, label)| *label)
+        .unwrap_or("earlier")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_database_files_are_the_file_and_sqlites_own_beside_it() {
+        let files = database_files(Path::new("/data/recruiter.sqlite"));
+        assert_eq!(
+            files,
+            [
+                "/data/recruiter.sqlite",
+                "/data/recruiter.sqlite-wal",
+                "/data/recruiter.sqlite-shm",
+                "/data/recruiter.sqlite-journal"
+            ]
+            .map(PathBuf::from)
+        );
+    }
+
+    #[test]
+    fn only_the_apps_own_folders_are_removed_from_a_named_folder() {
+        assert_eq!(
+            app_folders(Path::new("/home/me/recruiter.sqlite")),
+            ["/home/me/jobnet-joblog", "/home/me/llama", "/home/me/laya"].map(PathBuf::from)
+        );
+    }
+
+    #[tokio::test]
+    async fn the_cleanup_removes_the_schedule_the_keys_and_the_folders_and_keeps_the_database() {
+        let folder = std::env::temp_dir().join(format!("recruiter-cleanup-{}", std::process::id()));
+        std::fs::create_dir_all(folder.join("llama/models")).unwrap();
+        std::fs::write(folder.join("llama/models/a.gguf"), "x").unwrap();
+        let database = folder.join("recruiter.sqlite");
+        std::fs::write(&database, "db").unwrap();
+        std::fs::create_dir_all(folder.join("mine")).unwrap();
+
+        let schedule = ScanSchedule::in_memory();
+        schedule.register(4).await.unwrap();
+        let vault = KeyVault::in_memory();
+        vault.save(7, "openai", "sk-1").unwrap();
+
+        let found = find(&database, &schedule, &vault, 7).await;
+        assert_eq!(found.schedule, Some(4));
+        assert_eq!(found.keys, ["openai"]);
+        assert_eq!(found.folders, [folder.join("llama")]);
+        assert_eq!(found.database_files, std::slice::from_ref(&database));
+        assert!(found.anything_besides_the_database());
+
+        assert!(
+            remove_besides_the_database(&found, &schedule, &vault, 7)
+                .await
+                .is_empty()
+        );
+        assert_eq!(schedule.interval_hours().await.unwrap(), None);
+        assert_eq!(vault.key_for(7, "openai").unwrap(), None);
+        assert!(!folder.join("llama").exists());
+        assert!(database.exists(), "the database stays unless asked again");
+        assert!(folder.join("mine").exists(), "nothing else in the folder is touched");
+
+        assert!(remove_database(&found).is_empty());
+        assert!(!database.exists());
+        assert!(!remove_default_folder(&database, Path::new("/elsewhere")));
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+}

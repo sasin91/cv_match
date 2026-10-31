@@ -13,6 +13,11 @@
 //!       the job scan, which the setup wizard's Task Scheduler task runs (scan_schedule); it
 //!       isn't in the desktop app yet, so for now it only says so
 //!
+//!   recruiter cleanup [--database path\to\recruiter.sqlite]
+//!       removes what the app keeps outside its own file, after saying what it found and asking:
+//!       the job scan's schedule, the API keys, and the downloaded and written folders next to the
+//!       database; then, asked again, the database itself (cleanup.rs)
+//!
 //! Nothing is installed: double-click recruiter.exe (or run the AppImage on Linux) wherever it is
 //! kept.
 //!
@@ -32,11 +37,12 @@ use recruiter::llama::{self, hardware::Inventory, llama_server::LlamaServer};
 use recruiter::scan_schedule::{self, ScanSchedule};
 use recruiter::server::{self, AppState, DatabaseFile};
 use recruiter::taxonomy::Taxonomy;
-use recruiter::{db, extension};
+use recruiter::{cleanup, db, extension};
 
 const USAGE: &str = "usage: recruiter [--port <port>] [--database <file>] [--laya <folder>] [--llama <folder>]
                  [--no-browser] [--tailscale-name <name>] [--dev]
-       recruiter scan [--database <file>]";
+       recruiter scan [--database <file>]
+       recruiter cleanup [--database <file>]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -46,6 +52,7 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some("scan") => run_scan(&args[1..]),
+        Some("cleanup") => run_cleanup(&args[1..]),
         _ => run_server(&args),
     }
 }
@@ -102,6 +109,115 @@ fn run_scan(args: &[String]) -> ExitCode {
     }
     eprintln!("The job scan isn't in the desktop app yet, so nothing was scanned.");
     ExitCode::FAILURE
+}
+
+/// `recruiter cleanup`: says what the app left outside its file, and removes it once the user
+/// says yes; the database only after a second yes.
+fn run_cleanup(args: &[String]) -> ExitCode {
+    let Some(database) = database_arg(args) else {
+        return ExitCode::FAILURE;
+    };
+    if std::net::TcpListener::bind(("127.0.0.1", server::DEFAULT_PORT)).is_err() {
+        eprintln!(
+            "Recruiter seems to be running (port {} is in use). Close its window, then run the cleanup again.",
+            server::DEFAULT_PORT
+        );
+        return ended_by_hand(ExitCode::FAILURE);
+    }
+    let Some(runtime) = runtime() else {
+        return ExitCode::FAILURE;
+    };
+    // The keys' credentials are named by the database's full path, so it is read before the
+    // database is gone.
+    let vault = KeyVault::credential_manager(full_path(&database));
+    let user_id = runtime.block_on(user_id_in(&database));
+    let schedule = scan_schedule(&database);
+    let found = runtime.block_on(cleanup::find(&database, &schedule, &vault, user_id));
+
+    println!("Recruiter's cleanup, for {}:", database.display());
+    match (found.schedule, &found.schedule_error) {
+        (Some(hours), _) => println!("- the job scan's schedule (every {hours} hours)"),
+        (None, Some(why)) => println!("  (the job scan's schedule couldn't be read: {why})"),
+        (None, None) => {}
+    }
+    for provider in &found.keys {
+        println!("- the {} key", cleanup::key_name(provider));
+    }
+    if let Some(why) = &found.keys_error {
+        println!("  (the API keys couldn't be read: {why})");
+    }
+    for folder in &found.folders {
+        println!("- {}", folder.display());
+    }
+    let mut failed = Vec::new();
+    if !found.anything_besides_the_database() {
+        println!("No schedule, keys or downloads to remove.");
+    } else if ask("Remove these?") {
+        failed.extend(runtime.block_on(cleanup::remove_besides_the_database(&found, &schedule, &vault, user_id)));
+    } else {
+        println!("Nothing was removed.");
+        return ended_by_hand(ExitCode::SUCCESS);
+    }
+    if !found.database_files.is_empty() {
+        println!(
+            "Your database, {}, holds your profile, matches and applications, and can't be brought back once deleted.",
+            database.display()
+        );
+        if ask("Delete your database too?") {
+            failed.extend(cleanup::remove_database(&found));
+            let default_path = db::default_path();
+            let default_folder = default_path.parent().unwrap_or(std::path::Path::new("."));
+            if failed.is_empty() && cleanup::remove_default_folder(&database, default_folder) {
+                println!("Removed the empty data folder too.");
+            }
+        } else {
+            println!("Your database stays.");
+        }
+    }
+    println!("The Jobnet extension, if you loaded it, is removed in Edge's extensions page (edge://extensions).");
+    if failed.is_empty() {
+        println!("Done. To remove Recruiter itself, delete its program file.");
+        ended_by_hand(ExitCode::SUCCESS)
+    } else {
+        eprintln!("These couldn't be removed:");
+        for why in &failed {
+            eprintln!("- {why}");
+        }
+        ended_by_hand(ExitCode::FAILURE)
+    }
+}
+
+/// Whether the user answers yes to question; no unless they type y or yes.
+fn ask(question: &str) -> bool {
+    use std::io::Write;
+    print!("{question} [y/N] ");
+    let _ = std::io::stdout().flush();
+    let mut answer = String::new();
+    if std::io::stdin().read_line(&mut answer).is_err() {
+        return false;
+    }
+    matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes")
+}
+
+/// The local user's id in database, read without changing the file; 1 (the first user) when it
+/// can't be read.
+async fn user_id_in(database: &std::path::Path) -> i64 {
+    if !database.exists() {
+        return 1;
+    }
+    let options = sqlx::sqlite::SqliteConnectOptions::new()
+        .filename(database)
+        .read_only(true);
+    let Ok(pool) = sqlx::SqlitePool::connect_with(options).await else {
+        return 1;
+    };
+    let id: Option<i64> = sqlx::query_scalar("SELECT MIN(id) FROM trongate_users")
+        .fetch_one(&pool)
+        .await
+        .ok()
+        .flatten();
+    pool.close().await;
+    id.unwrap_or(1)
 }
 
 fn run_server(args: &[String]) -> ExitCode {

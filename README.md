@@ -121,9 +121,14 @@ phone with Tailscale on.
 
 Pushing a `v*` tag builds a GitHub release with `recruiter.exe` for Windows and
 `Recruiter-x86_64.AppImage` for Linux. Neither is installed: keep the file where you like and
-double-click it. Moving it later is fine; at its next start the job scan's schedule follows it. To
-remove it, delete the file; the data in `%APPDATA%\Recruiter` and the API keys in Credential
-Manager stay. When it can't start (the port is taken, the database can't be opened), its window
+double-click it. Moving it later is fine; at its next start the job scan's schedule follows it.
+
+To remove it, close it and run `recruiter.exe cleanup` (`./Recruiter-x86_64.AppImage cleanup` on
+Linux), then delete the file. The cleanup lists what the app keeps outside its file and asks before
+removing it: the job scan's schedule, the API keys in Credential Manager (or the keyring), and the
+Jobnet extension's files, llama.cpp and Laya next to the database. It then asks separately whether
+to delete the database too (no unless you type y), and says that the extension itself is removed
+in Edge. Give it `--database` for a database elsewhere. When it can't start (the port is taken, the database can't be opened), its window
 stays open until you press Enter, so the reason can be read.
 
 ### On Linux (and WSL)
@@ -139,7 +144,8 @@ The job scan's schedule is a systemd user timer, `recruiter-scan.timer`, in
 itself. Move the AppImage and the next start points the timer at its new place. Without systemd
 (WSL with systemd off, say) the setup says it couldn't be scheduled; on WSL, turn systemd on in
 `/etc/wsl.conf` (`[boot]` `systemd=true`). Where FUSE is missing, run the AppImage with
-`--appimage-extract-and-run`. macOS isn't covered yet.
+`--appimage-extract-and-run`. `cleanup` removes the timer, as it does the task on Windows. macOS
+isn't covered yet.
 
 ### Starting it at login
 
@@ -184,6 +190,10 @@ With a real key saved on the API key page, check these by hand after a change:
 - [ ] **A moved program:** schedule the job scan, close the app, move `recruiter.exe` (or the
       AppImage) to another folder and start it from there. The task's action (or the timer's
       service) now runs it from the new folder.
+- [ ] **The cleanup:** with the app closed, run `recruiter.exe cleanup --database` on a test
+      database with a scheduled scan and a saved key. It lists them, removes them on y (the task is
+      gone from Task Scheduler, the key from Credential Manager), and keeps the database unless the
+      second question gets a y. With the app open it refuses.
 - [ ] **The dashboard and the setup:** start with `--database` naming a new file. The browser
       opens /match with the "No AI model is set up" alert and the missing rows; Set one up opens
       /setup, which suggests the app's own model on a PC with a good graphics card, else an OpenAI key.
