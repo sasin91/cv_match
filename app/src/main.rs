@@ -1,15 +1,18 @@
 //! recruiter: the desktop app's command line.
 //!
-//!   recruiter [--port 8765] [--database path\to\recruiter.sqlite] [--no-browser]
-//!       serves the app on 127.0.0.1 and opens it in the default browser
+//!   recruiter [--port 8765] [--database path\to\recruiter.sqlite] [--laya path\to\laya] [--no-browser]
+//!       serves the app on 127.0.0.1 and opens it in the default browser, with Laya's model
+//!       from the laya folder next to the database unless --laya names another
 //!   recruiter import --email you@example.com [--from mysql://root@127.0.0.1:3306/recruiter_prod]
 //!                    [--database path\to\recruiter.sqlite]
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::time::Instant;
 
 use recruiter::account::key_vault::KeyVault;
+use recruiter::laya::laya_client::{self, LayaClient};
 use recruiter::server::{self, AppState};
 use recruiter::taxonomy::Taxonomy;
 use recruiter::{db, extension, import};
@@ -17,7 +20,7 @@ use recruiter::{db, extension, import};
 /// Herd's MariaDB with the production copy, as set up on Jonas's PC.
 const DEFAULT_SOURCE: &str = "mysql://root@127.0.0.1:3306/recruiter_prod";
 
-const USAGE: &str = "usage: recruiter [--port <port>] [--database <file>] [--no-browser]
+const USAGE: &str = "usage: recruiter [--port <port>] [--database <file>] [--laya <folder>] [--no-browser]
        recruiter import --email <email> [--from <mysql url>] [--database <file>]";
 
 fn main() -> ExitCode {
@@ -35,6 +38,7 @@ fn main() -> ExitCode {
 fn run_server(args: &[String]) -> ExitCode {
     let mut port = server::DEFAULT_PORT;
     let mut database = db::default_path();
+    let mut laya_folder = None;
     let mut browser = true;
     let mut args = args.iter();
     while let Some(flag) = args.next() {
@@ -55,6 +59,7 @@ fn run_server(args: &[String]) -> ExitCode {
                 }
             },
             "--database" => database = PathBuf::from(value),
+            "--laya" => laya_folder = Some(PathBuf::from(value)),
             _ => {
                 eprintln!("unknown option {flag}\n{USAGE}");
                 return ExitCode::FAILURE;
@@ -85,10 +90,17 @@ fn run_server(args: &[String]) -> ExitCode {
         port,
         KeyVault::credential_manager(full_path(&database)),
     );
-    let folder = database
-        .parent()
-        .unwrap_or(std::path::Path::new("."))
-        .join(extension::FOLDER);
+    let data_folder = database.parent().unwrap_or(std::path::Path::new("."));
+    let laya_folder = laya_folder.unwrap_or_else(|| data_folder.join(laya_client::FOLDER));
+    state.laya = LayaClient::from_folder(&laya_folder);
+    if state.laya.is_none() {
+        println!(
+            "No Laya model in {} (no {}), so matches go on without Laya.",
+            laya_folder.display(),
+            laya_client::ONNX_FILE
+        );
+    }
+    let folder = data_folder.join(extension::FOLDER);
     state.extension_folder = extension::write(&folder).map_err(|e| {
         eprintln!("Couldn't write the Jobnet extension to {}: {e}", folder.display());
         format!("It couldn't be written to {}: {e}", folder.display())
@@ -96,6 +108,7 @@ fn run_server(args: &[String]) -> ExitCode {
     let state = Arc::new(state);
     let address = format!("http://127.0.0.1:{port}/match");
     runtime.block_on(async {
+        tokio::spawn(preload_laya(Arc::clone(&state)));
         let serving = tokio::spawn(server::serve(state));
         println!(
             "Recruiter is running at {address} (data in {}). Close this window to stop it.",
@@ -167,6 +180,23 @@ fn run_import(args: &[String]) -> ExitCode {
             eprintln!("Import failed, nothing was written: {e}");
             ExitCode::FAILURE
         }
+    }
+}
+
+/// Loads Laya's model in the background, so the first match needn't wait for it, and says how
+/// that went.
+async fn preload_laya(state: Arc<AppState>) {
+    let Some(laya) = &state.laya else {
+        return;
+    };
+    let started = Instant::now();
+    match laya.load().await {
+        Ok(_) => println!(
+            "Laya is loaded from {} ({:.1} s).",
+            laya.folder().display(),
+            started.elapsed().as_secs_f64()
+        ),
+        Err(e) => eprintln!("{e}"),
     }
 }
 

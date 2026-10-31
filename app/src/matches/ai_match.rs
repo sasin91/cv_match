@@ -13,6 +13,7 @@ use super::match_model::{self, NewMatch};
 use super::match_prompts::{self, Undecided};
 use super::matcher::{self, Groups, LOCATION, Matcher, Score, Verdict, Verdicts};
 use super::{Job, KnownTerm, Profile};
+use crate::laya::laya_client::{self, LayaClient, LayaReading};
 use crate::llm::{Llm, LlmException};
 use crate::taxonomy::Taxonomy;
 
@@ -25,9 +26,9 @@ const UNWEIGHED_LOCATION_REASON: &str =
     "Check this yourself: with an AI key on for evaluating job posts, the AI weighs it against where you live.";
 
 /// The match's answer: the criteria, the combined verdicts and the score, with the soft skills,
-/// how the post asks to be applied to and the Laya summary; saved_id once saved, or save_error
-/// when the database couldn't take it (the score still comes back). laya stays null until Laya
-/// runs in the app.
+/// how the post asks to be applied to, the Laya summary and, with Laya's model, its answer on that
+/// summary (laya), or laya_error; saved_id once saved, or save_error when the database couldn't
+/// take it (the score still comes back).
 #[derive(Debug, Clone, Serialize)]
 pub struct AiMatch {
     pub groups: Groups,
@@ -36,7 +37,9 @@ pub struct AiMatch {
     pub soft_skills: Vec<String>,
     pub apply_instructions: Option<ApplyInstructions>,
     pub laya_summary: String,
-    pub laya: Option<String>,
+    /// laya and laya_error.
+    #[serde(flatten)]
+    pub laya_reading: LayaReading,
     pub saved_id: Option<i64>,
     #[serde(skip_serializing_if = "Option::is_none")]
     pub save_error: Option<String>,
@@ -48,6 +51,7 @@ pub struct Matching<'a> {
     pub taxonomy: &'a Taxonomy,
     pub user_id: i64,
     pub now: i64,
+    pub laya: Option<&'a LayaClient>,
 }
 
 /// The match of job with profile, judged on llm where the taxonomy can't decide, and saved when
@@ -122,11 +126,15 @@ async fn score_and_save(matching: &Matching<'_>, new: NewMatch<'_>, verdicts: &V
     let groups = matcher::criteria(new.job);
     let verdicts = matcher::combine(&groups, verdicts);
     let score = matcher::score(&groups, &verdicts);
+    let laya_summary = matcher::laya_summary(new.job, &groups, &verdicts);
+    // Laya's own reading of the verdicts, with its model; the score comes back without it if
+    // Laya fails.
+    let laya_reading = laya_client::reading(matching.laya, &laya_summary).await;
     let mut answer = AiMatch {
-        laya_summary: matcher::laya_summary(new.job, &groups, &verdicts),
+        laya_summary,
         soft_skills: matcher::soft_skills(new.job),
         apply_instructions: apply_instructions::read(new.job_text),
-        laya: None,
+        laya_reading,
         saved_id: None,
         save_error: None,
         groups,

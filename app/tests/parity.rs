@@ -4,14 +4,16 @@
 use std::sync::LazyLock;
 
 use indexmap::IndexMap;
+use recruiter::laya::laya_client::{self, LayaReading};
 use recruiter::matches::free_reader::{self, FreeReader, YearMonth};
 use recruiter::matches::match_model::{Integration, SavedItem, SavedMatch};
+use recruiter::matches::match_result::LayaLine;
 use recruiter::matches::matcher::{self, Matcher, Verdicts};
 use recruiter::matches::tailored_resume::TailoredResume;
 use recruiter::matches::{apply_instructions, joblog, match_score, pdf_writer};
 use recruiter::taxonomy::{self, Taxonomy};
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 /// The fixed day the fixtures count "until now" to (generate.php's NOW).
 const NOW: YearMonth = YearMonth { year: 2026, month: 10 };
@@ -381,6 +383,60 @@ fn pdf_file_names_are_the_ones_php_gives() {
             pdf_writer::file_name(kind, job_title, company),
             text(&case["file_name"]),
             "file_name({kind:?}, {job_title:?}, {company:?})"
+        );
+    }
+}
+
+/// The Laya line as PHP's Match_result::laya() returns it.
+fn laya_line(reading: &LayaReading) -> Value {
+    let line = LayaLine::from(reading);
+    json!({"text": line.text, "failed": line.failed})
+}
+
+#[test]
+fn laya_is_asked_what_php_asks_it() {
+    assert_same(
+        "Laya_client::questions()",
+        &FIXTURES["laya"]["questions"],
+        laya_client::questions(),
+    );
+}
+
+#[test]
+fn laya_answers_are_read_and_printed_as_php_reads_and_prints_them() {
+    let cases = FIXTURES["laya"]["answers"]
+        .as_array()
+        .expect("parity.json has laya answers");
+    for case in cases {
+        let what = format!("read_answer({})", case["response"]);
+        match laya_client::read_answer(&case["response"]) {
+            Ok(answer) => {
+                assert_same(&what, &case["answer"], &answer);
+                let reading = LayaReading {
+                    laya: Some(answer),
+                    laya_error: None,
+                };
+                assert_same(&format!("{what}: line"), &case["line"], laya_line(&reading));
+            }
+            Err(error) => assert_same(&what, &case["error"], error),
+        }
+    }
+}
+
+#[test]
+fn laya_errors_are_printed_as_php_prints_them() {
+    let cases = FIXTURES["laya"]["errors"]
+        .as_array()
+        .expect("parity.json has laya errors");
+    for case in cases {
+        let reading = LayaReading {
+            laya: None,
+            laya_error: Some(text(&case["error"]).to_string()),
+        };
+        assert_same(
+            &format!("Laya line for {}", case["error"]),
+            &case["line"],
+            laya_line(&reading),
         );
     }
 }

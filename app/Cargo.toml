@@ -50,6 +50,8 @@ ego-tree = "0.11"
 url = "2"
 html-escape = "0.3"
 encoding_rs = "0.8"
+# Laya on ONNX Runtime, run in this process (ONNX Runtime linked in statically).
+laya-server = { path = "../laya-server" }
 
 [profile.release]
 lto = "thin"

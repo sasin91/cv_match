@@ -8,6 +8,7 @@ use axum::http::{Request, StatusCode, header};
 use http_body_util::BodyExt;
 use recruiter::account::key_vault::KeyVault;
 use recruiter::db;
+use recruiter::laya::laya_client::{self, LayaClient};
 use recruiter::server::{self, AppState};
 use recruiter::taxonomy::Taxonomy;
 use serde_json::{Value, json};
@@ -144,6 +145,66 @@ async fn the_free_match_reads_both_texts_and_saves_nothing() {
     let (status, empty) = send(post_json("/match/quick_match", r#"{"job_text": "", "cv_text": "x"}"#)).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
     assert_eq!(empty, r#"{"error":"Paste or upload both the CV and the job post."}"#);
+}
+
+/// An app whose Laya folder has a laya.onnx that isn't a model.
+async fn app_with_broken_laya() -> (axum::Router, std::path::PathBuf) {
+    let folder = std::env::temp_dir().join(format!("recruiter-laya-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join(laya_client::ONNX_FILE), "not a model").unwrap();
+    let db = seeded().await;
+    let user_id = server::local_user(&db).await.unwrap();
+    let mut state = AppState::new(db, TAXONOMY.clone(), user_id, PORT, KeyVault::in_memory());
+    state.laya = LayaClient::from_folder(&folder);
+    assert!(state.laya.is_some());
+    (server::router(Arc::new(state)), folder)
+}
+
+#[tokio::test]
+async fn a_laya_model_that_cant_load_is_said_under_the_score() {
+    let (app, folder) = app_with_broken_laya().await;
+    let (status, result) = send_to(
+        &app,
+        post_json(
+            "/match/quick_match",
+            r#"{"job_text": "PHP-udvikler\nDin profil\n- Erfaring med PHP", "cv_text": "Udvikler\nPHP, Laravel"}"#,
+        ),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{result}");
+    assert!(
+        result.contains(
+            r#"<p id="laya-answer" class="muted">No Laya reading this time. Laya couldn&#39;t load its model from"#
+        ),
+        "{result}"
+    );
+    assert!(result.contains("The score above doesn&#39;t depend on it."));
+
+    let job = json!({"job_title": "PHP-udvikler", "requirements": [{"text": "PHP", "kind": "skill"}]});
+    let input = json!({ "job": job, "profile": {"skill": ["PHP"]}, "job_text": "", "cv_text": "" });
+    let (status, scored) = send_to(&app, post_json("/match/match", &input.to_string())).await;
+    assert_eq!(status, StatusCode::OK, "{scored}");
+    let scored: Value = serde_json::from_str(&scored).unwrap();
+    assert_eq!(scored["laya"], Value::Null);
+    assert!(
+        scored["laya_error"]
+            .as_str()
+            .unwrap()
+            .starts_with("Laya couldn't load its model from"),
+        "{scored}"
+    );
+    std::fs::remove_dir_all(folder).unwrap();
+}
+
+#[tokio::test]
+async fn without_a_laya_model_a_match_has_no_laya_line() {
+    let job = json!({"job_title": "PHP-udvikler", "requirements": [{"text": "PHP", "kind": "skill"}]});
+    let input = json!({ "job": job, "profile": {"skill": ["PHP"]}, "job_text": "", "cv_text": "" });
+    let (status, scored) = send(post_json("/match/match", &input.to_string())).await;
+    assert_eq!(status, StatusCode::OK, "{scored}");
+    let scored: Value = serde_json::from_str(&scored).unwrap();
+    assert_eq!(scored["laya"], Value::Null);
+    assert!(scored.get("laya_error").is_none(), "{scored}");
 }
 
 #[tokio::test]

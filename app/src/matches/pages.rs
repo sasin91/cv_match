@@ -33,6 +33,7 @@ use super::resume_comparison::ResumeComparison;
 use super::saved_match_row::SavedMatchRow;
 use super::{Job, Profile, apply_instructions, match_prompts, pdf_writer, reject_reason};
 use crate::account::account_model::JOB_EVALUATION;
+use crate::laya::laya_client;
 use crate::profile;
 use crate::server::AppState;
 
@@ -312,7 +313,8 @@ pub struct QuickMatchInput {
 
 /// POST match/quick_match {job_text, cv_text, job_url}: the free match. Both texts are read
 /// with the free reader (no model), matched with the taxonomy and scored like the full match;
-/// what the taxonomy can't find in the CV counts as missing. Nothing is saved.
+/// what the taxonomy can't find in the CV counts as missing. Nothing is saved. With Laya's model,
+/// the result has its answer on these verdicts.
 pub async fn quick_match(
     State(state): State<Arc<AppState>>,
     Query(view): Query<ViewQuery>,
@@ -358,6 +360,7 @@ pub async fn quick_match(
     }
     let score = matcher::score(&groups, &verdicts);
     let apply = apply_instructions::read(job_text);
+    let laya = laya_client::reading(state.laya.as_ref(), &matcher::laya_summary(&job, &groups, &verdicts)).await;
     let fresh = Fresh {
         job: &job,
         groups: &groups,
@@ -366,6 +369,7 @@ pub async fn quick_match(
         soft_skills: matcher::soft_skills(&job),
         apply_instructions: apply.as_ref(),
         saved_id: None,
+        laya: &laya,
     };
     let writer = llm_key::ai_uses(&state).await?.any();
     let result = MatchResult::from(&fresh, writer, None, "").with_cv_found(&profile);
@@ -832,6 +836,7 @@ pub async fn r#match(
         taxonomy: &state.taxonomy,
         user_id: state.user_id,
         now: chrono::Utc::now().timestamp(),
+        laya: state.laya.as_ref(),
     };
     let new = NewMatch {
         job: &input.job,
@@ -869,6 +874,7 @@ async fn ai_match_result(state: &AppState, input: &MatchInput, found: &AiMatch) 
         soft_skills: found.soft_skills.clone(),
         apply_instructions: found.apply_instructions.as_ref(),
         saved_id: found.saved_id,
+        laya: &found.laya_reading,
     };
     let laya_input = ai_match::laya_input(&input.job, &input.profile, &input.cv_text, &found.laya_summary);
     Ok(MatchResult::from(&fresh, true, Some(documents), &laya_input))
