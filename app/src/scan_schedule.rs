@@ -76,8 +76,8 @@ impl ScanCommand {
     pub fn exec_start(&self) -> String {
         format!(
             "{} scan --database {}",
-            systemd_quote(&self.exe.display().to_string()),
-            systemd_quote(&self.database.display().to_string())
+            systemd_quote(&self.exe.display().to_string(), false),
+            systemd_quote(&self.database.display().to_string(), true)
         )
     }
 
@@ -164,9 +164,10 @@ fn xml_text(xml: &str) -> String {
     text
 }
 
-/// text in double quotes for a systemd command line: backslashes and quotes escaped, and % and $
-/// doubled, so systemd reads neither as a specifier or a variable.
-fn systemd_quote(text: &str) -> String {
+/// text in double quotes for a systemd command line: backslashes and quotes escaped, and %
+/// doubled, so systemd reads none as a specifier; in an argument (not the program, which systemd
+/// never expands variables in) $ is doubled too.
+fn systemd_quote(text: &str, argument: bool) -> String {
     let mut quoted = String::with_capacity(text.len() + 2);
     quoted.push('"');
     for c in text.chars() {
@@ -174,7 +175,7 @@ fn systemd_quote(text: &str) -> String {
             '\\' => quoted.push_str("\\\\"),
             '"' => quoted.push_str("\\\""),
             '%' => quoted.push_str("%%"),
-            '$' => quoted.push_str("$$"),
+            '$' if argument => quoted.push_str("$$"),
             c => quoted.push(c),
         }
     }
@@ -192,7 +193,7 @@ fn systemd_program_in(service: &str) -> Option<PathBuf> {
     while let Some(c) = chars.next() {
         match c {
             '"' => return Some(PathBuf::from(program)),
-            '\\' | '%' | '$' => program.push(chars.next()?),
+            '\\' | '%' => program.push(chars.next()?),
             c => program.push(c),
         }
     }
@@ -620,12 +621,12 @@ mod tests {
     fn paths_are_escaped_for_systemd_and_read_back() {
         let command = ScanCommand {
             exe: PathBuf::from(r#"/tmp/100%ready/$HOME/a\b"c/recruiter"#),
-            database: PathBuf::from("/home/me/50% off.sqlite"),
+            database: PathBuf::from("/home/me/50% off/$cash.sqlite"),
             extract_and_run: false,
         };
         assert_eq!(
             command.exec_start(),
-            r#""/tmp/100%%ready/$$HOME/a\\b\"c/recruiter" scan --database "/home/me/50%% off.sqlite""#
+            r#""/tmp/100%%ready/$HOME/a\\b\"c/recruiter" scan --database "/home/me/50%% off/$$cash.sqlite""#
         );
         assert_eq!(systemd_program_in(&command.systemd_service()), Some(command.exe));
     }
