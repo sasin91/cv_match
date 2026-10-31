@@ -14,6 +14,13 @@ pub const ID: &str = "jijhihfppobcoconjjllmffbohpffbll";
 /// The folder the extension is written to, next to the database.
 pub const FOLDER: &str = "jobnet-joblog";
 
+/// Edge's page of installed extensions, where "Load unpacked" is.
+pub const EDGE_EXTENSIONS_PAGE: &str = "edge://extensions/";
+
+/// Windows' CREATE_NO_WINDOW process flag: start cmd without a console window flashing up.
+#[cfg(windows)]
+const CREATE_NO_WINDOW: u32 = 0x0800_0000;
+
 #[derive(RustEmbed)]
 #[folder = "../extension/jobnet-joblog/"]
 #[include = "manifest.json"]
@@ -36,6 +43,30 @@ pub fn write(folder: &Path) -> std::io::Result<PathBuf> {
     }
     // The browser asks for the folder by its full path.
     Ok(std::path::absolute(folder).unwrap_or_else(|_| folder.to_path_buf()))
+}
+
+/// Opens Edge on its extensions page. A web page can't link to edge:// addresses, so the app
+/// starts Edge with it, through `start`, which finds msedge where Windows registered it.
+#[cfg(windows)]
+pub fn open_extensions_page() -> std::io::Result<()> {
+    use std::os::windows::process::CommandExt;
+    let status = std::process::Command::new("cmd")
+        .args(["/C", "start", "", "msedge", EDGE_EXTENSIONS_PAGE])
+        .creation_flags(CREATE_NO_WINDOW)
+        .status()?;
+    if status.success() {
+        Ok(())
+    } else {
+        Err(std::io::Error::other(format!(
+            "Windows couldn't start Edge ({status})."
+        )))
+    }
+}
+
+/// Opens Edge on its extensions page, which the app only knows how to do on Windows.
+#[cfg(not(windows))]
+pub fn open_extensions_page() -> std::io::Result<()> {
+    Err(std::io::Error::other("The app only opens Edge on Windows."))
 }
 
 /// The extension's version, from its manifest.

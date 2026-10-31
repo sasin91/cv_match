@@ -26,10 +26,12 @@
         {%- when Ok(path) %}
         <p>The app keeps the extension (version {{ version }}) in this folder:</p>
         <p><code>{{ path }}</code></p>
+        <p><button type="button" id="open-extensions" data-folder="{{ path }}">Copy the folder and open Edge's extensions</button></p>
+        <p id="open-extensions-status" role="status"></p>
         <ol>
-            <li>Open <code>edge://extensions</code> in Edge, or <code>chrome://extensions</code> in Chrome, in a new tab.</li>
+            <li>Press the button above. It copies the folder and opens <code>edge://extensions</code> in Edge. In Chrome, copy the folder and open <code>chrome://extensions</code> yourself.</li>
             <li>Turn on Developer mode.</li>
-            <li>Press "Load unpacked" and pick the folder above.</li>
+            <li>Press "Load unpacked", paste the folder into the Folder box and press Select Folder.</li>
         </ol>
         <p class="muted">The app writes the newest version into the folder each time it starts. After an update, press Reload on "Joblog autofill, by Recruiter" on the extensions page.</p>
         {%- when Err(why) %}
@@ -55,5 +57,6 @@
         </ul>
     </section>
 </main>
+<script type="module" src="match_module/js/joblog_extension.js"></script>
 </body>
 </html>

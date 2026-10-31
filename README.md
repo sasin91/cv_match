@@ -64,9 +64,9 @@ Laya line.
 
 ### The Jobnet extension
 
-In Edge, open `edge://extensions`, switch on Developer mode, choose **Load unpacked**, and pick
-`%APPDATA%\Recruiter\jobnet-joblog`. http://127.0.0.1:8765/joblog_extension shows the folder and
-the steps. After an app update writes a newer version, press Reload on the extension.
+Open http://127.0.0.1:8765/joblog_extension and press **Copy the folder and open Edge's
+extensions**. It copies `%APPDATA%\Recruiter\jobnet-joblog` and opens `edge://extensions`. There,
+switch on Developer mode, choose **Load unpacked**, paste the folder and press Select Folder. After an app update writes a newer version, press Reload on the extension.
 
 ### Your phone
 
