@@ -3,9 +3,9 @@
 //! on the key picked for tailoring résumés, since the résumés are written from the profile.
 
 use crate::account::account_model::RESUME;
+use crate::app_core::AppCore;
 use crate::llm::{Effort, Llm, LlmException};
 use crate::matches::llm_key;
-use crate::server::AppState;
 
 use super::{profile_fields, profile_model};
 
@@ -59,11 +59,11 @@ pub fn cv_text_error(cv_text: &str) -> Option<String> {
 
 /// Reads the CV into the user's profile, replacing it: Ok with what to tell the user, or Err
 /// with why not (logged).
-pub async fn fill_from_cv(state: &AppState, cv_text: &str, cv_name: &str) -> Result<String, String> {
+pub async fn fill_from_cv(core: &AppCore, cv_text: &str, cv_name: &str) -> Result<String, String> {
     if let Some(why) = cv_text_error(cv_text) {
         return Err(why);
     }
-    let keyed = llm_key::llm(state, RESUME).await.map_err(|e| e.message)?;
+    let keyed = llm_key::llm(core, RESUME).await.map_err(|e| e.message)?;
     let answer = read_cv(&keyed.llm, cv_text.trim()).await.map_err(|e| {
         eprintln!("profile (fill_from_cv): {}", e.details());
         format!("The CV could not be read into your profile: {e}")
@@ -73,7 +73,7 @@ pub async fn fill_from_cv(state: &AppState, cv_text: &str, cv_name: &str) -> Res
         "No jobs, projects or education were found in that CV. Check that the whole CV was pasted and try again."
             .to_string()
     })?;
-    profile_model::replace_from_cv(state.db(), state.user_id, &profile, cv_name)
+    profile_model::replace_from_cv(core.db(), core.user_id, &profile, cv_name)
         .await
         .map_err(|e| {
             eprintln!("profile (fill_from_cv): {e}");

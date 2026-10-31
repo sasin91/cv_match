@@ -8,10 +8,10 @@
 
 use crate::account::account_model::{self, RESUME};
 use crate::account::model_advice::ModelAdvice;
+use crate::app_core::AppCore;
 use crate::matches::llm_key;
 use crate::profile::profile_model::{self, FilledFrom};
 use crate::scan_schedule::INTERVALS;
-use crate::server::AppState;
 
 /// The database step: the file the app keeps everything in.
 #[derive(Debug, Clone, PartialEq)]
@@ -46,24 +46,24 @@ pub struct ScheduleStep {
 }
 
 /// Whether the app hasn't been set up yet: no profile and no saved matches.
-pub async fn is_first_run(state: &AppState) -> sqlx::Result<bool> {
-    let has_profile = profile_model::filled_from(state.db(), state.user_id).await?.is_some();
+pub async fn is_first_run(core: &AppCore) -> sqlx::Result<bool> {
+    let has_profile = profile_model::filled_from(core.db(), core.user_id).await?.is_some();
     if has_profile {
         return Ok(false);
     }
     let has_matches = sqlx::query_scalar!(
         r#"SELECT EXISTS (SELECT 1 FROM matches WHERE trongate_user_id = ?1) AS "has!: bool""#,
-        state.user_id
+        core.user_id
     )
-    .fetch_one(state.db())
+    .fetch_one(core.db())
     .await?;
     Ok(!has_matches)
 }
 
 /// is_first_run, or false (logged) when the database can't say: the pages that only link back
 /// to the wizard then go on without the link.
-pub async fn first_run_or_logged(state: &AppState) -> bool {
-    is_first_run(state).await.unwrap_or_else(|e| {
+pub async fn first_run_or_logged(core: &AppCore) -> bool {
+    is_first_run(core).await.unwrap_or_else(|e| {
         eprintln!("setup: whether this is the first run couldn't be read: {e}");
         false
     })
@@ -94,18 +94,18 @@ pub fn interval_label(hours: u32) -> &'static str {
         .unwrap_or("Every few hours")
 }
 
-pub fn database(state: &AppState) -> DatabaseStep {
+pub fn database(core: &AppCore) -> DatabaseStep {
     DatabaseStep {
-        path: state.database.path.clone(),
-        made_now: state.database.made_now,
+        path: core.database.path.clone(),
+        made_now: core.database.made_now,
     }
 }
 
-pub async fn ai(state: &AppState) -> sqlx::Result<AiStep> {
-    let saved = account_model::saved(state.db(), state.user_id).await?;
+pub async fn ai(core: &AppCore) -> sqlx::Result<AiStep> {
+    let saved = account_model::saved(core.db(), core.user_id).await?;
     Ok(AiStep {
         saved: saved.iter().map(saved_key_line).collect(),
-        advice: ModelAdvice::from(state.llama.as_ref()),
+        advice: ModelAdvice::from(core.llama.as_ref()),
     })
 }
 
@@ -119,25 +119,25 @@ fn saved_key_line(saved: &account_model::Saved) -> String {
     }
 }
 
-pub async fn cv(state: &AppState) -> Result<CvStep, String> {
-    let filled = profile_model::filled_from(state.db(), state.user_id)
+pub async fn cv(core: &AppCore) -> Result<CvStep, String> {
+    let filled = profile_model::filled_from(core.db(), core.user_id)
         .await
         .map_err(|e| format!("The database couldn't answer: {e}"))?;
-    let can_read = llm_key::llm_settings(state, RESUME)
+    let can_read = llm_key::llm_settings(core, RESUME)
         .await
         .map_err(|e| e.message)?
         .is_some();
     Ok(CvStep { filled, can_read })
 }
 
-pub async fn schedule(state: &AppState) -> ScheduleStep {
-    let (interval_hours, error) = match state.scan_schedule.interval_hours().await {
+pub async fn schedule(core: &AppCore) -> ScheduleStep {
+    let (interval_hours, error) = match core.scan_schedule.interval_hours().await {
         Ok(interval) => (interval, None),
         Err(e) => (None, Some(e)),
     };
     ScheduleStep {
         interval_hours,
         error,
-        task_run: state.scan_schedule.task_run(),
+        task_run: core.scan_schedule.task_run(),
     }
 }

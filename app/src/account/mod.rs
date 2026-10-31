@@ -140,9 +140,9 @@ pub async fn submit_key(State(state): State<Arc<AppState>>, Form(form): Form<Key
         form.api_key.as_str()
     };
     let saved = account_model::save(
-        state.db(),
-        &state.key_vault,
-        state.user_id,
+        state.core.db(),
+        &state.core.key_vault,
+        state.core.user_id,
         &form.provider,
         &form.model,
         base_url,
@@ -151,7 +151,7 @@ pub async fn submit_key(State(state): State<Arc<AppState>>, Form(form): Form<Key
     .await;
     let label = account_model::provider_label(&form.provider);
     match saved {
-        Ok(()) if setup::first_run_or_logged(&state).await => {
+        Ok(()) if setup::first_run_or_logged(&state.core).await => {
             state.set_flash(format!("Your {label} key is saved, for every use."));
             return Redirect::to(setup::PAGE).into_response();
         }
@@ -170,7 +170,7 @@ pub async fn submit_uses(State(state): State<Arc<AppState>>, Form(form): Form<Us
         application: picked(form.use_for_application),
         job_evaluation: picked(form.use_for_job_evaluation),
     };
-    match account_model::save_uses(state.db(), state.user_id, &chosen).await {
+    match account_model::save_uses(state.core.db(), state.core.user_id, &chosen).await {
         Ok(()) => state.set_flash("Saved which key each use runs on.".to_string()),
         Err(e) => flash_failure(&state, "Which key each use runs on couldn't be saved", &e),
     }
@@ -180,7 +180,14 @@ pub async fn submit_uses(State(state): State<Arc<AppState>>, Form(form): Form<Us
 /// POST account/submit_delete {provider}: deletes that provider's saved key.
 pub async fn submit_delete(State(state): State<Arc<AppState>>, Form(form): Form<ProviderForm>) -> Response {
     let provider = account_model::provider_label(&form.provider).to_string();
-    match account_model::delete_key(state.db(), &state.key_vault, state.user_id, &form.provider).await {
+    match account_model::delete_key(
+        state.core.db(),
+        &state.core.key_vault,
+        state.core.user_id,
+        &form.provider,
+    )
+    .await
+    {
         Ok(()) => state.set_flash(format!("Your {provider} key is deleted.")),
         Err(e) => flash_failure(&state, &format!("Your {provider} key couldn't be deleted"), &e),
     }
@@ -197,11 +204,11 @@ pub async fn submit_check(State(state): State<Arc<AppState>>, Form(form): Form<P
 
 /// "Your key works: …", or Err with why not; failures are logged.
 async fn check(state: &AppState, provider: &str) -> Result<String, String> {
-    let key = account_model::key_of(state.db(), &state.key_vault, state.user_id, provider)
+    let key = account_model::key_of(state.core.db(), &state.core.key_vault, state.core.user_id, provider)
         .await
         .map_err(|e| logged("The check couldn't read your key", &e.to_string()))?
         .ok_or_else(|| "There's no key to check: save one first.".to_string())?;
-    let llm = llama::use_key(state.llama.as_ref(), &key)
+    let llm = llama::use_key(state.core.llama.as_ref(), &key)
         .await
         .map_err(|e| logged("The check failed", &e.details()))?;
     let schema = json!({
@@ -223,15 +230,15 @@ async fn check(state: &AppState, provider: &str) -> Result<String, String> {
 /// The page, with the form as typed (None: a provider without a saved key, if any) and its
 /// errors.
 async fn page(state: &AppState, typed: Option<&KeyForm>, errors: Vec<String>) -> Response {
-    let together = state.key_vault.lock().await;
-    let saved = match account_model::saved(state.db(), state.user_id).await {
+    let together = state.core.key_vault.lock().await;
+    let saved = match account_model::saved(state.core.db(), state.core.user_id).await {
         Ok(saved) => saved,
         Err(e) => return failure_page(&format!("The database couldn't answer: {e}")),
     };
     let (saved_keys, vault_error) = readable(state, &saved);
     drop(together);
-    let setup_unfinished = setup::first_run_or_logged(state).await;
-    let advice = ModelAdvice::from(state.llama.as_ref());
+    let setup_unfinished = setup::first_run_or_logged(&state.core).await;
+    let advice = ModelAdvice::from(state.core.llama.as_ref());
     let provider = typed
         .map(|form| form.provider.as_str())
         .filter(|provider| !provider.is_empty())
@@ -260,7 +267,11 @@ async fn page(state: &AppState, typed: Option<&KeyForm>, errors: Vec<String>) ->
         base_url: typed.map_or_else(|| saved_field(|saved| &saved.base_url), |form| form.base_url.clone()),
         model_placeholder: model_placeholder(),
         base_url_placeholder: BASE_URL_PLACEHOLDER,
-        llama: state.llama.as_ref().map(|server| LlamaPanel::from(server.overview())),
+        llama: state
+            .core
+            .llama
+            .as_ref()
+            .map(|server| LlamaPanel::from(server.overview())),
         advice,
         setup_unfinished,
     };
@@ -296,7 +307,7 @@ fn readable(state: &AppState, saved: &[Saved]) -> (Vec<SavedKey>, Option<String>
     let keys = saved
         .iter()
         .map(|saved| {
-            let unreadable = match account_model::with_key(&state.key_vault, state.user_id, saved) {
+            let unreadable = match account_model::with_key(&state.core.key_vault, state.core.user_id, saved) {
                 Ok(key) => key.is_none(),
                 Err(e) => {
                     eprintln!("account: {e} (saved {} key)", saved.provider);
@@ -411,7 +422,7 @@ fn llama_model_errors(state: &AppState, form: &KeyForm) -> Vec<String> {
     if form.provider != LLAMA_CPP {
         return Vec::new();
     }
-    let Some(server) = &state.llama else {
+    let Some(server) = &state.core.llama else {
         return vec!["The app was started without its llama folder.".to_string()];
     };
     let named = &form.model;

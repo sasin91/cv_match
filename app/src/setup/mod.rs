@@ -106,14 +106,14 @@ pub async fn index(State(state): State<Arc<AppState>>) -> Response {
 /// POST setup/submit_cv {cv_text, cv_name, replace}: reads the CV into the profile, replacing
 /// it; replace must be "1" when there is one. With an error the form comes back with the text.
 pub async fn submit_cv(State(state): State<Arc<AppState>>, Form(form): Form<CvForm>) -> Response {
-    let has_profile = match setup_steps::cv(&state).await {
+    let has_profile = match setup_steps::cv(&state.core).await {
         Ok(step) => step.filled.is_some(),
         Err(why) => return failure(&why),
     };
     let filled = if has_profile && form.replace != "1" {
         Err("Tick \"Replace my profile\" to fill it in again from this CV.".to_string())
     } else {
-        profile_fill::fill_from_cv(&state, &form.cv_text, &form.cv_name).await
+        profile_fill::fill_from_cv(&state.core, &form.cv_text, &form.cv_name).await
     };
     match filled {
         Ok(message) => {
@@ -126,7 +126,7 @@ pub async fn submit_cv(State(state): State<Arc<AppState>>, Form(form): Form<CvFo
 
 /// POST setup/submit_schedule {hours}: registers the job scan's task to run every hours.
 pub async fn submit_schedule(State(state): State<Arc<AppState>>, Form(form): Form<ScheduleForm>) -> Response {
-    let message = match state.scan_schedule.register(form.hours).await {
+    let message = match state.core.scan_schedule.register(form.hours).await {
         Ok(()) => format!(
             "The job scan runs {} while you're logged in to this computer.",
             setup_steps::interval_label(form.hours).to_lowercase()
@@ -139,7 +139,7 @@ pub async fn submit_schedule(State(state): State<Arc<AppState>>, Form(form): For
 
 /// POST setup/submit_unschedule: removes the job scan's task.
 pub async fn submit_unschedule(State(state): State<Arc<AppState>>) -> Response {
-    let message = match state.scan_schedule.remove().await {
+    let message = match state.core.scan_schedule.remove().await {
         Ok(()) => "The job scan no longer runs by itself.".to_string(),
         Err(why) => format!("The job scan's task couldn't be removed: {why}"),
     };
@@ -149,22 +149,22 @@ pub async fn submit_unschedule(State(state): State<Arc<AppState>>) -> Response {
 
 /// The page, with the CV form as posted and why it couldn't be read, when it couldn't.
 async fn page(state: &AppState, posted: Option<(String, CvForm)>) -> Response {
-    let ai = match setup_steps::ai(state).await {
+    let ai = match setup_steps::ai(&state.core).await {
         Ok(ai) => ai,
         Err(e) => return failure(&format!("The database couldn't answer: {e}")),
     };
-    let cv = match setup_steps::cv(state).await {
+    let cv = match setup_steps::cv(&state.core).await {
         Ok(cv) => cv,
         Err(why) => return failure(&why),
     };
     let AiStep { saved, advice } = ai;
     let page = SetupPage {
         flash: state.take_flash(),
-        database: setup_steps::database(state),
+        database: setup_steps::database(&state.core),
         ai_saved: saved,
         advice,
         cv: cv_view(cv, posted),
-        schedule: schedule_view(setup_steps::schedule(state).await),
+        schedule: schedule_view(setup_steps::schedule(&state.core).await),
     };
     match page.render() {
         Ok(html) => Html(html).into_response(),

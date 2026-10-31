@@ -22,6 +22,7 @@ pub mod match_model;
 pub mod match_prompts;
 pub mod match_result;
 pub mod match_score;
+pub mod match_service;
 pub mod matcher;
 pub mod page_error;
 pub mod page_reader;
