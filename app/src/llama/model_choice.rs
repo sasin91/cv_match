@@ -150,7 +150,9 @@ pub fn fit(model: &GgufFile, inventory: &Inventory, card_usable: bool) -> Fit {
     }
     match split_layers(model, vram) {
         Some(gpu_layers) if gpu_layers > 0 => Fit::Split { gpu_layers },
-        _ => Fit::Memory,
+        // No layers on the card: it all has to fit in memory alone.
+        _ if needed <= memory => Fit::Memory,
+        _ => Fit::TooBig,
     }
 }
 
@@ -243,6 +245,22 @@ mod tests {
         assert_eq!(fit(&model("qwen3-8b-q4.gguf", 47, 36), &pc, false), Fit::Memory);
         // 16 GB is half the memory; 18 + 2 GB doesn't fit it.
         assert_eq!(fit(&model("qwen3-32b-q4.gguf", 180, 64), &pc, false), Fit::TooBig);
+    }
+
+    #[test]
+    fn a_model_whose_layers_are_unknown_runs_in_memory_only_if_it_fits_there() {
+        let pc = computer(16, GpuVendor::Nvidia, 24);
+        let unknown_layers = |gib_tenths| GgufFile {
+            layers: None,
+            ..model("no-header.gguf", gib_tenths, 0)
+        };
+        // 25 + 2 GB fits 23 GB of card and 8 GB of memory together, but can't be split by layers
+        // nobody knows, and is too big for the 8 GB alone.
+        assert_eq!(fit(&unknown_layers(250), &pc, true), Fit::TooBig);
+        assert_eq!(
+            fit(&unknown_layers(50), &computer(16, GpuVendor::Nvidia, 0), true),
+            Fit::Memory
+        );
     }
 
     #[test]

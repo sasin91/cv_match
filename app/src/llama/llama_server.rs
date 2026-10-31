@@ -84,9 +84,11 @@ pub struct LlamaServer {
 }
 
 impl LlamaServer {
+    /// The server for folder, made absolute: llama-server runs inside the folder, where a relative
+    /// path to itself or its model would point somewhere else.
     pub fn new(folder: &Path, inventory: Inventory) -> Self {
         LlamaServer {
-            folder: folder.to_path_buf(),
+            folder: std::path::absolute(folder).unwrap_or_else(|_| folder.to_path_buf()),
             inventory,
             running: Mutex::new(None),
         }
@@ -400,6 +402,9 @@ mod tests {
         let server = LlamaServer::new(&folder, Inventory::default());
         let why = server.start("").await.unwrap_err();
         assert!(why.starts_with(&format!("There's no {SERVER_FILE} in ")), "{why}");
+        assert!(server.folder().is_absolute());
+        let relative = LlamaServer::new(Path::new("llama"), Inventory::default());
+        assert!(relative.folder().is_absolute() && relative.folder().ends_with("llama"));
         let overview = server.overview();
         assert!(!overview.server_found);
         assert_eq!(
