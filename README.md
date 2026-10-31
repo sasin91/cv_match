@@ -33,7 +33,19 @@ The first build downloads ONNX Runtime for Laya (from cdn.pyke.io) and links it 
     .\target\release\recruiter.exe
 
 On the first start the app makes an empty database, `%APPDATA%\Recruiter\recruiter.sqlite`,
-writes the Jobnet extension next to it and opens http://127.0.0.1:8765/match.
+writes the Jobnet extension next to it and opens the setup wizard (http://127.0.0.1:8765/setup):
+
+1. where the database is;
+2. an AI model: this app's own llama.cpp model when the PC's graphics card has room for a good
+   one (Qwen3 4B or bigger, at least half of it on the card), else an OpenAI key (gpt-5.4-mini)
+   or a Claude key; the steps are /llama_setup and /account, which come back to the wizard;
+3. your CV, read by that model into your profile, which the match page matches with;
+4. how often the job scan runs by itself: a Task Scheduler task, `Recruiter\Job scan`, running
+   `recruiter.exe scan` (the scan itself isn't ported yet, so for now a run only says so);
+5. then the match page.
+
+A database with a profile or saved matches opens on http://127.0.0.1:8765/match instead; the
+wizard stays at /setup.
 Close its window to stop it. `recruiter.exe --help` lists the options.
 
 If the app refuses, at start, a database made from an older schema, move `recruiter.sqlite`
@@ -142,6 +154,11 @@ Stop it with Ctrl+C.
 
 With a real key saved on the API key page, check these by hand after a change:
 
+- [ ] **The setup wizard:** start with `--database` naming a new file. The browser opens /setup,
+      which suggests the app's own model on a PC with a good graphics card, else an OpenAI key.
+      Set one up and land back on /setup; read a PDF CV into the profile; pick how often to check
+      for new jobs, and `Recruiter\Job scan` shows in Task Scheduler (run it once: no console
+      window opens). Go to the match page, which has the CV filled in.
 - [ ] **The lists:** after a few matches, http://127.0.0.1:8765/match shows them under
       Shortlist, All and the other lists. Show more loads more.
 - [ ] **The free match:** paste a job post's text, with evaluating set to no key on the key page.

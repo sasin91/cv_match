@@ -1,6 +1,10 @@
 //! The candidate's profile as text, the CV the page matches with when there is one, ported from
 //! modules/profile (Profile_fields::text, Profile_model's queries) and account's profile links.
 
+pub mod profile_fields;
+pub mod profile_fill;
+pub mod profile_model;
+
 use chrono::NaiveDate;
 use sqlx::SqlitePool;
 

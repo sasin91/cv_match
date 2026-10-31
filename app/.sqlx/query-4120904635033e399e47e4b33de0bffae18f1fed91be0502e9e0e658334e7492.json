@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO candidates (trongate_user_id, name, email, phone, created_at, updated_at)\n        VALUES (?1, ?2, ?3, NULLIF(?4, ''), ?5, ?5)\n        ON CONFLICT (trongate_user_id) DO UPDATE SET\n          name = CASE WHEN excluded.name <> '' THEN excluded.name ELSE candidates.name END,\n          email = CASE WHEN excluded.email <> '' THEN excluded.email ELSE candidates.email END,\n          phone = COALESCE(excluded.phone, candidates.phone),\n          updated_at = excluded.updated_at\n        RETURNING id AS \"id!: i64\"\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "candidates",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": [
+      null
+    ]
+  },
+  "hash": "4120904635033e399e47e4b33de0bffae18f1fed91be0502e9e0e658334e7492"
+}

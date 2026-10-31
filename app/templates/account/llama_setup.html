@@ -13,9 +13,12 @@
 <body>
 <header class="site-header">
     <a class="brand" href="match">Recruiter</a>
-    <nav><a href="match">CV match</a> <a href="account">API key</a></nav>
+    <nav><a href="match">CV match</a> <a href="account">API key</a> <a href="setup">Setup</a></nav>
 </header>
 <main class="narrow">
+    {%- if setup_unfinished %}
+    <p class="notice"><a href="setup">Back to the setup</a>. Once the model is downloaded and in use, the setup goes on by itself.</p>
+    {%- endif %}
     <h1>Set up the app's own model</h1>
     <p class="muted">The app runs a model on this computer with llama.cpp, so the AI match needs no API key. This computer: {{ computer }}.</p>
 
