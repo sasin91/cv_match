@@ -81,7 +81,7 @@
     <section class="saved-key setup-step{% if schedule.done.is_some() %} done{% endif %}" id="schedule">
         <h2>4. Checking for new jobs</h2>
         {%- if let Some(done) = schedule.done %}
-        <p>The job scan runs by itself: {{ done }}, while you're signed in.</p>
+        <p>The job scan runs by itself: {{ done }}, while this computer is on and you're logged in to it.</p>
         {%- else %}
         <p class="muted">The system's scheduler (Task Scheduler on Windows, a systemd timer on Linux) can run the job scan by itself, so new posts are waiting when you open the app.</p>
         <p class="muted small">The job scan itself comes in the next update; until then each run only notes that it isn't there yet.</p>
