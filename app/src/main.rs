@@ -1,16 +1,21 @@
 //! recruiter: the desktop app's command line.
 //!
-//!   recruiter [--port 8765] [--database path\to\recruiter.sqlite] [--no-browser]
+//!   recruiter [--port 8765] [--database path\to\recruiter.sqlite] [--laya path\to\laya] [--no-browser]
 //!             [--tailscale-name pc.tailnet.ts.net]
-//!       serves the app on 127.0.0.1 and opens it in the default browser; with --tailscale-name
-//!       it also answers `tailscale serve` for that name, so a phone can open it (docs/phone.md)
+//!       serves the app on 127.0.0.1 and opens it in the default browser, with Laya's model
+//!       from the laya folder next to the database unless --laya names another; with
+//!       --tailscale-name it also answers `tailscale serve` for that name, so a phone can open it
+//!       (docs/phone.md)
 //!   recruiter import --email you@example.com [--from mysql://root@127.0.0.1:3306/recruiter_prod]
 //!                    [--database path\to\recruiter.sqlite]
 
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
+use std::time::Instant;
 
+use recruiter::account::key_vault::KeyVault;
+use recruiter::laya::laya_client::{self, LayaClient};
 use recruiter::server::{self, AppState};
 use recruiter::taxonomy::Taxonomy;
 use recruiter::{db, extension, import};
@@ -18,7 +23,8 @@ use recruiter::{db, extension, import};
 /// Herd's MariaDB with the production copy, as set up on Jonas's PC.
 const DEFAULT_SOURCE: &str = "mysql://root@127.0.0.1:3306/recruiter_prod";
 
-const USAGE: &str = "usage: recruiter [--port <port>] [--database <file>] [--no-browser] [--tailscale-name <name>]
+const USAGE: &str = "usage: recruiter [--port <port>] [--database <file>] [--laya <folder>] [--no-browser]
+                 [--tailscale-name <name>]
        recruiter import --email <email> [--from <mysql url>] [--database <file>]";
 
 fn main() -> ExitCode {
@@ -36,6 +42,7 @@ fn main() -> ExitCode {
 fn run_server(args: &[String]) -> ExitCode {
     let mut port = server::DEFAULT_PORT;
     let mut database = db::default_path();
+    let mut laya_folder = None;
     let mut browser = true;
     let mut tailscale_name = None;
     let mut args = args.iter();
@@ -57,6 +64,7 @@ fn run_server(args: &[String]) -> ExitCode {
                 }
             },
             "--database" => database = PathBuf::from(value),
+            "--laya" => laya_folder = Some(PathBuf::from(value)),
             "--tailscale-name" => tailscale_name = Some(value.trim().to_ascii_lowercase()),
             _ => {
                 eprintln!("unknown option {flag}\n{USAGE}");
@@ -81,20 +89,34 @@ fn run_server(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    let mut state = AppState::new(db, Arc::new(Taxonomy::load()), user_id, port);
-    let folder = database
-        .parent()
-        .unwrap_or(std::path::Path::new("."))
-        .join(extension::FOLDER);
+    let mut state = AppState::new(
+        db,
+        Arc::new(Taxonomy::load()),
+        user_id,
+        port,
+        KeyVault::credential_manager(full_path(&database)),
+    );
+    let data_folder = database.parent().unwrap_or(std::path::Path::new("."));
+    let laya_folder = laya_folder.unwrap_or_else(|| data_folder.join(laya_client::FOLDER));
+    state.laya = LayaClient::from_folder(&laya_folder);
+    if state.laya.is_none() {
+        println!(
+            "No Laya model in {} (no {}), so matches go on without Laya.",
+            laya_folder.display(),
+            laya_client::ONNX_FILE
+        );
+    }
+    let folder = data_folder.join(extension::FOLDER);
     state.extension_folder = extension::write(&folder).map_err(|e| {
         eprintln!("Couldn't write the Jobnet extension to {}: {e}", folder.display());
         format!("It couldn't be written to {}: {e}", folder.display())
     });
-    let phone_address = tailscale_name.as_ref().map(|name| format!("https://{name}/cv_match"));
+    let phone_address = tailscale_name.as_ref().map(|name| format!("https://{name}/match"));
     state.tailscale_name = tailscale_name;
     let state = Arc::new(state);
-    let address = format!("http://127.0.0.1:{port}/cv_match");
+    let address = format!("http://127.0.0.1:{port}/match");
     runtime.block_on(async {
+        tokio::spawn(preload_laya(Arc::clone(&state)));
         let serving = tokio::spawn(server::serve(state));
         println!(
             "Recruiter is running at {address} (data in {}). Close this window to stop it.",
@@ -160,7 +182,7 @@ fn run_import(args: &[String]) -> ExitCode {
             }
             if report.skipped_llm_key {
                 println!(
-                    "Your LLM key isn't imported (it is encrypted with the server's secret); add it again in the app."
+                    "Your LLM key isn't imported (it is encrypted with the server's secret); add it again on the app's API key page."
                 );
             }
             ExitCode::SUCCESS
@@ -170,6 +192,32 @@ fn run_import(args: &[String]) -> ExitCode {
             ExitCode::FAILURE
         }
     }
+}
+
+/// Loads Laya's model in the background, so the first match needn't wait for it, and says how
+/// that went.
+async fn preload_laya(state: Arc<AppState>) {
+    let Some(laya) = &state.laya else {
+        return;
+    };
+    let started = Instant::now();
+    match laya.load().await {
+        Ok(_) => println!(
+            "Laya is loaded from {} ({:.1} s).",
+            laya.folder().display(),
+            started.elapsed().as_secs_f64()
+        ),
+        Err(e) => eprintln!("{e}"),
+    }
+}
+
+/// The database file's full path, which names its key's credential; as given when it can't be
+/// resolved.
+fn full_path(database: &std::path::Path) -> String {
+    std::fs::canonicalize(database)
+        .unwrap_or_else(|_| database.to_path_buf())
+        .display()
+        .to_string()
 }
 
 /// The async runtime the database and the server run on, or None (said why) when it can't start.

@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "-- Every version of a saved match's documents, newest first in the order newest_document.sql\n-- picks the newest, for the \"Earlier versions\" lists. ?1 the match.\nSELECT id, kind, text, written_by, notes, written_at\nFROM documents\nWHERE match_id = ?1\nORDER BY written_at DESC, id DESC\n",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "name": "text",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "text"
+          }
+        }
+      },
+      {
+        "name": "written_by",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "written_by"
+          }
+        }
+      },
+      {
+        "name": "notes",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "notes"
+          }
+        }
+      },
+      {
+        "name": "written_at",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "documents",
+            "name": "written_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "e8543bd8467aab4b286d4346d08ca272e9ae60db16e5e1136964ea35088f5def"
+}

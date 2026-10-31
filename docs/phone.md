@@ -39,7 +39,7 @@ internet.
 
 ## On the phone
 
-With Tailscale switched on, open `https://pc.tailnet-name.ts.net/cv_match`. On Android you can
+With Tailscale switched on, open `https://pc.tailnet-name.ts.net/match`. On Android you can
 use **Add to Home screen**, and on iPhone **Share → Add to Home Screen**, to open it like an app.
 
 The PC has to be on with recruiter.exe running.

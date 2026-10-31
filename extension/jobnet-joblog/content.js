@@ -1,5 +1,5 @@
 // On Jobnet: a small panel next to the "Opret joblog" form that fills it in
-// from a saved match in Recruiter's CV checker (cv_match/joblog/{id}, see
+// from a saved match in Recruiter's CV checker (match/joblog/{id}, see
 // modules/cv_match/Joblog.php), PDFs included. It never presses Gem: the
 // person checks the form and saves it. The matches applied for but not on
 // Jobnet yet come first, and when the person saves a filled form with Gem,

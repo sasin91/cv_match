@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT entry_id FROM match_resume_lines WHERE kind = 'bullet'",
+  "describe": {
+    "columns": [
+      {
+        "name": "entry_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "match_resume_lines",
+            "name": "entry_id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "616839dc73b214348585f85f2101005610d9dc5b5521c95affad3d97670e8679"
+}

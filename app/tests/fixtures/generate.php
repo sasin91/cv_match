@@ -9,8 +9,9 @@
  *
  * Run it again whenever the PHP side changes; the Rust tests then show what
  * the port has to follow. Inputs are the skill names in eval/data/gold.jsonl
- * (public job ads) and the synthetic posts and CVs below, and the documents
- * Pdf_writer lays out as pages for its PDFs.
+ * (public job ads) and the synthetic posts and CVs below, the documents
+ * Pdf_writer lays out as pages for its PDFs, and Laya's answers as
+ * Laya_client reads them and Match_result prints them.
  */
 $root = rtrim($argv[1] ?? '', '/\\');
 if ($root === '' || !is_file("$root/modules/cv_match/Cv_matcher.php")) {
@@ -24,6 +25,8 @@ require_once "$root/modules/cv_match/Match_score.php";
 require_once "$root/modules/cv_match/Apply_instructions.php";
 require_once "$root/modules/cv_match/Joblog.php";
 require_once "$root/modules/cv_match/Pdf_writer.php";
+require_once "$root/modules/cv_match/Match_result.php";
+require_once "$root/modules/laya/Laya_client.php";
 
 // The day years_worked() counts "until now" from, fixed so the fixtures don't age.
 const NOW = '2026-10-30 12:00:00 UTC';
@@ -356,6 +359,33 @@ foreach ([['resume', 'Udvikler / PHP', 'Acme: "ApS"'], ['application', '', ''], 
         'file_name' => Pdf_writer::file_name($kind, $job_title, $company)];
 }
 
+// ---------- Laya's answers ----------
+
+/** Match_result's Laya line for an answer or an error. */
+function laya_line(?array $laya, string $error): array {
+    return (new ReflectionMethod(Match_result::class, 'laya'))->invoke(null, $laya, $error);
+}
+
+$laya = ['questions' => Laya_client::questions(), 'answers' => [], 'errors' => []];
+// What the model answers, as laya-server's predict() has it: in range, past both ends of the
+// fit levels, on the rounding edges, and without a score.
+foreach ([[0.68, 3.1], [0.681249, 3.14159], [0.99996, 4.7], [0.0, -0.2], [0.5, 2.5], [0.12345, 1.25], [0.005, 0.45],
+          [0.995, 3.95], [0.3333, 2.0004], [1, 0], [0.5, null]] as [$meets, $fit]) {
+    $response = ['model' => 'laya-rl-agent-onnx', 'answers' => ['meets' => ['type' => 'noul', 'noul' => $meets]]];
+    if ($fit !== null) {
+        $response['answers']['fit'] = ['type' => 'score', 'score' => $fit];
+    }
+    try {
+        $answer = Laya_client::read_answer($response);
+        $laya['answers'][] = ['response' => $response, 'answer' => $answer, 'line' => laya_line($answer, '')];
+    } catch (RuntimeException $e) {
+        $laya['answers'][] = ['response' => $response, 'error' => $e->getMessage()];
+    }
+}
+foreach (['', 'Laya failed: inference failed'] as $error) {
+    $laya['errors'][] = ['error' => $error, 'line' => laya_line(null, $error)];
+}
+
 $out = [
     'now' => NOW,
     'rank' => $rank,
@@ -369,6 +399,7 @@ $out = [
     'apply_instructions' => $apply,
     'joblog' => $joblog,
     'pdf' => $pdf,
+    'laya' => $laya,
 ];
 file_put_contents(__DIR__ . '/parity.json', json_encode($out, JSON_PRETTY_PRINT | JSON_UNESCAPED_UNICODE | JSON_UNESCAPED_SLASHES | JSON_PRESERVE_ZERO_FRACTION | JSON_THROW_ON_ERROR) . "\n");
 echo count($rank), " rankings, ", count($readings), " readings, ", count($matches), " matches\n";

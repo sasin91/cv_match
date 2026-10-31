@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO match_resume_entries\n          (document_id, section, title, organisation, location, starts, ends, summary, note, sort_order)\n        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 10
+    },
+    "nullable": []
+  },
+  "hash": "eef7f4b0fafb1dabd5191c4d04e4a3491f1d8d2037dcf5cd12a065f2f9e428ac"
+}

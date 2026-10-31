@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO match_rejections (match_id, reason, note, created_at)\n            VALUES (?1, ?2, ?3, ?4)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "47117df038e82d1de9c193870130c7142671f23a003a5db544e6b1ebb137fbde"
+}

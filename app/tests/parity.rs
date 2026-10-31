@@ -4,14 +4,16 @@
 use std::sync::LazyLock;
 
 use indexmap::IndexMap;
-use recruiter::cv_match::cv_match_model::{Integration, SavedItem, SavedMatch};
-use recruiter::cv_match::cv_matcher::{self, CvMatcher, Verdicts};
-use recruiter::cv_match::free_reader::{self, FreeReader, YearMonth};
-use recruiter::cv_match::tailored_resume::TailoredResume;
-use recruiter::cv_match::{apply_instructions, joblog, match_score, pdf_writer};
+use recruiter::laya::laya_client::{self, LayaReading};
+use recruiter::matches::free_reader::{self, FreeReader, YearMonth};
+use recruiter::matches::match_model::{Integration, SavedItem, SavedMatch};
+use recruiter::matches::match_result::LayaLine;
+use recruiter::matches::matcher::{self, Matcher, Verdicts};
+use recruiter::matches::tailored_resume::TailoredResume;
+use recruiter::matches::{apply_instructions, joblog, match_score, pdf_writer};
 use recruiter::taxonomy::{self, Taxonomy};
 use serde::Serialize;
-use serde_json::Value;
+use serde_json::{Value, json};
 
 /// The fixed day the fixtures count "until now" to (generate.php's NOW).
 const NOW: YearMonth = YearMonth { year: 2026, month: 10 };
@@ -176,32 +178,32 @@ fn every_post_and_cv_match_as_php_matches_them() {
         assert_same(&format!("{what}: job"), &case["job"], &job);
         assert_same(&format!("{what}: profile"), &case["profile"], &profile);
 
-        let matcher = CvMatcher::new(&TAXONOMY, profile, reader.known.clone());
-        let groups = cv_matcher::criteria(&job);
+        let matcher = Matcher::new(&TAXONOMY, profile, reader.known.clone());
+        let groups = matcher::criteria(&job);
         assert_same(&format!("{what}: groups"), &case["groups"], &groups);
         let mut verdicts = Verdicts::new();
-        for unit in cv_matcher::units(&groups) {
+        for unit in matcher::units(&groups) {
             if let Some(verdict) = matcher.decide(unit) {
                 verdicts.insert(unit.id.clone(), verdict);
             }
         }
         assert_same(&format!("{what}: verdicts"), &case["verdicts"], &verdicts);
-        let combined = cv_matcher::combine(&groups, &verdicts);
+        let combined = matcher::combine(&groups, &verdicts);
         assert_same(&format!("{what}: combined"), &case["combined"], &combined);
         assert_same(
             &format!("{what}: score"),
             &case["score"],
-            cv_matcher::score(&groups, &combined),
+            matcher::score(&groups, &combined),
         );
         assert_same(
             &format!("{what}: laya_summary"),
             &case["laya_summary"],
-            cv_matcher::laya_summary(&job, &groups, &combined),
+            matcher::laya_summary(&job, &groups, &combined),
         );
         assert_same(
             &format!("{what}: soft_skills"),
             &case["soft_skills"],
-            cv_matcher::soft_skills(&job),
+            matcher::soft_skills(&job),
         );
     }
 }
@@ -215,11 +217,7 @@ fn scores_print_as_php_prints_them() {
             &case["percent"],
             match_score::percent(score),
         );
-        assert_same(
-            &format!("match_tag({score})"),
-            &case["tag"],
-            cv_matcher::match_tag(score),
-        );
+        assert_same(&format!("match_tag({score})"), &case["tag"], matcher::match_tag(score));
     }
 }
 
@@ -316,6 +314,7 @@ fn saved_match(case: &Value) -> SavedMatch {
         rejections: Vec::new(),
         apply_instructions: apply_instructions::read(&job_text),
         job_text,
+        earlier_versions: Vec::new(),
     }
 }
 
@@ -384,6 +383,60 @@ fn pdf_file_names_are_the_ones_php_gives() {
             pdf_writer::file_name(kind, job_title, company),
             text(&case["file_name"]),
             "file_name({kind:?}, {job_title:?}, {company:?})"
+        );
+    }
+}
+
+/// The Laya line as PHP's Match_result::laya() returns it.
+fn laya_line(reading: &LayaReading) -> Value {
+    let line = LayaLine::from(reading);
+    json!({"text": line.text, "failed": line.failed})
+}
+
+#[test]
+fn laya_is_asked_what_php_asks_it() {
+    assert_same(
+        "Laya_client::questions()",
+        &FIXTURES["laya"]["questions"],
+        laya_client::questions(),
+    );
+}
+
+#[test]
+fn laya_answers_are_read_and_printed_as_php_reads_and_prints_them() {
+    let cases = FIXTURES["laya"]["answers"]
+        .as_array()
+        .expect("parity.json has laya answers");
+    for case in cases {
+        let what = format!("read_answer({})", case["response"]);
+        match laya_client::read_answer(&case["response"]) {
+            Ok(answer) => {
+                assert_same(&what, &case["answer"], &answer);
+                let reading = LayaReading {
+                    laya: Some(answer),
+                    laya_error: None,
+                };
+                assert_same(&format!("{what}: line"), &case["line"], laya_line(&reading));
+            }
+            Err(error) => assert_same(&what, &case["error"], error),
+        }
+    }
+}
+
+#[test]
+fn laya_errors_are_printed_as_php_prints_them() {
+    let cases = FIXTURES["laya"]["errors"]
+        .as_array()
+        .expect("parity.json has laya errors");
+    for case in cases {
+        let reading = LayaReading {
+            laya: None,
+            laya_error: Some(text(&case["error"]).to_string()),
+        };
+        assert_same(
+            &format!("Laya line for {}", case["error"]),
+            &case["line"],
+            laya_line(&reading),
         );
     }
 }

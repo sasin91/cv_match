@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT id FROM matches\n        WHERE trongate_user_id IS ?1 AND cv_text = ?2 AND job_text = ?3\n        ORDER BY created_at DESC, id DESC\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "eb4a0687a25886465f387bdda093cc89172ebacd7e82177285b45bfa3ff87b82"
+}

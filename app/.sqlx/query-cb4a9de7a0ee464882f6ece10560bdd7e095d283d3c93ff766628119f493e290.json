@@ -1,0 +1,122 @@
+{
+  "db_name": "SQLite",
+  "query": "-- A tailored résumé's roles, projects and schools, in order. ?1 the résumé (documents.id).\nSELECT id, section, title, organisation, location, starts, ends, summary, note\nFROM match_resume_entries\nWHERE document_id = ?1\nORDER BY sort_order, id\n",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "match_resume_entries",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "section",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "match_resume_entries",
+            "name": "section"
+          }
+        }
+      },
+      {
+        "name": "title",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "match_resume_entries",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "name": "organisation",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "match_resume_entries",
+            "name": "organisation"
+          }
+        }
+      },
+      {
+        "name": "location",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "match_resume_entries",
+            "name": "location"
+          }
+        }
+      },
+      {
+        "name": "starts",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "match_resume_entries",
+            "name": "starts"
+          }
+        }
+      },
+      {
+        "name": "ends",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "match_resume_entries",
+            "name": "ends"
+          }
+        }
+      },
+      {
+        "name": "summary",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "match_resume_entries",
+            "name": "summary"
+          }
+        }
+      },
+      {
+        "name": "note",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "match_resume_entries",
+            "name": "note"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "cb4a9de7a0ee464882f6ece10560bdd7e095d283d3c93ff766628119f493e290"
+}

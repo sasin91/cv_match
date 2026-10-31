@@ -103658,5 +103658,294 @@
                 "file_name": "Resume - Sygeplejerske – akut - Region Sjælland Holbæk.pdf"
             }
         ]
+    },
+    "laya": {
+        "questions": {
+            "meets": {
+                "type": "noul",
+                "instructions": "Does the candidate meet every required qualification for the job?"
+            },
+            "fit": {
+                "type": "score",
+                "instructions": "How strong a fit is this candidate for the job?",
+                "criteria": [
+                    "no fit",
+                    "weak fit",
+                    "partial fit",
+                    "good fit",
+                    "excellent fit"
+                ]
+            }
+        },
+        "answers": [
+            {
+                "response": {
+                    "model": "laya-rl-agent-onnx",
+                    "answers": {
+                        "meets": {
+                            "type": "noul",
+                            "noul": 0.68
+                        },
+                        "fit": {
+                            "type": "score",
+                            "score": 3.1
+                        }
+                    }
+                },
+                "answer": {
+                    "meets": 0.68,
+                    "fit": 3.1,
+                    "fit_label": "good fit"
+                },
+                "line": {
+                    "text": "Laya: 68% likely to meet every requirement, fit 3.1 of 4 (good fit).",
+                    "failed": false
+                }
+            },
+            {
+                "response": {
+                    "model": "laya-rl-agent-onnx",
+                    "answers": {
+                        "meets": {
+                            "type": "noul",
+                            "noul": 0.681249
+                        },
+                        "fit": {
+                            "type": "score",
+                            "score": 3.14159
+                        }
+                    }
+                },
+                "answer": {
+                    "meets": 0.6812,
+                    "fit": 3.142,
+                    "fit_label": "good fit"
+                },
+                "line": {
+                    "text": "Laya: 68% likely to meet every requirement, fit 3.1 of 4 (good fit).",
+                    "failed": false
+                }
+            },
+            {
+                "response": {
+                    "model": "laya-rl-agent-onnx",
+                    "answers": {
+                        "meets": {
+                            "type": "noul",
+                            "noul": 0.99996
+                        },
+                        "fit": {
+                            "type": "score",
+                            "score": 4.7
+                        }
+                    }
+                },
+                "answer": {
+                    "meets": 1.0,
+                    "fit": 4.0,
+                    "fit_label": "excellent fit"
+                },
+                "line": {
+                    "text": "Laya: 100% likely to meet every requirement, fit 4.0 of 4 (excellent fit).",
+                    "failed": false
+                }
+            },
+            {
+                "response": {
+                    "model": "laya-rl-agent-onnx",
+                    "answers": {
+                        "meets": {
+                            "type": "noul",
+                            "noul": 0.0
+                        },
+                        "fit": {
+                            "type": "score",
+                            "score": -0.2
+                        }
+                    }
+                },
+                "answer": {
+                    "meets": 0.0,
+                    "fit": 0.0,
+                    "fit_label": "no fit"
+                },
+                "line": {
+                    "text": "Laya: 0% likely to meet every requirement, fit 0.0 of 4 (no fit).",
+                    "failed": false
+                }
+            },
+            {
+                "response": {
+                    "model": "laya-rl-agent-onnx",
+                    "answers": {
+                        "meets": {
+                            "type": "noul",
+                            "noul": 0.5
+                        },
+                        "fit": {
+                            "type": "score",
+                            "score": 2.5
+                        }
+                    }
+                },
+                "answer": {
+                    "meets": 0.5,
+                    "fit": 2.5,
+                    "fit_label": "good fit"
+                },
+                "line": {
+                    "text": "Laya: 50% likely to meet every requirement, fit 2.5 of 4 (good fit).",
+                    "failed": false
+                }
+            },
+            {
+                "response": {
+                    "model": "laya-rl-agent-onnx",
+                    "answers": {
+                        "meets": {
+                            "type": "noul",
+                            "noul": 0.12345
+                        },
+                        "fit": {
+                            "type": "score",
+                            "score": 1.25
+                        }
+                    }
+                },
+                "answer": {
+                    "meets": 0.1235,
+                    "fit": 1.25,
+                    "fit_label": "weak fit"
+                },
+                "line": {
+                    "text": "Laya: 12% likely to meet every requirement, fit 1.3 of 4 (weak fit).",
+                    "failed": false
+                }
+            },
+            {
+                "response": {
+                    "model": "laya-rl-agent-onnx",
+                    "answers": {
+                        "meets": {
+                            "type": "noul",
+                            "noul": 0.005
+                        },
+                        "fit": {
+                            "type": "score",
+                            "score": 0.45
+                        }
+                    }
+                },
+                "answer": {
+                    "meets": 0.005,
+                    "fit": 0.45,
+                    "fit_label": "no fit"
+                },
+                "line": {
+                    "text": "Laya: 1% likely to meet every requirement, fit 0.5 of 4 (no fit).",
+                    "failed": false
+                }
+            },
+            {
+                "response": {
+                    "model": "laya-rl-agent-onnx",
+                    "answers": {
+                        "meets": {
+                            "type": "noul",
+                            "noul": 0.995
+                        },
+                        "fit": {
+                            "type": "score",
+                            "score": 3.95
+                        }
+                    }
+                },
+                "answer": {
+                    "meets": 0.995,
+                    "fit": 3.95,
+                    "fit_label": "excellent fit"
+                },
+                "line": {
+                    "text": "Laya: 100% likely to meet every requirement, fit 4.0 of 4 (excellent fit).",
+                    "failed": false
+                }
+            },
+            {
+                "response": {
+                    "model": "laya-rl-agent-onnx",
+                    "answers": {
+                        "meets": {
+                            "type": "noul",
+                            "noul": 0.3333
+                        },
+                        "fit": {
+                            "type": "score",
+                            "score": 2.0004
+                        }
+                    }
+                },
+                "answer": {
+                    "meets": 0.3333,
+                    "fit": 2.0,
+                    "fit_label": "partial fit"
+                },
+                "line": {
+                    "text": "Laya: 33% likely to meet every requirement, fit 2.0 of 4 (partial fit).",
+                    "failed": false
+                }
+            },
+            {
+                "response": {
+                    "model": "laya-rl-agent-onnx",
+                    "answers": {
+                        "meets": {
+                            "type": "noul",
+                            "noul": 1
+                        },
+                        "fit": {
+                            "type": "score",
+                            "score": 0
+                        }
+                    }
+                },
+                "answer": {
+                    "meets": 1.0,
+                    "fit": 0.0,
+                    "fit_label": "no fit"
+                },
+                "line": {
+                    "text": "Laya: 100% likely to meet every requirement, fit 0.0 of 4 (no fit).",
+                    "failed": false
+                }
+            },
+            {
+                "response": {
+                    "model": "laya-rl-agent-onnx",
+                    "answers": {
+                        "meets": {
+                            "type": "noul",
+                            "noul": 0.5
+                        }
+                    }
+                },
+                "error": "Laya answered without the meets and fit scores."
+            }
+        ],
+        "errors": [
+            {
+                "error": "",
+                "line": {
+                    "text": "",
+                    "failed": false
+                }
+            },
+            {
+                "error": "Laya failed: inference failed",
+                "line": {
+                    "text": "No Laya reading this time. Laya failed: inference failed The score above doesn't depend on it.",
+                    "failed": true
+                }
+            }
+        ]
     }
 }

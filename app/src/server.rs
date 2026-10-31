@@ -25,21 +25,23 @@ use axum::routing::{get, post};
 use rust_embed::RustEmbed;
 use sqlx::SqlitePool;
 
-use crate::cv_match::pages;
+use crate::account::{self, key_vault::KeyVault};
 use crate::extension;
+use crate::laya::laya_client::LayaClient;
+use crate::matches::pages;
 use crate::taxonomy::Taxonomy;
 
 /// The port the app listens on unless told otherwise, fixed so the Jobnet extension can find it.
 pub const DEFAULT_PORT: u16 = 8765;
 
-/// modules/cv_match's css/ and js/, served under cv_match_module/ as Trongate serves them, and
+/// modules/cv_match's css/ and js/, served under match_module/ as Trongate serves them, and
 /// pdf.js beside them, which js/app.js reads uploaded PDFs with.
 #[derive(RustEmbed)]
-#[folder = "../assets/cv_match/"]
+#[folder = "../assets/match/"]
 #[include = "css/*"]
 #[include = "js/*"]
 #[include = "pdfjs/*.mjs"]
-struct CvMatchAssets;
+struct MatchAssets;
 
 /// Trongate MX, served under js/.
 #[derive(RustEmbed)]
@@ -47,30 +49,38 @@ struct CvMatchAssets;
 #[include = "trongate-mx.min.js"]
 struct PublicJs;
 
-/// What every request shares: the database, the taxonomy, the local user and the message the
-/// next page shows (Trongate's flashdata).
+/// What every request shares: the database, the taxonomy, the local user, where the user's API
+/// key is kept and the message the next page shows (Trongate's flashdata).
 pub struct AppState {
     db: SqlitePool,
     pub taxonomy: Arc<Taxonomy>,
     pub user_id: i64,
+    pub key_vault: KeyVault,
     flash: Mutex<Option<String>>,
+    /// When the pages fetch_job read in its window were fetched, oldest first (unix seconds).
+    fetches: Mutex<Vec<i64>>,
     port: u16,
     /// Where the Jobnet extension was written for the browser to load, or why it couldn't be.
     pub extension_folder: Result<PathBuf, String>,
+    /// Laya's model, when its folder has one.
+    pub laya: Option<LayaClient>,
     /// The PC's Tailscale name ("pc.tailnet.ts.net") that `tailscale serve` passes requests on
     /// from, or None when the app is only for this computer.
     pub tailscale_name: Option<String>,
 }
 
 impl AppState {
-    pub fn new(db: SqlitePool, taxonomy: Arc<Taxonomy>, user_id: i64, port: u16) -> Self {
+    pub fn new(db: SqlitePool, taxonomy: Arc<Taxonomy>, user_id: i64, port: u16, key_vault: KeyVault) -> Self {
         AppState {
             db,
             taxonomy,
             user_id,
+            key_vault,
             flash: Mutex::new(None),
+            fetches: Mutex::new(Vec::new()),
             port,
             extension_folder: Err("The extension wasn't written out.".to_string()),
+            laya: None,
             tailscale_name: None,
         }
     }
@@ -81,6 +91,21 @@ impl AppState {
 
     pub fn set_flash(&self, message: String) {
         *self.flash.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(message);
+    }
+
+    /// Counts a page fetch at now, or says in how many minutes the next one may go, when
+    /// pages::MAX_FETCHES were fetched in the last pages::FETCH_WINDOW_SECONDS.
+    pub fn count_fetch(&self, now: i64) -> Result<(), i64> {
+        /// Seconds in a minute, which the wait is told in.
+        const MINUTE: i64 = 60;
+        let mut fetches = self.fetches.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        fetches.retain(|at| *at > now - pages::FETCH_WINDOW_SECONDS);
+        if fetches.len() >= pages::MAX_FETCHES {
+            let wait = fetches[0] + pages::FETCH_WINDOW_SECONDS - now;
+            return Err((wait + MINUTE - 1) / MINUTE);
+        }
+        fetches.push(now);
+        Ok(())
     }
 
     pub fn take_flash(&self) -> Option<String> {
@@ -109,21 +134,38 @@ pub async fn local_user(db: &SqlitePool) -> sqlx::Result<i64> {
 pub fn router(state: Arc<AppState>) -> Router {
     Router::new()
         .route("/", get(pages::home))
-        .route("/cv_match", get(pages::index))
-        .route("/cv_match/{id}", get(pages::show))
-        .route("/cv_match/history_list", get(pages::history_list))
-        .route("/cv_match/history_more", get(pages::history_more))
-        .route("/cv_match/result/{id}", get(pages::result))
-        .route("/cv_match/quick_match", post(pages::quick_match))
-        .route("/cv_match/already_matched", post(pages::already_matched))
-        .route("/cv_match/submit_reject/{id}", post(pages::submit_reject))
-        .route("/cv_match/history", get(pages::history))
-        .route("/cv_match/joblog/{id}", get(pages::joblog))
-        .route("/cv_match/joblog_panel/{id}", get(pages::joblog_panel))
-        .route("/cv_match/joblog_status", post(pages::joblog_status))
-        .route("/cv_match/pdf", post(pages::pdf))
+        .route("/match", get(pages::index))
+        .route("/match/{id}", get(pages::show))
+        .route("/match/history_list", get(pages::history_list))
+        .route("/match/history_more", get(pages::history_more))
+        .route("/match/result/{id}", get(pages::result))
+        .route("/match/quick_match", post(pages::quick_match))
+        .route("/match/already_matched", post(pages::already_matched))
+        .route("/match/submit_reject/{id}", post(pages::submit_reject))
+        .route("/match/history", get(pages::history))
+        .route("/match/joblog/{id}", get(pages::joblog))
+        .route("/match/joblog_panel/{id}", get(pages::joblog_panel))
+        .route("/match/joblog_status", post(pages::joblog_status))
+        .route("/match/pdf", post(pages::pdf))
+        .route("/match/fetch_job", post(pages::fetch_job))
+        .route("/match/extract_job", post(pages::extract_job))
+        .route("/match/extract_cv", post(pages::extract_cv))
+        .route("/match/match", post(pages::r#match))
+        .route("/match/saved/{id}", get(pages::saved))
+        .route("/match/write_application", post(pages::write_application))
+        .route("/match/tailor_resume", post(pages::tailor_resume))
+        .route(
+            "/match/resume_comparison/{id}/{resume_id}",
+            get(pages::resume_comparison),
+        )
+        .route("/match/application_delivery/{id}", get(pages::application_delivery))
         .route("/joblog_extension", get(pages::joblog_extension))
-        .route("/cv_match_module/{*path}", get(cv_match_asset))
+        .route("/account", get(account::index))
+        .route("/account/submit_key", post(account::submit_key))
+        .route("/account/submit_uses", post(account::submit_uses))
+        .route("/account/submit_delete", post(account::submit_delete))
+        .route("/account/submit_check", post(account::submit_check))
+        .route("/match_module/{*path}", get(match_asset))
         .route("/js/{*path}", get(public_js))
         .fallback(pages::not_yet)
         .method_not_allowed_fallback(pages::not_yet)
@@ -182,8 +224,8 @@ fn allowed(method: &Method, headers: &HeaderMap, port: u16, tailscale_name: Opti
     }
 }
 
-async fn cv_match_asset(Path(path): Path<String>) -> Response {
-    asset(CvMatchAssets::get(&path), &path)
+async fn match_asset(Path(path): Path<String>) -> Response {
+    asset(MatchAssets::get(&path), &path)
 }
 
 async fn public_js(Path(path): Path<String>) -> Response {

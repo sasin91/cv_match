@@ -109,6 +109,17 @@ pub async fn profile_links(db: &SqlitePool, candidate_id: i64) -> sqlx::Result<V
     Ok(rows.into_iter().map(|row| (row.label, row.url)).collect())
 }
 
+/// The user's profile links (LinkedIn, GitHub, ...) as (label, url), none without a candidate.
+pub async fn links_for_user(db: &SqlitePool, user_id: i64) -> sqlx::Result<Vec<(String, String)>> {
+    let candidate = sqlx::query_scalar!(r#"SELECT id FROM candidates WHERE trongate_user_id = ?1"#, user_id)
+        .fetch_optional(db)
+        .await?;
+    match candidate {
+        Some(candidate_id) => profile_links(db, candidate_id).await,
+        None => Ok(Vec::new()),
+    }
+}
+
 /// The parts that aren't empty, joined (PHP's implode of array_filter).
 fn join_present(parts: &[&str], glue: &str) -> String {
     parts

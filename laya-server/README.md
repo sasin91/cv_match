@@ -64,6 +64,12 @@ cargo run --release
 
 The first build downloads a prebuilt ONNX Runtime (the `ort` crate does this).
 
+## In the desktop app
+
+The app (`../app`) runs this crate's model in its own process: copy the checkpoint folder's
+`rl_agent_config.json` and `tokenizer\`, and `out\laya.onnx` with `out\laya.onnx.data`, into
+`%APPDATA%\Recruiter\laya` (see the app's README). The server below is only for the PHP app.
+
 ## Point Recruiter at it
 
 In Recruiter's environment:

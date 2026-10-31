@@ -1,0 +1,110 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT provider, model, base_url, key_hint,\n       use_for_resume, use_for_application, use_for_job_evaluation,\n       updated_at\nFROM user_llm_keys\nWHERE trongate_user_id = ?1\n",
+  "describe": {
+    "columns": [
+      {
+        "name": "provider",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_llm_keys",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "name": "model",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_llm_keys",
+            "name": "model"
+          }
+        }
+      },
+      {
+        "name": "base_url",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_llm_keys",
+            "name": "base_url"
+          }
+        }
+      },
+      {
+        "name": "key_hint",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_llm_keys",
+            "name": "key_hint"
+          }
+        }
+      },
+      {
+        "name": "use_for_resume",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "user_llm_keys",
+            "name": "use_for_resume"
+          }
+        }
+      },
+      {
+        "name": "use_for_application",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "user_llm_keys",
+            "name": "use_for_application"
+          }
+        }
+      },
+      {
+        "name": "use_for_job_evaluation",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "user_llm_keys",
+            "name": "use_for_job_evaluation"
+          }
+        }
+      },
+      {
+        "name": "updated_at",
+        "ordinal": 7,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "user_llm_keys",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "eab7a527b5677938e8bdfd5b274822c2d23d34a7b522277276c267521c43fe49"
+}

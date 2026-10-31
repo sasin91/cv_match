@@ -8,26 +8,31 @@ PHP modules file by file, keeping their names, and is tested against what the PH
 
 | Rust | Ported from |
 | --- | --- |
-| `src/taxonomy.rs` | `taxonomy/php/Taxonomy.php`, the lexical lookup (cv_match ranks without the embedding model, so `Static_model` and `index.q8.bin` aren't needed) |
-| `src/cv_match/free_reader.rs` | `modules/cv_match/Free_reader.php` (with `free_reader_ignore.php` and `free_reader_soft.php`) |
-| `src/cv_match/cv_matcher.rs` | `modules/cv_match/Cv_matcher.php` |
-| `src/cv_match/match_score.rs` | `modules/cv_match/Match_score.php` |
+| `src/taxonomy.rs` | `taxonomy/php/Taxonomy.php`, the lexical lookup (match ranks without the embedding model, so `Static_model` and `index.q8.bin` aren't needed) |
+| `src/matches/free_reader.rs` | `modules/cv_match/Free_reader.php` (with `free_reader_ignore.php` and `free_reader_soft.php`) |
+| `src/matches/matcher.rs` | `modules/cv_match/Cv_matcher.php` |
+| `src/matches/match_score.rs` | `modules/cv_match/Match_score.php` |
 | `src/php.rs` | the PHP built-ins whose exact behaviour matters (`round`, `trim`) |
-| `src/db.rs`, `migrations/`, `queries/` | `db/schema.sql`'s cv_match tables, for SQLite, and the longer queries |
+| `src/db.rs`, `migrations/`, `queries/` | `db/schema.sql`'s match tables, for SQLite, and the longer queries |
 | `src/import.rs` | (new) the one-time copy from MariaDB |
-| `src/server.rs`, `src/cv_match/pages.rs` | `Cv_match.php` (the page and its endpoints) |
-| `src/cv_match/cv_match_model.rs` | `Cv_match_model.php` |
-| `src/cv_match/match_result.rs`, `saved_match_row.rs`, `batch_row.rs`, `verdict_row.rs`, `location_notice.rs`, `apply_notice.rs`, `reject_button.rs`, `reject_reason.rs`, `match_documents.rs`, `document_box.rs`, `score_cursor.rs` | the view models of the same names |
-| `src/cv_match/apply_instructions.rs` | `Apply_instructions.php` |
-| `templates/cv_match/*.html` | `modules/cv_match/views/*.php` |
+| `src/server.rs`, `src/matches/pages.rs` | `Cv_match.php` (the page and its endpoints) |
+| `src/matches/match_model.rs` | `Cv_match_model.php` |
+| `src/matches/match_result.rs`, `saved_match_row.rs`, `batch_row.rs`, `verdict_row.rs`, `location_notice.rs`, `apply_notice.rs`, `reject_button.rs`, `reject_reason.rs`, `match_documents.rs`, `document_box.rs`, `score_cursor.rs` | the view models of the same names |
+| `src/matches/apply_instructions.rs` | `Apply_instructions.php` |
+| `templates/match/*.html` | `modules/cv_match/views/*.php` |
 | `src/profile.rs` | the profile as text (`Profile_fields::text` and its queries) |
-| `src/cv_match/joblog.rs`, `joblog_panel.rs` | `Joblog.php` (with `danish_postcodes.php`, read as it is) and `Joblog_panel.php` |
+| `src/matches/joblog.rs`, `joblog_panel.rs` | `Joblog.php` (with `danish_postcodes.php`, read as it is) and `Joblog_panel.php` |
 | `src/extension.rs` | (new) ships `extension/jobnet-joblog` and writes it out for the browser |
-| `src/cv_match/pdf_writer.rs`, `tailored_resume.rs` | `Pdf_writer.php`, and the part of `Tailored_resume.php` its résumé layout uses |
+| `src/matches/pdf_writer.rs`, `tailored_resume.rs` | `Pdf_writer.php` and `Tailored_resume.php` |
+| `src/matches/match_prompts.rs` | `Match_prompts.php` (extract_job, extract_cv and the judging) |
+| `src/matches/ai_match.rs`, `document_writer.rs`, `llm_key.rs` | `Cv_match.php`'s `_ai_match`, `_write_application`, `_tailor_resume` and `llm()` |
+| `src/matches/page_reader.rs` | `Page_reader.php` (fetch_job) |
+| `src/matches/application_delivery.rs`, `cv_links.rs`, `resume_comparison.rs` | the Apply dialog and the résumé's comparison, of the same names |
+| `src/laya/laya_client.rs` | `modules/laya/Laya_client.php`, on `laya-server`'s model in this process instead of over HTTP |
 | `src/pdf/` | (new) stands in for dompdf: lays the page out on A4 as dompdf 3.1 did and writes the PDF |
 
 The PHP files named here are in [sasin91/recruiter](https://github.com/sasin91/recruiter). What the
-app builds in from there is copied into `../assets` (cv_match's css and js, Trongate MX, the
+app builds in from there is copied into `../assets` (match's css and js, Trongate MX, the
 taxonomy index `taxonomy/data/index.json` and `danish_postcodes.php`); the Jobnet extension
 lives in `../extension/jobnet-joblog`.
 
@@ -35,9 +40,10 @@ lives in `../extension/jobnet-joblog`.
 
     cargo run --release
 
-serves the app on http://127.0.0.1:8765/cv_match and opens it in your default browser
-(`--port`, `--database file`, `--no-browser`, and `--tailscale-name` for your phone: see ../docs/phone.md). It is the PHP app's match page with the same CSS
-and JS (`assets/cv_match/css`, `js`, and Trongate MX from `assets/js`, built into the exe), for
+serves the app on http://127.0.0.1:8765/match and opens it in your default browser
+(`--port`, `--database file`, `--laya folder`, `--no-browser`, and `--tailscale-name` for your phone:
+see [../docs/phone.md](../docs/phone.md)). It is the PHP app's match page
+with the same CSS and JS (`assets/match/css`, `js`, and Trongate MX from `assets/js`, built into the exe), for
 one local user who is always signed in:
 
 - the saved matches by list (Shortlist, All, Applied not on Jobnet yet, On Jobnet, Rejected),
@@ -46,14 +52,44 @@ one local user who is always signed in:
   résumé as written;
 - Not interested and Bring back;
 - the free keyword match of new posts against your profile or a pasted CV;
+- with your own key (below), the AI match: the post and CV read by the model (extract_job,
+  extract_cv), what the taxonomy can't decide judged by it, scored and saved; a post read from a
+  pasted link (fetch_job), public web pages only, never this computer or the home network;
+- the job application and the tailored résumé written for a saved match, each writing kept as
+  a new version: the box shows the newest, with the earlier ones listed under it (when, by which
+  model, with which notes) to copy or download as a PDF; the résumé's own match against the post
+  next to the CV's;
+- the Apply dialog: by email (recipient, subject, body, mailto link) or on the employer's site,
+  with the PDFs and your profile links;
 - a match's Jobnet joblog panel, and what the Jobnet extension asks for (the history, a joblog
   entry, marking a match as on Jobnet, the PDFs it attaches);
-- the application, the tailored résumé, the CV and the job post as PDFs (`POST cv_match/pdf`);
+- the application, the tailored résumé, the CV and the job post as PDFs (`POST match/pdf`);
 - reading an uploaded PDF CV in the browser with pdf.js, which the app serves itself
-  (`assets/cv_match/pdfjs`), so it works offline.
+  (`assets/match/pdfjs`), so it works offline;
+- the API key page (http://127.0.0.1:8765/account), below;
+- Laya's reading of the free match and the AI match, when its model is there (below).
 
-What isn't ported yet (the AI match, fetching a post from a link, writing, the Apply dialog)
-answers with "... isn't in the desktop app yet.", which the page shows as its error.
+## Laya
+
+Laya reads a match's requirement verdicts (the Laya summary) and answers how likely the CV meets
+every requirement and how good a fit it is, 0 to 4; the result shows it as one line under the
+score. The model is `laya-server`'s, run inside the app on ONNX Runtime (linked into the exe), so
+no Laya service or Python is needed. It needs the exported English checkpoint in one folder,
+`%APPDATA%\Recruiter\laya` (next to the database, or `--laya folder`):
+
+    laya\rl_agent_config.json
+    laya\tokenizer\            (tokenizer.json, tokenizer_config.json, ...)
+    laya\laya.onnx
+    laya\laya.onnx.data         (1.7 GB)
+
+that is, the checkpoint folder and the two files `export.py` writes (see
+`../laya-server/README.md`, "One-time: export the model"). Without `laya.onnx` there, the app
+says so at start and the matches go on without a Laya line, as the PHP app does without
+`LAYA_URL`. The
+model loads in the background at start (a few seconds, about 1.5 GB of memory); a match made
+before then waits for it. When it can't load or answer, the result says why under the score and
+the log has it too; the score doesn't depend on it. The PHP app's per-visitor limit
+(`Laya_limit`) isn't ported: the model answers only you.
 
 ## PDFs
 
@@ -70,6 +106,31 @@ The server only answers requests whose Host is its own address, and only takes c
 from its own pages and the Jobnet extension (their Origin), so other sites open in the browser
 can't use it.
 
+## The API key and the language models
+
+The AI features run on your own key, saved on the API key page (`account`, ported from
+recruiter's account page): an OpenAI key, an Anthropic key, or a local OpenAI-compatible server
+such as Ollama (`http://localhost:11434/v1`) or LM Studio (`http://localhost:1234/v1`), which
+needs a model name and usually no key. The key goes in Windows Credential Manager (service
+`Recruiter`, user `user_llm_keys:1@` and the database file's full path, so each database has its
+own key), never in the database; `user_llm_keys` keeps the provider,
+model, address, the key's last 4 characters and what the key is used for. "Check key" sends one
+tiny request and says whether it was answered.
+
+`src/llm` is modules/llm: `Llm::use_key` picks the adapter, and `structured()` asks for one JSON
+answer that follows a schema. `openai` speaks Chat Completions (and the Responses API with web
+search), also for a local server at its `base_url`; `anthropic` speaks the Messages API with
+structured output, effort and server-side refusal fallbacks. With no model named, a key runs on
+gpt-5.4-mini (OpenAI) or claude-sonnet-5-5 (Anthropic). A call waits up to 180 seconds; errors
+come back in the provider's own words for the page, and the log gets the status, the rate-limit
+headers and the body, with any key in it cut to its prefix.
+
+The match page runs each AI step on the key when it is switched on for that use: evaluating job
+posts (extract_job, extract_cv, the judging in match), writing applications, tailoring résumés.
+With evaluating switched off, the free reader reads the post and CV instead, so a match is still
+saved and can have its application and résumé written. Without a key for a use, the page says
+why (none saved, switched off, or gone from Credential Manager) and links to the API key page.
+
 ## The Jobnet extension
 
 The app carries `extension/jobnet-joblog` and writes it to a `jobnet-joblog` folder next to the
@@ -81,13 +142,26 @@ Reload on the extension. Its manifest `key` fixes its ID, the one `src/extension
 ## Database
 
 The app keeps its data in one SQLite file, `%APPDATA%\Recruiter\recruiter.sqlite` on Windows.
-Its tables are cv_match's MariaDB tables with the same names (`migrations/`, applied in order at
-start-up and recorded in `schema_migrations`), with three changes for one local user:
+Its tables are cv_match's MariaDB tables (`migrations/`, applied in order at start-up and
+recorded in `schema_migrations`) without the `cv_match` prefix, since the whole app is the
+match: `cv_matches` is `matches`, `cv_match_id` is `match_id`, `cv_match_items` is
+`match_items`, and so on; the import reads each under its MariaDB name. Besides the names, there
+are four changes:
 
 - `trongate_users` keeps only `id`, and `candidates` drops the login columns.
 - `user_llm_keys.uses` (a SET) is three yes/no columns, `use_for_resume`,
   `use_for_application` and `use_for_job_evaluation`; `base_url` is set for a local model.
 - The API key itself goes in Windows Credential Manager, so the table has no key column.
+- The documents written for a match (its application and tailored résumé) are versions in
+  `documents` instead of `matches.application_text` and `resume_text`, so writing one again
+  keeps the one before; the newest is the one shown. Each version records the model that wrote
+  it (`written_by`) and the notes it was written with. The résumé's fields (`match_resumes`,
+  `match_resume_entries`, `match_resume_lines`) hang on the résumé version
+  (`document_id`) instead of the match.
+
+While the app is new, `migrations/0001_schema.sql` is changed in place instead of getting new
+migrations. A database made from an older version of it is refused at start with a message
+saying so: delete `recruiter.sqlite` and run `recruiter import` again (below).
 
 To copy your data from the PHP app's MariaDB (Herd's copy of production, `recruiter_prod`):
 
@@ -95,8 +169,9 @@ To copy your data from the PHP app's MariaDB (Herd's copy of production, `recrui
 
 `--from mysql://user:pass@host:3306/db` reads another database and `--database file` writes
 another SQLite file. Only the candidate with that email is copied, with every id as it was, all
-in one transaction. It refuses a database that already has your data. Your LLM key isn't
-copied, because it is encrypted with the server's secret: add it again in the app.
+in one transaction, each written application and résumé as its first version. It refuses a
+database that already has your data. Your LLM key isn't
+copied, because it is encrypted with the server's secret: add it again on the API key page.
 
 ### Queries
 
@@ -127,7 +202,10 @@ in `eval/data/gold.jsonl`, plus typos and edge cases), the free reading of synth
 CVs, all 28 post x CV matches (criteria, verdicts, score, Laya summary) and 27 texts read for how
 the post asks to be applied to, and the joblog: 343 deadlines, working hours, places and contact
 people, 16 saved matches filled in as joblog entries and 10 days applied in Danish time; and
-the 53 PDF pages and 7 download names Pdf_writer makes of letters, résumés, CVs and job posts.
+the 53 PDF pages and 7 download names Pdf_writer makes of letters, résumés, CVs and job posts;
+and Laya's two questions, 11 of its answers as Laya_client reads them and the line Match_result
+prints for each and for a failure. The model itself isn't in the repo, so the tests never run
+it; `laya-server`'s own tests check it against Python's laya when its files are there.
 
 The fixtures come from the PHP code itself, in a checkout of sasin91/recruiter. After changing
 the PHP side, write them again and let the Rust tests show what the port has to follow:
@@ -135,11 +213,13 @@ the PHP side, write them again and let the Rust tests show what the port has to 
     php app/tests/fixtures/generate.php ../recruiter
 
 `tests/server.rs` sends the page's requests to the server: the lists, a saved match, the free
-match, the joblog, the extension's calls, the PDFs, what isn't ported yet, and requests from
-other sites.
+match, the AI match and writing against a stand-in for a local model on 127.0.0.1, the Apply
+dialog, the joblog, the extension's calls, the PDFs, the API key page, links that may not be
+fetched, and requests from other sites. `tests/llm.rs` calls each adapter against a stand-in for its API on
+127.0.0.1 and checks the request it sends and how it reads the answers and failures.
 
 `tests/import.rs` imports from a real MariaDB with recruiter's `db/schema.sql` loaded. It empties that
-database's cv_match tables, so point it at a scratch database only:
+database's match tables, so point it at a scratch database only:
 
     RECRUITER_TEST_MYSQL=mysql://test:test@127.0.0.1:3306/recruiter_test cargo test --test import -- --ignored --test-threads=1
 
