@@ -1,5 +1,5 @@
-//! The Rust port answers as the PHP app does: every case in tests/fixtures/parity.json was
-//! written by tests/fixtures/generate.php from the PHP modules.
+//! The matching core gives the expected answers: every case in tests/fixtures/parity.json, a
+//! fixed snapshot of what the web app answered. A change that alters an answer shows up here.
 
 use std::sync::LazyLock;
 
@@ -15,7 +15,7 @@ use recruiter::taxonomy::{self, Taxonomy};
 use serde::Serialize;
 use serde_json::{Value, json};
 
-/// The fixed day the fixtures count "until now" to (generate.php's NOW).
+/// The fixed day the fixtures count "until now" to (the snapshot's NOW).
 const NOW: YearMonth = YearMonth { year: 2026, month: 10 };
 
 /// How far two scores may drift apart: both sides compute in doubles, in the same order.
@@ -34,8 +34,7 @@ fn cases(name: &str) -> &'static Vec<Value> {
         .unwrap_or_else(|| panic!("parity.json has no {name}"))
 }
 
-/// Equal as PHP's json_encode would print them: numbers by value, and an empty PHP array as
-/// either [] or {}.
+/// Equal as JSON: numbers by value, and an empty list or map as either [] or {}.
 fn same(expected: &Value, actual: &Value) -> bool {
     match (expected, actual) {
         (Value::Number(a), Value::Number(b)) => {
@@ -54,7 +53,7 @@ fn assert_same(what: &str, expected: &Value, actual: impl Serialize) {
     let actual = serde_json::to_value(actual).unwrap();
     assert!(
         same(expected, &actual),
-        "{what}\n  PHP:  {}\n  Rust: {}",
+        "{what}\n  expected: {}\n  actual:   {}",
         serde_json::to_string(expected).unwrap(),
         serde_json::to_string(&actual).unwrap()
     );
@@ -387,7 +386,7 @@ fn pdf_file_names_are_the_ones_php_gives() {
     }
 }
 
-/// The Laya line as PHP's Match_result::laya() returns it.
+/// The Laya line as Match_result::laya() returns it.
 fn laya_line(reading: &LayaReading) -> Value {
     let line = LayaLine::from(reading);
     json!({"text": line.text, "failed": line.failed})

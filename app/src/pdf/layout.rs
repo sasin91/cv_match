@@ -1,4 +1,4 @@
-//! A page (pdf::page) placed on A4 sheets the way dompdf 3.1 placed Pdf_writer.php's HTML,
+//! A page (pdf::page) placed on A4 sheets the way dompdf 3.1 placed this HTML,
 //! following the page's style sheet (page::STYLE): each element's font size, line height,
 //! weight and margins, the list's bullets and hanging indent, and lines wrapped at spaces.
 //!

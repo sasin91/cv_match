@@ -1,7 +1,8 @@
-//! Recruiter's cv_match as a local desktop app. The matching core is ported from the PHP
-//! modules file by file, with the same names, and tests/parity.rs checks it answers as PHP does.
+//! Recruiter's match as a local desktop app. tests/parity.rs checks the matching core's answers
+//! against the fixed expected answers in tests/fixtures/parity.json.
 
 pub mod account;
+pub mod compat;
 pub mod db;
 pub mod extension;
 pub mod import;
@@ -9,7 +10,6 @@ pub mod laya;
 pub mod llm;
 pub mod matches;
 pub mod pdf;
-pub mod php;
 pub mod profile;
 pub mod server;
 pub mod taxonomy;

@@ -1,4 +1,4 @@
-//! llm/anthropic, ported from modules/llm/anthropic/Anthropic.php: Claude through Anthropic's
+//! llm/anthropic: Claude through Anthropic's
 //! Messages API over HTTPS (Rust has no official SDK). Structured output via
 //! output_config.format, thinking depth via output_config.effort, and server-side refusal
 //! fallbacks enabled.

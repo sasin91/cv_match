@@ -1,11 +1,10 @@
-//! account: the API key page, ported from modules/account/Account.php for the one local user.
+//! account: the API key page for the one local user.
 //! The AI features of the CV match run on the user's own OpenAI or Anthropic API key, or on a
 //! local OpenAI-compatible server (Ollama, LM Studio). The key is kept in Windows Credential
 //! Manager and never shown again; only its last 4 characters are. Its uses (tailoring résumés,
 //! writing applications, evaluating job posts) can each be switched off.
 //!
-//! Profile links, downloading your data and deleting the account stay in the PHP app: there is
-//! no account on the desktop.
+//! There is no account on the desktop, so no profile links, data download or account deletion.
 
 pub mod account_model;
 pub mod key_vault;
@@ -156,7 +155,7 @@ pub async fn submit_delete(State(state): State<Arc<AppState>>) -> Response {
 }
 
 /// POST account/submit_check: asks the saved key's model for one tiny answer, and says whether
-/// it came (not in the PHP app, where the AI match was the check).
+/// it came.
 pub async fn submit_check(State(state): State<Arc<AppState>>) -> Response {
     let said = check(&state).await.unwrap_or_else(|why| why);
     state.set_flash(said);
@@ -278,7 +277,7 @@ fn model_errors(form: &KeyForm) -> Vec<String> {
     Vec::new()
 }
 
-/// Letters, digits and . _ : / - (PHP's [A-Za-z0-9._:\/-]).
+/// Letters, digits and . _ : / -.
 fn is_model_name_character(c: char) -> bool {
     c.is_ascii_alphanumeric() || "._:/-".contains(c)
 }

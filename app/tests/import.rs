@@ -1,7 +1,7 @@
-//! The import against a real MariaDB with db/schema.sql loaded. It needs one, so it is ignored
-//! by default: RECRUITER_TEST_MYSQL=mysql://user:pass@127.0.0.1:3306/db cargo test -- --ignored
-//! (the recruiter-desktop workflow runs it with a MariaDB service). The test empties that
-//! database's cv_match tables, so never point it at real data.
+//! The import against a real MariaDB with tests/fixtures/mariadb_schema.sql loaded. It needs one,
+//! so it is ignored by default: RECRUITER_TEST_MYSQL=mysql://user:pass@127.0.0.1:3306/db cargo test
+//! -- --ignored (the recruiter-desktop workflow runs it with a MariaDB service). The test empties
+//! that database's cv_match tables, so never point it at real data.
 
 use recruiter::{db, import};
 use sqlx::mysql::MySqlConnection;
@@ -66,7 +66,7 @@ async fn count(target: &SqlitePool, table: &str) -> i64 {
 }
 
 #[tokio::test]
-#[ignore = "needs a MariaDB with db/schema.sql: set RECRUITER_TEST_MYSQL"]
+#[ignore = "needs a MariaDB with mariadb_schema.sql: set RECRUITER_TEST_MYSQL"]
 async fn copies_only_my_rows_with_their_ids() {
     let url = source();
     seed(&url).await;
@@ -125,7 +125,7 @@ async fn copies_only_my_rows_with_their_ids() {
 }
 
 #[tokio::test]
-#[ignore = "needs a MariaDB with db/schema.sql: set RECRUITER_TEST_MYSQL"]
+#[ignore = "needs a MariaDB with mariadb_schema.sql: set RECRUITER_TEST_MYSQL"]
 async fn refuses_a_second_import_and_an_unknown_email() {
     let url = source();
     seed(&url).await;

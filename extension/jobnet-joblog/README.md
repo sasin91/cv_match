@@ -2,7 +2,7 @@
 
 A browser extension that fills in Jobnet's "Opret joblog" form from a saved
 match in Recruiter's CV checker: the same values the match's "Jobnet joblog"
-panel shows (`match/joblog/{id}`, modules/cv_match/Joblog.php), and the
+panel shows (`match/joblog/{id}`, app/src/matches/joblog.rs), and the
 application, CV and job post as PDFs in Jobnet's upload fields. It never
 presses Gem: check the form and save it yourself.
 
@@ -22,9 +22,8 @@ For the website instead, set `base` in the extension's storage to
 `https://recruiter.trongate.dev/` and sign in to Recruiter in the same browser:
 the extension uses that sign-in.
 
-From the browser stores: the links are on https://recruiter.trongate.dev/joblog_extension
-(modules/joblog_extension/Store_links.php), and the candidate's pages show a
-banner with the one for your browser until the extension is installed.
+From the browser stores: the links are on https://recruiter.trongate.dev/joblog_extension,
+and the candidate's pages show a banner with the one for your browser until the extension is installed.
 
 From this folder (development, or before a store has it):
 
@@ -87,6 +86,5 @@ the file each store takes: the manifest, the scripts and `icons/`. Bump
 `version` in manifest.json for every upload. `store/` holds what the stores
 ask for besides the zip: the 440x280 promo tile (Chrome), the 300x300 logo
 (Edge) and `listing.md`, the texts for the store forms. The privacy policy is
-the "Privacy policy" part of /joblog_extension (modules/joblog_extension/views/index.php);
-change it with the manifest. When a listing is live, put its link in
-modules/joblog_extension/Store_links.php.
+the "Privacy policy" part of the web app's /joblog_extension page; change it
+with the manifest.

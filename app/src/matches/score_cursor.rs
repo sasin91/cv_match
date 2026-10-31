@@ -1,5 +1,4 @@
-//! The cursor of a list of matches shown best first, ported from
-//! modules/cv_match/Score_cursor.php: highest score, then newest, then highest id.
+//! The cursor of a list of matches shown best first: highest score, then newest, then highest id.
 //! "{score}_{at}_{id}" names the last row shown, and the next batch is the rows after it in that
 //! order. Rows without a score yet count as score -1, so they come after every scored row.
 

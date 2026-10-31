@@ -4,14 +4,11 @@ Recruiter's CV match as a desktop app: one program for Windows (or any desktop) 
 saved matches in SQLite, serves the match page on http://127.0.0.1:8765 in your own browser, and
 works with Jobnet's joblog through its browser extension. One local user, no sign-in.
 
-It is ported from the PHP app [sasin91/recruiter](https://github.com/sasin91/recruiter), file by
-file and with the same names, and tested against what the PHP code answers.
-
 | Folder | What |
 | --- | --- |
-| `app/` | the app (`recruiter.exe`): the matching, the pages, the database, the import from the PHP app's MariaDB. See its README. |
-| `laya-server/` | Laya on ONNX Runtime in Rust: the model the app runs in-process, and a `/v1/systemone` server for the PHP app |
-| `assets/` | what the app builds in: from recruiter cv_match's CSS and JS, Trongate MX, the taxonomy index and the Danish postcodes; pdf.js 4.10.38 (`match/pdfjs`) and DejaVu Sans 2.37 (`fonts`) |
+| `app/` | the app (`recruiter.exe`): the matching, the pages, the database. See its README. |
+| `laya-server/` | Laya on ONNX Runtime in Rust: the model the app runs in-process, and a `/v1/systemone` HTTP server |
+| `assets/` | what the app builds in: the page's CSS and JS, Trongate MX, the taxonomy index and the Danish postcodes; pdf.js 4.10.38 (`match/pdfjs`) and DejaVu Sans 2.37 (`fonts`) |
 | `extension/jobnet-joblog/` | the Jobnet extension the app ships and you load once in Edge or Chrome |
 
 ## Setting it up on Windows
@@ -31,25 +28,16 @@ Build it:
 
 The first build downloads ONNX Runtime for Laya (from cdn.pyke.io) and links it into the exe.
 
-### Your data
-
-Import your candidate before the first start. On its first start, the app creates its local
-user, and the import refuses a database that already has one. With your local MariaDB copy of
-production (`recruiter_prod`) running:
-
-    .\target\release\recruiter.exe import --email you@example.com
-
-This makes `%APPDATA%\Recruiter\recruiter.sqlite`. To import again, stop the app, move that file
-aside, and run the import again. The same applies when the app refuses, at start, a database
-made from an older schema.
-
 ### Starting it
 
     .\target\release\recruiter.exe
 
-The app writes the Jobnet extension next to the database and opens
-http://127.0.0.1:8765/match. Close its window to stop it. `recruiter.exe --help` lists the
-options.
+On the first start the app makes an empty database, `%APPDATA%\Recruiter\recruiter.sqlite`,
+writes the Jobnet extension next to it and opens http://127.0.0.1:8765/match.
+Close its window to stop it. `recruiter.exe --help` lists the options.
+
+If the app refuses, at start, a database made from an older schema, move `recruiter.sqlite`
+aside and start again.
 
 ### The API key
 
@@ -87,6 +75,17 @@ In short, run `tailscale serve --bg http://127.0.0.1:8765` once, start the app w
 `--tailscale-name pc.your-tailnet.ts.net`, and open `https://pc.your-tailnet.ts.net/match` on the
 phone with Tailscale on.
 
+### Moving off the web app (one-off)
+
+To bring your saved matches over from the web app's MariaDB (a local copy of production, such
+as `recruiter_prod`), import them into a new database **before** the app's first start. The
+first start creates the local user, and the import refuses a database that already has one:
+
+    .\target\release\recruiter.exe import --email you@example.com
+
+To import again, stop the app, move `recruiter.sqlite` aside, and run the import again. Your
+LLM key isn't copied: save it again on the API key page.
+
 ### Starting it at login
 
 In Task Scheduler, create a task that runs at log on, with the action
@@ -97,8 +96,8 @@ In Task Scheduler, create a task that runs at log on, with the action
 
 With a real key saved on the API key page, check these by hand after a change:
 
-- [ ] **The lists:** http://127.0.0.1:8765/match shows your imported matches under Shortlist,
-      All and the other lists. Show more loads more.
+- [ ] **The lists:** after a few matches, http://127.0.0.1:8765/match shows them under
+      Shortlist, All and the other lists. Show more loads more.
 - [ ] **The free match:** paste a job post's text, with evaluating switched off on the key page.
       A match is saved and scored by the free reader.
 - [ ] **The AI match:** switch evaluating on and paste another post's text. The result shows the
@@ -127,11 +126,8 @@ These are the checks CI runs on Windows. Run them from `app\` before a push:
     cargo clippy --all-targets -- -D warnings
     cargo test --release
 
-With PHP 8.4 and a checkout of sasin91/recruiter next to this repository, the fixture check
-confirms the parity fixtures are still what the PHP code answers. Run it from the repository
-root:
-
-    php app/tests/fixtures/generate.php ../recruiter
-    git diff --exit-code -- app/tests/fixtures/parity.json
+The parity tests compare the matching with a fixed snapshot of expected answers
+(`app/tests/fixtures/parity.json`). When a change is meant to move an answer, update the
+snapshot in the same commit.
 
 `app/README.md` has more on the tests, including the MariaDB import test.

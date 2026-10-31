@@ -73,7 +73,7 @@ pub struct Requirement {
 pub struct Profile {
     pub name: String,
     /// Where the candidate lives, as the CV gives it ("Slagelse, 4200"); the free reader leaves
-    /// it empty, and so does its JSON, as PHP's Free_reader has no location.
+    /// it empty, and so does its JSON, as Free_reader has no location.
     #[serde(skip_serializing_if = "String::is_empty")]
     pub location: String,
     pub text_en: String,

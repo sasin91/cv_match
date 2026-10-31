@@ -1,5 +1,4 @@
-//! A job application, tailored résumé, CV or job post as a printable A4 PDF, ported from
-//! modules/cv_match/Pdf_writer.php.
+//! A job application, tailored résumé, CV or job post as a printable A4 PDF.
 //!
 //! A résumé tailored with fields (tailored_resume) is laid out from them by resume_pdf(). The
 //! application, and a résumé written before résumés had fields, are plain text: the application
@@ -8,18 +7,17 @@
 //! read like the old résumé, and the job post (kind job, for Jobnet's joblog) is its title,
 //! company and link over its text.
 //!
-//! The PHP code wrote that as a small HTML page for dompdf. Here the same page is a tree
-//! (pdf::page): html() prints it as the PHP code did, which the parity tests compare, and pdf()
-//! lays it out itself (pdf::layout) in the same style. Nothing remote is loaded.
+//! The page is a tree (pdf::page): html() prints it as HTML, which the parity tests compare, and
+//! pdf() lays it out itself (pdf::layout) in the same style. Nothing remote is loaded.
 
 use std::sync::LazyLock;
 
 use regex::Regex;
 
 use super::tailored_resume::{self, ResumeEntry, TailoredResume};
+use crate::compat;
 use crate::pdf::page::{Block, BlockClass, Family, LineBreak, Node, Page, Paragraph, ParagraphClass};
 use crate::pdf::{self, fonts};
-use crate::php;
 
 pub const KINDS: [&str; 4] = ["application", "resume", "cv", "job"];
 
@@ -44,7 +42,7 @@ fn pattern(source: &str) -> Regex {
     Regex::new(source).unwrap_or_else(|e| panic!("{source}: {e}"))
 }
 
-/// A blank line (PHP's /\n\s*\n/, whose \s is ASCII only without /u).
+/// A blank line: a newline, ASCII whitespace (compat::is_pcre_space), a newline.
 static BLANK_LINE: LazyLock<Regex> = LazyLock::new(|| pattern(r"\n[\t\n\x0B\x0C\r ]*\n"));
 /// A "- " bullet line, and its text.
 static BULLET: LazyLock<Regex> = LazyLock::new(|| pattern(r"^[-•*–]\s+(.*)$"));
@@ -109,7 +107,7 @@ fn resume_fields_page(resume: &TailoredResume, title: &str) -> Page {
     }
     let contact: Vec<String> = [tailored_resume::contact(resume), resume.links.join(" · ")]
         .into_iter()
-        .filter(|line| php::filled(line))
+        .filter(|line| compat::filled(line))
         .collect();
     if !contact.is_empty() {
         body.push(Node::Paragraph(Paragraph::with_class(ParagraphClass::Contact, contact)));
@@ -192,9 +190,8 @@ fn section(heading: &str, blocks: Vec<Node>) -> Vec<Node> {
     nodes
 }
 
-/// The page, in the font that can set everything the body prints. PHP chose the font from the
-/// input text (or the résumé's fields) instead, so a job title above the post, which the text
-/// doesn't hold, could print "?" for a letter Helvetica lacks.
+/// The page, in the font that can set everything the body prints, the job title
+/// above the post included, so no letter Helvetica lacks prints as "?".
 fn page(body: Vec<Node>, title: &str) -> Page {
     let family = font(body.iter().flat_map(Node::texts));
     Page {
@@ -218,7 +215,7 @@ fn font<'a>(mut texts: impl Iterator<Item = &'a str>) -> Family {
 fn letter_html(text: &str) -> Node {
     let paragraphs = BLANK_LINE
         .split(text)
-        .map(php::trim)
+        .map(compat::trim)
         .filter(|paragraph| !paragraph.is_empty())
         .map(|paragraph| {
             Node::Paragraph(Paragraph {
@@ -245,9 +242,9 @@ fn job_html(text: &str, title: &str) -> Node {
             nodes.push(Node::List(std::mem::take(bullets)));
         }
     };
-    for block in BLANK_LINE.split(php::trim(text)) {
-        for line in php::trim(block).split('\n') {
-            let line = php::trim(line);
+    for block in BLANK_LINE.split(compat::trim(text)) {
+        for line in compat::trim(block).split('\n') {
+            let line = compat::trim(line);
             if let Some(bullet) = bullet_text(line) {
                 bullets.push(bullet.to_string());
             } else if !line.is_empty() {
@@ -322,18 +319,18 @@ impl ResumeReading {
 /// with no digits and no comma; a line followed by bullets is a role (or a school) and stays on
 /// one page with them; "- " lines are bullets and anything else is a paragraph.
 fn resume_html(text: &str) -> Vec<Node> {
-    let all: Vec<&str> = php::trim(text).split('\n').collect();
+    let all: Vec<&str> = compat::trim(text).split('\n').collect();
     if all == [""] {
         return Vec::new();
     }
-    let mut nodes = vec![Node::Heading1(php::trim(all[0]).to_string())];
+    let mut nodes = vec![Node::Heading1(compat::trim(all[0]).to_string())];
     let mut lines = &all[1..];
     let mut contact = Vec::new();
     while let Some((first, rest)) = lines.split_first() {
-        if php::trim(first).is_empty() {
+        if compat::trim(first).is_empty() {
             break;
         }
-        contact.push(php::trim(first).to_string());
+        contact.push(compat::trim(first).to_string());
         lines = rest;
     }
     nodes.push(Node::Paragraph(Paragraph::with_class(ParagraphClass::Contact, contact)));
@@ -341,9 +338,9 @@ fn resume_html(text: &str) -> Vec<Node> {
     let mut reading = ResumeReading::default();
     let mut after_heading = false;
     for (i, raw) in lines.iter().enumerate() {
-        let line = php::trim(raw);
+        let line = compat::trim(raw);
         // A block starts after a blank line or straight under a heading.
-        let after_blank = i == 0 || php::trim(lines[i - 1]).is_empty() || after_heading;
+        let after_blank = i == 0 || compat::trim(lines[i - 1]).is_empty() || after_heading;
         after_heading = false;
         if line.is_empty() {
             reading.end_paragraph();
@@ -355,7 +352,7 @@ fn resume_html(text: &str) -> Vec<Node> {
         } else if after_blank && is_heading(line, lines.get(i + 1).copied().unwrap_or("")) {
             reading.end_paragraph();
             reading.end_entry();
-            let heading = php::trim_end_chars(line, ": ");
+            let heading = compat::trim_end_chars(line, ": ");
             reading
                 .blocks
                 .push(ResumeBlock::Heading(Node::Heading2(heading.to_string())));
@@ -417,7 +414,7 @@ fn keep_headings_with_next(blocks: Vec<ResumeBlock>) -> Vec<Node> {
 /// school has dates), no comma or separator (a role names its employer), not a sentence, and
 /// something follows it.
 fn is_heading(line: &str, next: &str) -> bool {
-    !php::trim(next).is_empty()
+    !compat::trim(next).is_empty()
         && line.chars().count() <= MAX_HEADING_LENGTH
         && !NOT_IN_HEADING.is_match(line)
         && !SENTENCE_END.is_match(line)
@@ -442,14 +439,14 @@ pub fn file_name(kind: &str, job_title: &str, company: &str) -> String {
         .iter()
         .find(|(name, _)| *name == kind)
         .map_or("Application", |(_, label)| *label);
-    let parts: Vec<&str> = [label, php::trim(job_title), php::trim(company)]
+    let parts: Vec<&str> = [label, compat::trim(job_title), compat::trim(company)]
         .into_iter()
         .filter(|part| !part.is_empty())
         .collect();
     let joined = parts.join(" - ");
     let name = UNSAFE_IN_FILE_NAME.replace_all(&joined, " ");
     let name = WHITESPACE.replace_all(&name, " ");
-    format!("{}.pdf", php::first_chars(php::trim(&name), MAX_FILE_NAME))
+    format!("{}.pdf", compat::first_chars(compat::trim(&name), MAX_FILE_NAME))
 }
 
 #[cfg(test)]

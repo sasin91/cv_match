@@ -1,6 +1,5 @@
-//! The saved key as the API key page shows it (modules/account/views/account.php's saved-key
-//! box): its provider's name, last characters, model and address, the day it was saved, and a
-//! box per use.
+//! The saved key as the API key page shows it (the saved-key box): its provider's name, last
+//! characters, model and address, the day it was saved, and a box per use.
 
 use chrono::{Local, TimeZone};
 
@@ -43,7 +42,7 @@ impl SavedKey {
     }
 }
 
-/// A Unix time as PHP's date('j M Y') prints it, in this computer's time zone.
+/// A Unix time as "21 Oct 2026", in this computer's time zone.
 fn day_of(timestamp: i64) -> String {
     Local
         .timestamp_opt(timestamp, 0)

@@ -3,27 +3,27 @@
 
 use chrono::{DateTime, Datelike, Duration, Local, NaiveDate, NaiveDateTime, Utc, Weekday};
 
-/// "2026-10-21T22:30:00Z" (PHP's gmdate('Y-m-d\TH:i:s\Z')).
+/// "2026-10-21T22:30:00Z".
 pub fn iso(at: i64) -> String {
     DateTime::<Utc>::from_timestamp(at, 0)
         .map(|at| at.format("%Y-%m-%dT%H:%M:%SZ").to_string())
         .unwrap_or_default()
 }
 
-/// "21 Oct 2026" in this computer's time zone (PHP's date('j M Y')).
+/// "21 Oct 2026" in this computer's time zone.
 pub fn day(at: i64) -> String {
     DateTime::<Utc>::from_timestamp(at, 0)
         .map(|at| at.with_timezone(&Local).format("%-d %b %Y").to_string())
         .unwrap_or_default()
 }
 
-/// The year of a moment in UTC (PHP's date('Y') with the app's default time zone, UTC).
+/// The year of a moment in UTC.
 pub fn utc_year(at: i64) -> i32 {
     DateTime::<Utc>::from_timestamp(at, 0).map_or(1970, |at| at.year())
 }
 
-/// PHP's mktime(0, 0, 0, month, day, year) in UTC: a month or day out of range runs on into the
-/// next ones (day 0 is the last of the month before), as PHP counts them.
+/// Midnight UTC of that day: a month or day out of range runs on into the next ones (day 0 is
+/// the last of the month before).
 pub fn mktime_utc(month: i64, day: i64, year: i64) -> i64 {
     let months = year * 12 + month - 1;
     let first = NaiveDate::from_ymd_opt(months.div_euclid(12) as i32, months.rem_euclid(12) as u32 + 1, 1);

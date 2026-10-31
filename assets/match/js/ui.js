@@ -1,7 +1,7 @@
 // Small UI helpers for the CV match page: confirm dialogs, the success and
 // error animation, toasts, counting numbers, list reordering and file drops.
 //
-// The dialogs and the toast stack are markup in the page (views/dialogs.php):
+// The dialogs and the toast stack are markup in the page (templates/match/dialogs.html):
 // these helpers fill in their text, open them and close them. They are
 // native <dialog>s, so focus, Escape and the backdrop work without extra
 // code. Every animation is CSS; with prefers-reduced-motion the stylesheet

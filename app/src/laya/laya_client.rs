@@ -1,7 +1,5 @@
-//! Laya, the decision model that refines a ranked match, ported from modules/laya/Laya_client.php.
-//! The PHP app asked Laya's service over HTTP; here laya-server's model runs in this process, so
-//! the same two questions go straight to `Laya::predict` and its answer is read as PHP reads the
-//! service's.
+//! Laya, the decision model that refines a ranked match.
+//! laya-server's model runs in this process, so the two questions go straight to `Laya::predict`.
 //!
 //! The state is matcher::laya_summary(): the code-computed verdicts in one English sentence pair,
 //! which the English checkpoint separated with AUC 0.98 in the bake-off (eval/README.md). Only
@@ -11,7 +9,7 @@
 //! The model is the exported English checkpoint in one folder (`laya` next to the database
 //! unless `--laya` names another): rl_agent_config.json, tokenizer/, and laya.onnx with its
 //! laya.onnx.data. Without laya.onnx there, from_folder() gives None and the match goes on
-//! without Laya, as the PHP app does without LAYA_URL.
+//! without Laya.
 //!
 //! Laya_limit isn't ported: it kept one visitor from queueing everyone else behind the shared
 //! Laya pod, and here the model answers only its own user.
@@ -24,7 +22,7 @@ use serde::Serialize;
 use serde_json::{Map, Value, json};
 use tokio::sync::OnceCell;
 
-use crate::php;
+use crate::compat;
 
 /// The exported graph in the model folder; its weights, laya.onnx.data, sit beside it.
 pub const ONNX_FILE: &str = "laya.onnx";
@@ -37,10 +35,10 @@ pub const FIT_LEVELS: [&str; 5] = ["no fit", "weak fit", "partial fit", "good fi
 /// The highest fit level, as a number: fit is read as an expected level from 0 to this.
 const FIT_MAX: f64 = (FIT_LEVELS.len() - 1) as f64;
 
-/// The decimals `meets` is reported to, as PHP rounds it.
+/// The decimals `meets` is reported to.
 const MEETS_DECIMALS: i32 = 4;
 
-/// The decimals `fit` is reported to, as PHP rounds it.
+/// The decimals `fit` is reported to.
 const FIT_DECIMALS: i32 = 3;
 
 /// Laya's reading of a match: `meets`, the probability of meeting every requirement, `fit`, the
@@ -129,9 +127,9 @@ pub fn read_answer(response: &Value) -> Result<LayaAnswer, String> {
     };
     let fit = fit.clamp(0.0, FIT_MAX);
     Ok(LayaAnswer {
-        meets: php::round_to(meets, MEETS_DECIMALS),
-        fit: php::round_to(fit, FIT_DECIMALS),
-        fit_label: FIT_LEVELS[php::round(fit) as usize].to_string(),
+        meets: compat::round_to(meets, MEETS_DECIMALS),
+        fit: compat::round_to(fit, FIT_DECIMALS),
+        fit_label: FIT_LEVELS[compat::round(fit) as usize].to_string(),
     })
 }
 
@@ -160,7 +158,7 @@ pub async fn reading(laya: Option<&LayaClient>, summary: &str) -> LayaReading {
 mod tests {
     use super::*;
 
-    // How answers are read and printed is checked against PHP in tests/parity.rs.
+    // How answers are read and printed is checked in tests/parity.rs.
 
     #[test]
     fn no_client_without_the_graph() {

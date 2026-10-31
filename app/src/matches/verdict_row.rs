@@ -1,7 +1,6 @@
-//! One requirement of a match with its verdict, as the result prints it, ported from
-//! modules/cv_match/Verdict_row.php: the verdict, the requirement, why, the evidence quoted from
-//! the CV, what decided it and, for a requirement met by any of several, each alternative as a
-//! row of its own.
+//! One requirement of a match with its verdict, as the result prints it: the verdict, the
+//! requirement, why, the evidence quoted from the CV, what decided it and, for a requirement met by
+//! any of several, each alternative as a row of its own.
 
 use super::match_model::SavedItem;
 use super::matcher::{Item, Verdict, Verdicts};

@@ -1,8 +1,8 @@
-//! Taxonomy lookup for the recruiter, ported from taxonomy/php/Taxonomy.php: turns a phrase
+//! Taxonomy lookup for the recruiter: turns a phrase
 //! from a job post or a CV ("Erfaring med SAP", "projektleder", "Kørekort B") into ranked
 //! skill, role and title terms.
 //!
-//! This is the lexical half of the PHP lookup, the half match uses: Cv_matcher ranks with
+//! This is the lexical lookup, the half match uses: Cv_matcher ranks with
 //! no query vector, so the static embedding model (Static_model, index.q8.bin) is not needed.
 //! Plain word matching against each term's labels and definition, so exact names like "SAP" or
 //! "Kørekort B" are never outranked, and words also match with one or two typos
@@ -20,7 +20,7 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
 
-/// The shipped index (taxonomy/data/index.json, written by build-index.php).
+/// The shipped index (assets/taxonomy/index.json).
 const INDEX_JSON: &str = include_str!("../../assets/taxonomy/index.json");
 
 /// How much each kind of evidence is worth. A whole label of the term appearing in the query is
@@ -281,7 +281,7 @@ impl Taxonomy {
     }
 
     /// Ranks every term for `query`, optionally of one `kind` (skill, role, title), by lexical
-    /// evidence alone (PHP's rank() with no query vector). Ties go to the lower term id.
+    /// evidence alone (rank() with no query vector). Ties go to the lower term id.
     pub fn rank(&self, query: &str, kind: Option<&str>, limit: usize) -> Vec<Ranked<'_>> {
         let expanded = self.expand_query(query);
         let query_words = words(query);

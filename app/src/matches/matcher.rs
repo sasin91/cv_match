@@ -1,5 +1,4 @@
-//! Matching a job post against a CV, and the legacy ranking of the result, ported from
-//! modules/cv_match/Cv_matcher.php.
+//! Matching a job post against a CV, and the legacy ranking of the result.
 //!
 //! A job post is the extract_job answer and a profile the extract_cv answer (see `Job` and
 //! `Profile`). Verdicts are keyed by item id: { verdict: met|partial|missing, by, method,
@@ -9,7 +8,7 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use super::{Job, KnownTerm, Profile};
-use crate::php;
+use crate::compat;
 use crate::taxonomy::{self, Method, Taxonomy, Term};
 
 /// The legacy ranking engine's weights: formal requirements weigh 150, relevant skills 50, and
@@ -556,7 +555,7 @@ pub fn score(groups: &Groups, verdicts: &Verdicts) -> Score {
         let weight = weight_of(key);
         let credit: f64 = items.iter().map(|item| credit_of(verdicts.get(&item.id))).sum();
         let percentage = (credit / items.len() as f64 * PERCENT) as i64;
-        let value = php::round(percentage as f64 / PERCENT * weight as f64) as i64;
+        let value = compat::round(percentage as f64 / PERCENT * weight as f64) as i64;
         rank += value;
         total += weight;
         parts.insert(

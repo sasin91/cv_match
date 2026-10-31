@@ -1,6 +1,5 @@
 //! The app's local web server: the match page and its endpoints on 127.0.0.1, with the page's
-//! CSS and JS from modules/cv_match and Trongate MX from public/js, the same files the PHP app
-//! serves.
+//! CSS and JS and Trongate MX built in.
 //!
 //! Only this computer can reach it, but any web page open in a browser here could send it
 //! requests, so it answers a request only when its Host header names this server (no DNS

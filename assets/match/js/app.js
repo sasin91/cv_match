@@ -1,8 +1,8 @@
 // The CV match page: reads the CV and job post, has the server match them
 // with the taxonomy, asks the language model about what the taxonomy can't
-// decide, and shows the legacy ranking score. The matching and scoring are PHP (Cv_matcher.php);
-// this file only reads files, calls the endpoints and puts the result the
-// server prints (views/result.php) in place.
+// decide, and shows the legacy ranking score. The matching and scoring are on
+// the server (matcher.rs); this file only reads files, calls the endpoints and puts the result the
+// server prints (templates/match/result.html) in place.
 //
 // Without the AI match (not signed in, or signed in without an API key of
 // their own) the page runs the free match instead: one quick_match call, no
@@ -17,7 +17,7 @@
 // and the jobs are listed by score. A post already matched with this CV is
 // skipped and shown from its saved match, and so is a single post.
 //
-// ui.js shows the dialogs and toasts (their markup is views/dialogs.php)
+// ui.js shows the dialogs and toasts (their markup is templates/match/dialogs.html)
 // and runs the animations; this file decides when.
 
 import { confirmDialog, countUp, dropZone, flash, flip, reveal, toast } from "./ui.js";
@@ -25,8 +25,8 @@ import { confirmDialog, countUp, dropZone, flash, flip, reveal, toast } from "./
 // pdf.js 4.10.38 (Mozilla, Apache 2.0), which reads an uploaded CV's text: served by the
 // desktop app from its own files (match/pdfjs), so uploads work offline.
 const PDFJS = new URL("../pdfjs/", import.meta.url).href;
-// The localStorage keys keep the PHP module's cv_match prefix, so the CV the browser already
-// keeps is still found after the rename to match.
+// The localStorage keys keep their old cv_match prefix, so the CV the browser
+// already keeps is still found after the rename to match.
 const CV_KEY = "cv_match.cv";
 // The free match keeps only the CV text, since it reads it on every match.
 const CV_TEXT_KEY = "cv_match.cv_text";
@@ -358,7 +358,7 @@ async function currentCv() {
 // the server (match): decided by the taxonomy, judged by the model where it
 // can't, scored and saved. `step` prefixes the progress lines ("Job 2 of 5: ").
 // With `view` "result" or "row", `scored` is the result as the page shows it
-// (views/result.php) or as a row of the ranked jobs (views/batch_row.php).
+// (templates/match/result.html) or as a row of the ranked jobs (templates/match/batch_row.html).
 async function matchOne(text, url, cv, step = "", tick = () => {}, readJob = null, view = null) {
   progress(`${step}Reading the job post…`);
   const job = readJob ?? (await post("extract_job", { text }));
@@ -406,7 +406,7 @@ function addJob() {
     progress(`Compare up to ${maxJobs} job posts at a time.`, true);
     return;
   }
-  // The box's markup is the #job-entry template in views/match.php.
+  // The box's markup is the #job-entry template in templates/match/match.html.
   const entry = $("job-entry").content.firstElementChild.cloneNode(true);
   const file = entry.querySelector("input[type=file]");
   const zone = entry.querySelector(".drop");
@@ -553,7 +553,7 @@ function failedRow(label, error) {
   return row;
 }
 
-// A row the server printed (views/batch_row.php), or a failed one, put in
+// A row the server printed (templates/match/batch_row.html), or a failed one, put in
 // the ranking: rows already there slide to their new place (FLIP) and the
 // new one fades in. The note under the heading counts how it went.
 function showBatch(row, counts, total) {
@@ -579,7 +579,7 @@ function showBatch(row, counts, total) {
 
 // ---------- result ----------
 
-// The result as the server prints it (views/result.php) put in #result: the
+// The result as the server prints it (templates/match/result.html) put in #result: the
 // ring fills and the score counts up, the requirements fade in, a saved
 // match's buttons are wired and the address bar follows it. Returns the
 // saved match's id, or null.
@@ -805,8 +805,8 @@ const BOTH_DONE = "Résumé tailored and application written";
 
 // ---------- Apply ----------
 
-// The Apply dialog (#application-delivery in views/match.php): its
-// content is a fragment the server prints (views/application_delivery.php),
+// The Apply dialog (#application-delivery in templates/match/match.html): its
+// content is a fragment the server prints (templates/match/application_delivery.html),
 // read on every opening so a newly written application counts: how the post
 // wants the application delivered, by email or on the employer's site, with
 // fields to copy and the PDFs to attach or upload. The body is the
@@ -847,7 +847,7 @@ function watchApplicationDelivery() {
 // ---------- Jobnet joblog ----------
 
 // The match as an entry for Jobnet's joblog ("Opret joblog"), as the server
-// prints it (views/joblog_panel.php): every field in Jobnet's order and
+// prints it (templates/match/joblog_panel.html): every field in Jobnet's order and
 // words, each with its own copy button, the three PDFs Jobnet keeps, the AI
 // prompt and whether it's in the candidate's joblog. Read when opened, and
 // again on every opening, so a newly written application counts.
@@ -906,7 +906,7 @@ function chosenStatus(body) {
 
 // What the candidate tells Recruiter about the entry (match/joblog_status):
 // the status and whether it's in their Jobnet joblog. The server answers the
-// "In your Jobnet joblog" section with when (views/joblog_logged.php), and
+// "In your Jobnet joblog" section with when (templates/match/joblog_logged.html), and
 // the day applied for the date field, which follows the status.
 async function saveJoblog(id, body, status, logged) {
   try {
@@ -1005,7 +1005,7 @@ function copyJoblogPrompt(body, section) {
 }
 
 // A saved match's application and résumé panel, as the server printed it
-// (views/documents.php) in the result or a batch row: its boxes, the Apply
+// (templates/match/documents.html) in the result or a batch row: its boxes, the Apply
 // button and the Jobnet joblog, which is read when it is opened.
 function wireDocuments(panel) {
   const notes = panel.querySelector(".notes textarea");
@@ -1020,7 +1020,7 @@ function wireDocuments(panel) {
 // Copy and Download PDF. Its kind, saved match, when it was last written and
 // whether the résumé was written with fields (structured) are on the box;
 // the text as written is the textarea's default value. Writing answers the
-// box as the server prints it with the new text (views/document_box.php),
+// box as the server prints it with the new text (templates/match/document_box.html),
 // which takes this one's place. A structured résumé
 // gets its PDF laid out from the fields, so edits to the box aren't in it;
 // the page says so first. Copy sits next to Write, above the text, so it's in
@@ -1143,7 +1143,7 @@ async function afterResume(panel, notes, id, resumeBox) {
 // match is reused when this page still has it, so the two are scored on the
 // same requirements; otherwise it is read again.
 // The line with both scores is printed by the server
-// (views/resume_comparison.php), with a button opening the résumé's match.
+// (templates/match/resume_comparison.html), with a button opening the résumé's match.
 async function compareResume(id, resumeText, line) {
   progress("Matching the tailored résumé against the post…");
   const saved = await request("GET", `saved/${id}`);

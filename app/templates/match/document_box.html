@@ -1,4 +1,4 @@
-{#- One document box of a saved match's application and résumé panel (views/document_box.php), and on its own as write_application's and tailor_resume's answer, which js/app.js puts in place of the box. Its earlier versions are listed under it, newest first. -#}
+{#- One document box of a saved match's application and résumé panel, and on its own as write_application's and tailor_resume's answer, which js/app.js puts in place of the box. Its earlier versions are listed under it, newest first. -#}
 <div class="document" data-kind="{{ doc.kind }}" data-id="{{ doc.id }}"{% if !doc.written_at.is_empty() %} data-written-at="{{ doc.written_at }}"{% endif %} data-structured="{{ doc.structured }}">
     <h4>{{ doc.title }}</h4>
     {%- if let Some(send_to) = doc.send_to %}

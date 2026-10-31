@@ -1,6 +1,6 @@
-//! A match as a row of "Jobs ranked by match", for several job posts matched with one CV,
-//! ported from modules/cv_match/Batch_row.php: the score, the job, where the post is from, when
-//! it was matched before and what the post asks of applicants, over the result's own body.
+//! A match as a row of "Jobs ranked by match", for several job posts matched with one CV: the
+//! score, the job, where the post is from, when it was matched before and what the post asks of
+//! applicants, over the result's own body.
 
 use super::match_result::MatchResult;
 
@@ -55,7 +55,7 @@ impl BatchRow {
     }
 }
 
-/// The host of a URL, as PHP's parse_url($url, PHP_URL_HOST) gives it; '' without one.
+/// The host of a URL; '' without one.
 fn host(url: &str) -> String {
     let Some((_, rest)) = url.split_once("://") else {
         return String::new();

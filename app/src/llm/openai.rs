@@ -1,4 +1,4 @@
-//! llm/openai, ported from modules/llm/openai/Openai.php: OpenAI's Chat Completions API over
+//! llm/openai: OpenAI's Chat Completions API over
 //! HTTPS, with a strict JSON schema response format and reasoning_effort. It also runs a local
 //! OpenAI-compatible server (Ollama, LM Studio) at its base_url, where the key may be empty.
 //! web_search() uses the Responses API with its web_search tool.

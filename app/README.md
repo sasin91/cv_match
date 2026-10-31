@@ -1,40 +1,38 @@
 # recruiter (desktop)
 
-Recruiter's cv_match as a standalone desktop app in Rust: one program with SQLite, Laya built
-in and one local user, serving the same pages, JS and CSS as the PHP app. It is ported from the
-PHP modules file by file, keeping their names, and is tested against what the PHP code answers.
+Recruiter's match as a standalone desktop app in Rust: one program with SQLite, Laya built in
+and one local user, serving the match page in your browser. Its matching core is checked
+against a fixed snapshot of expected answers (tests/parity.rs).
 
-## What is here so far
+## What is where
 
-| Rust | Ported from |
+| Rust | What |
 | --- | --- |
-| `src/taxonomy.rs` | `taxonomy/php/Taxonomy.php`, the lexical lookup (match ranks without the embedding model, so `Static_model` and `index.q8.bin` aren't needed) |
-| `src/matches/free_reader.rs` | `modules/cv_match/Free_reader.php` (with `free_reader_ignore.php` and `free_reader_soft.php`) |
-| `src/matches/matcher.rs` | `modules/cv_match/Cv_matcher.php` |
-| `src/matches/match_score.rs` | `modules/cv_match/Match_score.php` |
-| `src/php.rs` | the PHP built-ins whose exact behaviour matters (`round`, `trim`) |
-| `src/db.rs`, `migrations/`, `queries/` | `db/schema.sql`'s match tables, for SQLite, and the longer queries |
-| `src/import.rs` | (new) the one-time copy from MariaDB |
-| `src/server.rs`, `src/matches/pages.rs` | `Cv_match.php` (the page and its endpoints) |
-| `src/matches/match_model.rs` | `Cv_match_model.php` |
-| `src/matches/match_result.rs`, `saved_match_row.rs`, `batch_row.rs`, `verdict_row.rs`, `location_notice.rs`, `apply_notice.rs`, `reject_button.rs`, `reject_reason.rs`, `match_documents.rs`, `document_box.rs`, `score_cursor.rs` | the view models of the same names |
-| `src/matches/apply_instructions.rs` | `Apply_instructions.php` |
-| `templates/match/*.html` | `modules/cv_match/views/*.php` |
-| `src/profile.rs` | the profile as text (`Profile_fields::text` and its queries) |
-| `src/matches/joblog.rs`, `joblog_panel.rs` | `Joblog.php` (with `danish_postcodes.php`, read as it is) and `Joblog_panel.php` |
-| `src/extension.rs` | (new) ships `extension/jobnet-joblog` and writes it out for the browser |
-| `src/matches/pdf_writer.rs`, `tailored_resume.rs` | `Pdf_writer.php` and `Tailored_resume.php` |
-| `src/matches/match_prompts.rs` | `Match_prompts.php` (extract_job, extract_cv and the judging) |
-| `src/matches/ai_match.rs`, `document_writer.rs`, `llm_key.rs` | `Cv_match.php`'s `_ai_match`, `_write_application`, `_tailor_resume` and `llm()` |
-| `src/matches/page_reader.rs` | `Page_reader.php` (fetch_job) |
-| `src/matches/application_delivery.rs`, `cv_links.rs`, `resume_comparison.rs` | the Apply dialog and the résumé's comparison, of the same names |
-| `src/laya/laya_client.rs` | `modules/laya/Laya_client.php`, on `laya-server`'s model in this process instead of over HTTP |
-| `src/pdf/` | (new) stands in for dompdf: lays the page out on A4 as dompdf 3.1 did and writes the PDF |
+| `src/taxonomy.rs` | the lexical taxonomy lookup (match ranks without an embedding model) |
+| `src/matches/free_reader.rs` | the free reading of a post and a CV, with the words it ignores and the soft skills |
+| `src/matches/matcher.rs` | matching a post against a CV, and the legacy ranking |
+| `src/matches/match_score.rs` | a match score as the pages show it |
+| `src/compat.rs` | the exact rounding and trimming the saved scores and texts were made with |
+| `src/db.rs`, `migrations/`, `queries/` | the SQLite tables and the longer queries |
+| `src/import.rs` | the one-off copy from the web app's MariaDB |
+| `src/server.rs`, `src/matches/pages.rs` | the server, the match page and its endpoints |
+| `src/matches/match_model.rs` | saved matches in the database |
+| `src/matches/match_result.rs`, `saved_match_row.rs`, `batch_row.rs`, `verdict_row.rs`, `location_notice.rs`, `apply_notice.rs`, `reject_button.rs`, `reject_reason.rs`, `match_documents.rs`, `document_box.rs`, `score_cursor.rs` | the view models the templates print |
+| `src/matches/apply_instructions.rs` | how a post asks to be applied to |
+| `templates/` | the pages and fragments, which only print |
+| `src/profile.rs` | the profile as text |
+| `src/matches/joblog.rs`, `joblog_panel.rs` | the Jobnet joblog entry (with `assets/danish_postcodes.json`) and its panel |
+| `src/extension.rs` | ships `extension/jobnet-joblog` and writes it out for the browser |
+| `src/matches/pdf_writer.rs`, `tailored_resume.rs` | documents as PDFs, and the tailored résumé's fields |
+| `src/matches/match_prompts.rs` | extract_job, extract_cv and the judging |
+| `src/matches/ai_match.rs`, `document_writer.rs`, `llm_key.rs` | the AI match, the writing, and which key a use runs on |
+| `src/matches/page_reader.rs` | fetch_job: a post read from a pasted link |
+| `src/matches/application_delivery.rs`, `cv_links.rs`, `resume_comparison.rs` | the Apply dialog and the résumé's comparison |
+| `src/laya/laya_client.rs` | Laya, on `laya-server`'s model in this process |
+| `src/pdf/` | lays the page out on A4 as dompdf 3.1 did and writes the PDF |
 
-The PHP files named here are in [sasin91/recruiter](https://github.com/sasin91/recruiter). What the
-app builds in from there is copied into `../assets` (match's css and js, Trongate MX, the
-taxonomy index `taxonomy/data/index.json` and `danish_postcodes.php`); the Jobnet extension
-lives in `../extension/jobnet-joblog`.
+What the app builds in is in `../assets` (the page's CSS and JS, Trongate MX, the taxonomy
+index and the Danish postcodes); the Jobnet extension lives in `../extension/jobnet-joblog`.
 
 ## Running it
 
@@ -42,8 +40,8 @@ lives in `../extension/jobnet-joblog`.
 
 serves the app on http://127.0.0.1:8765/match and opens it in your default browser
 (`--port`, `--database file`, `--laya folder`, `--no-browser`, and `--tailscale-name` for your phone:
-see [../docs/phone.md](../docs/phone.md)). It is the PHP app's match page
-with the same CSS and JS (`assets/match/css`, `js`, and Trongate MX from `assets/js`, built into the exe), for
+see [../docs/phone.md](../docs/phone.md)). It is the match page,
+with its CSS and JS (`assets/match/css`, `js`, and Trongate MX from `assets/js`, built into the exe), for
 one local user who is always signed in:
 
 - the saved matches by list (Shortlist, All, Applied not on Jobnet yet, On Jobnet, Rejected),
@@ -84,22 +82,19 @@ no Laya service or Python is needed. It needs the exported English checkpoint in
 
 that is, the checkpoint folder and the two files `export.py` writes (see
 `../laya-server/README.md`, "One-time: export the model"). Without `laya.onnx` there, the app
-says so at start and the matches go on without a Laya line, as the PHP app does without
-`LAYA_URL`. The
-model loads in the background at start (a few seconds, about 1.5 GB of memory); a match made
+says so at start and the matches go on without a Laya line. The model loads in the background at start (a few seconds, about 1.5 GB of memory); a match made
 before then waits for it. When it can't load or answer, the result says why under the score and
-the log has it too; the score doesn't depend on it. The PHP app's per-visitor limit
-(`Laya_limit`) isn't ported: the model answers only you.
+the log has it too; the score doesn't depend on it. There is no per-visitor limit: the model
+answers only you.
 
 ## PDFs
 
-`pdf_writer` reads a document the way `Pdf_writer.php` did and builds the same small page
-(`pdf::page`, which prints the same HTML; the parity tests compare it). Instead of handing that
-HTML to dompdf, `pdf::layout` places it on A4 the way dompdf 3.1 does: Helvetica, 16 mm side and
+`pdf_writer` reads a document and builds a small page (`pdf::page`, which prints as HTML; the
+parity tests compare it). `pdf::layout` places it on A4 the way dompdf 3.1 does: Helvetica, 16 mm side and
 18 mm top and bottom margins, the page's styles, dompdf's line boxes, margin collapsing and page
 breaks (div.keep, two-line orphans). Checked against dompdf's own PDFs of 120 generated letters,
 résumés, CVs and job posts, every line lands on the same page within 0.1 pt. Text with a letter
-Helvetica lacks is set in DejaVu Sans as in PHP, with only the letters used embedded
+Helvetica lacks is set in DejaVu Sans, with only the letters used embedded
 (`assets/fonts`, Bitstream Vera licence).
 
 The server only answers requests whose Host is its own address, and only takes changes (POST)
@@ -108,8 +103,7 @@ can't use it.
 
 ## The API key and the language models
 
-The AI features run on your own key, saved on the API key page (`account`, ported from
-recruiter's account page): an OpenAI key, an Anthropic key, or a local OpenAI-compatible server
+The AI features run on your own key, saved on the API key page (`account`): an OpenAI key, an Anthropic key, or a local OpenAI-compatible server
 such as Ollama (`http://localhost:11434/v1`) or LM Studio (`http://localhost:1234/v1`), which
 needs a model name and usually no key. The key goes in Windows Credential Manager (service
 `Recruiter`, user `user_llm_keys:1@` and the database file's full path, so each database has its
@@ -161,9 +155,10 @@ are four changes:
 
 While the app is new, `migrations/0001_schema.sql` is changed in place instead of getting new
 migrations. A database made from an older version of it is refused at start with a message
-saying so: delete `recruiter.sqlite` and run `recruiter import` again (below).
+saying so: move `recruiter.sqlite` aside and start again (or import again, below).
 
-To copy your data from the PHP app's MariaDB (Herd's copy of production, `recruiter_prod`):
+To move off the web app once, copy your data from its MariaDB (a local copy of production,
+such as `recruiter_prod`) into a new database, before the app's first start:
 
     recruiter import --email you@example.com
 
@@ -197,7 +192,7 @@ and commit `.sqlx/` with the change. CI fails when it doesn't match the queries.
     cargo test --release
 
 `tests/parity.rs` runs every case in `tests/fixtures/parity.json` through the Rust code and
-compares the answer with PHP's: 3,092 taxonomy lookups (the skill names of the 200 labelled ads
+compares the answer with the expected one: 3,092 taxonomy lookups (the skill names of the 200 labelled ads
 in `eval/data/gold.jsonl`, plus typos and edge cases), the free reading of synthetic posts and
 CVs, all 28 post x CV matches (criteria, verdicts, score, Laya summary) and 27 texts read for how
 the post asks to be applied to, and the joblog: 343 deadlines, working hours, places and contact
@@ -207,10 +202,9 @@ and Laya's two questions, 11 of its answers as Laya_client reads them and the li
 prints for each and for a failure. The model itself isn't in the repo, so the tests never run
 it; `laya-server`'s own tests check it against Python's laya when its files are there.
 
-The fixtures come from the PHP code itself, in a checkout of sasin91/recruiter. After changing
-the PHP side, write them again and let the Rust tests show what the port has to follow:
-
-    php app/tests/fixtures/generate.php ../recruiter
+The fixtures are a fixed snapshot of what the web app answered for these cases. When a change
+to the matching is meant to change an answer, change the expected answer in `parity.json` in
+the same commit, so the diff shows what moved.
 
 `tests/server.rs` sends the page's requests to the server: the lists, a saved match, the free
 match, the AI match and writing against a stand-in for a local model on 127.0.0.1, the Apply
@@ -218,11 +212,10 @@ dialog, the joblog, the extension's calls, the PDFs, the API key page, links tha
 fetched, and requests from other sites. `tests/llm.rs` calls each adapter against a stand-in for its API on
 127.0.0.1 and checks the request it sends and how it reads the answers and failures.
 
-`tests/import.rs` imports from a real MariaDB with recruiter's `db/schema.sql` loaded. It empties that
+`tests/import.rs` imports from a real MariaDB with the web app's schema (`tests/fixtures/mariadb_schema.sql`) loaded. It empties that
 database's match tables, so point it at a scratch database only:
 
     RECRUITER_TEST_MYSQL=mysql://test:test@127.0.0.1:3306/recruiter_test cargo test --test import -- --ignored --test-threads=1
 
-CI (`.github/workflows/app.yml`) runs that against a MariaDB service, runs the generator on
-recruiter's master and fails when the committed fixtures no longer match what PHP answers, and
-checks `.sqlx/` is what the queries are.
+CI (`.github/workflows/app.yml`) runs that against a MariaDB service, runs fmt, clippy and the
+tests on Windows, and checks `.sqlx/` is what the queries are.

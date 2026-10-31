@@ -1,8 +1,7 @@
-//! The user's own language model key (user_llm_keys), ported from
-//! modules/account/Account_model.php, and what it is used for (use_for_*). The key itself is in
-//! Windows Credential Manager (KeyVault); the table keeps its provider, model, last 4 characters
-//! and, for a local model, base_url. The plain key only leaves here through key_for(), for the
-//! llm module.
+//! The user's own language model key (user_llm_keys), and what it is used for (use_for_*). The key
+//! itself is in Windows Credential Manager (KeyVault); the table keeps its provider, model, last 4
+//! characters and, for a local model, base_url. The plain key only leaves here through key_for(),
+//! for the llm module.
 
 use std::fmt;
 

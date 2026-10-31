@@ -1,7 +1,6 @@
-//! The Reject part of a saved match (templates/match/result.html), ported from
-//! modules/cv_match/Reject_button.php: "Not interested" opens a form asking why (as many reasons
-//! as apply) with room for a note; a rejected match says why it was rejected and offers Bring
-//! back. Plain form posts to match/submit_reject/{id}.
+//! The Reject part of a saved match (templates/match/result.html): "Not interested" opens a form
+//! asking why (as many reasons as apply) with room for a note; a rejected match says why it was
+//! rejected and offers Bring back. Plain form posts to match/submit_reject/{id}.
 
 use super::reject_reason::{self, Rejection};
 
@@ -29,7 +28,8 @@ pub struct RejectButton {
     pub open: &'static str,
     pub reasons: Vec<ReasonField>,
     pub note_max: usize,
-    /// "You rejected this match (Too long commute (1h each way)). It shows only in the Rejected list."
+    /// "You rejected this match (Too long commute (1h each way)). It shows only in the Rejected
+    /// list."
     pub note: String,
     pub submit: &'static str,
 }

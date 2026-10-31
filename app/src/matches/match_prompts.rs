@@ -1,7 +1,6 @@
-//! The three language-model reads the matching runs on, ported from
-//! modules/cv_match/Match_prompts.php: a job post into its requirements list, a CV into a
-//! profile, and a verdict on each requirement the taxonomy couldn't decide. Each takes the Llm to
-//! call, so the caller decides which key it runs on.
+//! The three language-model reads the matching runs on: a job post into its requirements list, a CV
+//! into a profile, and a verdict on each requirement the taxonomy couldn't decide. Each takes the
+//! Llm to call, so the caller decides which key it runs on.
 
 use serde::Deserialize;
 use serde_json::{Value, json};

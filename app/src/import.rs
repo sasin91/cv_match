@@ -1,4 +1,4 @@
-//! Copies one user's cv_match data from the PHP app's MariaDB (a local copy of production, such
+//! Copies one user's cv_match data from the web app's MariaDB (a local copy of production, such
 //! as Herd's recruiter_prod) into the desktop app's SQLite database. Ids are copied as they are,
 //! so every link between rows stays. Only that user's rows are read; other accounts stay behind.
 //!

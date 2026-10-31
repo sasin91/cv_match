@@ -1,6 +1,6 @@
-//! The page Pdf_writer lays a document out on: the few HTML elements its PHP original printed
-//! for dompdf (h1, h2, h3, p, ul and div), as a tree that prints the same HTML (html(), which
-//! the parity tests compare with PHP's) and that layout::pages() places on A4.
+//! The page Pdf_writer lays a document out on: the few HTML elements it prints
+//! (h1, h2, h3, p, ul and div), as a tree that prints the same HTML (html(), which
+//! the parity tests compare) and that layout::pages() places on A4.
 
 /// The two font families Pdf_writer::font() picks from.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -147,7 +147,7 @@ impl Block {
     }
 }
 
-/// The page's style sheet, as Pdf_writer.php's page() wrote it for dompdf; layout follows it.
+/// The page's style sheet; layout follows it.
 const STYLE: &str = r#"    @page { margin: 18mm 16mm; }
     body { font-family: FONT; font-size: 10pt; line-height: 14pt; color: #000; }
     p { margin: 0 0 4pt 0; }
@@ -168,7 +168,7 @@ const STYLE: &str = r#"    @page { margin: 18mm 16mm; }
     .job ul { margin: 0 0 6pt 0; }"#;
 
 impl Page {
-    /// The page as HTML, as Pdf_writer.php's page() printed it.
+    /// The page as HTML.
     pub fn html(&self) -> String {
         format!(
             "<!DOCTYPE html>\n<html>\n<head>\n<meta charset=\"utf-8\">\n<title>{}</title>\n<style>\n{}\n</style>\n</head>\n<body>\n{}\n</body>\n</html>",
@@ -235,7 +235,7 @@ fn line_end(ends_line: bool) -> &'static str {
     if ends_line { "\n" } else { "" }
 }
 
-/// PHP's htmlspecialchars($text, ENT_QUOTES): & < > " and ' as entities.
+/// & < > " and ' as HTML entities.
 pub fn e(text: &str) -> String {
     let mut out = String::with_capacity(text.len());
     for c in text.chars() {

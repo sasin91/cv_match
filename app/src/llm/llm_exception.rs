@@ -1,4 +1,4 @@
-//! A failed model request, ported from modules/llm/Llm_exception.php, with a message fit to show
+//! A failed model request, with a message fit to show
 //! the user. `retryable` is true for rate limits and overload, where trying again later can
 //! work. `response` is the provider's HTTP answer when there was one.
 

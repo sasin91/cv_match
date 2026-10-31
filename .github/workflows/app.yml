@@ -1,8 +1,7 @@
 name: app
 
 # The desktop app in app/, with laya-server/'s model built in. Its parity tests compare it with
-# the PHP modules' own answers (tests/fixtures/parity.json); the php job checks those fixtures are still what the PHP code on
-# sasin91/recruiter's master answers, so a change on either side shows up here.
+# the fixed expected answers in tests/fixtures/parity.json.
 on:
   push:
     branches: [main]
@@ -64,22 +63,6 @@ jobs:
       - run: mkdir -p target && sqlx database reset -y
       - run: cargo sqlx prepare --check -- --all-targets
 
-  php:
-    name: fixtures match the PHP code
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: sasin91/recruiter
-          path: recruiter
-      - uses: shivammathur/setup-php@v2
-        with:
-          php-version: '8.4'
-          extensions: intl, mbstring
-      - run: php app/tests/fixtures/generate.php recruiter
-      - run: git diff --exit-code -- app/tests/fixtures/parity.json
-
   import:
     name: import from MariaDB
     runs-on: ubuntu-latest
@@ -100,15 +83,11 @@ jobs:
       SQLX_OFFLINE: true
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/checkout@v4
-        with:
-          repository: sasin91/recruiter
-          path: recruiter
       - uses: dtolnay/rust-toolchain@stable
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: app
-      - run: mysql -h127.0.0.1 -utest -ptest recruiter_test < recruiter/db/schema.sql
+      - run: mysql -h127.0.0.1 -utest -ptest recruiter_test < app/tests/fixtures/mariadb_schema.sql
       # One test at a time: each seeds the same database.
       - run: cargo test --test import -- --ignored --test-threads=1
         working-directory: app

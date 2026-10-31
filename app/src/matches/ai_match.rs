@@ -1,8 +1,7 @@
-//! One job post through the match, ported from Cv_match.php's _ai_match() and score_and_save(),
-//! for the page's match endpoint (and the job scan to come): the requirements decided by the
-//! taxonomy against the CV, the rest judged by the model (or, without one, left missing as the
-//! free match leaves them), then scored and saved for the user. The job post and CV come read
-//! by match_prompts or by the free reader. Never a URL.
+//! One job post through the match, for the page's match endpoint (and the job scan to come): the
+//! requirements decided by the taxonomy against the CV, the rest judged by the model (or, without
+//! one, left missing as the free match leaves them), then scored and saved for the user. The job
+//! post and CV come read by match_prompts or by the free reader. Never a URL.
 
 use indexmap::IndexMap;
 use serde::Serialize;
@@ -185,7 +184,7 @@ fn unweighed_location() -> Verdict {
 }
 
 /// What Laya's English checkpoint reads, shown under the AI match: both texts in English and the
-/// verdicts, in PHP's order and as its JSON_PRETTY_PRINT writes them (four spaces).
+/// verdicts, in the saved order, pretty-printed with four spaces.
 pub fn laya_input(job: &Job, profile: &Profile, cv_text: &str, summary: &str) -> String {
     let cv = if profile.text_en.is_empty() {
         cv_text

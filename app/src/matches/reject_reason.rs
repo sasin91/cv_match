@@ -1,8 +1,8 @@
-//! Why a match was rejected (match_rejections), ported from modules/cv_match/Reject_reason.php:
+//! Why a match was rejected (match_rejections):
 //! one or more of a fixed list, so reasons that keep coming back can be counted, each with the
 //! person's own note; 'other' needs one.
 
-use crate::php;
+use crate::compat;
 
 /// The reasons, in the order the form lists them.
 pub const REASONS: [(&str, &str); 8] = [
@@ -59,7 +59,7 @@ pub fn rows(reasons: &[String], notes: &[(String, String)]) -> Vec<Rejection> {
         let note = notes
             .iter()
             .find(|(name, _)| name == reason)
-            .map(|(_, note)| php::trim(note))
+            .map(|(_, note)| compat::trim(note))
             .unwrap_or("");
         rows.push(Rejection {
             reason: reason.clone(),
@@ -79,7 +79,7 @@ fn one(rejection: &Rejection) -> String {
     let label = label(&rejection.reason)
         .map(str::to_string)
         .unwrap_or_else(|| rejection.reason.clone());
-    let note = php::trim(&rejection.note);
+    let note = compat::trim(&rejection.note);
     if note.is_empty() {
         label
     } else if rejection.reason == "other" {

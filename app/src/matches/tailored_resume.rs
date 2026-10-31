@@ -1,4 +1,4 @@
-//! The tailored résumé as fields, ported from modules/cv_match/Tailored_resume.php: a header
+//! The tailored résumé as fields: a header
 //! (name, title, contact, links), intro paragraphs, experience, project and education entries
 //! (title, organisation, location, dates, summary, bullets, note), skills and languages, and the
 //! section headings in the post's language.
@@ -10,7 +10,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::php;
+use crate::compat;
 
 /// The headings the model names in the post's language, with the English ones as the fallback.
 pub const HEADINGS: [(&str, &str); 5] = [
@@ -21,8 +21,7 @@ pub const HEADINGS: [(&str, &str); 5] = [
     ("projects_heading", "Projects"),
 ];
 
-/// The longest each field is kept, in characters: the columns' lengths in MariaDB, which the PHP
-/// app cuts to.
+/// The longest each field is kept, in characters: the web app's MariaDB column lengths.
 mod lengths {
     /// name, title, location, email, and an entry's title, organisation and location.
     pub const LINE: usize = 255;
@@ -192,7 +191,10 @@ fn string(value: &Value, length: usize) -> String {
     let Some(text) = value.as_str() else {
         return String::new();
     };
-    php::trim(&php::collapse_spaces(text)).chars().take(length).collect()
+    compat::trim(&compat::collapse_spaces(text))
+        .chars()
+        .take(length)
+        .collect()
 }
 
 /// The strings of a list, each as string() makes it, leaving out the empty ones.

@@ -1,4 +1,4 @@
-//! The free reading of a job post and a CV, ported from modules/cv_match/Free_reader.php: no
+//! The free reading of a job post and a CV: no
 //! language model, so it costs nothing per request.
 //!
 //! It spots the taxonomy's skills, roles and titles where the text names them by one of their
@@ -15,7 +15,7 @@ use indexmap::{IndexMap, IndexSet};
 use regex::Regex;
 
 use super::{Job, KnownTerm, Profile, Requirement};
-use crate::php;
+use crate::compat;
 use crate::taxonomy::{self, Method, Taxonomy, Term};
 
 /// Longest label, in words, worth looking for.
@@ -45,7 +45,7 @@ const TOO_COMMON: &str = "ansvar arbejde kunder kunde team teams opgaver ledelse
     uddannelse erfaring ansvarlig fleksibel selvstændig engageret";
 
 /// Taxonomy skills Free_reader doesn't look for: labels that are everyday words in job posts
-/// ("Løn", "Fokus", "Send", "Dygtig"), as in free_reader_ignore.php. Term ids from
+/// ("Løn", "Fokus", "Send", "Dygtig"). Term ids from
 /// db/taxonomy.sql.
 const IGNORE: [i64; 208] = [
     90, 176, 206, 255, 276, 415, 418, 420, 464, 488, 496, 536, 561, 658, 677, 703, 762, 870, 912, 948, 1022, 1047,
@@ -61,7 +61,7 @@ const IGNORE: [i64; 208] = [
     9371, 9394, 9398, 9414, 9454, 9506, 9558, 9591, 9592, 9629, 9655, 9684, 9696, 9857, 9879,
 ];
 
-/// Taxonomy skills filed as soft skills (shown, not scored), as in free_reader_soft.php: the
+/// Taxonomy skills filed as soft skills (shown, not scored): the
 /// terms the labelled ads list as a soft skill more often than as a hard one.
 const SOFT: [i64; 95] = [
     17, 349, 353, 374, 403, 404, 409, 1782, 1783, 1983, 2120, 2756, 2816, 2832, 3085, 3189, 3379, 3380, 3383, 3462,
@@ -118,7 +118,7 @@ static DATE_RANGE: LazyLock<Regex> = LazyLock::new(|| {
     .unwrap()
 });
 
-/// PHP's \R: any line break.
+/// Any line break (\r\n, \n, \r and the Unicode ones).
 static LINE_BREAK: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"\r\n|[\n\x0B\x0C\r\x{85}\x{2028}\x{2029}]").unwrap());
 /// Bullets and list markers at the start of a line.
@@ -179,7 +179,7 @@ impl<'a> FreeReader<'a> {
                     continue;
                 }
                 // A bare number is never a skill on its own.
-                if phrase.words.len() == 1 && php::is_digits(&key) {
+                if phrase.words.len() == 1 && compat::is_digits(&key) {
                     continue;
                 }
                 // A skill and a title can share a label; the first (skills come first) wins.
@@ -244,7 +244,7 @@ impl<'a> FreeReader<'a> {
             text_en: text.to_string(),
             job_title,
             job_title_en,
-            heading: php::first_chars(&title, HEADING_CHARS),
+            heading: compat::first_chars(&title, HEADING_CHARS),
             company: String::new(),
             requirements,
             responsibilities: Vec::new(),
@@ -400,7 +400,7 @@ fn month(name: &str, number: &str, default: i64) -> i64 {
 fn lines(text: &str) -> Vec<String> {
     LINE_BREAK
         .split(text)
-        .map(|line| php::trim(&BULLET.replace(line, "")).to_string())
+        .map(|line| compat::trim(&BULLET.replace(line, "")).to_string())
         .filter(|line| !line.is_empty())
         .collect()
 }
@@ -414,7 +414,7 @@ fn section(lines: &[String], start: &Regex, stop: &Regex) -> Vec<String> {
         if short && start.is_match(line) {
             inside = true;
             // "Du er struktureret" is both a heading and a requirement.
-            if !php::trim_chars(&start.replace(line, ""), HEADING_PUNCTUATION).is_empty() {
+            if !compat::trim_chars(&start.replace(line, ""), HEADING_PUNCTUATION).is_empty() {
                 out.push(line.clone());
             }
             continue;

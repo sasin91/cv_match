@@ -27,7 +27,7 @@ POOL = ["PHP 8", "Laravel", "MySQL", "Docker", "Kubernetes", "Vue.js", "TypeScri
 
 
 def summary(title, met, n, missing):
-    # Same string Recruiter builds in modules/cv_match/Cv_matcher.php.
+    # Same string Recruiter builds in matcher::laya_summary().
     return ("Job: %s. The candidate meets %d of %d required qualifications. Missing requirements: %s."
             % (title, met, n, ", ".join(missing) if missing else "none"))
 

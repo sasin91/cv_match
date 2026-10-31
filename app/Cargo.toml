@@ -8,12 +8,12 @@ publish = false
 [dependencies]
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
-# Word lists keep the order PHP's arrays keep, which decides ties and typo candidates.
+# Word lists keep the index's order, which decides ties and typo candidates.
 indexmap = { version = "2", features = ["serde"] }
 regex = "1"
 unicode-normalization = "0.1"
 # The app's SQLite (built in, so the exe needs no sqlite3.dll), with queries checked at compile
-# time against the .sqlx cache; MariaDB only for the import from the PHP app, on this computer
+# time against the .sqlx cache; MariaDB only for the one-off import from the web app, on this computer
 # (no TLS); chrono for its DATE and DATETIME columns.
 sqlx = { version = "0.9", default-features = false, features = [
     "runtime-tokio",
@@ -24,7 +24,7 @@ sqlx = { version = "0.9", default-features = false, features = [
     "tls-none",
 ] }
 dirs = "6"
-# Lookaround in the patterns ported from PHP (Apply_instructions), which the regex crate lacks.
+# Lookaround in some patterns (Apply_instructions), which the regex crate lacks.
 fancy-regex = "0.20"
 axum = "0.8"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync"] }
