@@ -35,6 +35,7 @@ use crate::account::account_model::JOB_EVALUATION;
 use crate::laya::laya_client;
 use crate::profile;
 use crate::server::AppState;
+use crate::setup;
 
 /// Longest CV or job post quick_match reads, in characters.
 const MAX_TEXT: usize = 40_000;
@@ -199,8 +200,11 @@ fn list_tabs(current: &str) -> Vec<ListTab> {
         .collect()
 }
 
-/// GET match: the match page.
+/// GET match: the match page, or the setup wizard while it is due.
 pub async fn index(State(state): State<Arc<AppState>>, Query(query): Query<ListQuery>) -> Answer {
+    if setup::wizard_is_due(&state).await {
+        return Ok(Redirect::to(setup::PAGE).into_response());
+    }
     match_page(&state, &query, None).await
 }
 

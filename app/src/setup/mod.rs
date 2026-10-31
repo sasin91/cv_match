@@ -29,7 +29,7 @@ use crate::profile::profile_fill::{self, MAX_CV_LENGTH};
 use crate::scan_schedule::{DEFAULT_INTERVAL_HOURS, INTERVALS};
 use crate::server::AppState;
 
-pub use self::setup_steps::{first_run_or_logged, is_first_run};
+pub use self::setup_steps::{first_run_or_logged, is_first_run, wizard_is_due};
 
 /// Where the wizard is, and where its forms send the browser back to.
 pub const PAGE: &str = "/setup";
@@ -94,9 +94,9 @@ pub struct ScheduleForm {
     hours: u32,
 }
 
-/// GET /: the wizard on the first run, else the dashboard.
+/// GET /: the wizard while it is due, else the dashboard.
 pub async fn home(State(state): State<Arc<AppState>>) -> Redirect {
-    if first_run_or_logged(&state).await {
+    if wizard_is_due(&state).await {
         Redirect::to(PAGE)
     } else {
         Redirect::to(DASHBOARD)
@@ -150,6 +150,12 @@ pub async fn submit_unschedule(State(state): State<Arc<AppState>>) -> Response {
     };
     state.set_flash(message);
     Redirect::to(PAGE).into_response()
+}
+
+/// POST setup/submit_finish: goes on to the dashboard, which stops sending the browser back here.
+pub async fn submit_finish(State(state): State<Arc<AppState>>) -> Redirect {
+    state.leave_setup();
+    Redirect::to(DASHBOARD)
 }
 
 /// The page, with the CV form as posted and why it couldn't be read, when it couldn't.

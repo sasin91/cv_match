@@ -108,7 +108,9 @@
         {%- endif %}
     </section>
 
-    <p class="setup-finish"><a class="button primary" href="match">Go to the match page</a></p>
+    <form method="post" action="setup/submit_finish" class="setup-finish">
+        <button type="submit" class="primary">Go to the match page</button>
+    </form>
 </main>
 <script type="module" src="match_module/js/setup.js"></script>
 </body>
