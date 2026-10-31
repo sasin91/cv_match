@@ -2,11 +2,11 @@
 //! against the fixed expected answers in tests/fixtures/parity.json.
 
 pub mod account;
+pub mod cleanup;
 pub mod dashboard;
 pub mod db;
 pub mod dev_reload;
 pub mod extension;
-pub mod install;
 pub mod laya;
 pub mod llama;
 pub mod llm;

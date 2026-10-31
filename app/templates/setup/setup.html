@@ -26,7 +26,7 @@
     <section class="saved-key setup-step done" id="database">
         <h2>1. Your data</h2>
         <p>{% if database.made_now %}A new database was made for you at{% else %}Your data is kept in{% endif %} <code>{{ database.path }}</code>.</p>
-        <p class="muted small">Your matches, profile and settings are in this one file. Your API keys are in Windows Credential Manager, not in it.</p>
+        <p class="muted small">Your matches, profile and settings are in this one file. Your API keys are in Windows Credential Manager (your keyring on Linux), not in it.</p>
     </section>
 
     <section class="saved-key setup-step{% if !ai_saved.is_empty() %} done{% endif %}" id="ai">
@@ -81,9 +81,9 @@
     <section class="saved-key setup-step{% if schedule.done.is_some() %} done{% endif %}" id="schedule">
         <h2>4. Checking for new jobs</h2>
         {%- if let Some(done) = schedule.done %}
-        <p>The job scan runs by itself: {{ done }}, while you're signed in to Windows.</p>
+        <p>The job scan runs by itself: {{ done }}, while you're signed in.</p>
         {%- else %}
-        <p class="muted">Windows Task Scheduler can run the job scan by itself, so new posts are waiting when you open the app. </p>
+        <p class="muted">The system's scheduler (Task Scheduler on Windows, a systemd timer on Linux) can run the job scan by itself, so new posts are waiting when you open the app.</p>
         <p class="muted small">The job scan itself comes in the next update; until then each run only notes that it isn't there yet.</p>
         {%- endif %}
         {%- if let Some(error) = schedule.error %}

@@ -102,6 +102,22 @@ impl KeyVault {
     pub fn delete_key_from_before_providers(&self, user_id: i64) -> Result<(), String> {
         self.delete(user_id, BEFORE_PROVIDERS)
     }
+
+    /// The providers the user has a key kept for, the key from before providers among them (as
+    /// ""), for the cleanup.
+    pub fn kept(&self, user_id: i64) -> Result<Vec<&'static str>, String> {
+        let mut kept = Vec::new();
+        for provider in super::account_model::PROVIDERS
+            .iter()
+            .map(|(provider, _)| *provider)
+            .chain([BEFORE_PROVIDERS])
+        {
+            if self.key_for(user_id, provider)?.is_some() {
+                kept.push(provider);
+            }
+        }
+        Ok(kept)
+    }
 }
 
 /// The user's credential for provider in Credential Manager.
