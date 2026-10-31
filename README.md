@@ -98,6 +98,35 @@ In Task Scheduler, create a task that runs at log on, with the action
 `<repo>\app\target\release\recruiter.exe`, and arguments `--no-browser` plus any of
 `--tailscale-name ...`, `--laya ...` or `--llama ...` you use.
 
+## Developing
+
+One command builds the app, starts it, rebuilds and restarts it on every change, and reloads the
+page in the browser:
+
+    cd app
+    .\dev.ps1
+
+It needs [watchexec](https://github.com/watchexec/watchexec) once:
+`cargo install watchexec-cli --locked`. If Windows refuses to run the script, start it with
+`powershell -ExecutionPolicy Bypass -File .\dev.ps1`.
+
+- It runs a debug build (`cargo run -- --dev --no-browser`) and opens
+  http://127.0.0.1:8765/match once the first build is up.
+- A change to `src\`, `templates\`, `queries\`, `migrations\`, `Cargo.toml`, `..\assets\`,
+  `..\extension\` or `..\laya-server\src\` restarts it, and the open page reloads itself as soon
+  as the new run answers. A CSS or JS change needs no compiling, since debug builds read
+  `..\assets\` from disk, so it shows in a second or two; a Rust or template change takes as long
+  as the build.
+- `--dev` puts a small script on each page that asks `/dev/started` every half second which run
+  of the app it is, and reloads the page when that changes. Release builds refuse `--dev` and
+  never send the script.
+- It uses your real database unless you give it another, for example
+  `.\dev.ps1 --database $env:TEMP\recruiter-dev.sqlite`. Other `recruiter` options go on to the
+  app the same way, and `-Port 8766` runs it beside a running release build (the Jobnet
+  extension only talks to 8765).
+
+Stop it with Ctrl+C.
+
 ## Trying it out
 
 With a real key saved on the API key page, check these by hand after a change:

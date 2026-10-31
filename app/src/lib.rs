@@ -3,6 +3,7 @@
 
 pub mod account;
 pub mod db;
+pub mod dev_reload;
 pub mod extension;
 pub mod laya;
 pub mod llama;

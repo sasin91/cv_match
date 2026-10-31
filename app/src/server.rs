@@ -25,6 +25,7 @@ use rust_embed::RustEmbed;
 use sqlx::SqlitePool;
 
 use crate::account::{self, key_vault::KeyVault};
+use crate::dev_reload::{self, DevReload};
 use crate::extension;
 use crate::laya::laya_client::LayaClient;
 use crate::llama::llama_server::LlamaServer;
@@ -69,6 +70,8 @@ pub struct AppState {
     /// The PC's Tailscale name ("pc.tailnet.ts.net") that `tailscale serve` passes requests on
     /// from, or None when the app is only for this computer.
     pub tailscale_name: Option<String>,
+    /// Reloads the browser's page when the app restarts, with `--dev` while developing.
+    pub dev_reload: Option<DevReload>,
 }
 
 impl AppState {
@@ -85,6 +88,7 @@ impl AppState {
             laya: None,
             llama: None,
             tailscale_name: None,
+            dev_reload: None,
         }
     }
 
@@ -135,7 +139,7 @@ pub async fn local_user(db: &SqlitePool) -> sqlx::Result<i64> {
 }
 
 pub fn router(state: Arc<AppState>) -> Router {
-    Router::new()
+    let mut router = Router::new()
         .route("/", get(pages::home))
         .route("/match", get(pages::index))
         .route("/match/{id}", get(pages::show))
@@ -169,9 +173,14 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/account/submit_delete", post(account::submit_delete))
         .route("/account/submit_check", post(account::submit_check))
         .route("/match_module/{*path}", get(match_asset))
-        .route("/js/{*path}", get(public_js))
+        .route("/js/{*path}", get(public_js));
+    if state.dev_reload.is_some() {
+        router = router.route(dev_reload::STARTED_PATH, get(dev_reload::started));
+    }
+    router
         .fallback(pages::not_yet)
         .method_not_allowed_fallback(pages::not_yet)
+        .layer(middleware::from_fn_with_state(state.clone(), dev_reload::add_script))
         .layer(middleware::from_fn_with_state(state.clone(), only_this_page))
         .with_state(state)
 }
