@@ -85,7 +85,7 @@ pub async fn index(State(state): State<Arc<AppState>>) -> Response {
 /// replacing the one saved for that provider; other providers' keys stay. With errors the form
 /// comes back with them, and what was typed except the key.
 pub async fn submit_key(State(state): State<Arc<AppState>>, Form(form): Form<KeyForm>) -> Response {
-    match account_service::save_key(&state.core, &form).await {
+    match account_service::save_key(&state.context, &form).await {
         Ok(SaveKey::Invalid { form, errors }) => page(&state, Some(&form), errors).await,
         Ok(SaveKey::Saved {
             message,
@@ -110,14 +110,14 @@ pub async fn submit_uses(State(state): State<Arc<AppState>>, Form(form): Form<Us
         application: picked(form.use_for_application),
         job_evaluation: picked(form.use_for_job_evaluation),
     };
-    let said = account_service::save_uses(&state.core, &chosen).await;
+    let said = account_service::save_uses(&state.context, &chosen).await;
     state.set_flash(said.map_or_else(|e| e.message, str::to_string));
     Redirect::to(PAGE).into_response()
 }
 
 /// POST account/submit_delete {provider}: deletes that provider's saved key.
 pub async fn submit_delete(State(state): State<Arc<AppState>>, Form(form): Form<ProviderForm>) -> Response {
-    let said = account_service::delete_key(&state.core, &form.provider).await;
+    let said = account_service::delete_key(&state.context, &form.provider).await;
     state.set_flash(said.unwrap_or_else(|e| e.message));
     Redirect::to(PAGE).into_response()
 }
@@ -125,7 +125,7 @@ pub async fn submit_delete(State(state): State<Arc<AppState>>, Form(form): Form<
 /// POST account/submit_check {provider}: asks that provider's saved key's model for one tiny
 /// answer, and says whether it came.
 pub async fn submit_check(State(state): State<Arc<AppState>>, Form(form): Form<ProviderForm>) -> Response {
-    let said = account_service::check_key(&state.core, &form.provider).await;
+    let said = account_service::check_key(&state.context, &form.provider).await;
     state.set_flash(said.unwrap_or_else(|e| e.message));
     Redirect::to(PAGE).into_response()
 }
@@ -133,7 +133,7 @@ pub async fn submit_check(State(state): State<Arc<AppState>>, Form(form): Form<P
 /// The page, with the form as typed (None: a provider without a saved key, if any) and its
 /// errors.
 async fn page(state: &AppState, typed: Option<&KeyForm>, errors: Vec<String>) -> Response {
-    let view = match account_service::account_view(&state.core, typed).await {
+    let view = match account_service::account_view(&state.context, typed).await {
         Ok(view) => view,
         // Logged when it was made.
         Err(e) => return failure_page(e.message),

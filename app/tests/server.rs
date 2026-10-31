@@ -7,7 +7,7 @@ use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use http_body_util::BodyExt;
 use recruiter::account::key_vault::KeyVault;
-use recruiter::app_core::AppCore;
+use recruiter::context::Context;
 use recruiter::db;
 use recruiter::laya::laya_client::{self, LayaClient};
 use recruiter::server::{self, AppState};
@@ -52,7 +52,7 @@ async fn app() -> axum::Router {
     let db = seeded().await;
     let user_id = server::local_user(&db).await.unwrap();
     server::router(Arc::new(AppState::new(
-        Arc::new(AppCore::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory())),
+        Arc::new(Context::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory())),
         PORT,
     )))
 }
@@ -152,10 +152,10 @@ async fn app_with_broken_laya() -> (axum::Router, std::path::PathBuf) {
     std::fs::write(folder.join(laya_client::ONNX_FILE), "not a model").unwrap();
     let db = seeded().await;
     let user_id = server::local_user(&db).await.unwrap();
-    let mut core = AppCore::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory());
-    core.laya = LayaClient::from_folder(&folder);
-    assert!(core.laya.is_some());
-    (server::router(Arc::new(AppState::new(Arc::new(core), PORT))), folder)
+    let mut context = Context::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory());
+    context.laya = LayaClient::from_folder(&folder);
+    assert!(context.laya.is_some());
+    (server::router(Arc::new(AppState::new(Arc::new(context), PORT))), folder)
 }
 
 #[tokio::test]
@@ -704,7 +704,7 @@ async fn app_with_model() -> (axum::Router, SqlitePool, Arc<std::sync::atomic::A
         .await
         .unwrap();
     let app = server::router(Arc::new(AppState::new(
-        Arc::new(AppCore::new(db.clone(), TAXONOMY.clone(), user_id, vault)),
+        Arc::new(Context::new(db.clone(), TAXONOMY.clone(), user_id, vault)),
         PORT,
     )));
     (app, db, calls)
@@ -923,7 +923,7 @@ async fn new_app(vault: KeyVault) -> (axum::Router, SqlitePool) {
     let db = db::open_in_memory().await.unwrap();
     let user_id = server::local_user(&db).await.unwrap();
     let app = server::router(Arc::new(AppState::new(
-        Arc::new(AppCore::new(db.clone(), TAXONOMY.clone(), user_id, vault)),
+        Arc::new(Context::new(db.clone(), TAXONOMY.clone(), user_id, vault)),
         PORT,
     )));
     (app, db)

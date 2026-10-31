@@ -7,7 +7,7 @@
 //! The rows come from setup_steps, the same functions the setup wizard shows, so the two (and a
 //! native UI later) can't disagree.
 
-use crate::app_core::AppCore;
+use crate::context::Context;
 use crate::matches::llm_key;
 use crate::matches::match_model::{self, LISTS, SHORTLIST};
 use crate::matches::saved_match_row::SavedMatchRow;
@@ -94,17 +94,17 @@ fn database(e: sqlx::Error) -> String {
     format!("The database couldn't answer: {e}")
 }
 
-pub async fn dashboard(core: &AppCore) -> Result<Dashboard, String> {
-    let ai = setup_steps::ai(core).await.map_err(database)?;
-    let uses = llm_key::ai_uses(core).await.map_err(|e| e.message)?;
-    let cv = setup_steps::cv(core).await?;
-    let schedule = setup_steps::schedule(core).await;
+pub async fn dashboard(context: &Context) -> Result<Dashboard, String> {
+    let ai = setup_steps::ai(context).await.map_err(database)?;
+    let uses = llm_key::ai_uses(context).await.map_err(|e| e.message)?;
+    let cv = setup_steps::cv(context).await?;
+    let schedule = setup_steps::schedule(context).await;
     let rows = vec![
         ai_row(&ai.saved, uses.any()),
         cv_row(cv.filled.as_ref()),
-        laya_row(core),
+        laya_row(context),
         scan_row(schedule.interval_hours, schedule.error.as_deref()),
-        extension_row(&core.extension_folder),
+        extension_row(&context.extension_folder),
     ];
     let attention = rows.iter().filter(|row| row.health == Health::Attention).count();
     Ok(Dashboard {
@@ -115,8 +115,8 @@ pub async fn dashboard(core: &AppCore) -> Result<Dashboard, String> {
     })
 }
 
-pub async fn findings(core: &AppCore) -> Result<Findings, String> {
-    let counts = match_model::list_counts(core.db(), core.user_id)
+pub async fn findings(context: &Context) -> Result<Findings, String> {
+    let counts = match_model::list_counts(context.db(), context.user_id)
         .await
         .map_err(database)?
         .into_iter()
@@ -130,7 +130,7 @@ pub async fn findings(core: &AppCore) -> Result<Findings, String> {
             count,
         })
         .collect();
-    let best = match_model::best_first(core.db(), core.user_id, BEST_SHOWN, "", SHORTLIST)
+    let best = match_model::best_first(context.db(), context.user_id, BEST_SHOWN, "", SHORTLIST)
         .await
         .map_err(database)?
         .rows
@@ -210,8 +210,8 @@ fn cv_row(filled: Option<&crate::profile::profile_model::FilledFrom>) -> StatusR
     }
 }
 
-fn laya_row(core: &AppCore) -> StatusRow {
-    match &core.laya {
+fn laya_row(context: &Context) -> StatusRow {
+    match &context.laya {
         Some(laya) => StatusRow {
             name: "Laya",
             health: Health::Ready,

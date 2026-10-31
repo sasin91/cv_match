@@ -6,7 +6,7 @@
 use std::sync::Arc;
 
 use super::account_model;
-use crate::app_core::AppCore;
+use crate::context::Context;
 use crate::llama::catalog::{self, CatalogModel};
 use crate::llama::download::{self, Build, Progress};
 use crate::llama::hardware;
@@ -94,41 +94,42 @@ pub struct ModelSaved {
 }
 
 /// The llama folder's server, or why there is none.
-fn server_of(core: &AppCore) -> Result<&LlamaServer, ServiceError> {
-    core.llama
+fn server_of(context: &Context) -> Result<&LlamaServer, ServiceError> {
+    context
+        .llama
         .as_ref()
         .ok_or_else(|| ServiceError::internal("llama_setup", "The app was started without its llama folder."))
 }
 
 /// The wizard's data for this computer.
-pub async fn llama_setup_view(core: &AppCore) -> Result<LlamaSetupView, ServiceError> {
-    let server = server_of(core)?;
+pub async fn llama_setup_view(context: &Context) -> Result<LlamaSetupView, ServiceError> {
+    let server = server_of(context)?;
     let mut view = view_of(server);
-    view.setup_unfinished = setup::first_run_or_logged(core).await;
+    view.setup_unfinished = setup::first_run_or_logged(context).await;
     Ok(view)
 }
 
 /// Downloads llama.cpp's build for this card in the background.
-pub fn download_server(core: &Arc<AppCore>) -> Result<(), ServiceError> {
-    start_download(core, SERVER_DOWNLOAD, |core: Arc<AppCore>| async move {
-        let server = server_of(&core).map_err(|e| e.message)?;
+pub fn download_server(context: &Arc<Context>) -> Result<(), ServiceError> {
+    start_download(context, SERVER_DOWNLOAD, |context: Arc<Context>| async move {
+        let server = server_of(&context).map_err(|e| e.message)?;
         download::download_server(server.folder(), server.inventory(), &server.downloads).await
     })
 }
 
 /// Downloads a catalog model in the background.
-pub fn download_model(core: &Arc<AppCore>, file: &str) -> Result<(), ServiceError> {
+pub fn download_model(context: &Arc<Context>, file: &str) -> Result<(), ServiceError> {
     let model = catalog::find(file)
         .ok_or_else(|| ServiceError::new(ErrorKind::Invalid, format!("{file} isn't one of the models offered.")))?;
-    start_download(core, model.file, move |core: Arc<AppCore>| async move {
-        let server = server_of(&core).map_err(|e| e.message)?;
+    start_download(context, model.file, move |context: Arc<Context>| async move {
+        let server = server_of(&context).map_err(|e| e.message)?;
         download::download_model(model, &server.models_folder(), &server.downloads).await
     })
 }
 
 /// Saves the downloaded model file as this app's own model.
-pub async fn use_model(core: &AppCore, file: &str) -> Result<ModelSaved, ServiceError> {
-    let server = server_of(core)?;
+pub async fn use_model(context: &Context, file: &str) -> Result<ModelSaved, ServiceError> {
+    let server = server_of(context)?;
     let downloaded = server.models().iter().any(|model| model.name == file);
     if !downloaded {
         return Err(ServiceError::new(
@@ -136,10 +137,18 @@ pub async fn use_model(core: &AppCore, file: &str) -> Result<ModelSaved, Service
             format!("{file} isn't in the models folder yet. Download it first."),
         ));
     }
-    account_model::save(core.db(), &core.key_vault, core.user_id, LLAMA_CPP, file, "", "")
-        .await
-        .map_err(|e| ServiceError::internal("llama_setup", format!("The model couldn't be saved: {e}")))?;
-    let setup_unfinished = setup::first_run_or_logged(core).await;
+    account_model::save(
+        context.db(),
+        &context.key_vault,
+        context.user_id,
+        LLAMA_CPP,
+        file,
+        "",
+        "",
+    )
+    .await
+    .map_err(|e| ServiceError::internal("llama_setup", format!("The model couldn't be saved: {e}")))?;
+    let setup_unfinished = setup::first_run_or_logged(context).await;
     let message = if setup_unfinished {
         format!("This app's own model runs on {file}. It starts on the first AI call, which reads your CV below.")
     } else {
@@ -152,27 +161,28 @@ pub async fn use_model(core: &AppCore, file: &str) -> Result<ModelSaved, Service
 }
 
 /// How the running or last download is going, if there was one.
-pub fn progress(core: &AppCore) -> Option<DownloadView> {
-    core.llama
+pub fn progress(context: &Context) -> Option<DownloadView> {
+    context
+        .llama
         .as_ref()
         .and_then(|server| download_view(&server.downloads.progress()))
 }
 
 /// Starts work as the one download, called what, unless one is running.
-fn start_download<Work, Done>(core: &Arc<AppCore>, what: &str, work: Work) -> Result<(), ServiceError>
+fn start_download<Work, Done>(context: &Arc<Context>, what: &str, work: Work) -> Result<(), ServiceError>
 where
-    Work: FnOnce(Arc<AppCore>) -> Done + Send + 'static,
+    Work: FnOnce(Arc<Context>) -> Done + Send + 'static,
     Done: Future<Output = Result<(), String>> + Send,
 {
-    let server = server_of(core)?;
+    let server = server_of(context)?;
     server
         .downloads
         .begin(what)
         .map_err(|why| ServiceError::new(ErrorKind::TooMany, why))?;
-    let core = Arc::clone(core);
+    let context = Arc::clone(context);
     tokio::spawn(async move {
-        let outcome = work(Arc::clone(&core)).await;
-        if let Some(server) = &core.llama {
+        let outcome = work(Arc::clone(&context)).await;
+        if let Some(server) = &context.llama {
             server.downloads.end(outcome);
         }
     });

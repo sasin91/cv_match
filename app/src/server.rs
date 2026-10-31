@@ -24,7 +24,7 @@ use rust_embed::RustEmbed;
 use sqlx::SqlitePool;
 
 use crate::account;
-use crate::app_core::AppCore;
+use crate::context::Context;
 use crate::dev_reload::{self, DevReload};
 use crate::extension;
 use crate::matches::pages;
@@ -48,11 +48,11 @@ struct MatchAssets;
 #[include = "trongate-mx.min.js"]
 struct PublicJs;
 
-/// What every request shares: the app's work (AppCore, which a desktop window shares too), and
+/// What every request shares: the app's work (Context, which a desktop window shares too), and
 /// what only the web server has: the message the next page shows (Trongate's flashdata), the
 /// port, the Tailscale name and the page reloads.
 pub struct AppState {
-    pub core: Arc<AppCore>,
+    pub context: Arc<Context>,
     flash: Mutex<Option<String>>,
     port: u16,
     /// The PC's Tailscale name ("pc.tailnet.ts.net") that `tailscale serve` passes requests on
@@ -63,9 +63,9 @@ pub struct AppState {
 }
 
 impl AppState {
-    pub fn new(core: Arc<AppCore>, port: u16) -> Self {
+    pub fn new(context: Arc<Context>, port: u16) -> Self {
         AppState {
-            core,
+            context,
             flash: Mutex::new(None),
             port,
             tailscale_name: None,

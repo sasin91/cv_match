@@ -18,7 +18,7 @@ use crate::matches::match_service;
 use crate::scan_schedule::ScanSchedule;
 use crate::taxonomy::Taxonomy;
 
-pub struct AppCore {
+pub struct Context {
     db: SqlitePool,
     pub taxonomy: Arc<Taxonomy>,
     pub user_id: i64,
@@ -46,9 +46,9 @@ pub struct DatabaseFile {
     pub made_now: bool,
 }
 
-impl AppCore {
+impl Context {
     pub fn new(db: SqlitePool, taxonomy: Arc<Taxonomy>, user_id: i64, key_vault: KeyVault) -> Self {
-        AppCore {
+        Context {
             db,
             taxonomy,
             user_id,

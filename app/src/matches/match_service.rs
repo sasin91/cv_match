@@ -1,5 +1,5 @@
 //! The match page's work, for whichever front end asks: the web pages (pages.rs) today, a desktop
-//! window later. Each function takes the app's shared state (AppCore) and plain inputs, and
+//! window later. Each function takes the app's shared state (Context) and plain inputs, and
 //! answers a view model or data, or a ServiceError to show. Nothing here knows about HTTP: the
 //! pages read the request, call one of these, and print what comes back.
 
@@ -23,7 +23,7 @@ use super::resume_comparison::ResumeComparison;
 use super::saved_match_row::SavedMatchRow;
 use super::{Job, Profile, apply_instructions, match_prompts, pdf_writer, reject_reason};
 use crate::account::account_model::JOB_EVALUATION;
-use crate::app_core::AppCore;
+use crate::context::Context;
 use crate::laya::laya_client;
 use crate::profile;
 use crate::service_error::{ErrorKind, ServiceError};
@@ -57,13 +57,13 @@ pub struct SavedMatchList {
 
 /// A batch of the list named list (the shortlist when None or unknown), after the cursor after
 /// ("" for the first batch).
-pub async fn saved_matches(core: &AppCore, list: Option<&str>, after: &str) -> Result<SavedMatchList, ServiceError> {
+pub async fn saved_matches(context: &Context, list: Option<&str>, after: &str) -> Result<SavedMatchList, ServiceError> {
     let list = LISTS
         .iter()
         .map(|(name, ..)| *name)
         .find(|name| list == Some(*name))
         .unwrap_or(SHORTLIST);
-    let found = match_model::best_first(core.db(), core.user_id, PER_PAGE, after, list).await?;
+    let found = match_model::best_first(context.db(), context.user_id, PER_PAGE, after, list).await?;
     Ok(SavedMatchList {
         matches: found.rows.iter().map(SavedMatchRow::from).collect(),
         list,
@@ -72,19 +72,19 @@ pub async fn saved_matches(core: &AppCore, list: Option<&str>, after: &str) -> R
 }
 
 /// One of the user's saved matches by its id; ids below 1 are no match.
-pub async fn saved_match(core: &AppCore, id: i64) -> Result<SavedMatch, ServiceError> {
+pub async fn saved_match(context: &Context, id: i64) -> Result<SavedMatch, ServiceError> {
     if id <= 0 {
         return Err(ServiceError::not_found());
     }
-    match_model::find(core.db(), id, core.user_id)
+    match_model::find(context.db(), id, context.user_id)
         .await?
         .ok_or_else(ServiceError::not_found)
 }
 
 /// A saved match as its result shows it, with its application and résumé panel.
-pub async fn saved_result(core: &AppCore, id: i64) -> Result<MatchResult, ServiceError> {
-    let found = saved_match(core, id).await?;
-    let uses = llm_key::ai_uses(core).await?;
+pub async fn saved_result(context: &Context, id: i64) -> Result<MatchResult, ServiceError> {
+    let found = saved_match(context, id).await?;
+    let uses = llm_key::ai_uses(context).await?;
     let documents = MatchDocuments::from(
         Some(found.id),
         "",
@@ -98,7 +98,7 @@ pub async fn saved_result(core: &AppCore, id: i64) -> Result<MatchResult, Servic
 /// The free match: both texts read with the free reader (no model), matched with the taxonomy
 /// and scored like the full match; what the taxonomy can't find in the CV counts as missing.
 /// Nothing is saved. With Laya's model, the result has its answer on these verdicts.
-pub async fn quick_match(core: &AppCore, job_text: &str, cv_text: &str) -> Result<MatchResult, ServiceError> {
+pub async fn quick_match(context: &Context, job_text: &str, cv_text: &str) -> Result<MatchResult, ServiceError> {
     let job_text = job_text.trim();
     let cv_text = cv_text.trim();
     if job_text.is_empty() || cv_text.is_empty() {
@@ -113,7 +113,7 @@ pub async fn quick_match(core: &AppCore, job_text: &str, cv_text: &str) -> Resul
             "That text is too long. Paste only the CV and the job post.",
         ));
     }
-    let taxonomy = &core.taxonomy;
+    let taxonomy = &context.taxonomy;
     let mut reader = FreeReader::new(taxonomy, this_month());
     let job = reader.job(job_text);
     let profile = reader.cv(cv_text);
@@ -133,7 +133,7 @@ pub async fn quick_match(core: &AppCore, job_text: &str, cv_text: &str) -> Resul
     }
     let score = matcher::score(&groups, &verdicts);
     let apply = apply_instructions::read(job_text);
-    let laya = laya_client::reading(core.laya.as_ref(), &matcher::laya_summary(&job, &groups, &verdicts)).await;
+    let laya = laya_client::reading(context.laya.as_ref(), &matcher::laya_summary(&job, &groups, &verdicts)).await;
     let fresh = Fresh {
         job: &job,
         groups: &groups,
@@ -144,7 +144,7 @@ pub async fn quick_match(core: &AppCore, job_text: &str, cv_text: &str) -> Resul
         saved_id: None,
         laya: &laya,
     };
-    let writer = llm_key::ai_uses(core).await?.any();
+    let writer = llm_key::ai_uses(context).await?.any();
     Ok(MatchResult::from(&fresh, writer, None, "").with_cv_found(&profile))
 }
 
@@ -181,7 +181,7 @@ pub enum RejectOutcome {
 /// Rejects a saved match (not interested) for reasons, with notes per reason, so it leaves every
 /// list but Rejected; undo brings it back instead.
 pub async fn reject(
-    core: &AppCore,
+    context: &Context,
     id: i64,
     reasons: &[String],
     notes: &[(String, String)],
@@ -194,10 +194,17 @@ pub async fn reject(
         }
     }
     let done = if undo {
-        match_model::bring_back(core.db(), id, core.user_id).await?
+        match_model::bring_back(context.db(), id, context.user_id).await?
     } else {
         let now = chrono::Utc::now().timestamp();
-        match_model::reject(core.db(), id, core.user_id, &reject_reason::rows(reasons, notes), now).await?
+        match_model::reject(
+            context.db(),
+            id,
+            context.user_id,
+            &reject_reason::rows(reasons, notes),
+            now,
+        )
+        .await?
     };
     let message = match (done, undo) {
         (false, _) => None,
@@ -216,31 +223,36 @@ pub struct ExtensionHistory {
     pub not_joblogged: Vec<ListedMatch>,
 }
 
-pub async fn extension_history(core: &AppCore) -> Result<ExtensionHistory, ServiceError> {
-    let db = core.db();
+pub async fn extension_history(context: &Context) -> Result<ExtensionHistory, ServiceError> {
+    let db = context.db();
     Ok(ExtensionHistory {
-        matches: match_model::recent(db, core.user_id, HISTORY_SIZE).await?,
-        not_joblogged: match_model::best_first(db, core.user_id, HISTORY_SIZE, "", "not_joblogged")
+        matches: match_model::recent(db, context.user_id, HISTORY_SIZE).await?,
+        not_joblogged: match_model::best_first(db, context.user_id, HISTORY_SIZE, "", "not_joblogged")
             .await?
             .rows,
     })
 }
 
 /// A saved match as an entry for Jobnet's joblog (joblog::read).
-pub async fn joblog_entry(core: &AppCore, id: i64) -> Result<Entry, ServiceError> {
-    Ok(joblog::read(&saved_match(core, id).await?))
+pub async fn joblog_entry(context: &Context, id: i64) -> Result<Entry, ServiceError> {
+    Ok(joblog::read(&saved_match(context, id).await?))
 }
 
 /// The same entry as the match prints it under the result.
-pub async fn joblog_panel(core: &AppCore, id: i64) -> Result<JoblogPanel, ServiceError> {
-    let found = saved_match(core, id).await?;
+pub async fn joblog_panel(context: &Context, id: i64) -> Result<JoblogPanel, ServiceError> {
+    let found = saved_match(context, id).await?;
     Ok(JoblogPanel::from(found.id, &joblog::read(&found)))
 }
 
 /// Saves how far the candidate is with the job in Jobnet's words (joblog::SEARCH_STATUSES), and
 /// whether they entered it in their Jobnet joblog; answers the "In your Jobnet joblog" section.
-pub async fn save_joblog_status(core: &AppCore, id: i64, status: &str, logged: bool) -> Result<Logged, ServiceError> {
-    let found = saved_match(core, id).await?;
+pub async fn save_joblog_status(
+    context: &Context,
+    id: i64,
+    status: &str,
+    logged: bool,
+) -> Result<Logged, ServiceError> {
+    let found = saved_match(context, id).await?;
     if joblog::search_status(status).is_none() {
         let statuses: Vec<&str> = joblog::SEARCH_STATUSES.iter().map(|(_, text)| *text).collect();
         return Err(ServiceError::new(
@@ -249,7 +261,7 @@ pub async fn save_joblog_status(core: &AppCore, id: i64, status: &str, logged: b
         ));
     }
     let now = chrono::Utc::now().timestamp();
-    let saved = match_model::save_integration(core.db(), found.id, JOBNET_JOBLOG, status, logged, now).await?;
+    let saved = match_model::save_integration(context.db(), found.id, JOBNET_JOBLOG, status, logged, now).await?;
     Ok(Logged::from(
         saved.as_ref().and_then(|saved| saved.logged_at),
         joblog::applied_on(saved.as_ref()),
@@ -269,7 +281,7 @@ pub struct PdfFile {
 /// edits included; without it the saved text is used; the CV and the job post are always the
 /// saved text. document_id, an earlier version, is its text (and fields) as written.
 pub async fn pdf(
-    core: &AppCore,
+    context: &Context,
     id: i64,
     kind: &str,
     edited: &str,
@@ -281,10 +293,10 @@ pub async fn pdf(
             "Choose the application, the résumé, the CV or the job post.",
         ));
     }
-    let found = saved_match(core, id).await?;
+    let found = saved_match(context, id).await?;
     let version = match document_id {
         Some(document_id) => Some(
-            match_model::version(core.db(), found.id, document_id)
+            match_model::version(context.db(), found.id, document_id)
                 .await?
                 .filter(|version| version.kind == kind)
                 .ok_or_else(|| ServiceError::new(ErrorKind::NotFound, "That version was not found."))?,
@@ -308,8 +320,8 @@ pub async fn pdf(
     // A résumé written with fields is laid out from them; the text is only for one written
     // before they existed.
     let fields = match (&version, kind) {
-        (Some(version), RESUME) => match_model::resume_fields_of(core.db(), version.id).await?,
-        (None, RESUME) => match_model::resume_fields(core.db(), found.id).await?,
+        (Some(version), RESUME) => match_model::resume_fields_of(context.db(), version.id).await?,
+        (None, RESUME) => match_model::resume_fields(context.db(), found.id).await?,
         _ => None,
     };
     let made = match &fields {
@@ -373,14 +385,14 @@ fn pdf_title(found: &SavedMatch, kind: &str) -> String {
 
 /// The newest saved match of this CV with the same job post text, if any, so a post matched
 /// before can be skipped.
-pub async fn already_matched(core: &AppCore, cv_text: &str, job_text: &str) -> Result<Option<i64>, ServiceError> {
-    Ok(match_model::existing(core.db(), core.user_id, cv_text.trim(), job_text.trim()).await?)
+pub async fn already_matched(context: &Context, cv_text: &str, job_text: &str) -> Result<Option<i64>, ServiceError> {
+    Ok(match_model::existing(context.db(), context.user_id, cv_text.trim(), job_text.trim()).await?)
 }
 
 /// The job post at a pasted link (page_reader). Fetches are counted (MAX_FETCHES in
 /// FETCH_WINDOW_SECONDS), so a batch of links can't become a crawler.
-pub async fn fetch_job(core: &AppCore, url: &str) -> Result<Page, ServiceError> {
-    if let Err(minutes) = core.count_fetch(chrono::Utc::now().timestamp()) {
+pub async fn fetch_job(context: &Context, url: &str) -> Result<Page, ServiceError> {
+    if let Err(minutes) = context.count_fetch(chrono::Utc::now().timestamp()) {
         let plural = if minutes == 1 { "" } else { "s" };
         return Err(ServiceError::new(
             ErrorKind::TooMany,
@@ -397,11 +409,11 @@ pub async fn fetch_job(core: &AppCore, url: &str) -> Result<Page, ServiceError> 
 
 /// The job post as structured requirements, read by the model, or by the free reader when the
 /// key is off for evaluating job posts.
-pub async fn extract_job(core: &AppCore, text: &str) -> Result<Job, ServiceError> {
-    if llm_key::llm_settings(core, JOB_EVALUATION).await?.is_none() {
-        return Ok(FreeReader::new(&core.taxonomy, this_month()).job(text));
+pub async fn extract_job(context: &Context, text: &str) -> Result<Job, ServiceError> {
+    if llm_key::llm_settings(context, JOB_EVALUATION).await?.is_none() {
+        return Ok(FreeReader::new(&context.taxonomy, this_month()).job(text));
     }
-    let keyed = llm_key::llm(core, JOB_EVALUATION).await?;
+    let keyed = llm_key::llm(context, JOB_EVALUATION).await?;
     match_prompts::read_job(&keyed.llm, text)
         .await
         .map_err(|e| ServiceError::llm("match/extract_job", &e))
@@ -409,11 +421,11 @@ pub async fn extract_job(core: &AppCore, text: &str) -> Result<Job, ServiceError
 
 /// The CV as a structured profile, read by the model, or by the free reader when the key is off
 /// for evaluating job posts.
-pub async fn extract_cv(core: &AppCore, text: &str) -> Result<Profile, ServiceError> {
-    if llm_key::llm_settings(core, JOB_EVALUATION).await?.is_none() {
-        return Ok(FreeReader::new(&core.taxonomy, this_month()).cv(text));
+pub async fn extract_cv(context: &Context, text: &str) -> Result<Profile, ServiceError> {
+    if llm_key::llm_settings(context, JOB_EVALUATION).await?.is_none() {
+        return Ok(FreeReader::new(&context.taxonomy, this_month()).cv(text));
     }
-    let keyed = llm_key::llm(core, JOB_EVALUATION).await?;
+    let keyed = llm_key::llm(context, JOB_EVALUATION).await?;
     match_prompts::read_cv(&keyed.llm, text)
         .await
         .map_err(|e| ServiceError::llm("match/extract_cv", &e))
@@ -431,17 +443,17 @@ pub struct MatchRequest {
 }
 
 /// The match of a read job post with a read CV (ai_match), saved when both texts are given.
-pub async fn ai_match(core: &AppCore, request: &MatchRequest) -> Result<AiMatch, ServiceError> {
-    let keyed = match llm_key::llm_settings(core, JOB_EVALUATION).await? {
-        Some(_) => Some(llm_key::llm(core, JOB_EVALUATION).await?),
+pub async fn ai_match(context: &Context, request: &MatchRequest) -> Result<AiMatch, ServiceError> {
+    let keyed = match llm_key::llm_settings(context, JOB_EVALUATION).await? {
+        Some(_) => Some(llm_key::llm(context, JOB_EVALUATION).await?),
         None => None,
     };
     let matching = Matching {
-        db: core.db(),
-        taxonomy: &core.taxonomy,
-        user_id: core.user_id,
+        db: context.db(),
+        taxonomy: &context.taxonomy,
+        user_id: context.user_id,
         now: chrono::Utc::now().timestamp(),
-        laya: core.laya.as_ref(),
+        laya: context.laya.as_ref(),
     };
     let new = NewMatch {
         job: &request.job,
@@ -458,11 +470,11 @@ pub async fn ai_match(core: &AppCore, request: &MatchRequest) -> Result<AiMatch,
 
 /// The AI match as its result shows it, with the application and résumé panel of its saved match.
 pub async fn ai_match_result(
-    core: &AppCore,
+    context: &Context,
     request: &MatchRequest,
     found: &AiMatch,
 ) -> Result<MatchResult, ServiceError> {
-    let uses = llm_key::ai_uses(core).await?;
+    let uses = llm_key::ai_uses(context).await?;
     let documents = MatchDocuments::from(
         found.saved_id,
         found.save_error.as_deref().unwrap_or(""),
@@ -488,11 +500,16 @@ pub async fn ai_match_result(
 /// the candidate's notes, keeps it as the match's newest version, and answers its box. The
 /// writing runs as its own task, so it finishes and is saved even when the one who asked stops
 /// waiting (a page reloaded, a window closed); the saved match has it afterwards.
-pub async fn write(core: Arc<AppCore>, id: i64, notes: &str, kind: &'static str) -> Result<DocumentBox, ServiceError> {
-    let found = saved_match(&core, id).await?;
-    let keyed = llm_key::llm(&core, kind).await?;
+pub async fn write(
+    context: Arc<Context>,
+    id: i64,
+    notes: &str,
+    kind: &'static str,
+) -> Result<DocumentBox, ServiceError> {
+    let found = saved_match(&context, id).await?;
+    let keyed = llm_key::llm(&context, kind).await?;
     let notes = document_writer::notes(notes);
-    let task_core = core.clone();
+    let task_core = context.clone();
     let task_found = found.clone();
     let writing = tokio::spawn(async move {
         let db = task_core.db();
@@ -520,8 +537,8 @@ pub async fn write(core: Arc<AppCore>, id: i64, notes: &str, kind: &'static str)
             WriteError::Database(e) => ServiceError::from(e),
             WriteError::Empty(why) => ServiceError::failed(work, why),
         })?;
-    let found = saved_match(&core, found.id).await?;
-    let uses = llm_key::ai_uses(&core).await?;
+    let found = saved_match(&context, found.id).await?;
+    let uses = llm_key::ai_uses(&context).await?;
     let (application, resume) = match_documents::written_of(&found);
     let written = if kind == RESUME { resume } else { application };
     Ok(DocumentBox::from(
@@ -535,17 +552,17 @@ pub async fn write(core: Arc<AppCore>, id: i64, notes: &str, kind: &'static str)
 }
 
 /// The tailored résumé's saved match (resume_id) against the CV's (id).
-pub async fn resume_comparison(core: &AppCore, id: i64, resume_id: i64) -> Result<ResumeComparison, ServiceError> {
-    let cv_match = saved_match(core, id).await?;
-    let resume_match = saved_match(core, resume_id).await?;
+pub async fn resume_comparison(context: &Context, id: i64, resume_id: i64) -> Result<ResumeComparison, ServiceError> {
+    let cv_match = saved_match(context, id).await?;
+    let resume_match = saved_match(context, resume_id).await?;
     Ok(ResumeComparison::from(&cv_match, &resume_match))
 }
 
 /// The Apply dialog's content for a saved match: how the application is delivered, by email or on
 /// the employer's form, with the PDFs and the profile links to copy.
-pub async fn application_delivery(core: &AppCore, id: i64) -> Result<ApplicationDelivery, ServiceError> {
-    let found = saved_match(core, id).await?;
-    let links: Vec<CvLink> = profile::links_for_user(core.db(), core.user_id)
+pub async fn application_delivery(context: &Context, id: i64) -> Result<ApplicationDelivery, ServiceError> {
+    let found = saved_match(context, id).await?;
+    let links: Vec<CvLink> = profile::links_for_user(context.db(), context.user_id)
         .await?
         .into_iter()
         .map(|(label, url)| CvLink { label, url })

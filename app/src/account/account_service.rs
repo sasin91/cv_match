@@ -10,7 +10,7 @@ use super::account_model::{self, PROVIDERS, Saved, UseChoices};
 use super::llama_panel::LlamaPanel;
 use super::model_advice::ModelAdvice;
 use super::saved_key::{self, KeyUse, SavedKey};
-use crate::app_core::AppCore;
+use crate::context::Context;
 use crate::llama;
 use crate::llm::{self, ANTHROPIC, Effort, LLAMA_CPP, LOCAL, OPENAI};
 use crate::service_error::{ErrorKind, ServiceError};
@@ -94,10 +94,10 @@ pub enum SaveKey {
 
 /// Saves the provider's key, replacing the one saved for that provider; other providers' keys
 /// stay.
-pub async fn save_key(core: &AppCore, form: &KeyForm) -> Result<SaveKey, ServiceError> {
+pub async fn save_key(context: &Context, form: &KeyForm) -> Result<SaveKey, ServiceError> {
     let form = form.trimmed();
     let mut errors = validation_errors(&form);
-    errors.extend(llama_model_errors(core, &form));
+    errors.extend(llama_model_errors(context, &form));
     if !errors.is_empty() {
         return Ok(SaveKey::Invalid { form, errors });
     }
@@ -113,9 +113,9 @@ pub async fn save_key(core: &AppCore, form: &KeyForm) -> Result<SaveKey, Service
         form.api_key.as_str()
     };
     account_model::save(
-        core.db(),
-        &core.key_vault,
-        core.user_id,
+        context.db(),
+        &context.key_vault,
+        context.user_id,
         &form.provider,
         &form.model,
         base_url,
@@ -124,7 +124,7 @@ pub async fn save_key(core: &AppCore, form: &KeyForm) -> Result<SaveKey, Service
     .await
     .map_err(|e| ServiceError::internal("account/save_key", format!("Your key couldn't be saved: {e}")))?;
     let label = account_model::provider_label(&form.provider);
-    let setup_unfinished = setup::first_run_or_logged(core).await;
+    let setup_unfinished = setup::first_run_or_logged(context).await;
     let message = if setup_unfinished {
         format!("Your {label} key is saved, for every use.")
     } else {
@@ -137,8 +137,8 @@ pub async fn save_key(core: &AppCore, form: &KeyForm) -> Result<SaveKey, Service
 }
 
 /// Runs each use on the key of the provider chosen for it, or on none.
-pub async fn save_uses(core: &AppCore, chosen: &UseChoices) -> Result<&'static str, ServiceError> {
-    account_model::save_uses(core.db(), core.user_id, chosen)
+pub async fn save_uses(context: &Context, chosen: &UseChoices) -> Result<&'static str, ServiceError> {
+    account_model::save_uses(context.db(), context.user_id, chosen)
         .await
         .map_err(|e| {
             ServiceError::internal(
@@ -150,9 +150,9 @@ pub async fn save_uses(core: &AppCore, chosen: &UseChoices) -> Result<&'static s
 }
 
 /// Deletes that provider's saved key.
-pub async fn delete_key(core: &AppCore, provider: &str) -> Result<String, ServiceError> {
+pub async fn delete_key(context: &Context, provider: &str) -> Result<String, ServiceError> {
     let label = account_model::provider_label(provider);
-    account_model::delete_key(core.db(), &core.key_vault, core.user_id, provider)
+    account_model::delete_key(context.db(), &context.key_vault, context.user_id, provider)
         .await
         .map_err(|e| {
             ServiceError::internal(
@@ -164,12 +164,12 @@ pub async fn delete_key(core: &AppCore, provider: &str) -> Result<String, Servic
 }
 
 /// Asks that provider's saved key's model for one tiny answer: "Your key works: …", or why not.
-pub async fn check_key(core: &AppCore, provider: &str) -> Result<String, ServiceError> {
-    let key = account_model::key_of(core.db(), &core.key_vault, core.user_id, provider)
+pub async fn check_key(context: &Context, provider: &str) -> Result<String, ServiceError> {
+    let key = account_model::key_of(context.db(), &context.key_vault, context.user_id, provider)
         .await
         .map_err(|e| ServiceError::internal("account/check_key", format!("The check couldn't read your key: {e}")))?
         .ok_or_else(|| ServiceError::need_key("There's no key to check: save one first."))?;
-    let llm = llama::use_key(core.llama.as_ref(), &key)
+    let llm = llama::use_key(context.llama.as_ref(), &key)
         .await
         .map_err(|e| ServiceError::failed("account/check_key", format!("The check failed: {}", e.details())))?;
     let schema = json!({
@@ -192,13 +192,13 @@ pub async fn check_key(core: &AppCore, provider: &str) -> Result<String, Service
 }
 
 /// The page's data, with the form as typed (None: a provider without a saved key, if any).
-pub async fn account_view(core: &AppCore, typed: Option<&KeyForm>) -> Result<AccountView, ServiceError> {
-    let together = core.key_vault.lock().await;
-    let saved = account_model::saved(core.db(), core.user_id).await?;
-    let (saved_keys, vault_error) = readable(core, &saved);
+pub async fn account_view(context: &Context, typed: Option<&KeyForm>) -> Result<AccountView, ServiceError> {
+    let together = context.key_vault.lock().await;
+    let saved = account_model::saved(context.db(), context.user_id).await?;
+    let (saved_keys, vault_error) = readable(context, &saved);
     drop(together);
-    let setup_unfinished = setup::first_run_or_logged(core).await;
-    let advice = ModelAdvice::from(core.llama.as_ref());
+    let setup_unfinished = setup::first_run_or_logged(context).await;
+    let advice = ModelAdvice::from(context.llama.as_ref());
     let provider = typed
         .map(|form| form.provider.as_str())
         .filter(|provider| !provider.is_empty())
@@ -225,7 +225,7 @@ pub async fn account_view(core: &AppCore, typed: Option<&KeyForm>) -> Result<Acc
         base_url: typed.map_or_else(|| saved_field(|saved| &saved.base_url), |form| form.base_url.clone()),
         model_placeholder: model_placeholder(),
         base_url_placeholder: BASE_URL_PLACEHOLDER,
-        llama: core.llama.as_ref().map(|server| LlamaPanel::from(server.overview())),
+        llama: context.llama.as_ref().map(|server| LlamaPanel::from(server.overview())),
         advice,
         setup_unfinished,
     })
@@ -252,12 +252,12 @@ fn provider_to_add(saved: &[Saved], local_first: bool) -> &'static str {
 
 /// The saved keys for the page, each saying whether it is gone from Credential Manager, and why
 /// Credential Manager couldn't be read, when it couldn't. The caller holds the vault's lock.
-fn readable(core: &AppCore, saved: &[Saved]) -> (Vec<SavedKey>, Option<String>) {
+fn readable(context: &Context, saved: &[Saved]) -> (Vec<SavedKey>, Option<String>) {
     let mut vault_error = None;
     let keys = saved
         .iter()
         .map(|saved| {
-            let unreadable = match account_model::with_key(&core.key_vault, core.user_id, saved) {
+            let unreadable = match account_model::with_key(&context.key_vault, context.user_id, saved) {
                 Ok(key) => key.is_none(),
                 Err(e) => {
                     eprintln!("account: {e} (saved {} key)", saved.provider);
@@ -368,11 +368,11 @@ fn base_url_errors(base_url: &str) -> Vec<String> {
 
 /// For this app's own model: a named model must be a file in the models folder. Blank is the one
 /// that fits best.
-fn llama_model_errors(core: &AppCore, form: &KeyForm) -> Vec<String> {
+fn llama_model_errors(context: &Context, form: &KeyForm) -> Vec<String> {
     if form.provider != LLAMA_CPP {
         return Vec::new();
     }
-    let Some(server) = &core.llama else {
+    let Some(server) = &context.llama else {
         return vec!["The app was started without its llama folder.".to_string()];
     };
     let named = &form.model;

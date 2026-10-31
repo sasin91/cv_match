@@ -107,7 +107,7 @@ pub async fn index(State(state): State<Arc<AppState>>) -> Response {
 /// POST setup/submit_cv {cv_text, cv_name, replace}: reads the CV into the profile, replacing
 /// it; replace must be "1" when there is one. With an error the form comes back with the text.
 pub async fn submit_cv(State(state): State<Arc<AppState>>, Form(form): Form<CvForm>) -> Response {
-    match setup_steps::read_cv(&state.core, &form.cv_text, &form.cv_name, form.replace == "1").await {
+    match setup_steps::read_cv(&state.context, &form.cv_text, &form.cv_name, form.replace == "1").await {
         Ok(message) => {
             state.set_flash(message);
             Redirect::to(PAGE).into_response()
@@ -118,36 +118,36 @@ pub async fn submit_cv(State(state): State<Arc<AppState>>, Form(form): Form<CvFo
 
 /// POST setup/submit_schedule {hours}: registers the job scan's task to run every hours.
 pub async fn submit_schedule(State(state): State<Arc<AppState>>, Form(form): Form<ScheduleForm>) -> Response {
-    let said = setup_steps::schedule_scan(&state.core, form.hours).await;
+    let said = setup_steps::schedule_scan(&state.context, form.hours).await;
     state.set_flash(said.unwrap_or_else(|e| e.message));
     Redirect::to(PAGE).into_response()
 }
 
 /// POST setup/submit_unschedule: removes the job scan's task.
 pub async fn submit_unschedule(State(state): State<Arc<AppState>>) -> Response {
-    let said = setup_steps::unschedule_scan(&state.core).await;
+    let said = setup_steps::unschedule_scan(&state.context).await;
     state.set_flash(said.map_or_else(|e| e.message, str::to_string));
     Redirect::to(PAGE).into_response()
 }
 
 /// The page, with the CV form as posted and why it couldn't be read, when it couldn't.
 async fn page(state: &AppState, posted: Option<(String, CvForm)>) -> Response {
-    let ai = match setup_steps::ai(&state.core).await {
+    let ai = match setup_steps::ai(&state.context).await {
         Ok(ai) => ai,
         Err(e) => return failure(&format!("The database couldn't answer: {e}")),
     };
-    let cv = match setup_steps::cv(&state.core).await {
+    let cv = match setup_steps::cv(&state.context).await {
         Ok(cv) => cv,
         Err(why) => return failure(&why),
     };
     let AiStep { saved, advice } = ai;
     let page = SetupPage {
         flash: state.take_flash(),
-        database: setup_steps::database(&state.core),
+        database: setup_steps::database(&state.context),
         ai_saved: saved,
         advice,
         cv: cv_view(cv, posted),
-        schedule: schedule_view(setup_steps::schedule(&state.core).await),
+        schedule: schedule_view(setup_steps::schedule(&state.context).await),
     };
     match page.render() {
         Ok(html) => Html(html).into_response(),

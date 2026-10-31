@@ -4,7 +4,7 @@
 use std::sync::{Arc, LazyLock};
 
 use recruiter::account::key_vault::KeyVault;
-use recruiter::app_core::AppCore;
+use recruiter::context::Context;
 use recruiter::db;
 use recruiter::matches::match_service::{self, RejectOutcome};
 use recruiter::server;
@@ -24,18 +24,18 @@ VALUES (21, 'requirements', 'PHP', 'met', 'exact', 'Named in the CV.', 0);
 ";
 
 /// The work's shared state on an in-memory database with SEED in it.
-async fn core() -> AppCore {
+async fn context() -> Context {
     let db = db::open_in_memory().await.unwrap();
     db.execute(sqlx::raw_sql(SEED)).await.unwrap();
     let user_id = server::local_user(&db).await.unwrap();
-    AppCore::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory())
+    Context::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory())
 }
 
 #[tokio::test]
 async fn the_free_match_answers_a_result_to_print() {
-    let core = core().await;
+    let context = context().await;
     let result = match_service::quick_match(
-        &core,
+        &context,
         "PHP-udvikler\nDin profil\n- Erfaring med PHP\n- Kendskab til Docker",
         "Udvikler\nPHP, Laravel, MySQL",
     )
@@ -48,53 +48,55 @@ async fn the_free_match_answers_a_result_to_print() {
 
 #[tokio::test]
 async fn the_free_match_says_what_is_missing_from_its_input() {
-    let core = core().await;
-    let error = match_service::quick_match(&core, "", "PHP").await.unwrap_err();
+    let context = context().await;
+    let error = match_service::quick_match(&context, "", "PHP").await.unwrap_err();
     assert_eq!(error.kind, ErrorKind::Invalid);
     assert_eq!(error.message, "Paste or upload both the CV and the job post.");
 }
 
 #[tokio::test]
 async fn a_saved_match_is_found_by_id_and_others_are_not() {
-    let core = core().await;
-    let result = match_service::saved_result(&core, 21).await.unwrap();
+    let context = context().await;
+    let result = match_service::saved_result(&context, 21).await.unwrap();
     assert_eq!(result.saved_id, Some(21));
     for id in [0, -1, 99] {
-        let error = match_service::saved_match(&core, id).await.unwrap_err();
+        let error = match_service::saved_match(&context, id).await.unwrap_err();
         assert_eq!(error.kind, ErrorKind::NotFound, "id {id}");
     }
 }
 
 #[tokio::test]
 async fn a_reject_needs_a_reason_and_can_be_undone() {
-    let core = core().await;
-    let unfinished = match_service::reject(&core, 21, &[], &[], false).await.unwrap();
+    let context = context().await;
+    let unfinished = match_service::reject(&context, 21, &[], &[], false).await.unwrap();
     assert!(matches!(unfinished, RejectOutcome::Unfinished(problem) if !problem.is_empty()));
     let reasons = ["commute".to_string()];
     let notes = [("commute".to_string(), "1h each way".to_string())];
-    let rejected = match_service::reject(&core, 21, &reasons, &notes, false).await.unwrap();
+    let rejected = match_service::reject(&context, 21, &reasons, &notes, false)
+        .await
+        .unwrap();
     assert_eq!(
         rejected,
         RejectOutcome::Done(Some("Rejected. It is in the Rejected list if you change your mind."))
     );
-    let back = match_service::reject(&core, 21, &[], &[], true).await.unwrap();
+    let back = match_service::reject(&context, 21, &[], &[], true).await.unwrap();
     assert_eq!(back, RejectOutcome::Done(Some("The match is back in your lists.")));
 }
 
 #[tokio::test]
 async fn a_pdf_is_named_for_the_job_and_needs_a_known_kind() {
-    let core = core().await;
-    let made = match_service::pdf(&core, 21, "job", "", None).await.unwrap();
+    let context = context().await;
+    let made = match_service::pdf(&context, 21, "job", "", None).await.unwrap();
     assert!(made.bytes.starts_with(b"%PDF"));
     assert!(made.name.ends_with(".pdf"), "{}", made.name);
-    let error = match_service::pdf(&core, 21, "poster", "", None).await.unwrap_err();
+    let error = match_service::pdf(&context, 21, "poster", "", None).await.unwrap_err();
     assert_eq!(error.kind, ErrorKind::Invalid);
 }
 
 #[tokio::test]
 async fn a_joblog_status_must_be_one_of_jobnets() {
-    let core = core().await;
-    let error = match_service::save_joblog_status(&core, 21, "maybe", true)
+    let context = context().await;
+    let error = match_service::save_joblog_status(&context, 21, "maybe", true)
         .await
         .unwrap_err();
     assert_eq!(error.kind, ErrorKind::Malformed);
@@ -103,12 +105,12 @@ async fn a_joblog_status_must_be_one_of_jobnets() {
 
 #[tokio::test]
 async fn link_fetches_stop_after_the_limit() {
-    let core = core().await;
+    let context = context().await;
     let now = chrono::Utc::now().timestamp();
     for _ in 0..match_service::MAX_FETCHES {
-        core.count_fetch(now).unwrap();
+        context.count_fetch(now).unwrap();
     }
-    let error = match_service::fetch_job(&core, "https://example.com/job")
+    let error = match_service::fetch_job(&context, "https://example.com/job")
         .await
         .unwrap_err();
     assert_eq!(error.kind, ErrorKind::TooMany);
@@ -116,7 +118,7 @@ async fn link_fetches_stop_after_the_limit() {
 
 #[tokio::test]
 async fn writing_without_a_key_points_to_the_key_page() {
-    let core = Arc::new(core().await);
-    let error = match_service::write(core, 21, "", "application").await.unwrap_err();
+    let context = Arc::new(context().await);
+    let error = match_service::write(context, 21, "", "application").await.unwrap_err();
     assert_eq!(error.kind, ErrorKind::NeedKey);
 }
