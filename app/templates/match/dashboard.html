@@ -1,0 +1,39 @@
+{#- The match page's dashboard (matches::dashboard): what is ready and missing, and a glance at the
+    matches found. -#}
+<div class="dashboard" id="dashboard">
+    <section class="panel dashboard-status" aria-labelledby="status-heading">
+        <h2 id="status-heading">Status</h2>
+        <ul class="status-rows">
+            {%- for row in dashboard.status %}
+            <li class="status-row status-{{ row.state.class() }}">
+                <span class="status-state">{{ row.state.label() }}</span>
+                <div class="status-about">
+                    <strong>{{ row.name }}</strong>
+                    <span class="muted">{{ row.text }}</span>
+                </div>
+                {%- if let Some(fix) = row.fix %}
+                <a class="status-fix" href="{{ fix.href }}">{{ fix.label }}</a>
+                {%- endif %}
+            </li>
+            {%- endfor %}
+        </ul>
+    </section>
+    <section class="panel dashboard-findings" aria-labelledby="findings-heading">
+        <h2 id="findings-heading">Matches</h2>
+        <ul class="list-counts">
+            {%- for list in dashboard.lists %}
+            <li><a href="{{ list.href }}"><strong>{{ list.count }}</strong> <span class="muted">{{ list.label }}</span></a></li>
+            {%- endfor %}
+        </ul>
+        {%- if dashboard.best.is_empty() %}
+        <p class="muted">No top matches to apply for yet.</p>
+        {%- else %}
+        <h3>Best to apply for</h3>
+        <ul class="best-matches">
+            {%- for m in dashboard.best %}
+            <li class="best-{{ m.tag }}"><a href="match/{{ m.id }}"><span class="history-title">{{ m.title }}</span><span class="history-meta">{{ m.about }}</span></a></li>
+            {%- endfor %}
+        </ul>
+        {%- endif %}
+    </section>
+</div>

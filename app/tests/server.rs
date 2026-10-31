@@ -945,24 +945,60 @@ async fn redirect_of(app: &axum::Router, request: Request<Body>) -> String {
 }
 
 #[tokio::test]
-async fn a_new_database_opens_the_setup_and_a_used_one_the_match_page() {
+async fn every_database_opens_the_dashboard() {
     let (new, _) = new_app(KeyVault::in_memory()).await;
-    assert_eq!(redirect_of(&new, get("/")).await, "/setup");
+    assert_eq!(redirect_of(&new, get("/")).await, "/match");
     assert_eq!(redirect_of(&app().await, get("/")).await, "/match");
 }
 
 #[tokio::test]
-async fn the_match_page_opens_the_setup_on_a_new_database_until_the_setup_goes_on_to_it() {
+async fn the_dashboard_of_a_new_database_says_what_is_missing() {
     let (app, _) = new_app(KeyVault::in_memory()).await;
-    assert_eq!(redirect_of(&app, get("/match")).await, "/setup");
-    assert_eq!(redirect_of(&app, get("/match?list=rejected")).await, "/setup");
-    let (_, wizard) = send_to(&app, get("/setup")).await;
-    assert!(wizard.contains(r#"action="setup/submit_finish""#), "{wizard}");
-
-    assert_eq!(redirect_of(&app, post_form("/setup/submit_finish", "")).await, "/match");
     let (status, page) = send_to(&app, get("/match")).await;
     assert_eq!(status, StatusCode::OK, "{page}");
-    assert_eq!(redirect_of(&app, get("/")).await, "/match");
+    assert!(page.contains(r#"role="alert""#), "{page}");
+    assert!(
+        page.contains(r#"<a class="status-fix" href="setup#ai">Set one up</a>"#),
+        "{page}"
+    );
+    assert!(
+        page.contains(r#"<a class="status-fix" href="setup#cv">Read your CV</a>"#),
+        "{page}"
+    );
+    assert!(page.contains("No top matches to apply for yet."), "{page}");
+    assert!(
+        page.contains("The scan itself isn&#39;t in the desktop app yet.")
+            || page.contains("The scan itself isn&#x27;t in the desktop app yet."),
+        "{page}"
+    );
+    assert!(!page.contains(r#"status-row status-ready"#), "{page}");
+}
+
+#[tokio::test]
+async fn the_dashboard_counts_each_list_and_shows_the_best_matches() {
+    let (_, page) = send(get("/match")).await;
+    assert!(page.contains(r#"id="dashboard""#), "{page}");
+    assert!(
+        page.contains(r#"<a href="match"><strong>1</strong> <span class="muted">Shortlist</span></a>"#),
+        "{page}"
+    );
+    assert!(
+        page.contains(r#"<a href="match?list=rejected"><strong>1</strong> <span class="muted">Rejected</span></a>"#),
+        "{page}"
+    );
+    assert!(
+        page.contains(r#"<li class="best-good"><a href="match/21">"#)
+            || page.contains(r#"<li class="best-top"><a href="match/21">"#),
+        "{page}"
+    );
+}
+
+#[tokio::test]
+async fn a_saved_match_opens_without_the_dashboard() {
+    let (status, page) = send(get("/match/21")).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert!(!page.contains(r#"id="dashboard""#), "{page}");
+    assert!(page.contains("<h1>CV match</h1>"), "{page}");
 }
 
 #[tokio::test]

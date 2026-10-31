@@ -17,16 +17,26 @@
 </header>
 {% include "match/dialogs.html" %}
 <main>
-    <div class="hero">
-        <h1>CV match</h1>
-        <p class="muted">Add your CV and one or more job posts, and see how well you fit each one.</p>
-    </div>
+    {%- if dashboard.is_some() %}
+    <h1 class="dashboard-heading">Dashboard</h1>
+    {%- endif %}
     {%- if let Some(flash) = flash %}
     <p class="notice">{{ flash }}</p>
     {%- endif %}
     {%- if !ai_ready %}
-        <p class="notice">You're using the free keyword match. Add your own OpenAI or Anthropic API key, or a local model, on the <a href="account">API key page</a> to turn on the AI match: it reads requirements written as sentences, judges related experience and writes your application.</p>
+        <p class="notice notice-alert" role="alert">No AI model is set up, so you're using the free keyword match. <a href="setup#ai">Set up a model</a> to turn on the AI match: it reads requirements written as sentences, judges related experience and writes your application.</p>
     {%- endif %}
+    {%- if let Some(dashboard) = dashboard %}
+    {% include "match/dashboard.html" %}
+    {%- endif %}
+    <div class="hero">
+        {%- if dashboard.is_some() %}
+        <h2>New match</h2>
+        {%- else %}
+        <h1>CV match</h1>
+        {%- endif %}
+        <p class="muted">Add your CV and one or more job posts, and see how well you fit each one.</p>
+    </div>
 
     {#- On wide screens the input, the result and the saved matches sit side by side (css/match.css "wide screens"). #}
     <div class="workspace">

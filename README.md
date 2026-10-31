@@ -33,7 +33,9 @@ The first build downloads ONNX Runtime for Laya (from cdn.pyke.io) and links it 
     .\target\release\recruiter.exe
 
 On the first start the app makes an empty database, `%APPDATA%\Recruiter\recruiter.sqlite`,
-writes the Jobnet extension next to it and opens the setup wizard (http://127.0.0.1:8765/setup):
+writes the Jobnet extension next to it and opens the dashboard (http://127.0.0.1:8765/match). It
+says what is ready and what is missing, with an alert when no AI model is set up, and shows the
+matches found. Its rows link to the setup wizard (http://127.0.0.1:8765/setup), for when you want it:
 
 1. where the database is;
 2. an AI model: this app's own llama.cpp model when the PC's graphics card has room for a good
@@ -44,9 +46,6 @@ writes the Jobnet extension next to it and opens the setup wizard (http://127.0.
    `recruiter.exe scan` (the scan itself isn't ported yet, so for now a run only says so);
 5. then the match page.
 
-Until step 5, http://127.0.0.1:8765/match redirects to the wizard too. It does so again at the next
-start while the database has no profile or saved matches. A database with either opens on /match
-instead; the wizard stays at /setup.
 Close its window to stop it. `recruiter.exe --help` lists the options.
 
 If the app refuses, at start, a database made from an older schema, move `recruiter.sqlite`
@@ -155,8 +154,8 @@ Stop it with Ctrl+C.
 
 With a real key saved on the API key page, check these by hand after a change:
 
-- [ ] **The setup wizard:** start with `--database` naming a new file. The browser opens /setup,
-      which suggests the app's own model on a PC with a good graphics card, else an OpenAI key.
+- [ ] **The dashboard and setup wizard:** start with `--database` naming a new file. The browser
+      opens /match, with an alert that no AI model is set up. Follow it to /setup, which suggests the app's own model on a PC with a good graphics card, else an OpenAI key.
       Set one up and land back on /setup; read a PDF CV into the profile; pick how often to check
       for new jobs, and `Recruiter\Job scan` shows in Task Scheduler (run it once: no console
       window opens). Go to the match page, which has the CV filled in.

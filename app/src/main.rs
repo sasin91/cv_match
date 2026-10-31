@@ -171,7 +171,7 @@ fn run_server(args: &[String]) -> ExitCode {
     state.tailscale_name = tailscale_name;
     state.dev_reload = dev.then(DevReload::new);
     let state = Arc::new(state);
-    // The home page opens the setup wizard on a new database, and the match page after that.
+    // The home page is the dashboard, on the match page.
     let address = format!("http://127.0.0.1:{port}/");
     runtime.block_on(async {
         tokio::spawn(preload_laya(Arc::clone(&state)));

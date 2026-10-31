@@ -9,6 +9,7 @@ pub mod apply_instructions;
 pub mod apply_notice;
 pub mod batch_row;
 pub mod cv_links;
+pub mod dashboard;
 pub mod dates;
 pub mod document_box;
 pub mod document_writer;

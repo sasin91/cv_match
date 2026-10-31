@@ -16,6 +16,7 @@ use super::ai_match::{self, AiMatch, Matching};
 use super::application_delivery::{ApplicationDelivery, rawurlencode};
 use super::batch_row::BatchRow;
 use super::cv_links::CvLink;
+use super::dashboard::Dashboard;
 use super::document_box::{APPLICATION, DocumentBox, RESUME};
 use super::document_writer::{self, WriteError};
 use super::free_reader::{FreeReader, YearMonth};
@@ -35,7 +36,6 @@ use crate::account::account_model::JOB_EVALUATION;
 use crate::laya::laya_client;
 use crate::profile;
 use crate::server::AppState;
-use crate::setup;
 
 /// Longest CV or job post quick_match reads, in characters.
 const MAX_TEXT: usize = 40_000;
@@ -71,6 +71,8 @@ pub struct ListTab {
 #[template(path = "match/match.html")]
 struct MatchPage {
     flash: Option<String>,
+    /// None when the page opens on one saved match.
+    dashboard: Option<Dashboard>,
     ai_ready: bool,
     ai_uses_json: String,
     max_jobs: usize,
@@ -185,7 +187,7 @@ async fn saved_matches(state: &AppState, query: &ListQuery, first: bool) -> Resu
 }
 
 /// The lists as tabs, the shortlist first.
-fn list_tabs(current: &str) -> Vec<ListTab> {
+pub(super) fn list_tabs(current: &str) -> Vec<ListTab> {
     LISTS
         .iter()
         .map(|&(list, label, _)| ListTab {
@@ -200,11 +202,13 @@ fn list_tabs(current: &str) -> Vec<ListTab> {
         .collect()
 }
 
-/// GET match: the match page, or the setup wizard while it is due.
+/// GET /: the dashboard, on the match page.
+pub async fn home() -> Redirect {
+    Redirect::to("/match")
+}
+
+/// GET match: the match page, with the dashboard on top.
 pub async fn index(State(state): State<Arc<AppState>>, Query(query): Query<ListQuery>) -> Answer {
-    if setup::wizard_is_due(&state).await {
-        return Ok(Redirect::to(setup::PAGE).into_response());
-    }
     match_page(&state, &query, None).await
 }
 
@@ -224,6 +228,10 @@ pub async fn show(
 async fn match_page(state: &AppState, query: &ListQuery, open_id: Option<i64>) -> Answer {
     let saved = saved_matches(state, query, false).await?;
     let uses = llm_key::ai_uses(state).await?;
+    let dashboard = match open_id {
+        Some(_) => None,
+        None => Some(Dashboard::load(state, uses.any()).await?),
+    };
     let empty_text = LISTS
         .iter()
         .find(|(name, ..)| *name == saved.list)
@@ -231,6 +239,7 @@ async fn match_page(state: &AppState, query: &ListQuery, open_id: Option<i64>) -
         .unwrap_or("");
     html(MatchPage {
         flash: state.take_flash(),
+        dashboard,
         ai_ready: uses.any(),
         ai_uses_json:
             json!({ "resume": uses.resume, "application": uses.application, "job_evaluation": uses.job_evaluation })

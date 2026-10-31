@@ -1,10 +1,11 @@
-//! setup: the first-run wizard (GET setup), which the app opens on a database that hasn't been
-//! set up (setup_steps::is_first_run). Its steps, in order:
+//! setup: the setup wizard (GET setup), which the dashboard's rows link to for what is missing.
+//! Its steps, in order:
 //!
 //! 1. The database: made at start-up; the wizard says where it is.
 //! 2. The AI model: this app's own llama.cpp model when the computer has room for a good one,
 //!    else an OpenAI or Claude key (model_advice). The steps themselves are the llama_setup and
-//!    account pages, which come back here while the setup isn't finished.
+//!    account pages, which come back here on a database that hasn't been set up
+//!    (setup_steps::is_first_run).
 //! 3. The CV, read into the profile (profile_fill), which needs the model.
 //! 4. How often the job scan runs by itself: a Task Scheduler task (scan_schedule).
 //! 5. The dashboard: the match page.
@@ -29,13 +30,10 @@ use crate::profile::profile_fill::{self, MAX_CV_LENGTH};
 use crate::scan_schedule::{DEFAULT_INTERVAL_HOURS, INTERVALS};
 use crate::server::AppState;
 
-pub use self::setup_steps::{first_run_or_logged, is_first_run, wizard_is_due};
+pub use self::setup_steps::{first_run_or_logged, is_first_run};
 
 /// Where the wizard is, and where its forms send the browser back to.
 pub const PAGE: &str = "/setup";
-
-/// Where the wizard ends: the match page, the app's dashboard.
-const DASHBOARD: &str = "/match";
 
 /// An interval in the schedule step's list.
 pub struct IntervalOption {
@@ -94,15 +92,6 @@ pub struct ScheduleForm {
     hours: u32,
 }
 
-/// GET /: the wizard while it is due, else the dashboard.
-pub async fn home(State(state): State<Arc<AppState>>) -> Redirect {
-    if wizard_is_due(&state).await {
-        Redirect::to(PAGE)
-    } else {
-        Redirect::to(DASHBOARD)
-    }
-}
-
 /// GET setup.
 pub async fn index(State(state): State<Arc<AppState>>) -> Response {
     page(&state, None).await
@@ -152,12 +141,6 @@ pub async fn submit_unschedule(State(state): State<Arc<AppState>>) -> Response {
     Redirect::to(PAGE).into_response()
 }
 
-/// POST setup/submit_finish: goes on to the dashboard, which stops sending the browser back here.
-pub async fn submit_finish(State(state): State<Arc<AppState>>) -> Redirect {
-    state.leave_setup();
-    Redirect::to(DASHBOARD)
-}
-
 /// The page, with the CV form as posted and why it couldn't be read, when it couldn't.
 async fn page(state: &AppState, posted: Option<(String, CvForm)>) -> Response {
     let ai = match setup_steps::ai(state).await {
@@ -199,7 +182,7 @@ fn cv_view(step: CvStep, posted: Option<(String, CvForm)>) -> CvView {
 }
 
 /// "Mette Sørensen, read from cv.pdf on 31 October 2026"; without the parts it doesn't have.
-fn filled_line(filled: &crate::profile::profile_model::FilledFrom) -> String {
+pub(crate) fn filled_line(filled: &crate::profile::profile_model::FilledFrom) -> String {
     let mut line = filled.name.clone();
     if !filled.cv_name.is_empty() {
         line.push_str(&format!(", read from {}", filled.cv_name));
@@ -232,7 +215,7 @@ fn schedule_view(step: ScheduleStep) -> ScheduleView {
 }
 
 /// "Every 4 hours" for 4; "Every N hours" for one that isn't offered (set by hand).
-fn interval_label(hours: u32) -> &'static str {
+pub(crate) fn interval_label(hours: u32) -> &'static str {
     INTERVALS
         .iter()
         .find(|(offered, _)| *offered == hours)

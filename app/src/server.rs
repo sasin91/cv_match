@@ -12,7 +12,6 @@
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
-use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
@@ -61,8 +60,6 @@ pub struct AppState {
     pub user_id: i64,
     pub key_vault: KeyVault,
     flash: Mutex<Option<String>>,
-    /// The user went on from the setup wizard to the match page, in this run of the app.
-    setup_left: AtomicBool,
     /// When the pages fetch_job read in its window were fetched, oldest first (unix seconds).
     fetches: Mutex<Vec<i64>>,
     port: u16,
@@ -100,7 +97,6 @@ impl AppState {
             user_id,
             key_vault,
             flash: Mutex::new(None),
-            setup_left: AtomicBool::new(false),
             fetches: Mutex::new(Vec::new()),
             port,
             extension_folder: Err("The extension wasn't written out.".to_string()),
@@ -119,14 +115,6 @@ impl AppState {
 
     pub fn set_flash(&self, message: String) {
         *self.flash.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(message);
-    }
-
-    pub fn leave_setup(&self) {
-        self.setup_left.store(true, Ordering::Relaxed);
-    }
-
-    pub fn setup_left(&self) -> bool {
-        self.setup_left.load(Ordering::Relaxed)
     }
 
     /// Counts a page fetch at now, or says in how many minutes the next one may go, when
@@ -169,12 +157,11 @@ pub async fn local_user(db: &SqlitePool) -> sqlx::Result<i64> {
 
 pub fn router(state: Arc<AppState>) -> Router {
     let mut router = Router::new()
-        .route("/", get(setup::home))
+        .route("/", get(pages::home))
         .route("/setup", get(setup::index))
         .route("/setup/submit_cv", post(setup::submit_cv))
         .route("/setup/submit_schedule", post(setup::submit_schedule))
         .route("/setup/submit_unschedule", post(setup::submit_unschedule))
-        .route("/setup/submit_finish", post(setup::submit_finish))
         .route("/match", get(pages::index))
         .route("/match/{id}", get(pages::show))
         .route("/match/history_list", get(pages::history_list))
