@@ -1049,7 +1049,10 @@ async fn the_setup_schedules_the_job_scan_and_stops_it() {
         "/setup"
     );
     let (_, page) = send_to(&app, get("/setup")).await;
-    assert!(page.contains("The job scan runs every 8 hours while this computer is on"), "{page}");
+    assert!(
+        page.contains("The job scan runs every 8 hours while this computer is on"),
+        "{page}"
+    );
     assert!(page.contains("The job scan runs by itself: every 8 hours"));
     assert!(page.contains(r#"<option value="8" selected>Every 8 hours</option>"#));
     redirect_of(&app, post_form("/setup/submit_schedule", "hours=5")).await;
