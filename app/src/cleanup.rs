@@ -55,9 +55,11 @@ pub fn app_folders(database: &Path) -> Vec<PathBuf> {
 #[derive(Debug, PartialEq)]
 pub struct InUse;
 
-/// The file whose lock a running Recruiter holds for database: the database's name and -lock.
+/// The file whose lock a running Recruiter holds for database: the database's name and -lock,
+/// beside the file itself, so a link to the database shares its lock.
 pub fn lock_file(database: &Path) -> PathBuf {
-    let mut name = database.as_os_str().to_owned();
+    let database = std::fs::canonicalize(database).unwrap_or_else(|_| database.to_path_buf());
+    let mut name = database.into_os_string();
     name.push("-lock");
     PathBuf::from(name)
 }
@@ -97,10 +99,11 @@ pub fn hold(database: &Path, how: Hold) -> Result<Option<std::fs::File>, InUse> 
     }
 }
 
-/// The database's own files: the file, SQLite's -wal, -shm and -journal beside it, and the lock.
+/// The database's own files: the file, and SQLite's -wal, -shm and -journal beside it (the lock
+/// file goes after the cleanup lets go of it).
 pub fn database_files(database: &Path) -> Vec<PathBuf> {
     let mut files = vec![database.to_path_buf()];
-    for suffix in ["-wal", "-shm", "-journal", "-lock"] {
+    for suffix in ["-wal", "-shm", "-journal"] {
         let mut name = database.as_os_str().to_owned();
         name.push(suffix);
         files.push(PathBuf::from(name));
@@ -212,8 +215,7 @@ mod tests {
                 "/data/recruiter.sqlite",
                 "/data/recruiter.sqlite-wal",
                 "/data/recruiter.sqlite-shm",
-                "/data/recruiter.sqlite-journal",
-                "/data/recruiter.sqlite-lock"
+                "/data/recruiter.sqlite-journal"
             ]
             .map(PathBuf::from)
         );
@@ -243,6 +245,17 @@ mod tests {
             "no app starts during the cleanup"
         );
         drop(cleanup);
+
+        // A link to the database shares its lock.
+        #[cfg(unix)]
+        {
+            std::fs::write(&database, "db").unwrap();
+            let alias = folder.join("alias.sqlite");
+            std::os::unix::fs::symlink(&database, &alias).unwrap();
+            let app = hold(&database, Hold::Running).unwrap();
+            assert!(app.is_some());
+            assert_eq!(hold(&alias, Hold::Cleanup).err(), Some(InUse));
+        }
         std::fs::remove_dir_all(&folder).unwrap();
     }
 

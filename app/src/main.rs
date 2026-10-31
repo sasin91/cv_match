@@ -169,9 +169,12 @@ fn run_cleanup(args: &[String]) -> ExitCode {
             database.display()
         );
         if ask("Delete your database too?") {
-            // Windows won't delete a file this program still has open.
-            drop(held);
+            // The lock is held until the database's files are gone, so no app opens them meanwhile;
+            // its own file goes last, once let go (Windows won't delete an open file).
+            let lock_file = cleanup::lock_file(&database);
             failed.extend(cleanup::remove_database(&found));
+            drop(held);
+            let _ = std::fs::remove_file(lock_file);
             let default_path = db::default_path();
             let default_folder = default_path.parent().unwrap_or(std::path::Path::new("."));
             if failed.is_empty() && cleanup::remove_default_folder(&database, default_folder) {
