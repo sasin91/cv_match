@@ -7,11 +7,11 @@
 use std::sync::Arc;
 
 use askama::Template;
-use axum::Form;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use serde::Deserialize;
+use axum::{Form, Json};
+use serde::{Deserialize, Serialize};
 
 use super::account_model;
 use crate::llama::catalog::{self, CatalogModel};
@@ -28,8 +28,8 @@ const PAGE: &str = "/llama_setup";
 /// What the download of llama.cpp is called while it runs.
 const SERVER_DOWNLOAD: &str = "llama.cpp";
 
-/// How often the page reloads itself while a download runs, in seconds.
-const REFRESH_SECONDS: u32 = 2;
+/// How often the page asks how the download is going, in milliseconds.
+const POLL_MILLISECONDS: u32 = 1000;
 
 /// Percent, for the download's progress.
 const PERCENT: u64 = 100;
@@ -56,6 +56,8 @@ pub struct DownloadView {
     pub what: String,
     /// "1.2 GB of 5.0 GB (24%)", or "" when it isn't running.
     pub progress: String,
+    /// How much is downloaded, in percent, when the size is known.
+    pub percent: Option<u64>,
     pub running: bool,
     pub finished: bool,
     pub why_failed: Option<String>,
@@ -65,8 +67,8 @@ pub struct DownloadView {
 #[template(path = "account/llama_setup.html")]
 struct LlamaSetupPage {
     flash: Option<String>,
-    /// Seconds before the page reloads itself, while a download runs.
-    refresh_seconds: Option<u32>,
+    /// How often the progress bar asks llama_setup/progress, in milliseconds.
+    poll_milliseconds: u32,
     computer: String,
     folder: String,
     models_folder: String,
@@ -207,7 +209,7 @@ fn page_of(server: &LlamaServer, flash: Option<String>) -> LlamaSetupPage {
     } = model_lists(catalog_rows(server, card_usable));
     LlamaSetupPage {
         flash,
-        refresh_seconds: busy.then_some(REFRESH_SECONDS),
+        poll_milliseconds: POLL_MILLISECONDS,
         computer: overview.inventory.to_string(),
         folder: overview.folder.display().to_string(),
         models_folder: models_folder.display().to_string(),
@@ -282,6 +284,7 @@ fn download_view(progress: &Progress) -> Option<DownloadView> {
     let view = |what: &str| DownloadView {
         what: what.to_string(),
         progress: String::new(),
+        percent: None,
         running: false,
         finished: false,
         why_failed: None,
@@ -294,6 +297,7 @@ fn download_view(progress: &Progress) -> Option<DownloadView> {
             total_bytes,
         } => Some(DownloadView {
             progress: progress_text(*done_bytes, *total_bytes),
+            percent: percent_of(*done_bytes, *total_bytes),
             running: true,
             ..view(what)
         }),
@@ -310,15 +314,50 @@ fn download_view(progress: &Progress) -> Option<DownloadView> {
 
 /// "1.2 GB of 5.0 GB (24%)", or "1.2 GB" when the size isn't known.
 fn progress_text(done_bytes: u64, total_bytes: Option<u64>) -> String {
-    match total_bytes.filter(|total| *total > 0) {
-        Some(total) => format!(
-            "{} of {} ({}%)",
+    match (total_bytes, percent_of(done_bytes, total_bytes)) {
+        (Some(total), Some(percent)) => format!(
+            "{} of {} ({percent}%)",
             hardware::gigabytes(done_bytes),
-            hardware::gigabytes(total),
-            done_bytes * PERCENT / total
+            hardware::gigabytes(total)
         ),
-        None => hardware::gigabytes(done_bytes),
+        _ => hardware::gigabytes(done_bytes),
     }
+}
+
+/// done_bytes as a percent of total_bytes, when that is known and not 0.
+fn percent_of(done_bytes: u64, total_bytes: Option<u64>) -> Option<u64> {
+    total_bytes
+        .filter(|total| *total > 0)
+        .map(|total| done_bytes * PERCENT / total)
+}
+
+/// GET llama_setup/progress's answer, for the progress bar.
+#[derive(Serialize)]
+struct ProgressAnswer {
+    running: bool,
+    percent: Option<u64>,
+    progress: String,
+}
+
+/// GET llama_setup/progress: how the download is going. The page reloads when it isn't running.
+pub async fn progress(State(state): State<Arc<AppState>>) -> Response {
+    let view = state
+        .llama
+        .as_ref()
+        .and_then(|server| download_view(&server.downloads.progress()));
+    let answer = match view {
+        Some(view) => ProgressAnswer {
+            running: view.running,
+            percent: view.percent,
+            progress: view.progress,
+        },
+        None => ProgressAnswer {
+            running: false,
+            percent: None,
+            progress: String::new(),
+        },
+    };
+    Json(answer).into_response()
 }
 
 /// The page when it can't be shown: what went wrong, logged too.

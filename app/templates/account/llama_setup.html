@@ -6,9 +6,6 @@
     <base href="/">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    {%- if let Some(seconds) = refresh_seconds %}
-    <meta http-equiv="refresh" content="{{ seconds }}">
-    {%- endif %}
     <title>Set up the app's own model · Recruiter</title>
     <link rel="stylesheet" href="match_module/css/match.css">
     <link rel="stylesheet" href="match_module/css/account.css">
@@ -28,7 +25,11 @@
 
     {%- if let Some(download) = download %}
     {%- if download.running %}
-    <p class="notice">Downloading {{ download.what }}: {{ download.progress }}. This page updates by itself.</p>
+    <div class="notice download-progress" data-progress-url="llama_setup/progress" data-poll-milliseconds="{{ poll_milliseconds }}">
+        <p>Downloading {{ download.what }}</p>
+        <progress max="100"{% if let Some(percent) = download.percent %} value="{{ percent }}"{% endif %}></progress>
+        <span class="small" data-progress-text>{{ download.progress }}</span>
+    </div>
     {%- else if download.finished %}
     <p class="notice">{{ download.what }} is downloaded.</p>
     {%- else if let Some(why) = download.why_failed %}
@@ -86,5 +87,6 @@
     </form>
     {%- endif %}
 </main>
+<script src="match_module/js/llama_setup.js"></script>
 </body>
 </html>

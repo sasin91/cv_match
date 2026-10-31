@@ -17,3 +17,9 @@ main.narrow { max-width: 480px; }
 .key-uses fieldset label { margin-top: 0; font-weight: normal; }
 .small { font-size: 0.85rem; }
 form.inline { display: inline; }
+
+/* The setup wizard's download progress bar. */
+.download-progress progress {
+    width: 100%;
+    height: 1rem;
+}

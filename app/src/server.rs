@@ -174,6 +174,7 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/account/submit_delete", post(account::submit_delete))
         .route("/account/submit_check", post(account::submit_check))
         .route("/llama_setup", get(account::llama_setup::index))
+        .route("/llama_setup/progress", get(account::llama_setup::progress))
         .route(
             "/llama_setup/download_server",
             post(account::llama_setup::download_server),
