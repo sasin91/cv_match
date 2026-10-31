@@ -161,22 +161,26 @@ fn run_cleanup(args: &[String]) -> ExitCode {
     }
     if !database.exists() {
         // Only the lock this cleanup took is left.
-        drop(held);
+        // Removed while still held, so an app that starts now locks a new file, never one that
+        // is gone.
         let _ = std::fs::remove_file(&cleanup::lock_files(&database)[0]);
+        drop(held);
     } else {
         println!(
             "Your database, {}, holds your profile, matches and applications, and can't be brought back once deleted.",
             database.display()
         );
         if ask("Delete your database too?") {
-            // The lock is held until the database's files are gone, so no app opens them meanwhile;
-            // its own file goes last, once let go (Windows won't delete an open file).
+            // The locks are held until the database's files are gone, so no app opens them
+            // meanwhile, and their files are removed while still held, so an app that starts after
+            // locks new files rather than ones that are gone (Windows allows this: std opens files
+            // shared for deletion).
             let lock_files = cleanup::lock_files(&database);
             failed.extend(cleanup::remove_database(&found));
-            drop(held);
             for lock_file in lock_files {
                 let _ = std::fs::remove_file(lock_file);
             }
+            drop(held);
             let default_path = db::default_path();
             let default_folder = default_path.parent().unwrap_or(std::path::Path::new("."));
             if failed.is_empty() && cleanup::remove_default_folder(&database, default_folder) {
