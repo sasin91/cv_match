@@ -44,8 +44,9 @@ writes the Jobnet extension next to it and opens the setup wizard (http://127.0.
    `recruiter.exe scan` (the scan itself isn't ported yet, so for now a run only says so);
 5. then the match page.
 
-A database with a profile or saved matches opens on http://127.0.0.1:8765/match instead; the
-wizard stays at /setup.
+Until step 5, http://127.0.0.1:8765/match redirects to the wizard too. It does so again at the next
+start while the database has no profile or saved matches. A database with either opens on /match
+instead; the wizard stays at /setup.
 Close its window to stop it. `recruiter.exe --help` lists the options.
 
 If the app refuses, at start, a database made from an older schema, move `recruiter.sqlite`

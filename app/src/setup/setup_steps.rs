@@ -68,6 +68,13 @@ pub async fn first_run_or_logged(state: &AppState) -> bool {
     })
 }
 
+/// Whether the home and match pages send the browser to the wizard: on a first run, until the
+/// wizard's last step goes on to the match page. Without a profile that step isn't a dead end:
+/// the match page still takes a CV pasted in.
+pub async fn wizard_is_due(state: &AppState) -> bool {
+    !state.setup_left() && first_run_or_logged(state).await
+}
+
 pub fn database(state: &AppState) -> DatabaseStep {
     DatabaseStep {
         path: state.database.path.clone(),

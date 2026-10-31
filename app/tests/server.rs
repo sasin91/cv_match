@@ -952,6 +952,20 @@ async fn a_new_database_opens_the_setup_and_a_used_one_the_match_page() {
 }
 
 #[tokio::test]
+async fn the_match_page_opens_the_setup_on_a_new_database_until_the_setup_goes_on_to_it() {
+    let (app, _) = new_app(KeyVault::in_memory()).await;
+    assert_eq!(redirect_of(&app, get("/match")).await, "/setup");
+    assert_eq!(redirect_of(&app, get("/match?list=rejected")).await, "/setup");
+    let (_, wizard) = send_to(&app, get("/setup")).await;
+    assert!(wizard.contains(r#"action="setup/submit_finish""#), "{wizard}");
+
+    assert_eq!(redirect_of(&app, post_form("/setup/submit_finish", "")).await, "/match");
+    let (status, page) = send_to(&app, get("/match")).await;
+    assert_eq!(status, StatusCode::OK, "{page}");
+    assert_eq!(redirect_of(&app, get("/")).await, "/match");
+}
+
+#[tokio::test]
 async fn the_setup_suggests_an_api_key_without_room_for_a_model_and_waits_for_it_to_read_the_cv() {
     let (app, _) = new_app(KeyVault::in_memory()).await;
     let (status, page) = send_to(&app, get("/setup")).await;
