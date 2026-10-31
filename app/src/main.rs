@@ -261,7 +261,11 @@ fn scan_schedule(database: &std::path::Path) -> ScanSchedule {
         );
         PathBuf::from("recruiter.exe")
     });
-    ScanSchedule::system(&exe, std::path::Path::new(&shown_path(database)))
+    ScanSchedule::system(
+        &exe,
+        std::path::Path::new(&shown_path(database)),
+        scan_schedule::extracted_appimage(),
+    )
 }
 
 /// The database file's full path as people and other programs read it: without the \\?\ that

@@ -46,6 +46,9 @@ const SYSTEMD_INTERVAL_NOTE: &str = "# Recruiter's scan interval in hours: ";
 pub struct ScanCommand {
     pub exe: PathBuf,
     pub database: PathBuf,
+    /// The AppImage runs unpacked (`--appimage-extract-and-run`, or APPIMAGE_EXTRACT_AND_RUN=1),
+    /// where FUSE is missing, so the scheduled scan has to run it that way too.
+    pub extract_and_run: bool,
 }
 
 impl ScanCommand {
@@ -68,19 +71,25 @@ impl ScanCommand {
         )
     }
 
-    /// The systemd service's ExecStart: the program, scan, and this database.
+    /// The systemd service's ExecStart: the program, scan, and this database, each path quoted
+    /// for systemd.
     pub fn exec_start(&self) -> String {
         format!(
-            r#""{}" scan --database "{}""#,
-            self.exe.display(),
-            self.database.display()
+            "{} scan --database {}",
+            systemd_quote(&self.exe.display().to_string()),
+            systemd_quote(&self.database.display().to_string())
         )
     }
 
     /// The systemd user service that runs the scan once.
     pub fn systemd_service(&self) -> String {
+        let environment = if self.extract_and_run {
+            "Environment=APPIMAGE_EXTRACT_AND_RUN=1\n"
+        } else {
+            ""
+        };
         format!(
-            "[Unit]\nDescription=Recruiter's job scan\n\n[Service]\nType=oneshot\nExecStart={}\n",
+            "[Unit]\nDescription=Recruiter's job scan\n\n[Service]\nType=oneshot\n{environment}ExecStart={}\n",
             self.exec_start()
         )
     }
@@ -115,11 +124,39 @@ fn windows_program_in(xml: &str) -> Option<PathBuf> {
     arguments.split('"').nth(1).map(PathBuf::from)
 }
 
-/// The program a service file's ExecStart runs (the quoted path exec_start writes first).
+/// text in double quotes for a systemd command line: backslashes and quotes escaped, and % and $
+/// doubled, so systemd reads neither as a specifier or a variable.
+fn systemd_quote(text: &str) -> String {
+    let mut quoted = String::with_capacity(text.len() + 2);
+    quoted.push('"');
+    for c in text.chars() {
+        match c {
+            '\\' => quoted.push_str("\\\\"),
+            '"' => quoted.push_str("\\\""),
+            '%' => quoted.push_str("%%"),
+            '$' => quoted.push_str("$$"),
+            c => quoted.push(c),
+        }
+    }
+    quoted.push('"');
+    quoted
+}
+
+/// The program a service file's ExecStart runs: the quoted path exec_start writes first, with
+/// systemd_quote's escapes undone.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn systemd_program_in(service: &str) -> Option<PathBuf> {
     let quoted = service.lines().find_map(|line| line.strip_prefix("ExecStart=\""))?;
-    quoted.split('"').next().map(PathBuf::from)
+    let mut program = String::new();
+    let mut chars = quoted.chars();
+    while let Some(c) = chars.next() {
+        match c {
+            '"' => return Some(PathBuf::from(program)),
+            '\\' | '%' | '$' => program.push(chars.next()?),
+            c => program.push(c),
+        }
+    }
+    None
 }
 
 /// The interval a timer file notes, in hours; None for a file without the note.
@@ -140,6 +177,26 @@ pub fn running_program() -> std::io::Result<PathBuf> {
     }
 }
 
+/// Whether this program runs from an AppImage that unpacked itself instead of mounting (asked for
+/// with APPIMAGE_EXTRACT_AND_RUN=1 or `--appimage-extract-and-run`, where FUSE is missing): a
+/// mounted AppImage's folder is a `.mount_` folder.
+pub fn extracted_appimage() -> bool {
+    if !cfg!(target_os = "linux") || std::env::var_os("APPIMAGE").is_none() {
+        return false;
+    }
+    if std::env::var_os("APPIMAGE_EXTRACT_AND_RUN").is_some_and(|value| value == "1") {
+        return true;
+    }
+    std::env::var_os("APPDIR")
+        .map(PathBuf::from)
+        .and_then(|folder| {
+            folder
+                .file_name()
+                .map(|name| !name.to_string_lossy().starts_with(".mount_"))
+        })
+        .unwrap_or(false)
+}
+
 pub struct ScanSchedule {
     store: Store,
 }
@@ -152,12 +209,14 @@ enum Store {
 }
 
 impl ScanSchedule {
-    /// The system's scheduler, running exe's scan on database.
-    pub fn system(exe: &Path, database: &Path) -> Self {
+    /// The system's scheduler, running exe's scan on database (unpacking the AppImage first when
+    /// extract_and_run).
+    pub fn system(exe: &Path, database: &Path, extract_and_run: bool) -> Self {
         ScanSchedule {
             store: Store::System(ScanCommand {
                 exe: exe.to_path_buf(),
                 database: database.to_path_buf(),
+                extract_and_run,
             }),
         }
     }
@@ -452,6 +511,7 @@ mod tests {
         let command = ScanCommand {
             exe: PathBuf::from(r"C:\Apps\recruiter.exe"),
             database: PathBuf::from(r"C:\Users\me\AppData\Roaming\Recruiter\recruiter.sqlite"),
+            extract_and_run: false,
         };
         assert_eq!(
             command.windows_task_run(),
@@ -479,6 +539,7 @@ mod tests {
         let command = ScanCommand {
             exe: PathBuf::from("/home/me/.local/lib/recruiter/recruiter"),
             database: PathBuf::from("/home/me/My data/recruiter.sqlite"),
+            extract_and_run: false,
         };
         assert!(
             command.systemd_service().contains(
@@ -503,9 +564,42 @@ mod tests {
         let command = ScanCommand {
             exe: PathBuf::from("/home/me/Apps/Recruiter-x86_64.AppImage"),
             database: PathBuf::from("/home/me/r.sqlite"),
+            extract_and_run: false,
         };
         assert_eq!(systemd_program_in(&command.systemd_service()), Some(command.exe));
         assert_eq!(systemd_program_in("[Service]\nExecStart=/usr/bin/true\n"), None);
+    }
+
+    #[test]
+    fn paths_are_escaped_for_systemd_and_read_back() {
+        let command = ScanCommand {
+            exe: PathBuf::from(r#"/tmp/100%ready/$HOME/a\b"c/recruiter"#),
+            database: PathBuf::from("/home/me/50% off.sqlite"),
+            extract_and_run: false,
+        };
+        assert_eq!(
+            command.exec_start(),
+            r#""/tmp/100%%ready/$$HOME/a\\b\"c/recruiter" scan --database "/home/me/50%% off.sqlite""#
+        );
+        assert_eq!(systemd_program_in(&command.systemd_service()), Some(command.exe));
+    }
+
+    #[test]
+    fn an_unpacked_appimage_is_scheduled_unpacked() {
+        let mut command = ScanCommand {
+            exe: PathBuf::from("/home/me/Recruiter-x86_64.AppImage"),
+            database: PathBuf::from("/home/me/r.sqlite"),
+            extract_and_run: false,
+        };
+        assert!(!command.systemd_service().contains("APPIMAGE_EXTRACT_AND_RUN"));
+        command.extract_and_run = true;
+        assert!(
+            command
+                .systemd_service()
+                .contains("Environment=APPIMAGE_EXTRACT_AND_RUN=1\nExecStart="),
+            "{}",
+            command.systemd_service()
+        );
     }
 
     #[tokio::test]
