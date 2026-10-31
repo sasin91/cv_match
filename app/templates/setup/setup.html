@@ -17,7 +17,7 @@
 </header>
 <main class="narrow">
     <h1>Set up Recruiter</h1>
-    <p class="muted">Four steps, then the match page. Everything stays on this computer.</p>
+    <p class="muted">Four steps, then the dashboard. Everything stays on this computer.</p>
 
     {%- if let Some(flash) = flash %}
     <p class="notice">{{ flash }}</p>
@@ -108,9 +108,7 @@
         {%- endif %}
     </section>
 
-    <form method="post" action="setup/submit_finish" class="setup-finish">
-        <button type="submit" class="primary">Go to the match page</button>
-    </form>
+    <p class="setup-finish"><a class="button primary" href="match">Go to the dashboard</a></p>
 </main>
 <script type="module" src="match_module/js/setup.js"></script>
 </body>

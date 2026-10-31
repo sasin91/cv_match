@@ -734,7 +734,7 @@ async fn the_ai_match_reads_judges_scores_and_saves() {
     let (app, db, _) = app_with_model().await;
     let (_, page) = send_to(&app, get("/match")).await;
     assert!(page.contains("aiReady: true"), "{page}");
-    assert!(!page.contains("You're using the free keyword match"));
+    assert!(!page.contains("No AI model is set up."));
 
     let (status, job) = send_to(
         &app,
@@ -945,24 +945,32 @@ async fn redirect_of(app: &axum::Router, request: Request<Body>) -> String {
 }
 
 #[tokio::test]
-async fn a_new_database_opens_the_setup_and_a_used_one_the_match_page() {
+async fn the_app_opens_on_the_dashboard_which_says_what_is_missing() {
     let (new, _) = new_app(KeyVault::in_memory()).await;
-    assert_eq!(redirect_of(&new, get("/")).await, "/setup");
-    assert_eq!(redirect_of(&app().await, get("/")).await, "/match");
-}
-
-#[tokio::test]
-async fn the_match_page_opens_the_setup_on_a_new_database_until_the_setup_goes_on_to_it() {
-    let (app, _) = new_app(KeyVault::in_memory()).await;
-    assert_eq!(redirect_of(&app, get("/match")).await, "/setup");
-    assert_eq!(redirect_of(&app, get("/match?list=rejected")).await, "/setup");
-    let (_, wizard) = send_to(&app, get("/setup")).await;
-    assert!(wizard.contains(r#"action="setup/submit_finish""#), "{wizard}");
-
-    assert_eq!(redirect_of(&app, post_form("/setup/submit_finish", "")).await, "/match");
-    let (status, page) = send_to(&app, get("/match")).await;
+    assert_eq!(redirect_of(&new, get("/")).await, "/match");
+    let (status, page) = send_to(&new, get("/match")).await;
     assert_eq!(status, StatusCode::OK, "{page}");
-    assert_eq!(redirect_of(&app, get("/")).await, "/match");
+    assert!(page.contains("No AI model is set up."), "{page}");
+    assert!(page.contains("3 things need your attention."), "{page}");
+    assert!(
+        page.contains(r#"<a class="status-fix" href="setup#ai">Set one up</a>"#),
+        "{page}"
+    );
+    assert!(
+        page.contains(r#"<a class="status-fix" href="setup#cv">Read your CV</a>"#),
+        "{page}"
+    );
+    assert!(page.contains("Nothing on the shortlist."), "{page}");
+    let (_, rejected) = send_to(&new, get("/match?list=rejected")).await;
+    assert!(rejected.contains("No AI model is set up."));
+
+    // With a key in use, the alert goes and the AI row says which.
+    let (base_url, _) = stand_in_model().await;
+    let key = format!("provider=local&model=stand-in&api_key=&base_url={base_url}");
+    send_to(&new, post_form("/account/submit_key", &key)).await;
+    let (_, page) = send_to(&new, get("/match")).await;
+    assert!(!page.contains("No AI model is set up."), "{page}");
+    assert!(page.contains("A local model (Ollama, LM Studio), stand-in"), "{page}");
 }
 
 #[tokio::test]
@@ -1014,10 +1022,13 @@ async fn the_setup_reads_the_cv_into_the_profile_the_match_page_uses() {
     assert!(page.contains(r#"name="replace""#));
     let profile = recruiter::profile::text_for_user(&db, 1).await.unwrap().unwrap();
     assert!(profile.contains("Udvikler · Firma"), "{profile}");
-    // With a profile it is set up, so the home page is the match page, which matches with it.
-    assert_eq!(redirect_of(&app, get("/")).await, "/match");
+    // The dashboard says whose profile it is, and the match form matches with it.
     let (_, match_page) = send_to(&app, get("/match")).await;
     assert!(match_page.contains("Byggede betalingsløsninger"));
+    assert!(
+        match_page.contains("Mette Sørensen, read from cv.pdf on "),
+        "{match_page}"
+    );
 
     let (_, again) = send_to(&app, post_form("/setup/submit_cv", &form)).await;
     assert!(

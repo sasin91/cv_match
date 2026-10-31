@@ -7,27 +7,62 @@
     <base href="/">
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CV match · Recruiter</title>
+    <title>Dashboard · Recruiter</title>
     <link rel="stylesheet" href="match_module/css/match.css">
 </head>
 <body>
 <header class="site-header">
     <a class="brand" href="match">Recruiter</a>
-    <nav><a href="joblog_extension">Jobnet extension</a> <a href="account">API key</a></nav>
+    <nav><a href="setup">Setup</a> <a href="joblog_extension">Jobnet extension</a> <a href="account">API key</a></nav>
 </header>
 {% include "match/dialogs.html" %}
 <main>
-    <div class="hero">
-        <h1>CV match</h1>
-        <p class="muted">Add your CV and one or more job posts, and see how well you fit each one.</p>
-    </div>
+    {%- if dashboard.ai_missing %}
+    <p class="notice alert" role="alert"><strong>No AI model is set up.</strong> Matches use the free keyword match, which only finds requirements named word for word, and nothing is written for you. <a href="setup#ai">Set up a model</a>: this app's own, or an OpenAI or Claude key.</p>
+    {%- endif %}
     {%- if let Some(flash) = flash %}
     <p class="notice">{{ flash }}</p>
     {%- endif %}
-    {%- if !ai_ready %}
-        <p class="notice">You're using the free keyword match. Add your own OpenAI or Anthropic API key, or a local model, on the <a href="account">API key page</a> to turn on the AI match: it reads requirements written as sentences, judges related experience and writes your application.</p>
-    {%- endif %}
 
+    {#- The dashboard (dashboard.rs): what the app runs on, then a glance at the saved matches. #}
+    <section class="dashboard" aria-labelledby="dashboard-headline">
+        <div class="panel dashboard-status{% if dashboard.all_ready %} all-ready{% endif %}">
+            <h1 id="dashboard-headline">{{ dashboard.headline }}</h1>
+            <ul class="status-rows">
+                {%- for row in dashboard.rows %}
+                <li class="status-row {{ row.health.class() }}">
+                    <span class="status-dot" aria-hidden="true"></span>
+                    <span class="visually-hidden">{{ row.health.label() }}:</span>
+                    <strong class="status-name">{{ row.name }}</strong>
+                    <span class="status-text">{{ row.text }}</span>
+                    {%- if let Some(fix) = row.fix %}
+                    <a class="status-fix" href="{{ fix.href }}">{{ fix.label }}</a>
+                    {%- endif %}
+                </li>
+                {%- endfor %}
+            </ul>
+        </div>
+        <div class="panel dashboard-findings">
+            <h2>Your matches</h2>
+            <ul class="list-counts">
+                {%- for list in dashboard.counts %}
+                <li><a href="{{ list.href }}#history-panel"><span class="list-count">{{ list.count }}</span> <span class="list-label">{{ list.label }}</span></a></li>
+                {%- endfor %}
+            </ul>
+            {%- if dashboard.best.is_empty() %}
+            <p class="muted">Nothing on the shortlist. Match a job post below to start one.</p>
+            {%- else %}
+            <h3>Best on your shortlist</h3>
+            <ol class="best-matches">
+                {%- for m in dashboard.best %}
+                <li class="history-{{ m.tag }}"><a href="match/{{ m.id }}"><span class="history-title">{{ m.title }}</span><span class="history-meta">{{ m.about }} · <time datetime="{{ m.saved_at }}">{{ m.saved_on }}</time></span></a></li>
+                {%- endfor %}
+            </ol>
+            {%- endif %}
+        </div>
+    </section>
+
+    <h2 class="new-match-heading">New match</h2>
     {#- On wide screens the input, the result and the saved matches sit side by side (css/match.css "wide screens"). #}
     <div class="workspace">
         <div class="workspace-input">

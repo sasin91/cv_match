@@ -402,6 +402,16 @@ pub async fn best_first(db: &SqlitePool, user_id: i64, limit: usize, after: &str
 }
 
 /// APPLIED_STATUSES as the JSON array the queries read with json_each.
+/// How many matches each list (LISTS) holds, in LISTS's order, as (list, count).
+pub async fn list_counts(db: &SqlitePool, user_id: i64) -> sqlx::Result<Vec<(&'static str, i64)>> {
+    let applied = applied_statuses_json();
+    let row = sqlx::query_file!("queries/match_model/list_counts.sql", user_id, JOBNET_JOBLOG, applied)
+        .fetch_one(db)
+        .await?;
+    let counts = [row.shortlist, row.every, row.not_joblogged, row.joblogged, row.rejected];
+    Ok(LISTS.iter().map(|(list, ..)| *list).zip(counts).collect())
+}
+
 fn applied_statuses_json() -> String {
     serde_json::to_string(&APPLIED_STATUSES).expect("a list of strings is JSON")
 }
@@ -954,6 +964,15 @@ mod tests {
     async fn ids(db: &SqlitePool, list: &str, limit: usize, after: &str) -> (Vec<i64>, Option<String>) {
         let batch = best_first(db, 1, limit, after, list).await.unwrap();
         (batch.rows.iter().map(|row| row.id).collect(), batch.next)
+    }
+
+    #[tokio::test]
+    async fn the_counts_are_the_lists_lengths() {
+        let db = db::open_in_memory().await.unwrap();
+        db.execute(sqlx::raw_sql(SEED)).await.unwrap();
+        for (list, count) in list_counts(&db, 1).await.unwrap() {
+            assert_eq!(count as usize, ids(&db, list, 100, "").await.0.len(), "{list}");
+        }
     }
 
     #[tokio::test]

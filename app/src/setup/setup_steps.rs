@@ -10,6 +10,7 @@ use crate::account::account_model::{self, RESUME};
 use crate::account::model_advice::ModelAdvice;
 use crate::matches::llm_key;
 use crate::profile::profile_model::{self, FilledFrom};
+use crate::scan_schedule::INTERVALS;
 use crate::server::AppState;
 
 /// The database step: the file the app keeps everything in.
@@ -68,11 +69,29 @@ pub async fn first_run_or_logged(state: &AppState) -> bool {
     })
 }
 
-/// Whether the home and match pages send the browser to the wizard: on a first run, until the
-/// wizard's last step goes on to the match page. Without a profile that step isn't a dead end:
-/// the match page still takes a CV pasted in.
-pub async fn wizard_is_due(state: &AppState) -> bool {
-    !state.setup_left() && first_run_or_logged(state).await
+/// "Mette Sørensen, read from cv.pdf on 31 October 2026"; without the parts it doesn't have.
+pub fn filled_line(filled: &FilledFrom) -> String {
+    let mut line = filled.name.clone();
+    if !filled.cv_name.is_empty() {
+        line.push_str(&format!(", read from {}", filled.cv_name));
+    }
+    let day = filled
+        .filled_at
+        .and_then(|at| chrono::DateTime::from_timestamp(at, 0))
+        .map(|at| at.format("%-d %B %Y").to_string());
+    if let Some(day) = day {
+        line.push_str(&format!(" on {day}"));
+    }
+    line
+}
+
+/// "Every 4 hours" for 4; "Every N hours" for one that isn't offered (set by hand).
+pub fn interval_label(hours: u32) -> &'static str {
+    INTERVALS
+        .iter()
+        .find(|(offered, _)| *offered == hours)
+        .map(|(_, label)| *label)
+        .unwrap_or("Every few hours")
 }
 
 pub fn database(state: &AppState) -> DatabaseStep {
