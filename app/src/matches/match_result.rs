@@ -14,12 +14,11 @@ use super::apply_notice::ApplyNotice;
 use super::location_notice::LocationNotice;
 use super::match_documents::MatchDocuments;
 use super::match_model::SavedMatch;
-use super::match_score::MatchScore;
+use super::match_score::{self, MatchScore};
 use super::matcher::{Groups, Part, Score, Verdicts};
 use super::reject_button::RejectButton;
 use super::verdict_row::{self, VerdictRow};
 use super::{Job, Profile, dates};
-use crate::compat;
 use crate::laya::laya_client::LayaReading;
 
 /// The groups' names, in the order a saved match's unknown criterion falls back from.
@@ -71,11 +70,11 @@ pub struct LayaLine {
 impl LayaLine {
     pub fn from(reading: &LayaReading) -> Self {
         if let Some(laya) = &reading.laya {
-            let meets = compat::round(laya.meets * PERCENT) as i64;
+            let meets = (laya.meets * PERCENT).round() as i64;
             let fit = format!(
                 "{:.*}",
                 FIT_DECIMALS_SHOWN as usize,
-                compat::round_to(laya.fit, FIT_DECIMALS_SHOWN)
+                match_score::round_to(laya.fit, FIT_DECIMALS_SHOWN)
             );
             return LayaLine {
                 text: format!(

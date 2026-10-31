@@ -11,11 +11,11 @@ use sqlx::sqlite::SqliteConnection;
 use super::Job;
 use super::apply_instructions::{self, ApplyInstructions};
 use super::document_box::{APPLICATION, RESUME};
+use super::match_score;
 use super::matcher::{Groups, Score, Verdicts};
 use super::reject_reason::Rejection;
 use super::score_cursor;
 use super::tailored_resume::{ResumeEntry, TailoredResume};
-use crate::compat;
 
 /// The integration a match's Jobnet joblog status is kept under.
 pub const JOBNET_JOBLOG: &str = "jobnet_joblog";
@@ -251,7 +251,7 @@ pub async fn save(
     let company = cut(&new.job.company, lengths::NAME);
     let job_url = (!new.job_url.is_empty()).then(|| cut(new.job_url, lengths::JOB_URL));
     let cv_name = cut(new.cv_name, lengths::NAME);
-    let index = compat::round_to(score.index, SCORE_DECIMALS);
+    let index = match_score::round_to(score.index, SCORE_DECIMALS);
     let mut tx = db.begin().await?;
     let id = sqlx::query_file!(
         "queries/match_model/save.sql",

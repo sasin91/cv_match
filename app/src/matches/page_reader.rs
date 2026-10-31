@@ -25,8 +25,6 @@ use scraper::{Html, Node};
 use serde::Serialize;
 use serde_json::Value;
 
-use crate::compat;
-
 /// Most redirects followed for one link.
 const MAX_REDIRECTS: usize = 5;
 /// Most bytes of a page read.
@@ -137,6 +135,8 @@ static LD_JSON: LazyLock<Regex> = LazyLock::new(|| {
 static TITLE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"(?is)<title[^>]*>(.*?)</title>").expect("title"));
 static PAGE_TYPE: LazyLock<Regex> =
     LazyLock::new(|| Regex::new(r"(?i)^(text/html|application/xhtml\+xml|text/plain)\b").expect("page type"));
+/// A run of whitespace, which a text node prints as one space.
+static WHITESPACE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\s+").expect("whitespace"));
 static SPACES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[ \t]+").expect("spaces"));
 static AROUND_NEWLINE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r" *\n *").expect("around newline"));
 static BLANK_LINES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").expect("blank lines"));
@@ -407,14 +407,14 @@ fn visible_text(html: &str) -> PageText {
     for tag in ["main", "article"] {
         let marked = elements().find(|(node, element)| element.name() == tag && shown(node));
         if let Some((node, _)) = marked
-            && compat::trim(&text_content(node, true)).chars().count() >= MIN_MAIN_TEXT
+            && text_content(node, true).trim().chars().count() >= MIN_MAIN_TEXT
         {
             root = node;
             break;
         }
     }
     PageText {
-        title: tidy(compat::trim(&title)),
+        title: tidy(title.trim()),
         text: tidy(&text_of(root)),
     }
 }
@@ -448,7 +448,7 @@ fn text_of(node: ego_tree::NodeRef<Node>) -> String {
         return String::new();
     }
     match node.value() {
-        Node::Text(text) => return compat::collapse_spaces(text),
+        Node::Text(text) => return WHITESPACE.replace_all(text, " ").into_owned(),
         Node::Element(_) | Node::Document | Node::Fragment => {}
         _ => return String::new(),
     }
@@ -458,8 +458,8 @@ fn text_of(node: ego_tree::NodeRef<Node>) -> String {
     };
     match element.name() {
         "br" => "\n".to_string(),
-        "li" => format!("\n- {}", compat::trim(&text)),
-        "td" | "th" => format!("{} ", compat::trim(&text)),
+        "li" => format!("\n- {}", text.trim()),
+        "td" | "th" => format!("{} ", text.trim()),
         tag if BLOCKS.contains(&tag) => format!("\n{text}\n"),
         _ => text,
     }
@@ -645,7 +645,7 @@ fn tidy(text: &str) -> String {
     let text = SPACES.replace_all(&text, " ");
     let text = AROUND_NEWLINE.replace_all(&text, "\n");
     let text = BLANK_LINES.replace_all(&text, "\n\n");
-    compat::trim(&text).chars().take(MAX_TEXT).collect()
+    text.trim().chars().take(MAX_TEXT).collect()
 }
 
 #[cfg(test)]

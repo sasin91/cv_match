@@ -593,8 +593,8 @@ pub async fn pdf(State(state): State<Arc<AppState>>, Json(input): Json<PdfInput>
         None => None,
     };
     let text = match &version {
-        Some(version) => crate::compat::trim(&version.text).to_string(),
-        None => pdf_text(&found, kind, crate::compat::trim(&input.text)),
+        Some(version) => version.text.trim().to_string(),
+        None => pdf_text(&found, kind, input.text.trim()),
     };
     if text.is_empty() {
         return Err(PageError::new(
@@ -642,7 +642,7 @@ pub async fn pdf(State(state): State<Arc<AppState>>, Json(input): Json<PdfInput>
 /// The text a PDF is made from: what the page sent, or the saved text when it sent none; the
 /// CV and the job post are always the saved text, the post under its link.
 fn pdf_text(found: &SavedMatch, kind: &str, sent: &str) -> String {
-    let saved = |text: Option<&str>| crate::compat::trim(text.unwrap_or("")).to_string();
+    let saved = |text: Option<&str>| text.unwrap_or("").trim().to_string();
     let text = if sent.is_empty() || kind == "cv" || kind == "job" {
         match kind {
             "application" => saved(found.application_text.as_deref()),
@@ -667,7 +667,7 @@ fn pdf_title(found: &SavedMatch, kind: &str) -> String {
     if kind == "job" {
         let title: Vec<&str> = [found.job_title.as_str(), found.company.as_str()]
             .into_iter()
-            .filter(|part| crate::compat::filled(part))
+            .filter(|part| !part.is_empty())
             .collect();
         return if title.is_empty() {
             "Job post".to_string()

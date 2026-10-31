@@ -10,8 +10,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-use crate::compat;
-
 /// The headings the model names in the post's language, with the English ones as the fallback.
 pub const HEADINGS: [(&str, &str); 5] = [
     ("experience_heading", "Experience"),
@@ -191,7 +189,9 @@ fn string(value: &Value, length: usize) -> String {
     let Some(text) = value.as_str() else {
         return String::new();
     };
-    compat::trim(&compat::collapse_spaces(text))
+    text.split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
         .chars()
         .take(length)
         .collect()

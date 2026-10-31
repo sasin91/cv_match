@@ -15,7 +15,6 @@ use std::sync::LazyLock;
 use regex::Regex;
 
 use super::tailored_resume::{self, ResumeEntry, TailoredResume};
-use crate::compat;
 use crate::pdf::page::{Block, BlockClass, Family, LineBreak, Node, Page, Paragraph, ParagraphClass};
 use crate::pdf::{self, fonts};
 
@@ -42,7 +41,7 @@ fn pattern(source: &str) -> Regex {
     Regex::new(source).unwrap_or_else(|e| panic!("{source}: {e}"))
 }
 
-/// A blank line: a newline, ASCII whitespace (compat::is_pcre_space), a newline.
+/// A blank line: a newline, ASCII whitespace, a newline.
 static BLANK_LINE: LazyLock<Regex> = LazyLock::new(|| pattern(r"\n[\t\n\x0B\x0C\r ]*\n"));
 /// A "- " bullet line, and its text.
 static BULLET: LazyLock<Regex> = LazyLock::new(|| pattern(r"^[-•*–]\s+(.*)$"));
@@ -107,7 +106,7 @@ fn resume_fields_page(resume: &TailoredResume, title: &str) -> Page {
     }
     let contact: Vec<String> = [tailored_resume::contact(resume), resume.links.join(" · ")]
         .into_iter()
-        .filter(|line| compat::filled(line))
+        .filter(|line| !line.is_empty())
         .collect();
     if !contact.is_empty() {
         body.push(Node::Paragraph(Paragraph::with_class(ParagraphClass::Contact, contact)));
@@ -215,7 +214,7 @@ fn font<'a>(mut texts: impl Iterator<Item = &'a str>) -> Family {
 fn letter_html(text: &str) -> Node {
     let paragraphs = BLANK_LINE
         .split(text)
-        .map(compat::trim)
+        .map(str::trim)
         .filter(|paragraph| !paragraph.is_empty())
         .map(|paragraph| {
             Node::Paragraph(Paragraph {
@@ -242,9 +241,9 @@ fn job_html(text: &str, title: &str) -> Node {
             nodes.push(Node::List(std::mem::take(bullets)));
         }
     };
-    for block in BLANK_LINE.split(compat::trim(text)) {
-        for line in compat::trim(block).split('\n') {
-            let line = compat::trim(line);
+    for block in BLANK_LINE.split(text.trim()) {
+        for line in block.trim().split('\n') {
+            let line = line.trim();
             if let Some(bullet) = bullet_text(line) {
                 bullets.push(bullet.to_string());
             } else if !line.is_empty() {
@@ -319,18 +318,18 @@ impl ResumeReading {
 /// with no digits and no comma; a line followed by bullets is a role (or a school) and stays on
 /// one page with them; "- " lines are bullets and anything else is a paragraph.
 fn resume_html(text: &str) -> Vec<Node> {
-    let all: Vec<&str> = compat::trim(text).split('\n').collect();
+    let all: Vec<&str> = text.trim().split('\n').collect();
     if all == [""] {
         return Vec::new();
     }
-    let mut nodes = vec![Node::Heading1(compat::trim(all[0]).to_string())];
+    let mut nodes = vec![Node::Heading1(all[0].trim().to_string())];
     let mut lines = &all[1..];
     let mut contact = Vec::new();
     while let Some((first, rest)) = lines.split_first() {
-        if compat::trim(first).is_empty() {
+        if first.trim().is_empty() {
             break;
         }
-        contact.push(compat::trim(first).to_string());
+        contact.push(first.trim().to_string());
         lines = rest;
     }
     nodes.push(Node::Paragraph(Paragraph::with_class(ParagraphClass::Contact, contact)));
@@ -338,9 +337,9 @@ fn resume_html(text: &str) -> Vec<Node> {
     let mut reading = ResumeReading::default();
     let mut after_heading = false;
     for (i, raw) in lines.iter().enumerate() {
-        let line = compat::trim(raw);
+        let line = raw.trim();
         // A block starts after a blank line or straight under a heading.
-        let after_blank = i == 0 || compat::trim(lines[i - 1]).is_empty() || after_heading;
+        let after_blank = i == 0 || lines[i - 1].trim().is_empty() || after_heading;
         after_heading = false;
         if line.is_empty() {
             reading.end_paragraph();
@@ -352,7 +351,7 @@ fn resume_html(text: &str) -> Vec<Node> {
         } else if after_blank && is_heading(line, lines.get(i + 1).copied().unwrap_or("")) {
             reading.end_paragraph();
             reading.end_entry();
-            let heading = compat::trim_end_chars(line, ": ");
+            let heading = line.trim_end_matches(|c| ": ".contains(c));
             reading
                 .blocks
                 .push(ResumeBlock::Heading(Node::Heading2(heading.to_string())));
@@ -414,7 +413,7 @@ fn keep_headings_with_next(blocks: Vec<ResumeBlock>) -> Vec<Node> {
 /// school has dates), no comma or separator (a role names its employer), not a sentence, and
 /// something follows it.
 fn is_heading(line: &str, next: &str) -> bool {
-    !compat::trim(next).is_empty()
+    !next.trim().is_empty()
         && line.chars().count() <= MAX_HEADING_LENGTH
         && !NOT_IN_HEADING.is_match(line)
         && !SENTENCE_END.is_match(line)
@@ -439,14 +438,14 @@ pub fn file_name(kind: &str, job_title: &str, company: &str) -> String {
         .iter()
         .find(|(name, _)| *name == kind)
         .map_or("Application", |(_, label)| *label);
-    let parts: Vec<&str> = [label, compat::trim(job_title), compat::trim(company)]
+    let parts: Vec<&str> = [label, job_title.trim(), company.trim()]
         .into_iter()
         .filter(|part| !part.is_empty())
         .collect();
     let joined = parts.join(" - ");
     let name = UNSAFE_IN_FILE_NAME.replace_all(&joined, " ");
     let name = WHITESPACE.replace_all(&name, " ");
-    format!("{}.pdf", compat::first_chars(compat::trim(&name), MAX_FILE_NAME))
+    format!("{}.pdf", (name.trim()).chars().take(MAX_FILE_NAME).collect::<String>())
 }
 
 #[cfg(test)]

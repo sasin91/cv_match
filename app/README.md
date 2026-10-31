@@ -12,7 +12,6 @@ against a fixed snapshot of expected answers (tests/parity.rs).
 | `src/matches/free_reader.rs` | the free reading of a post and a CV, with the words it ignores and the soft skills |
 | `src/matches/matcher.rs` | matching a post against a CV, and the legacy ranking |
 | `src/matches/match_score.rs` | a match score as the pages show it |
-| `src/compat.rs` | the exact rounding and trimming the saved scores and texts were made with |
 | `src/db.rs`, `migrations/`, `queries/` | the SQLite tables and the longer queries |
 | `src/server.rs`, `src/matches/pages.rs` | the server, the match page and its endpoints |
 | `src/matches/match_model.rs` | saved matches in the database |

@@ -2,8 +2,6 @@
 //! one or more of a fixed list, so reasons that keep coming back can be counted, each with the
 //! person's own note; 'other' needs one.
 
-use crate::compat;
-
 /// The reasons, in the order the form lists them.
 pub const REASONS: [(&str, &str); 8] = [
     ("commute", "Too long commute"),
@@ -59,7 +57,7 @@ pub fn rows(reasons: &[String], notes: &[(String, String)]) -> Vec<Rejection> {
         let note = notes
             .iter()
             .find(|(name, _)| name == reason)
-            .map(|(_, note)| compat::trim(note))
+            .map(|(_, note)| note.trim())
             .unwrap_or("");
         rows.push(Rejection {
             reason: reason.clone(),
@@ -79,7 +77,7 @@ fn one(rejection: &Rejection) -> String {
     let label = label(&rejection.reason)
         .map(str::to_string)
         .unwrap_or_else(|| rejection.reason.clone());
-    let note = compat::trim(&rejection.note);
+    let note = rejection.note.trim();
     if note.is_empty() {
         label
     } else if rejection.reason == "other" {

@@ -2,7 +2,6 @@
 //! against the fixed expected answers in tests/fixtures/parity.json.
 
 pub mod account;
-pub mod compat;
 pub mod db;
 pub mod extension;
 pub mod laya;

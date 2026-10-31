@@ -80,7 +80,7 @@ mod tests {
     }
 
     #[test]
-    fn mktime_runs_over_into_the_next_days_as_php_does() {
+    fn mktime_runs_over_into_the_next_days() {
         let day = |at: i64| {
             DateTime::<Utc>::from_timestamp(at, 0)
                 .unwrap()

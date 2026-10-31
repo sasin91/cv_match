@@ -15,7 +15,6 @@ use indexmap::{IndexMap, IndexSet};
 use regex::Regex;
 
 use super::{Job, KnownTerm, Profile, Requirement};
-use crate::compat;
 use crate::taxonomy::{self, Method, Taxonomy, Term};
 
 /// Longest label, in words, worth looking for.
@@ -179,7 +178,7 @@ impl<'a> FreeReader<'a> {
                     continue;
                 }
                 // A bare number is never a skill on its own.
-                if phrase.words.len() == 1 && compat::is_digits(&key) {
+                if phrase.words.len() == 1 && is_number(&key) {
                     continue;
                 }
                 // A skill and a title can share a label; the first (skills come first) wins.
@@ -244,7 +243,7 @@ impl<'a> FreeReader<'a> {
             text_en: text.to_string(),
             job_title,
             job_title_en,
-            heading: compat::first_chars(&title, HEADING_CHARS),
+            heading: title.chars().take(HEADING_CHARS).collect::<String>(),
             company: String::new(),
             requirements,
             responsibilities: Vec::new(),
@@ -400,7 +399,7 @@ fn month(name: &str, number: &str, default: i64) -> i64 {
 fn lines(text: &str) -> Vec<String> {
     LINE_BREAK
         .split(text)
-        .map(|line| compat::trim(&BULLET.replace(line, "")).to_string())
+        .map(|line| BULLET.replace(line, "").trim().to_string())
         .filter(|line| !line.is_empty())
         .collect()
 }
@@ -414,7 +413,11 @@ fn section(lines: &[String], start: &Regex, stop: &Regex) -> Vec<String> {
         if short && start.is_match(line) {
             inside = true;
             // "Du er struktureret" is both a heading and a requirement.
-            if !compat::trim_chars(&start.replace(line, ""), HEADING_PUNCTUATION).is_empty() {
+            if !start
+                .replace(line, "")
+                .trim_matches(|c| HEADING_PUNCTUATION.contains(c))
+                .is_empty()
+            {
                 out.push(line.clone());
             }
             continue;
@@ -440,4 +443,8 @@ fn requirement(value: String, english: String, kind: impl Into<String>, required
         min_years: years,
         min_level: String::new(),
     }
+}
+/// Non-empty and only ASCII digits: "2026", not "B2".
+fn is_number(text: &str) -> bool {
+    !text.is_empty() && text.bytes().all(|b| b.is_ascii_digit())
 }

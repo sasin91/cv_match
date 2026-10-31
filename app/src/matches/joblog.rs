@@ -26,7 +26,6 @@ use serde::ser::{SerializeMap, Serializer};
 use super::apply_instructions::ApplyInstructions;
 use super::match_model::{APPLIED_STATUSES, Integration, SavedMatch};
 use super::{dates, match_score};
-use crate::compat;
 
 /// Jobnet's choices, by the value its form posts.
 pub const JOB_TYPES: [(&str, &str); 2] = [("Fuldtid", "Fuldtid"), ("Deltid", "Deltid")];
@@ -407,8 +406,8 @@ pub fn read(saved: &SavedMatch) -> Entry {
     let (job_type, hours) = working_hours(&text);
     let (address, postal) = place(&text);
     let contact = contact(&text, &saved.company, saved.apply_instructions.as_ref());
-    let written = !compat::trim(saved.application_text.as_deref().unwrap_or("")).is_empty();
-    let resume = !compat::trim(saved.resume_text.as_deref().unwrap_or("")).is_empty();
+    let written = !saved.application_text.as_deref().unwrap_or("").trim().is_empty();
+    let resume = !saved.resume_text.as_deref().unwrap_or("").trim().is_empty();
     let jobnet = saved.jobnet_joblog.as_ref();
     let status = jobnet.map_or(NOT_APPLIED, |jobnet| jobnet.status.as_str());
     let part_time_hours = if job_type == "Deltid" { hours } else { String::new() };
@@ -421,7 +420,7 @@ pub fn read(saved: &SavedMatch) -> Entry {
                     text_field(
                         "occupation",
                         "Stilling eller arbejdsområde",
-                        compat::trim(&saved.job_title),
+                        saved.job_title.trim(),
                         true,
                         "",
                     ),
@@ -448,7 +447,7 @@ pub fn read(saved: &SavedMatch) -> Entry {
             Section {
                 heading: "Om arbejdspladsen",
                 fields: vec![
-                    text_field("name", "Virksomhedens navn", compat::trim(&saved.company), true, ""),
+                    text_field("name", "Virksomhedens navn", saved.company.trim(), true, ""),
                     text_field("companyAddress", "Adresse", &address, false, ""),
                     Field {
                         kind: "select",
@@ -476,7 +475,7 @@ pub fn read(saved: &SavedMatch) -> Entry {
                     text_field(
                         "jobAdLink",
                         "Link til jobannonce",
-                        compat::trim(saved.job_url.as_deref().unwrap_or("")),
+                        saved.job_url.as_deref().unwrap_or("").trim(),
                         false,
                         "",
                     ),
@@ -530,7 +529,7 @@ pub fn read(saved: &SavedMatch) -> Entry {
             File {
                 kind: if resume { "resume" } else { "cv" },
                 label: "CV",
-                ready: !compat::trim(&saved.cv_text).is_empty(),
+                ready: !saved.cv_text.trim().is_empty(),
                 note: Some(if resume {
                     "Det tilpassede CV"
                 } else {
@@ -541,7 +540,7 @@ pub fn read(saved: &SavedMatch) -> Entry {
             File {
                 kind: "job",
                 label: "Jobannonce",
-                ready: !compat::trim(&text).is_empty(),
+                ready: !text.trim().is_empty(),
                 note: None,
                 missing: "Der er ikke gemt noget jobopslag.",
             },
@@ -599,7 +598,7 @@ pub fn deadline(text: &str, saved_at: i64) -> String {
         let window = whole_letters(&text[cue.end()..], DEADLINE_WINDOW);
         let after = sentence(window);
         if ONGOING
-            .is_match(&compat::first_chars(after, ONGOING_WINDOW))
+            .is_match(&after.chars().take(ONGOING_WINDOW).collect::<String>())
             .unwrap_or(false)
             && !has_date(after)
         {
@@ -706,10 +705,7 @@ pub fn working_hours(text: &str) -> (&'static str, String) {
         && hours > 0.0
         && hours < FULL_TIME_HOURS
     {
-        return (
-            "Deltid",
-            MAX_PART_TIME_HOURS.min(compat::round(hours) as i64).to_string(),
-        );
+        return ("Deltid", MAX_PART_TIME_HOURS.min(hours.round() as i64).to_string());
     }
     let full = FULL_TIME.is_match(text).unwrap_or(false);
     let part = PART_TIME.is_match(text).unwrap_or(false);
@@ -770,7 +766,7 @@ fn town_words(text: &str) -> String {
     let text = text.to_lowercase();
     let text = KONGENS.replace_all(&text, "kongens ");
     let text = COPENHAGEN.replace_all(&text, "københavn");
-    compat::trim(&NOT_TOWN_LETTERS.replace_all(&text, " ")).to_string()
+    NOT_TOWN_LETTERS.replace_all(&text, " ").trim().to_string()
 }
 
 /// Whether the words after a postcode name its town ("Aarhus" for "Aarhus C").
@@ -787,10 +783,10 @@ fn names_town(words: &str, town: &str) -> bool {
 
 /// The street address at the end of the text before a postcode: "Vestergade 12, 2. th.".
 fn street(before: &str) -> String {
-    let before = compat::trim_chars(before, " \t,");
+    let before = before.trim_matches(|c| " \t,".contains(c));
     // The last part that starts with a street name and has a house number.
     let mut street: Vec<String> = Vec::new();
-    for part in before.split(',').rev().map(compat::trim) {
+    for part in before.split(',').rev().map(str::trim) {
         // "Adresse: Vestergade 12": only the address.
         let part = LABEL.replace(part, "").into_owned();
         street.insert(0, part.clone());
@@ -817,7 +813,7 @@ pub struct Contact {
 pub fn contact(text: &str, company: &str, apply: Option<&ApplyInstructions>) -> Contact {
     let lines: Vec<&str> = text
         .split('\n')
-        .map(compat::trim)
+        .map(str::trim)
         .filter(|line| !line.is_empty())
         .collect();
     let mut found = Contact::default();
@@ -929,7 +925,7 @@ pub fn notes(saved: &SavedMatch) -> String {
     }
     let notes = lines.join("\n");
     if notes.chars().count() > MAX_NOTES {
-        let cut = compat::first_chars(&notes, MAX_NOTES - 1);
+        let cut = notes.chars().take(MAX_NOTES - 1).collect::<String>();
         return format!("{}…", cut.trim_end_matches([' ', '\t', '\n', '\r', '\0', '\x0B']));
     }
     notes

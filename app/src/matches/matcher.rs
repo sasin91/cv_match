@@ -8,7 +8,6 @@ use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
 use super::{Job, KnownTerm, Profile};
-use crate::compat;
 use crate::taxonomy::{self, Method, Taxonomy, Term};
 
 /// The legacy ranking engine's weights: formal requirements weigh 150, relevant skills 50, and
@@ -555,7 +554,7 @@ pub fn score(groups: &Groups, verdicts: &Verdicts) -> Score {
         let weight = weight_of(key);
         let credit: f64 = items.iter().map(|item| credit_of(verdicts.get(&item.id))).sum();
         let percentage = (credit / items.len() as f64 * PERCENT) as i64;
-        let value = compat::round(percentage as f64 / PERCENT * weight as f64) as i64;
+        let value = (percentage as f64 / PERCENT * weight as f64).round() as i64;
         rank += value;
         total += weight;
         parts.insert(

@@ -347,7 +347,7 @@ mod tests {
         }
     }
 
-    /// The fields, files and links as the phpt prints them.
+    /// The fields, files and links as printed lines.
     fn shown(delivery: &ApplicationDelivery) -> Vec<String> {
         let mut lines = vec![
             format!("{}: {}", delivery.by, delivery.heading),

@@ -22,7 +22,7 @@ use serde::Serialize;
 use serde_json::{Map, Value, json};
 use tokio::sync::OnceCell;
 
-use crate::compat;
+use crate::matches::match_score;
 
 /// The exported graph in the model folder; its weights, laya.onnx.data, sit beside it.
 pub const ONNX_FILE: &str = "laya.onnx";
@@ -127,9 +127,9 @@ pub fn read_answer(response: &Value) -> Result<LayaAnswer, String> {
     };
     let fit = fit.clamp(0.0, FIT_MAX);
     Ok(LayaAnswer {
-        meets: compat::round_to(meets, MEETS_DECIMALS),
-        fit: compat::round_to(fit, FIT_DECIMALS),
-        fit_label: FIT_LEVELS[compat::round(fit) as usize].to_string(),
+        meets: match_score::round_to(meets, MEETS_DECIMALS),
+        fit: match_score::round_to(fit, FIT_DECIMALS),
+        fit_label: FIT_LEVELS[fit.round() as usize].to_string(),
     })
 }
 

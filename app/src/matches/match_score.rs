@@ -2,8 +2,6 @@
 //! score as a percent, and the legacy tag (matcher::match_tag) with its name. Every page that
 //! prints a score gets it from here.
 
-use crate::compat;
-
 /// What a stored 0..1 score is multiplied by to read as a percent.
 const PERCENT: f64 = 100.0;
 
@@ -32,7 +30,13 @@ impl MatchScore {
 
 /// 0.814 -> 81.
 pub fn percent(score: f64) -> i64 {
-    compat::round(score * PERCENT) as i64
+    (score * PERCENT).round() as i64
+}
+
+/// The value rounded half away from zero to that many decimals: 0.8149 to 2 is 0.81.
+pub fn round_to(value: f64, places: i32) -> f64 {
+    let scale = 10f64.powi(places);
+    (value * scale).round() / scale
 }
 
 /// "Good match" for good; a tag it doesn't know as it is.

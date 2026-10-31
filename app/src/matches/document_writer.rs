@@ -55,7 +55,7 @@ pub struct Tailored {
 /// The candidate's notes as they are kept: trimmed, at most MAX_NOTES characters.
 pub fn notes(sent: &str) -> String {
     let cut: String = sent.chars().take(MAX_NOTES).collect();
-    crate::compat::trim(&cut).to_string()
+    cut.trim().to_string()
 }
 
 /// The notes as a block to end the prompt with, or "" when there are none.
@@ -120,7 +120,7 @@ Write in the job post's own language (post_language), whatever language the CV a
         },
     });
     let answer = llm.llm.structured(&system, &user, &schema, Effort::Medium).await?;
-    let text = crate::compat::trim(answer["application"].as_str().unwrap_or("")).to_string();
+    let text = answer["application"].as_str().unwrap_or("").trim().to_string();
     if text.is_empty() {
         return Err(WriteError::Empty("The model returned an empty application. Try again."));
     }
