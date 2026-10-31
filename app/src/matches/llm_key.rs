@@ -51,7 +51,8 @@ async fn missing_key_message(context: &Context, use_: &str) -> Result<String, Se
         Some(picked) => {
             crate::log_line!(
                 "match: user {}'s saved {} key isn't in Windows Credential Manager",
-                context.user_id, picked.provider
+                context.user_id,
+                picked.provider
             );
             format!(
                 "Your saved {} key isn't in Windows Credential Manager anymore. Save it again on the API key page.",

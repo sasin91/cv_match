@@ -33,8 +33,8 @@ use std::time::Instant;
 use recruiter::account::key_vault::KeyVault;
 use recruiter::app_log;
 use recruiter::context::{Context, DatabaseFile};
-use recruiter::instance::{self, Running};
 use recruiter::dev_reload::DevReload;
+use recruiter::instance::{self, Running};
 use recruiter::laya::laya_client::{self, LayaClient};
 use recruiter::llama::{self, hardware::Inventory, llama_server::LlamaServer};
 use recruiter::scan_schedule::{self, ScanSchedule};
@@ -385,7 +385,9 @@ fn run_server(args: &[String]) -> ExitCode {
         match serving.await {
             Ok(Ok(())) => ExitCode::SUCCESS,
             Ok(Err(e)) => {
-                recruiter::log_line!("Couldn't serve on port {port}: {e}. Is Recruiter already running? Then open {address}.");
+                recruiter::log_line!(
+                    "Couldn't serve on port {port}: {e}. Is Recruiter already running? Then open {address}."
+                );
                 ended_by_hand(ExitCode::FAILURE)
             }
             Err(e) => {
