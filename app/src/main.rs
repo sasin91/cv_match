@@ -13,6 +13,14 @@
 //!       the job scan, which the setup wizard's Task Scheduler task runs (scan_schedule); it
 //!       isn't in the desktop app yet, so for now it only says so
 //!
+//!   recruiter install [--database path\to\recruiter.sqlite]
+//!       puts the program in %LOCALAPPDATA%\Programs\Recruiter with a Start menu shortcut and an
+//!       entry in Windows' installed apps, then starts it there (install); double-clicking the
+//!       release's Recruiter-setup.exe, which is this program, does the same
+//!
+//!   recruiter uninstall [--database path\to\recruiter.sqlite]
+//!       undoes that, and keeps the data
+//!
 //!   recruiter --dev ...
 //!       (debug builds only) reloads the page in the browser whenever the app restarts, for
 //!       `cargo dev` (xtask/), which restarts it under watchexec on every change
@@ -24,6 +32,7 @@ use std::time::Instant;
 
 use recruiter::account::key_vault::KeyVault;
 use recruiter::dev_reload::DevReload;
+use recruiter::install;
 use recruiter::laya::laya_client::{self, LayaClient};
 use recruiter::llama::{self, hardware::Inventory, llama_server::LlamaServer};
 use recruiter::scan_schedule::ScanSchedule;
@@ -33,7 +42,9 @@ use recruiter::{db, extension};
 
 const USAGE: &str = "usage: recruiter [--port <port>] [--database <file>] [--laya <folder>] [--llama <folder>]
                  [--no-browser] [--tailscale-name <name>] [--dev]
-       recruiter scan [--database <file>]";
+       recruiter scan [--database <file>]
+       recruiter install [--database <file>]
+       recruiter uninstall [--database <file>]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -43,20 +54,129 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some("scan") => run_scan(&args[1..]),
+        Some("install") => run_install(&args[1..]),
+        Some("uninstall") => run_uninstall(&args[1..]),
+        None if started_as_setup() => run_install(&[]),
         _ => run_server(&args),
     }
+}
+
+/// Whether this program was started as Recruiter-setup.exe, the release's installer.
+fn started_as_setup() -> bool {
+    std::env::current_exe().is_ok_and(|exe| install::is_setup_name(&exe))
+}
+
+/// `recruiter install`: installs this program, then starts the installed copy in a window of
+/// its own, which opens the setup wizard on a new database.
+fn run_install(args: &[String]) -> ExitCode {
+    let Some(database) = database_arg(args) else {
+        return ExitCode::FAILURE;
+    };
+    let Some(runtime) = runtime() else {
+        return ended_by_hand(ExitCode::FAILURE);
+    };
+    let installed = match runtime.block_on(install::install(std::path::Path::new(&shown_path(&database)))) {
+        Ok(installed) => installed,
+        Err(why) => {
+            eprintln!("Recruiter couldn't be installed: {why}");
+            return ended_by_hand(ExitCode::FAILURE);
+        }
+    };
+    for line in &installed.done {
+        println!("{line}");
+    }
+    match start_in_own_window(&installed.exe) {
+        Ok(()) => {
+            println!("Recruiter is starting from the Start menu's copy, and opens the setup in your browser.");
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            eprintln!("Recruiter is installed, but it couldn't be started ({e}). Start it from the Start menu.");
+            ended_by_hand(ExitCode::FAILURE)
+        }
+    }
+}
+
+/// `recruiter uninstall`: removes what install added, and keeps the data.
+fn run_uninstall(args: &[String]) -> ExitCode {
+    let Some(database) = database_arg(args) else {
+        return ExitCode::FAILURE;
+    };
+    let Some(runtime) = runtime() else {
+        return ended_by_hand(ExitCode::FAILURE);
+    };
+    let code = match runtime.block_on(install::uninstall(&database)) {
+        Ok(done) => {
+            for line in done {
+                println!("{line}");
+            }
+            ExitCode::SUCCESS
+        }
+        Err(why) => {
+            eprintln!("Recruiter couldn't be uninstalled: {why}");
+            ExitCode::FAILURE
+        }
+    };
+    ended_by_hand(code)
+}
+
+/// The database a subcommand's `[--database <file>]` names, or the default one; None (with the
+/// usage said) for anything else.
+fn database_arg(args: &[String]) -> Option<PathBuf> {
+    match args {
+        [] => Some(db::default_path()),
+        [flag, value] if flag == "--database" => Some(PathBuf::from(value)),
+        _ => {
+            eprintln!("{USAGE}");
+            None
+        }
+    }
+}
+
+/// Starts exe with no arguments in a console window of its own, so it keeps running (and says
+/// "close this window to stop it") after this one has ended.
+fn start_in_own_window(exe: &std::path::Path) -> std::io::Result<()> {
+    let mut command = std::process::Command::new(exe);
+    #[cfg(windows)]
+    {
+        use std::os::windows::process::CommandExt;
+        /// A process with a console window of its own (CREATE_NEW_CONSOLE).
+        const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
+        command.creation_flags(CREATE_NEW_CONSOLE);
+    }
+    command.spawn().map(|_| ())
+}
+
+/// code, after waiting for Enter when this program has its console to itself: started from
+/// Explorer or the installed apps list, whose window would otherwise close before what it said
+/// could be read.
+fn ended_by_hand(code: ExitCode) -> ExitCode {
+    if own_console() {
+        println!("Press Enter to close this window.");
+        let _ = std::io::stdin().read_line(&mut String::new());
+    }
+    code
+}
+
+/// Whether this program is the only one on its console, so the console closes when it ends.
+#[cfg(windows)]
+fn own_console() -> bool {
+    let mut processes = [0_u32; 2];
+    // SAFETY: the list is a valid buffer of the length passed with it.
+    let count = unsafe { windows::Win32::System::Console::GetConsoleProcessList(&mut processes) };
+    count == 1
+}
+
+#[cfg(not(windows))]
+fn own_console() -> bool {
+    false
 }
 
 /// `recruiter scan`: the job scan. Until it is ported it opens the database, so a wrong
 /// --database shows in Task Scheduler's last run result, and says it isn't here yet.
 fn run_scan(args: &[String]) -> ExitCode {
-    let database = match args {
-        [] => db::default_path(),
-        [flag, value] if flag == "--database" => PathBuf::from(value),
-        _ => {
-            eprintln!("{USAGE}");
-            return ExitCode::FAILURE;
-        }
+    let Some(database) = database_arg(args) else {
+        return ExitCode::FAILURE;
     };
     let Some(runtime) = runtime() else {
         return ExitCode::FAILURE;

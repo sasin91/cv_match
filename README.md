@@ -115,6 +115,19 @@ In short, run `tailscale serve --bg http://127.0.0.1:8765` once, start the app w
 `--tailscale-name pc.your-tailnet.ts.net`, and open `https://pc.your-tailnet.ts.net/match` on the
 phone with Tailscale on.
 
+### Installing it
+
+`recruiter.exe install` (from a build folder, say), or double-clicking `Recruiter-setup.exe` from a
+GitHub release (the same program under another name; pushing a `v*` tag makes the release),
+copies the program to `%LOCALAPPDATA%\Programs\Recruiter`, adds it to the Start menu and to
+Windows' installed apps, points the job scan's task at the copy when there is one, and starts the
+copy, which opens the setup wizard. It needs no administrator. Installing again replaces the
+program and keeps your data, which is how an update goes in; close Recruiter first.
+
+Uninstall it from Windows' installed apps, or with `recruiter.exe uninstall`. It removes the
+program, the shortcut and the job scan's task, and keeps the database, the models and the API
+keys.
+
 ### Starting it at login
 
 In Task Scheduler, create a task that runs at log on, with the action
@@ -155,6 +168,12 @@ Stop it with Ctrl+C.
 
 With a real key saved on the API key page, check these by hand after a change:
 
+- [ ] **Installing:** copy `recruiter.exe` to `Recruiter-setup.exe` (or take it from a release)
+      and double-click it. It says what it did and a new window starts Recruiter from
+      `%LOCALAPPDATA%\Programs\Recruiter`, opening /setup. Recruiter is in the Start menu and in
+      Settings > Apps > Installed apps; with a job scan task, its action runs the installed copy.
+      Uninstall it there: the window lists what was removed and waits for Enter, the folder goes
+      a few seconds later, and `%APPDATA%\Recruiter` stays.
 - [ ] **The setup wizard:** start with `--database` naming a new file. The browser opens /setup,
       which suggests the app's own model on a PC with a good graphics card, else an OpenAI key.
       Set one up and land back on /setup; read a PDF CV into the profile; pick how often to check
