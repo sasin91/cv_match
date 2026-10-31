@@ -135,7 +135,7 @@ async fn refuse_another_schema(db: &SqlitePool) -> sqlx::Result<()> {
     Err(sqlx::Error::Configuration(
         format!(
             "the database was made by another version of the app (migration {}); \
-             delete it and run `recruiter import` again",
+             move it aside and start the app again for a new one",
             other.join(", ")
         )
         .into(),
@@ -171,7 +171,7 @@ mod tests {
             .unwrap();
         let refused = refusal(&db).await;
         assert!(
-            refused.contains("0001_schema") && refused.contains("recruiter import"),
+            refused.contains("0001_schema") && refused.contains("move it aside"),
             "{refused}"
         );
     }

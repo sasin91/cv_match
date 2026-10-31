@@ -14,7 +14,6 @@ against a fixed snapshot of expected answers (tests/parity.rs).
 | `src/matches/match_score.rs` | a match score as the pages show it |
 | `src/compat.rs` | the exact rounding and trimming the saved scores and texts were made with |
 | `src/db.rs`, `migrations/`, `queries/` | the SQLite tables and the longer queries |
-| `src/import.rs` | the one-off copy from the web app's MariaDB |
 | `src/server.rs`, `src/matches/pages.rs` | the server, the match page and its endpoints |
 | `src/matches/match_model.rs` | saved matches in the database |
 | `src/matches/match_result.rs`, `saved_match_row.rs`, `batch_row.rs`, `verdict_row.rs`, `location_notice.rs`, `apply_notice.rs`, `reject_button.rs`, `reject_reason.rs`, `match_documents.rs`, `document_box.rs`, `score_cursor.rs` | the view models the templates print |
@@ -139,8 +138,7 @@ The app keeps its data in one SQLite file, `%APPDATA%\Recruiter\recruiter.sqlite
 Its tables are cv_match's MariaDB tables (`migrations/`, applied in order at start-up and
 recorded in `schema_migrations`) without the `cv_match` prefix, since the whole app is the
 match: `cv_matches` is `matches`, `cv_match_id` is `match_id`, `cv_match_items` is
-`match_items`, and so on; the import reads each under its MariaDB name. Besides the names, there
-are four changes:
+`match_items`, and so on. Besides the names, there are four changes:
 
 - `trongate_users` keeps only `id`, and `candidates` drops the login columns.
 - `user_llm_keys.uses` (a SET) is three yes/no columns, `use_for_resume`,
@@ -155,26 +153,14 @@ are four changes:
 
 While the app is new, `migrations/0001_schema.sql` is changed in place instead of getting new
 migrations. A database made from an older version of it is refused at start with a message
-saying so: move `recruiter.sqlite` aside and start again (or import again, below).
-
-To move off the web app once, copy your data from its MariaDB (a local copy of production,
-such as `recruiter_prod`) into a new database, before the app's first start:
-
-    recruiter import --email you@example.com
-
-`--from mysql://user:pass@host:3306/db` reads another database and `--database file` writes
-another SQLite file. Only the candidate with that email is copied, with every id as it was, all
-in one transaction, each written application and résumé as its first version. It refuses a
-database that already has your data. Your LLM key isn't
-copied, because it is encrypted with the server's secret: add it again on the API key page.
+saying so: move `recruiter.sqlite` aside and start again.
 
 ### Queries
 
-The app talks to both databases through [sqlx](https://github.com/launchbadge/sqlx). Its queries
+The app talks to its database through [sqlx](https://github.com/launchbadge/sqlx). Its queries
 use the `query!` macros, which check the SQL, its parameters and the Rust types of its columns
 at compile time. A query of more than a few lines is its own file in `queries/` (read with
 `query_file!`); a short one is a raw string `r#"..."#` laid out like a heredoc where it is used.
-Only the import's queries are built at run time, because its columns come from the tables.
 
 The checks run against `.sqlx/`, the descriptions of every query, which is committed, so a
 plain `cargo build` needs no database. After adding or changing a query, write them again
@@ -211,7 +197,5 @@ match, the AI match and writing against a stand-in for a local model on 127.0.0.
 dialog, the joblog, the extension's calls, the PDFs, the API key page, links that may not be
 fetched, and requests from other sites. `tests/llm.rs` calls each adapter against a stand-in for its API on
 127.0.0.1 and checks the request it sends and how it reads the answers and failures.
-
-`recruiter import` has no automated test: it is a one-off move off the web app.
 
 CI (`.github/workflows/app.yml`) runs fmt, clippy and the tests on Windows, and checks `.sqlx/` is what the queries are.

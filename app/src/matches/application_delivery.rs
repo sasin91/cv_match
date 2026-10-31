@@ -27,7 +27,7 @@ pub const TO_HINT: &str = "The address the post asks applications to be sent to.
 pub const NOT_WRITTEN: &str = "Write the application first (Write application).";
 pub const NO_CV: &str = "There is no CV saved.";
 pub const LINKS_HEADING: &str = "Your profile links";
-/// The desktop app has no page to add profile links on: they come with the profile import.
+/// The desktop app has no page to add profile links on yet.
 pub const NO_LINKS: &str =
     "No profile links came with your profile, and the CV of this match names none, so there are none to copy here.";
 pub const CV_LINKS: &str = "From the CV of this match. Profile links that come with your profile take their place.";

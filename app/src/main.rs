@@ -6,8 +6,6 @@
 //!       from the laya folder next to the database unless --laya names another; with
 //!       --tailscale-name it also answers `tailscale serve` for that name, so a phone can open it
 //!       (docs/phone.md)
-//!   recruiter import --email you@example.com [--from mysql://root@127.0.0.1:3306/recruiter_prod]
-//!                    [--database path\to\recruiter.sqlite]
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -18,19 +16,14 @@ use recruiter::account::key_vault::KeyVault;
 use recruiter::laya::laya_client::{self, LayaClient};
 use recruiter::server::{self, AppState};
 use recruiter::taxonomy::Taxonomy;
-use recruiter::{db, extension, import};
-
-/// Herd's MariaDB with the production copy, as set up on Jonas's PC.
-const DEFAULT_SOURCE: &str = "mysql://root@127.0.0.1:3306/recruiter_prod";
+use recruiter::{db, extension};
 
 const USAGE: &str = "usage: recruiter [--port <port>] [--database <file>] [--laya <folder>] [--no-browser]
-                 [--tailscale-name <name>]
-       recruiter import --email <email> [--from <mysql url>] [--database <file>]";
+                 [--tailscale-name <name>]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
     match args.first().map(String::as_str) {
-        Some("import") => run_import(&args[1..]),
         Some("help" | "--help" | "-h") => {
             println!("{USAGE}");
             ExitCode::SUCCESS
@@ -140,58 +133,6 @@ fn run_server(args: &[String]) -> ExitCode {
             }
         }
     })
-}
-
-fn run_import(args: &[String]) -> ExitCode {
-    let mut email = None;
-    let mut source = DEFAULT_SOURCE.to_string();
-    let mut database = db::default_path();
-    let mut args = args.iter();
-    while let Some(flag) = args.next() {
-        let Some(value) = args.next() else {
-            eprintln!("{flag} needs a value\n{USAGE}");
-            return ExitCode::FAILURE;
-        };
-        match flag.as_str() {
-            "--email" => email = Some(value.clone()),
-            "--from" => source = value.clone(),
-            "--database" => database = PathBuf::from(value),
-            _ => {
-                eprintln!("unknown option {flag}\n{USAGE}");
-                return ExitCode::FAILURE;
-            }
-        }
-    }
-    let Some(email) = email else {
-        eprintln!("{USAGE}");
-        return ExitCode::FAILURE;
-    };
-
-    let Some(runtime) = runtime() else {
-        return ExitCode::FAILURE;
-    };
-    let result = runtime.block_on(async {
-        let target = db::open(&database).await.map_err(import::Error::Sqlite)?;
-        import::import(&source, &email, &target).await
-    });
-    match result {
-        Ok(report) => {
-            println!("Imported into {}", database.display());
-            for (table, rows) in &report.rows {
-                println!("  {table}: {rows}");
-            }
-            if report.skipped_llm_key {
-                println!(
-                    "Your LLM key isn't imported (it is encrypted with the server's secret); add it again on the app's API key page."
-                );
-            }
-            ExitCode::SUCCESS
-        }
-        Err(e) => {
-            eprintln!("Import failed, nothing was written: {e}");
-            ExitCode::FAILURE
-        }
-    }
 }
 
 /// Loads Laya's model in the background, so the first match needn't wait for it, and says how

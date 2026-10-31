@@ -75,17 +75,6 @@ In short, run `tailscale serve --bg http://127.0.0.1:8765` once, start the app w
 `--tailscale-name pc.your-tailnet.ts.net`, and open `https://pc.your-tailnet.ts.net/match` on the
 phone with Tailscale on.
 
-### Moving off the web app (one-off)
-
-To bring your saved matches over from the web app's MariaDB (a local copy of production, such
-as `recruiter_prod`), import them into a new database **before** the app's first start. The
-first start creates the local user, and the import refuses a database that already has one:
-
-    .\target\release\recruiter.exe import --email you@example.com
-
-To import again, stop the app, move `recruiter.sqlite` aside, and run the import again. Your
-LLM key isn't copied: save it again on the API key page.
-
 ### Starting it at login
 
 In Task Scheduler, create a task that runs at log on, with the action
