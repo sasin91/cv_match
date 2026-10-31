@@ -6,6 +6,10 @@
 //! requests, so it answers a request only when its Host header names this server (no DNS
 //! rebinding) and, for anything but GET, when its Origin is this server's own page or the Jobnet
 //! extension (extension::ID).
+//!
+//! To reach it from a phone, `tailscale serve` passes requests from the PC's Tailscale name on to
+//! 127.0.0.1 (docs/phone.md); the server then also answers for that one name, given with
+//! `--tailscale-name`, and still listens only on 127.0.0.1.
 
 use std::net::{Ipv4Addr, SocketAddr};
 use std::path::PathBuf;
@@ -60,6 +64,9 @@ pub struct AppState {
     pub extension_folder: Result<PathBuf, String>,
     /// Laya's model, when its folder has one.
     pub laya: Option<LayaClient>,
+    /// The PC's Tailscale name ("pc.tailnet.ts.net") that `tailscale serve` passes requests on
+    /// from, or None when the app is only for this computer.
+    pub tailscale_name: Option<String>,
 }
 
 impl AppState {
@@ -74,6 +81,7 @@ impl AppState {
             port,
             extension_folder: Err("The extension wasn't written out.".to_string()),
             laya: None,
+            tailscale_name: None,
         }
     }
 
@@ -172,27 +180,37 @@ pub async fn serve(state: Arc<AppState>) -> std::io::Result<()> {
     axum::serve(listener, router(state)).await
 }
 
-/// The addresses this server's pages come from.
-fn own_hosts(port: u16) -> [String; 2] {
-    [format!("127.0.0.1:{port}"), format!("localhost:{port}")]
+/// The Host headers this server answers to: its own address and, when set, the Tailscale name
+/// `tailscale serve` answers on (HTTPS on 443, which browsers leave out of Host).
+fn own_hosts(port: u16, tailscale_name: Option<&str>) -> Vec<String> {
+    let mut hosts = vec![format!("127.0.0.1:{port}"), format!("localhost:{port}")];
+    hosts.extend(tailscale_name.map(str::to_string));
+    hosts
+}
+
+/// The origins of this server's own pages, as a browser sends them in Origin.
+fn own_origins(port: u16, tailscale_name: Option<&str>) -> Vec<String> {
+    let mut origins = vec![format!("http://127.0.0.1:{port}"), format!("http://localhost:{port}")];
+    origins.extend(tailscale_name.map(|name| format!("https://{name}")));
+    origins
 }
 
 /// Lets a request through only when it is for this server and, unless it is a GET, from its own
 /// page.
 async fn only_this_page(State(state): State<Arc<AppState>>, request: Request, next: Next) -> Response {
-    if let Err(why) = allowed(request.method(), request.headers(), state.port) {
+    let tailscale_name = state.tailscale_name.as_deref();
+    if let Err(why) = allowed(request.method(), request.headers(), state.port, tailscale_name) {
         return (StatusCode::FORBIDDEN, why).into_response();
     }
     next.run(request).await
 }
 
-fn allowed(method: &Method, headers: &HeaderMap, port: u16) -> Result<(), &'static str> {
-    let hosts = own_hosts(port);
+fn allowed(method: &Method, headers: &HeaderMap, port: u16, tailscale_name: Option<&str>) -> Result<(), &'static str> {
     let host = headers
         .get(header::HOST)
         .and_then(|host| host.to_str().ok())
         .unwrap_or("");
-    if !hosts.iter().any(|own| own == host) {
+    if !own_hosts(port, tailscale_name).iter().any(|own| own == host) {
         return Err("This is the Recruiter app on this computer; open it at its own address.");
     }
     if method == Method::GET || method == Method::HEAD {
@@ -200,7 +218,7 @@ fn allowed(method: &Method, headers: &HeaderMap, port: u16) -> Result<(), &'stat
     }
     let origin = headers.get(header::ORIGIN).and_then(|origin| origin.to_str().ok());
     match origin {
-        Some(origin) if hosts.iter().any(|own| origin == format!("http://{own}")) => Ok(()),
+        Some(origin) if own_origins(port, tailscale_name).iter().any(|own| own == origin) => Ok(()),
         Some(origin) if origin == format!("chrome-extension://{}", extension::ID) => Ok(()),
         _ => Err("Only the Recruiter app's own pages and its Jobnet extension can send it changes."),
     }
@@ -242,31 +260,62 @@ mod tests {
     fn only_this_server_and_its_own_page_get_through() {
         let port = DEFAULT_PORT;
         let own = headers(&[(header::HOST, "127.0.0.1:8765")]);
-        assert!(allowed(&Method::GET, &own, port).is_ok());
+        assert!(allowed(&Method::GET, &own, port, None).is_ok());
         // DNS rebinding: a site whose name points at 127.0.0.1.
-        assert!(allowed(&Method::GET, &headers(&[(header::HOST, "evil.example:8765")]), port).is_err());
+        assert!(
+            allowed(
+                &Method::GET,
+                &headers(&[(header::HOST, "evil.example:8765")]),
+                port,
+                None
+            )
+            .is_err()
+        );
         // A form on another site posting here.
         let cross = headers(&[
             (header::HOST, "127.0.0.1:8765"),
             (header::ORIGIN, "https://evil.example"),
         ]);
-        assert!(allowed(&Method::POST, &cross, port).is_err());
-        assert!(allowed(&Method::POST, &own, port).is_err());
+        assert!(allowed(&Method::POST, &cross, port, None).is_err());
+        assert!(allowed(&Method::POST, &own, port, None).is_err());
         let same = headers(&[
             (header::HOST, "localhost:8765"),
             (header::ORIGIN, "http://localhost:8765"),
         ]);
-        assert!(allowed(&Method::POST, &same, port).is_ok());
+        assert!(allowed(&Method::POST, &same, port, None).is_ok());
         // The Jobnet extension (Edge and Chrome), and no other.
         let ours = headers(&[
             (header::HOST, "127.0.0.1:8765"),
             (header::ORIGIN, "chrome-extension://jijhihfppobcoconjjllmffbohpffbll"),
         ]);
-        assert!(allowed(&Method::POST, &ours, port).is_ok());
+        assert!(allowed(&Method::POST, &ours, port, None).is_ok());
         let other = headers(&[
             (header::HOST, "127.0.0.1:8765"),
             (header::ORIGIN, "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
         ]);
-        assert!(allowed(&Method::POST, &other, port).is_err());
+        assert!(allowed(&Method::POST, &other, port, None).is_err());
+    }
+
+    #[test]
+    fn the_tailscale_name_gets_through_only_when_set() {
+        let port = DEFAULT_PORT;
+        let name = Some("pc.tailnet.ts.net");
+        let phone_get = headers(&[(header::HOST, "pc.tailnet.ts.net")]);
+        assert!(allowed(&Method::GET, &phone_get, port, None).is_err());
+        assert!(allowed(&Method::GET, &phone_get, port, name).is_ok());
+        let phone_post = headers(&[
+            (header::HOST, "pc.tailnet.ts.net"),
+            (header::ORIGIN, "https://pc.tailnet.ts.net"),
+        ]);
+        assert!(allowed(&Method::POST, &phone_post, port, name).is_ok());
+        // Served over HTTPS only, so a plain-HTTP page under the name is someone else's.
+        let plain = headers(&[
+            (header::HOST, "pc.tailnet.ts.net"),
+            (header::ORIGIN, "http://pc.tailnet.ts.net"),
+        ]);
+        assert!(allowed(&Method::POST, &plain, port, name).is_err());
+        // Another tailnet's PC.
+        let other = headers(&[(header::HOST, "pc.other.ts.net")]);
+        assert!(allowed(&Method::GET, &other, port, name).is_err());
     }
 }
