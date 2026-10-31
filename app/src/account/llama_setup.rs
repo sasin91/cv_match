@@ -35,6 +35,7 @@ const REFRESH_SECONDS: u32 = 2;
 const PERCENT: u64 = 100;
 
 /// A catalog model as the wizard lists it.
+#[derive(Clone)]
 pub struct CatalogRow {
     pub file: &'static str,
     pub label: &'static str,
@@ -78,7 +79,13 @@ struct LlamaSetupPage {
     download: Option<DownloadView>,
     /// Whether a download is running, so the buttons wait.
     busy: bool,
-    models: Vec<CatalogRow>,
+    /// The model to take, when one fits this computer.
+    recommended: Option<CatalogRow>,
+    /// The models that fit and aren't downloaded, for the download list (the recommended one
+    /// selected).
+    to_download: Vec<CatalogRow>,
+    /// The downloaded models, for the list of the one to use (the recommended one selected).
+    downloaded: Vec<CatalogRow>,
 }
 
 /// The model forms' field.
@@ -193,6 +200,11 @@ fn page_of(server: &LlamaServer, flash: Option<String>) -> LlamaSetupPage {
     let models_folder = server.models_folder();
     let download = download_view(&server.downloads.progress());
     let busy = download.as_ref().is_some_and(|download| download.running);
+    let ModelLists {
+        recommended,
+        to_download,
+        downloaded,
+    } = model_lists(catalog_rows(server, card_usable));
     LlamaSetupPage {
         flash,
         refresh_seconds: busy.then_some(REFRESH_SECONDS),
@@ -209,7 +221,9 @@ fn page_of(server: &LlamaServer, flash: Option<String>) -> LlamaSetupPage {
         card_problem: overview.card_problem,
         download,
         busy,
-        models: catalog_rows(server, card_usable),
+        recommended,
+        to_download,
+        downloaded,
     }
 }
 
@@ -241,6 +255,27 @@ fn catalog_rows(server: &LlamaServer, card_usable: bool) -> Vec<CatalogRow> {
             }
         })
         .collect()
+}
+
+/// The catalog as the page lists it: the recommended model, the ones still to download, and the
+/// downloaded ones. A model too big for this computer is in neither list.
+struct ModelLists {
+    recommended: Option<CatalogRow>,
+    to_download: Vec<CatalogRow>,
+    downloaded: Vec<CatalogRow>,
+}
+
+fn model_lists(rows: Vec<CatalogRow>) -> ModelLists {
+    let recommended = rows.iter().find(|row| row.recommended).cloned();
+    let (downloaded, to_download): (Vec<CatalogRow>, Vec<CatalogRow>) = rows
+        .into_iter()
+        .filter(|row| !row.too_big)
+        .partition(|row| row.downloaded);
+    ModelLists {
+        recommended,
+        to_download,
+        downloaded,
+    }
 }
 
 fn download_view(progress: &Progress) -> Option<DownloadView> {
@@ -317,13 +352,17 @@ mod tests {
         let folder = std::env::temp_dir().join("recruiter-llama-setup-test");
         let server = LlamaServer::new(&folder, inventory);
         let page = page_of(&server, None);
-        let recommended: Vec<&str> = page
-            .models
-            .iter()
-            .filter(|row| row.recommended)
-            .map(|row| row.file)
-            .collect();
-        assert_eq!(recommended, ["Qwen3-8B-Q4_K_M.gguf"]);
+        assert_eq!(
+            page.recommended.as_ref().map(|row| row.file),
+            Some("Qwen3-8B-Q4_K_M.gguf")
+        );
+        let offered: Vec<&str> = page.to_download.iter().map(|row| row.file).collect();
+        assert_eq!(
+            offered.len(),
+            4,
+            "every model fits a 7.9 GB card one way or another: {offered:?}"
+        );
+        assert!(page.downloaded.is_empty());
         assert_eq!(page.build_label, Build::Vulkan.label());
         assert_eq!(page.card_problem, None);
         assert!(page.render().is_ok());

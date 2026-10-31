@@ -56,25 +56,35 @@
 
     <h2>2. A model</h2>
     <p class="muted">Each model is weighed against this computer: whole on the graphics card is fastest. It is downloaded from Hugging Face into <code>{{ models_folder }}</code>.</p>
-    <ul class="stack">
-        {%- for model in models %}
-        <li>
-            <strong>{{ model.label }}</strong>{% if model.recommended %} <strong>(recommended)</strong>{% endif %}<br>
-            <code>{{ model.file }}</code>, {{ model.size }}: {{ model.fit }}.
-            {%- if model.downloaded %}
-            <form method="post" action="llama_setup/use_model" class="inline">
-                <input type="hidden" name="file" value="{{ model.file }}">
-                <button type="submit"{% if model.recommended %} class="primary"{% endif %}>Use this model</button>
-            </form>
-            {%- else if !model.too_big %}
-            <form method="post" action="llama_setup/download_model" class="inline">
-                <input type="hidden" name="file" value="{{ model.file }}">
-                <button type="submit"{% if busy %} disabled{% endif %}>Download</button>
-            </form>
-            {%- endif %}
-        </li>
-        {%- endfor %}
-    </ul>
+    {%- if let Some(recommended) = recommended %}
+    <p>Recommended for this computer: <strong>{{ recommended.label }}</strong>, <code>{{ recommended.file }}</code>, {{ recommended.size }}: {{ recommended.fit }}.</p>
+    {%- endif %}
+
+    {%- if !to_download.is_empty() %}
+    <form method="post" action="llama_setup/download_model" class="stack">
+        <details>
+            <summary>Choose another model</summary>
+            <select name="file" aria-label="Model to download">
+                {%- for model in to_download %}
+                <option value="{{ model.file }}"{% if model.recommended %} selected{% endif %}>{{ model.label }}. {{ model.size }}: {{ model.fit }}{% if model.recommended %} (recommended){% endif %}</option>
+                {%- endfor %}
+            </select>
+        </details>
+        <button type="submit" class="primary"{% if busy %} disabled{% endif %}>Download</button>
+    </form>
+    {%- endif %}
+
+    {%- if !downloaded.is_empty() %}
+    <h2>3. Use it</h2>
+    <form method="post" action="llama_setup/use_model" class="stack">
+        <select name="file" aria-label="Downloaded model to use">
+            {%- for model in downloaded %}
+            <option value="{{ model.file }}"{% if model.recommended %} selected{% endif %}>{{ model.label }}. {{ model.size }}: {{ model.fit }}</option>
+            {%- endfor %}
+        </select>
+        <button type="submit" class="primary">Use this model</button>
+    </form>
+    {%- endif %}
 </main>
 </body>
 </html>
