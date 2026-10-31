@@ -298,6 +298,15 @@ pub fn match_tag(index: f64) -> &'static str {
     }
 }
 
+/// What a whole percent is out of.
+const WHOLE_PERCENT: i64 = 100;
+
+/// percentage % of weight, rounded half up, in whole numbers so no floating-point error can move
+/// a half: 57 % of 150 is 85.5, which is 86.
+fn share_of_weight(percentage: i64, weight: i64) -> i64 {
+    (2 * percentage * weight + WHOLE_PERCENT) / (2 * WHOLE_PERCENT)
+}
+
 fn credit_of(verdict: Option<&Verdict>) -> f64 {
     match verdict.map(|v| v.verdict.as_str()) {
         Some("met") => credit::MET,
@@ -554,7 +563,7 @@ pub fn score(groups: &Groups, verdicts: &Verdicts) -> Score {
         let weight = weight_of(key);
         let credit: f64 = items.iter().map(|item| credit_of(verdicts.get(&item.id))).sum();
         let percentage = (credit / items.len() as f64 * PERCENT) as i64;
-        let value = (percentage as f64 / PERCENT * weight as f64).round() as i64;
+        let value = share_of_weight(percentage, weight);
         rank += value;
         total += weight;
         parts.insert(
@@ -576,5 +585,19 @@ pub fn score(groups: &Groups, verdicts: &Verdicts) -> Score {
         index,
         tag: match_tag(index).into(),
         parts,
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_half_of_a_weight_rounds_up() {
+        assert_eq!(share_of_weight(57, weights::REQUIREMENTS), 86);
+        assert_eq!(share_of_weight(41, weights::REQUIREMENTS), 62);
+        assert_eq!(share_of_weight(29, weights::SKILLS), 15);
+        assert_eq!(share_of_weight(100, weights::REQUIREMENTS), 150);
+        assert_eq!(share_of_weight(0, weights::SKILLS), 0);
     }
 }
