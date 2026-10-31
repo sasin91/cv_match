@@ -67,7 +67,7 @@ fn started_as_setup() -> bool {
 }
 
 /// `recruiter install`: installs this program, then starts the installed copy in a window of
-/// its own, which opens the setup wizard on a new database.
+/// its own, which opens the dashboard.
 fn run_install(args: &[String]) -> ExitCode {
     let Some(database) = database_arg(args) else {
         return ExitCode::FAILURE;
@@ -75,7 +75,9 @@ fn run_install(args: &[String]) -> ExitCode {
     let Some(runtime) = runtime() else {
         return ended_by_hand(ExitCode::FAILURE);
     };
-    let installed = match runtime.block_on(install::install(std::path::Path::new(&shown_path(&database)))) {
+    let database = PathBuf::from(shown_path(&database));
+    let named = (!args.is_empty()).then_some(database.as_path());
+    let installed = match runtime.block_on(install::install(&database, named)) {
         Ok(installed) => installed,
         Err(why) => {
             eprintln!("Recruiter couldn't be installed: {why}");
@@ -85,9 +87,9 @@ fn run_install(args: &[String]) -> ExitCode {
     for line in &installed.done {
         println!("{line}");
     }
-    match start_in_own_window(&installed.exe) {
+    match start_in_own_window(&installed.exe, &installed.arguments) {
         Ok(()) => {
-            println!("Recruiter is starting from the Start menu's copy, and opens the setup in your browser.");
+            println!("Recruiter is starting from the Start menu's copy, and opens its dashboard in your browser.");
             ExitCode::SUCCESS
         }
         Err(e) => {
@@ -105,19 +107,25 @@ fn run_uninstall(args: &[String]) -> ExitCode {
     let Some(runtime) = runtime() else {
         return ended_by_hand(ExitCode::FAILURE);
     };
-    let code = match runtime.block_on(install::uninstall(&database)) {
-        Ok(done) => {
-            for line in done {
-                println!("{line}");
-            }
-            ExitCode::SUCCESS
-        }
+    let uninstalled = match runtime.block_on(install::uninstall(&database)) {
+        Ok(uninstalled) => uninstalled,
         Err(why) => {
             eprintln!("Recruiter couldn't be uninstalled: {why}");
-            ExitCode::FAILURE
+            return ended_by_hand(ExitCode::FAILURE);
         }
     };
-    ended_by_hand(code)
+    for line in &uninstalled.done {
+        println!("{line}");
+    }
+    let code = ended_by_hand(ExitCode::SUCCESS);
+    // Last, after the wait for Enter: the clean-up's delay counts from here.
+    if let Some(folder) = &uninstalled.remove_after_exit
+        && let Err(why) = install::remove_after_exit(folder)
+    {
+        eprintln!("{why}");
+        return ExitCode::FAILURE;
+    }
+    code
 }
 
 /// The database a subcommand's `[--database <file>]` names, or the default one; None (with the
@@ -133,10 +141,11 @@ fn database_arg(args: &[String]) -> Option<PathBuf> {
     }
 }
 
-/// Starts exe with no arguments in a console window of its own, so it keeps running (and says
+/// Starts exe with arguments in a console window of its own, so it keeps running (and says
 /// "close this window to stop it") after this one has ended.
-fn start_in_own_window(exe: &std::path::Path) -> std::io::Result<()> {
+fn start_in_own_window(exe: &std::path::Path, arguments: &[String]) -> std::io::Result<()> {
     let mut command = std::process::Command::new(exe);
+    command.args(arguments);
     #[cfg(windows)]
     {
         use std::os::windows::process::CommandExt;

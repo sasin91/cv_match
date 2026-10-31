@@ -120,14 +120,35 @@ pub fn uninstall_values(layout: &Layout, size: u64) -> Vec<RegValue> {
     ]
 }
 
-/// The PowerShell that makes the Start menu's shortcut to the installed program.
-pub fn shortcut_script(layout: &Layout) -> String {
+/// The installed program's arguments for database: none for the default one, else
+/// `--database <file>`, so the Start menu's copy opens the database the scan's task scans.
+pub fn arguments_for(database: Option<&Path>) -> Vec<String> {
+    match database {
+        Some(database) => vec!["--database".to_string(), database.display().to_string()],
+        None => Vec::new(),
+    }
+}
+
+/// The PowerShell that makes the Start menu's shortcut to the installed program, started with
+/// arguments.
+pub fn shortcut_script(layout: &Layout, arguments: &[String]) -> String {
+    let arguments: Vec<String> = arguments
+        .iter()
+        .map(|argument| {
+            if argument.contains(' ') {
+                format!(r#""{argument}""#)
+            } else {
+                argument.clone()
+            }
+        })
+        .collect();
     format!(
         "$shortcut = (New-Object -ComObject WScript.Shell).CreateShortcut({}); \
-         $shortcut.TargetPath = {}; $shortcut.WorkingDirectory = {}; \
+         $shortcut.TargetPath = {}; $shortcut.Arguments = {}; $shortcut.WorkingDirectory = {}; \
          $shortcut.Description = {}; $shortcut.Save()",
         powershell_string(&layout.shortcut.display().to_string()),
         powershell_string(&layout.exe().display().to_string()),
+        powershell_string(&arguments.join(" ")),
         powershell_string(&layout.folder.display().to_string()),
         powershell_string(DISPLAY_NAME),
     )
@@ -150,18 +171,22 @@ pub fn clean_up_line(folder: &Path) -> String {
 #[derive(Debug, Default)]
 pub struct Installed {
     pub exe: PathBuf,
+    /// What the installed program is started with (arguments_for).
+    pub arguments: Vec<String>,
     /// Lines of what was done, in order.
     pub done: Vec<String>,
 }
 
 /// Installs the program that is running, as the module says, with the job scan's task (when
-/// there is one) running the copy on database. Starting the copy is the caller's.
-pub async fn install(database: &Path) -> Result<Installed, String> {
+/// there is one) running the copy on database. named_database is the database when it isn't the
+/// default one, which the shortcut then opens too. Starting the copy is the caller's.
+pub async fn install(database: &Path, named_database: Option<&Path>) -> Result<Installed, String> {
     let layout = Layout::for_this_user()
         .ok_or("Windows didn't say where this user's AppData folders are, so there's nowhere to install to.")?;
     let running = std::env::current_exe().map_err(|e| format!("This program's own path couldn't be read: {e}"))?;
     let mut installed = Installed {
         exe: layout.exe(),
+        arguments: arguments_for(named_database),
         done: Vec::new(),
     };
     if same_file(&running, &layout.exe()) {
@@ -174,7 +199,7 @@ pub async fn install(database: &Path) -> Result<Installed, String> {
             .done
             .push(format!("Copied Recruiter to {}.", layout.folder.display()));
     }
-    system::make_shortcut(&layout).await?;
+    system::make_shortcut(&layout, &installed.arguments).await?;
     installed.done.push("Added Recruiter to the Start menu.".to_string());
     let size = std::fs::metadata(layout.exe()).map(|meta| meta.len()).unwrap_or(0);
     system::write_uninstall_entry(&uninstall_values(&layout, size)).await?;
@@ -199,12 +224,23 @@ pub async fn install(database: &Path) -> Result<Installed, String> {
     Ok(installed)
 }
 
-/// Undoes install, keeping the data next to database; says what it did, line by line.
-pub async fn uninstall(database: &Path) -> Result<Vec<String>, String> {
+/// What uninstalling did, for the uninstaller to say.
+#[derive(Debug, Default)]
+pub struct Uninstalled {
+    /// Lines of what was done, in order.
+    pub done: Vec<String>,
+    /// The install folder, when this program runs from it: Windows won't delete a running
+    /// program's file, so the caller deletes it with remove_after_exit as the very last thing.
+    pub remove_after_exit: Option<PathBuf>,
+}
+
+/// Undoes install, keeping the data next to database.
+pub async fn uninstall(database: &Path) -> Result<Uninstalled, String> {
     let layout = Layout::for_this_user()
         .ok_or("Windows didn't say where this user's AppData folders are, so there's nothing to find.")?;
     refuse_while_running()?;
     let mut done = Vec::new();
+    let mut remove_after_exit = None;
     let schedule = ScanSchedule::task_scheduler(&layout.exe(), database);
     if let Ok(Some(_)) = schedule.interval_hours().await {
         schedule.remove().await?;
@@ -221,19 +257,29 @@ pub async fn uninstall(database: &Path) -> Result<Vec<String>, String> {
     if layout.folder.exists() {
         let running = std::env::current_exe().ok();
         if running.is_some_and(|running| running.starts_with(&layout.folder) || same_file(&running, &layout.exe())) {
-            system::remove_folder_after_exit(&layout.folder)?;
+            done.push(format!("{} goes once this window closes.", layout.folder.display()));
+            remove_after_exit = Some(layout.folder.clone());
         } else {
             std::fs::remove_dir_all(&layout.folder)
                 .map_err(|e| format!("{} couldn't be removed: {e}", layout.folder.display()))?;
+            done.push(format!("Removed {}.", layout.folder.display()));
         }
-        done.push(format!("Removed {}.", layout.folder.display()));
     }
     let data = database.parent().unwrap_or(Path::new("."));
     done.push(format!(
         "Your data stays in {}: the database, the models and the Jobnet extension. The API keys stay in Windows Credential Manager, under Recruiter. Delete them by hand if you don't want them.",
         data.display()
     ));
-    Ok(done)
+    Ok(Uninstalled {
+        done,
+        remove_after_exit,
+    })
+}
+
+/// Deletes folder a few seconds after this program has ended, from a cmd.exe of its own. Call
+/// it as the last thing before exiting, after any wait for Enter: the wait is counted from here.
+pub fn remove_after_exit(folder: &Path) -> Result<(), String> {
+    system::remove_folder_after_exit(folder)
 }
 
 /// Copies running to the install folder, saying to close Recruiter when it is running (Windows
@@ -289,11 +335,11 @@ mod system {
     /// A process that isn't attached to this console (DETACHED_PROCESS).
     const DETACHED_PROCESS: u32 = 0x0000_0008;
 
-    pub async fn make_shortcut(layout: &Layout) -> Result<(), String> {
+    pub async fn make_shortcut(layout: &Layout, arguments: &[String]) -> Result<(), String> {
         if let Some(folder) = layout.shortcut.parent() {
             std::fs::create_dir_all(folder).map_err(|e| format!("The Start menu's folder couldn't be made: {e}"))?;
         }
-        let script = shortcut_script(layout);
+        let script = shortcut_script(layout, arguments);
         run(
             "powershell.exe",
             &["-NoProfile", "-NonInteractive", "-Command", &script],
@@ -375,7 +421,7 @@ mod system {
 
     const NOT_HERE: &str = "Installing is only for Windows so far. On this computer, run the program where it is.";
 
-    pub async fn make_shortcut(_: &Layout) -> Result<(), String> {
+    pub async fn make_shortcut(_: &Layout, _: &[String]) -> Result<(), String> {
         Err(NOT_HERE.to_string())
     }
 
@@ -438,7 +484,12 @@ mod tests {
     fn the_shortcut_script_quotes_paths_as_they_are() {
         let mut odd = layout();
         odd.folder = PathBuf::from(r"C:\Users\O'Brien\AppData\Local\Programs\Recruiter");
-        let script = shortcut_script(&odd);
+        let script = shortcut_script(&odd, &arguments_for(Some(Path::new(r"D:\My data\recruiter.sqlite"))));
+        assert!(
+            script.contains(r#"$shortcut.Arguments = '--database "D:\My data\recruiter.sqlite"'"#),
+            "{script}"
+        );
+        assert!(shortcut_script(&odd, &[]).contains("$shortcut.Arguments = ''"));
         assert!(
             script.contains(r"$shortcut.WorkingDirectory = 'C:\Users\O''Brien\AppData\Local\Programs\Recruiter'"),
             "{script}"
