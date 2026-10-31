@@ -24,7 +24,7 @@ use super::page_error::PageError;
 use super::resume_comparison::ResumeComparison;
 use super::saved_match_row::SavedMatchRow;
 use super::{Job, Profile};
-use crate::app_core::AppCore;
+use crate::context::Context;
 use crate::dashboard::{self, Dashboard, Findings};
 use crate::profile;
 use crate::server::AppState;
@@ -127,13 +127,13 @@ struct SavedMatches {
     next: Option<String>,
 }
 
-async fn saved_matches(core: &AppCore, query: &ListQuery, first: bool) -> Result<SavedMatches, PageError> {
+async fn saved_matches(context: &Context, query: &ListQuery, first: bool) -> Result<SavedMatches, PageError> {
     let after = if first {
         ""
     } else {
         query.after.as_deref().unwrap_or("")
     };
-    let found = match_service::saved_matches(core, query.list.as_deref(), after).await?;
+    let found = match_service::saved_matches(context, query.list.as_deref(), after).await?;
     let list_param = if found.list == SHORTLIST {
         String::new()
     } else {
@@ -193,26 +193,26 @@ pub async fn show(
 }
 
 async fn match_page(state: &AppState, query: &ListQuery, open_id: Option<i64>) -> Answer {
-    let core = &state.core;
-    let saved = saved_matches(core, query, false).await?;
-    let uses = llm_key::ai_uses(core).await?;
+    let context = &state.context;
+    let saved = saved_matches(context, query, false).await?;
+    let uses = llm_key::ai_uses(context).await?;
     let empty_text = LISTS
         .iter()
         .find(|(name, ..)| *name == saved.list)
         .map(|(.., empty)| *empty)
         .unwrap_or("");
-    let dashboard = dashboard::dashboard(core).await.map_err(dashboard_error)?;
+    let dashboard = dashboard::dashboard(context).await.map_err(dashboard_error)?;
     html(MatchPage {
         flash: state.take_flash(),
         dashboard,
-        findings: findings(core).await?,
+        findings: findings(context).await?,
         ai_ready: uses.any(),
         ai_uses_json:
             json!({ "resume": uses.resume, "application": uses.application, "job_evaluation": uses.job_evaluation })
                 .to_string(),
         max_jobs: MAX_JOBS,
         open_id_json: json!(open_id).to_string(),
-        profile_text: profile::text_for_user(core.db(), core.user_id).await?,
+        profile_text: profile::text_for_user(context.db(), context.user_id).await?,
         list_tabs: list_tabs(saved.list),
         matches: saved.matches,
         next: saved.next,
@@ -222,8 +222,8 @@ async fn match_page(state: &AppState, query: &ListQuery, open_id: Option<i64>) -
 }
 
 /// The dashboard's glance at the saved matches.
-async fn findings(core: &AppCore) -> Result<Findings, PageError> {
-    dashboard::findings(core).await.map_err(dashboard_error)
+async fn findings(context: &Context) -> Result<Findings, PageError> {
+    dashboard::findings(context).await.map_err(dashboard_error)
 }
 
 /// Why the dashboard couldn't be read, logged.
@@ -235,9 +235,9 @@ fn dashboard_error(why: String) -> PageError {
 /// GET match/history_list: the first batch of the page's list, polled by Trongate MX so
 /// matches saved elsewhere show up on their own.
 pub async fn history_list(State(state): State<Arc<AppState>>, Query(query): Query<ListQuery>) -> Answer {
-    let saved = saved_matches(&state.core, &query, true).await?;
+    let saved = saved_matches(&state.context, &query, true).await?;
     html(HistoryLatest {
-        findings: findings(&state.core).await?,
+        findings: findings(&state.context).await?,
         matches: saved.matches,
         next: saved.next,
         list_query: saved.list_query,
@@ -246,7 +246,7 @@ pub async fn history_list(State(state): State<Arc<AppState>>, Query(query): Quer
 
 /// GET match/history_more?after=...: the next saved matches of the page's list.
 pub async fn history_more(State(state): State<Arc<AppState>>, Query(query): Query<ListQuery>) -> Answer {
-    let saved = saved_matches(&state.core, &query, false).await?;
+    let saved = saved_matches(&state.context, &query, false).await?;
     html(History {
         matches: saved.matches,
         next: saved.next,
@@ -257,7 +257,7 @@ pub async fn history_more(State(state): State<Arc<AppState>>, Query(query): Quer
 /// GET match/result/{id}: a saved match as the page shows it, with its application and
 /// résumé panel; ?view=row as a row of the ranked jobs.
 pub async fn result(State(state): State<Arc<AppState>>, Path(id): Path<i64>, Query(view): Query<ViewQuery>) -> Answer {
-    let result = match_service::saved_result(&state.core, id).await?;
+    let result = match_service::saved_result(&state.context, id).await?;
     respond_result(result, view, "")
 }
 
@@ -292,7 +292,7 @@ pub async fn quick_match(
     Query(view): Query<ViewQuery>,
     Json(input): Json<QuickMatchInput>,
 ) -> Answer {
-    let result = match_service::quick_match(&state.core, &input.job_text, &input.cv_text).await?;
+    let result = match_service::quick_match(&state.context, &input.job_text, &input.cv_text).await?;
     respond_result(result, view, &input.job_url)
 }
 
@@ -317,7 +317,7 @@ pub async fn submit_reject(
             Some((reason.to_string(), value.clone()))
         })
         .collect();
-    match match_service::reject(&state.core, id, &reasons, &notes, undo).await? {
+    match match_service::reject(&state.context, id, &reasons, &notes, undo).await? {
         RejectOutcome::Unfinished(problem) => {
             state.set_flash(problem);
             Ok(Redirect::to(&format!("/match/{id}")).into_response())
@@ -354,7 +354,7 @@ fn id_in_body(id: &serde_json::Value) -> i64 {
 /// newest first; not_joblogged, the ones applied for but not in Jobnet's joblog yet (the list
 /// "Applied, not on Jobnet yet"), best first, which the extension offers first.
 pub async fn history(State(state): State<Arc<AppState>>) -> Answer {
-    let history = match_service::extension_history(&state.core).await?;
+    let history = match_service::extension_history(&state.context).await?;
     Ok(Json(json!({ "matches": history.matches, "not_joblogged": history.not_joblogged })).into_response())
 }
 
@@ -362,7 +362,7 @@ pub async fn history(State(state): State<Arc<AppState>>) -> Answer {
 /// fields in Jobnet's order, filled in from the match, and which of the three PDFs Jobnet keeps
 /// can be downloaded.
 pub async fn joblog(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Answer {
-    let entry = match_service::joblog_entry(&state.core, id_of(&id)).await?;
+    let entry = match_service::joblog_entry(&state.context, id_of(&id)).await?;
     Ok(Json(entry).into_response())
 }
 
@@ -370,7 +370,7 @@ pub async fn joblog(State(state): State<Arc<AppState>>, Path(id): Path<String>) 
 /// match.
 pub async fn joblog_panel(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Answer {
     html(JoblogPanelView {
-        panel: match_service::joblog_panel(&state.core, id_of(&id)).await?,
+        panel: match_service::joblog_panel(&state.context, id_of(&id)).await?,
     })
 }
 
@@ -390,7 +390,7 @@ pub async fn joblog_status(State(state): State<Arc<AppState>>, Json(input): Json
     // Anything but a known status's text is answered with the list of them.
     let status = input.status.as_str().unwrap_or("");
     let logged = input.logged == serde_json::Value::Bool(true);
-    let logged = match_service::save_joblog_status(&state.core, id_in_body(&input.id), status, logged).await?;
+    let logged = match_service::save_joblog_status(&state.context, id_in_body(&input.id), status, logged).await?;
     html(JoblogLoggedView { logged })
 }
 
@@ -406,7 +406,7 @@ struct JoblogExtensionPage {
 pub async fn joblog_extension(State(state): State<Arc<AppState>>) -> Answer {
     html(JoblogExtensionPage {
         folder: state
-            .core
+            .context
             .extension_folder
             .as_ref()
             .map(|folder| folder.display().to_string())
@@ -418,7 +418,7 @@ pub async fn joblog_extension(State(state): State<Arc<AppState>>) -> Answer {
 /// POST joblog_extension/open_edge: opens Edge's extensions page (edge://extensions), which the
 /// setup page can't link to, so the user can load the extension from the folder the page copied.
 pub async fn open_edge(State(state): State<Arc<AppState>>) -> Answer {
-    if let Err(why) = &state.core.extension_folder {
+    if let Err(why) = &state.context.extension_folder {
         return Err(PageError::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("There is no extension folder to load. {why}"),
@@ -455,7 +455,7 @@ pub struct PdfInput {
 /// says so first). Errors come back as JSON like the other endpoints.
 pub async fn pdf(State(state): State<Arc<AppState>>, Json(input): Json<PdfInput>) -> Answer {
     let made = match_service::pdf(
-        &state.core,
+        &state.context,
         id_in_body(&input.id),
         &input.kind,
         &input.text,
@@ -504,7 +504,7 @@ pub struct AlreadyMatchedInput {
 /// same job post text, as {match: {id}}, or {match: null}. The page uses it to skip posts it
 /// has matched before.
 pub async fn already_matched(State(state): State<Arc<AppState>>, Json(input): Json<AlreadyMatchedInput>) -> Answer {
-    let id = match_service::already_matched(&state.core, &input.cv_text, &input.job_text).await?;
+    let id = match_service::already_matched(&state.context, &input.cv_text, &input.job_text).await?;
     Ok(Json(json!({ "match": id.map(|id| json!({ "id": id })) })).into_response())
 }
 
@@ -534,7 +534,7 @@ pub struct FetchJobInput {
 /// POST match/fetch_job {url}: the job post at a pasted link as {url, title, text}
 /// (match_service::fetch_job, which counts fetches so a batch of links can't become a crawler).
 pub async fn fetch_job(State(state): State<Arc<AppState>>, Json(input): Json<FetchJobInput>) -> Answer {
-    let page = match_service::fetch_job(&state.core, input.url.as_str().unwrap_or("")).await?;
+    let page = match_service::fetch_job(&state.context, input.url.as_str().unwrap_or("")).await?;
     Ok(Json(page).into_response())
 }
 
@@ -548,14 +548,14 @@ pub struct ExtractInput {
 /// POST match/extract_job {text}: the job post as structured requirements, read by the model,
 /// or by the free reader when the key is off for evaluating job posts.
 pub async fn extract_job(State(state): State<Arc<AppState>>, Json(input): Json<ExtractInput>) -> Answer {
-    let job: Job = match_service::extract_job(&state.core, &input.text).await?;
+    let job: Job = match_service::extract_job(&state.context, &input.text).await?;
     Ok(Json(job).into_response())
 }
 
 /// POST match/extract_cv {text}: the CV as a structured profile, read by the model, or by the
 /// free reader when the key is off for evaluating job posts.
 pub async fn extract_cv(State(state): State<Arc<AppState>>, Json(input): Json<ExtractInput>) -> Answer {
-    let profile: Profile = match_service::extract_cv(&state.core, &input.text).await?;
+    let profile: Profile = match_service::extract_cv(&state.context, &input.text).await?;
     Ok(Json(profile).into_response())
 }
 
@@ -590,11 +590,11 @@ pub async fn r#match(
         cv_name: input.cv_name,
         cv_text: input.cv_text,
     };
-    let found = match_service::ai_match(&state.core, &request).await?;
+    let found = match_service::ai_match(&state.context, &request).await?;
     if !wants_html(&headers) {
         return Ok(Json(found).into_response());
     }
-    let result: MatchResult = match_service::ai_match_result(&state.core, &request, &found).await?;
+    let result: MatchResult = match_service::ai_match_result(&state.context, &request, &found).await?;
     respond_result(result, view, &request.job_url)
 }
 
@@ -609,7 +609,7 @@ fn wants_html(headers: &axum::http::HeaderMap) -> bool {
 /// GET match/saved/{id}: one saved match with its items and documents, as JSON. The page reads
 /// it to pick up an application or résumé written while it was away.
 pub async fn saved(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Answer {
-    let found = match_service::saved_match(&state.core, id_of(&id)).await?;
+    let found = match_service::saved_match(&state.context, id_of(&id)).await?;
     Ok(Json(found).into_response())
 }
 
@@ -648,7 +648,7 @@ pub async fn tailor_resume(State(state): State<Arc<AppState>>, Json(input): Json
 /// finishes and is saved even when the page drops the connection meanwhile (a laptop asleep, a tab
 /// reloaded); the page picks it up from the saved match when it's back.
 async fn write(state: Arc<AppState>, input: WriteInput, kind: &'static str) -> Answer {
-    let doc = match_service::write(state.core.clone(), id_in_body(&input.id), &input.notes, kind).await?;
+    let doc = match_service::write(state.context.clone(), id_in_body(&input.id), &input.notes, kind).await?;
     html(DocumentBoxView { doc })
 }
 
@@ -665,7 +665,7 @@ pub async fn resume_comparison(
     Path((id, resume_id)): Path<(String, String)>,
 ) -> Answer {
     html(ResumeComparisonView {
-        comparison: match_service::resume_comparison(&state.core, id_of(&id), id_of(&resume_id)).await?,
+        comparison: match_service::resume_comparison(&state.context, id_of(&id), id_of(&resume_id)).await?,
     })
 }
 
@@ -680,6 +680,6 @@ struct ApplicationDeliveryView {
 /// employer's form (the job post's link), with the PDFs and the profile links to copy.
 pub async fn application_delivery(State(state): State<Arc<AppState>>, Path(id): Path<String>) -> Answer {
     html(ApplicationDeliveryView {
-        delivery: match_service::application_delivery(&state.core, id_of(&id)).await?,
+        delivery: match_service::application_delivery(&state.context, id_of(&id)).await?,
     })
 }

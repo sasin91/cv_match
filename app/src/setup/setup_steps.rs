@@ -8,7 +8,7 @@
 
 use crate::account::account_model::{self, RESUME};
 use crate::account::model_advice::ModelAdvice;
-use crate::app_core::AppCore;
+use crate::context::Context;
 use crate::matches::llm_key;
 use crate::profile::profile_fill;
 use crate::profile::profile_model::{self, FilledFrom};
@@ -48,24 +48,26 @@ pub struct ScheduleStep {
 }
 
 /// Whether the app hasn't been set up yet: no profile and no saved matches.
-pub async fn is_first_run(core: &AppCore) -> sqlx::Result<bool> {
-    let has_profile = profile_model::filled_from(core.db(), core.user_id).await?.is_some();
+pub async fn is_first_run(context: &Context) -> sqlx::Result<bool> {
+    let has_profile = profile_model::filled_from(context.db(), context.user_id)
+        .await?
+        .is_some();
     if has_profile {
         return Ok(false);
     }
     let has_matches = sqlx::query_scalar!(
         r#"SELECT EXISTS (SELECT 1 FROM matches WHERE trongate_user_id = ?1) AS "has!: bool""#,
-        core.user_id
+        context.user_id
     )
-    .fetch_one(core.db())
+    .fetch_one(context.db())
     .await?;
     Ok(!has_matches)
 }
 
 /// is_first_run, or false (logged) when the database can't say: the pages that only link back
 /// to the wizard then go on without the link.
-pub async fn first_run_or_logged(core: &AppCore) -> bool {
-    is_first_run(core).await.unwrap_or_else(|e| {
+pub async fn first_run_or_logged(context: &Context) -> bool {
+    is_first_run(context).await.unwrap_or_else(|e| {
         eprintln!("setup: whether this is the first run couldn't be read: {e}");
         false
     })
@@ -96,18 +98,18 @@ pub fn interval_label(hours: u32) -> &'static str {
         .unwrap_or("Every few hours")
 }
 
-pub fn database(core: &AppCore) -> DatabaseStep {
+pub fn database(context: &Context) -> DatabaseStep {
     DatabaseStep {
-        path: core.database.path.clone(),
-        made_now: core.database.made_now,
+        path: context.database.path.clone(),
+        made_now: context.database.made_now,
     }
 }
 
-pub async fn ai(core: &AppCore) -> sqlx::Result<AiStep> {
-    let saved = account_model::saved(core.db(), core.user_id).await?;
+pub async fn ai(context: &Context) -> sqlx::Result<AiStep> {
+    let saved = account_model::saved(context.db(), context.user_id).await?;
     Ok(AiStep {
         saved: saved.iter().map(saved_key_line).collect(),
-        advice: ModelAdvice::from(core.llama.as_ref()),
+        advice: ModelAdvice::from(context.llama.as_ref()),
     })
 }
 
@@ -121,33 +123,33 @@ fn saved_key_line(saved: &account_model::Saved) -> String {
     }
 }
 
-pub async fn cv(core: &AppCore) -> Result<CvStep, String> {
-    let filled = profile_model::filled_from(core.db(), core.user_id)
+pub async fn cv(context: &Context) -> Result<CvStep, String> {
+    let filled = profile_model::filled_from(context.db(), context.user_id)
         .await
         .map_err(|e| format!("The database couldn't answer: {e}"))?;
-    let can_read = llm_key::llm_settings(core, RESUME)
+    let can_read = llm_key::llm_settings(context, RESUME)
         .await
         .map_err(|e| e.message)?
         .is_some();
     Ok(CvStep { filled, can_read })
 }
 
-pub async fn schedule(core: &AppCore) -> ScheduleStep {
-    let (interval_hours, error) = match core.scan_schedule.interval_hours().await {
+pub async fn schedule(context: &Context) -> ScheduleStep {
+    let (interval_hours, error) = match context.scan_schedule.interval_hours().await {
         Ok(interval) => (interval, None),
         Err(e) => (None, Some(e)),
     };
     ScheduleStep {
         interval_hours,
         error,
-        task_run: core.scan_schedule.task_run(),
+        task_run: context.scan_schedule.task_run(),
     }
 }
 
 /// Reads the CV into the profile, replacing it; replace must be true when there is a profile
 /// already. Ok is what to say.
-pub async fn read_cv(core: &AppCore, cv_text: &str, cv_name: &str, replace: bool) -> Result<String, ServiceError> {
-    let has_profile = cv(core)
+pub async fn read_cv(context: &Context, cv_text: &str, cv_name: &str, replace: bool) -> Result<String, ServiceError> {
+    let has_profile = cv(context)
         .await
         .map_err(|why| ServiceError::internal("setup/read_cv", why))?
         .filled
@@ -158,12 +160,12 @@ pub async fn read_cv(core: &AppCore, cv_text: &str, cv_name: &str, replace: bool
             "Tick \"Replace my profile\" to fill it in again from this CV.",
         ));
     }
-    profile_fill::fill_from_cv(core, cv_text, cv_name).await
+    profile_fill::fill_from_cv(context, cv_text, cv_name).await
 }
 
 /// Registers the job scan's task to run every hours. Ok is what to say.
-pub async fn schedule_scan(core: &AppCore, hours: u32) -> Result<String, ServiceError> {
-    core.scan_schedule.register(hours).await.map_err(|why| {
+pub async fn schedule_scan(context: &Context, hours: u32) -> Result<String, ServiceError> {
+    context.scan_schedule.register(hours).await.map_err(|why| {
         ServiceError::failed(
             "setup/schedule_scan",
             format!("The job scan couldn't be scheduled: {why}"),
@@ -176,8 +178,8 @@ pub async fn schedule_scan(core: &AppCore, hours: u32) -> Result<String, Service
 }
 
 /// Removes the job scan's task. Ok is what to say.
-pub async fn unschedule_scan(core: &AppCore) -> Result<&'static str, ServiceError> {
-    core.scan_schedule.remove().await.map_err(|why| {
+pub async fn unschedule_scan(context: &Context) -> Result<&'static str, ServiceError> {
+    context.scan_schedule.remove().await.map_err(|why| {
         ServiceError::failed(
             "setup/unschedule_scan",
             format!("The job scan's task couldn't be removed: {why}"),

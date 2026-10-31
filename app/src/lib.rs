@@ -2,8 +2,8 @@
 //! against the fixed expected answers in tests/fixtures/parity.json.
 
 pub mod account;
-pub mod app_core;
 pub mod cleanup;
+pub mod context;
 pub mod dashboard;
 pub mod db;
 pub mod dev_reload;

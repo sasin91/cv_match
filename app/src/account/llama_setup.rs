@@ -98,7 +98,7 @@ pub struct ModelForm {
 
 /// GET llama_setup.
 pub async fn index(State(state): State<Arc<AppState>>) -> Response {
-    let view = match llama_setup_service::llama_setup_view(&state.core).await {
+    let view = match llama_setup_service::llama_setup_view(&state.context).await {
         Ok(view) => view,
         // Logged when it was made.
         Err(e) => return failure(e.message),
@@ -114,7 +114,7 @@ pub async fn index(State(state): State<Arc<AppState>>) -> Response {
 
 /// POST llama_setup/download_server: downloads llama.cpp's build for this card in the background.
 pub async fn download_server(State(state): State<Arc<AppState>>) -> Response {
-    if let Err(e) = llama_setup_service::download_server(&state.core) {
+    if let Err(e) = llama_setup_service::download_server(&state.context) {
         state.set_flash(e.message);
     }
     Redirect::to(PAGE).into_response()
@@ -122,7 +122,7 @@ pub async fn download_server(State(state): State<Arc<AppState>>) -> Response {
 
 /// POST llama_setup/download_model {file}: downloads a catalog model in the background.
 pub async fn download_model(State(state): State<Arc<AppState>>, Form(form): Form<ModelForm>) -> Response {
-    if let Err(e) = llama_setup_service::download_model(&state.core, &form.file) {
+    if let Err(e) = llama_setup_service::download_model(&state.context, &form.file) {
         state.set_flash(e.message);
     }
     Redirect::to(PAGE).into_response()
@@ -130,7 +130,7 @@ pub async fn download_model(State(state): State<Arc<AppState>>, Form(form): Form
 
 /// POST llama_setup/use_model {file}: saves the downloaded model as this app's own model.
 pub async fn use_model(State(state): State<Arc<AppState>>, Form(form): Form<ModelForm>) -> Response {
-    match llama_setup_service::use_model(&state.core, &form.file).await {
+    match llama_setup_service::use_model(&state.context, &form.file).await {
         Ok(ModelSaved {
             message,
             setup_unfinished,
@@ -155,7 +155,7 @@ struct ProgressAnswer {
 
 /// GET llama_setup/progress: how the download is going. The page reloads when it isn't running.
 pub async fn progress(State(state): State<Arc<AppState>>) -> Response {
-    let answer = match llama_setup_service::progress(&state.core) {
+    let answer = match llama_setup_service::progress(&state.context) {
         Some(view) => ProgressAnswer {
             running: view.running,
             percent: view.percent,
