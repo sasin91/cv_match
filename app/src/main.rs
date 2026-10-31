@@ -6,6 +6,10 @@
 //!       from the laya folder next to the database unless --laya names another; with
 //!       --tailscale-name it also answers `tailscale serve` for that name, so a phone can open it
 //!       (docs/phone.md)
+//!
+//!   recruiter --dev ...
+//!       (debug builds only) reloads the page in the browser whenever the app restarts, for
+//!       app/dev.ps1, which restarts it under watchexec on every change
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -13,13 +17,14 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use recruiter::account::key_vault::KeyVault;
+use recruiter::dev_reload::DevReload;
 use recruiter::laya::laya_client::{self, LayaClient};
 use recruiter::server::{self, AppState};
 use recruiter::taxonomy::Taxonomy;
 use recruiter::{db, extension};
 
 const USAGE: &str = "usage: recruiter [--port <port>] [--database <file>] [--laya <folder>] [--no-browser]
-                 [--tailscale-name <name>]";
+                 [--tailscale-name <name>] [--dev]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -38,10 +43,21 @@ fn run_server(args: &[String]) -> ExitCode {
     let mut laya_folder = None;
     let mut browser = true;
     let mut tailscale_name = None;
+    let mut dev = false;
     let mut args = args.iter();
     while let Some(flag) = args.next() {
         if flag == "--no-browser" {
             browser = false;
+            continue;
+        }
+        if flag == "--dev" {
+            if !cfg!(debug_assertions) {
+                eprintln!(
+                    "--dev is for debug builds (app\\dev.ps1, or cargo run -- --dev); release builds have the CSS and JS built in."
+                );
+                return ExitCode::FAILURE;
+            }
+            dev = true;
             continue;
         }
         let Some(value) = args.next() else {
@@ -106,6 +122,7 @@ fn run_server(args: &[String]) -> ExitCode {
     });
     let phone_address = tailscale_name.as_ref().map(|name| format!("https://{name}/match"));
     state.tailscale_name = tailscale_name;
+    state.dev_reload = dev.then(DevReload::new);
     let state = Arc::new(state);
     let address = format!("http://127.0.0.1:{port}/match");
     runtime.block_on(async {
