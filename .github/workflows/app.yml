@@ -36,8 +36,8 @@ jobs:
         with:
           workspaces: app
       - run: cargo fmt --check
-      - run: cargo clippy --all-targets -- -D warnings
-      - run: cargo test --release
+      - run: cargo clippy --workspace --all-targets -- -D warnings
+      - run: cargo test --workspace --release
 
   sqlx:
     name: .sqlx matches the queries

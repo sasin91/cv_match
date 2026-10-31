@@ -1,0 +1,4 @@
+# `cargo dev` (from app/): builds and starts the app with --dev, and rebuilds and restarts it on
+# every change, on Windows and Linux alike (xtask/).
+[alias]
+dev = "run --quiet --package xtask -- dev"
