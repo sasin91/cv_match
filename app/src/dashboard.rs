@@ -71,7 +71,7 @@ pub struct ListCount {
     pub count: i64,
 }
 
-/// The dashboard as the page prints it.
+/// The dashboard's status, as the page prints it.
 pub struct Dashboard {
     /// No AI model is set up: the page's alert.
     pub ai_missing: bool,
@@ -79,13 +79,22 @@ pub struct Dashboard {
     pub headline: String,
     pub all_ready: bool,
     pub rows: Vec<StatusRow>,
+}
+
+/// The glance at the saved matches, which the page reads again with the saved matches' list
+/// (match/history_list), so it keeps up with matches saved, rejected or logged on the page.
+pub struct Findings {
     pub counts: Vec<ListCount>,
     /// The shortlist's best few.
     pub best: Vec<SavedMatchRow>,
 }
 
+/// What the database said, for the page.
+fn database(e: sqlx::Error) -> String {
+    format!("The database couldn't answer: {e}")
+}
+
 pub async fn dashboard(state: &AppState) -> Result<Dashboard, String> {
-    let database = |e: sqlx::Error| format!("The database couldn't answer: {e}");
     let ai = setup_steps::ai(state).await.map_err(database)?;
     let uses = llm_key::ai_uses(state).await.map_err(|e| e.message)?;
     let cv = setup_steps::cv(state).await?;
@@ -97,6 +106,16 @@ pub async fn dashboard(state: &AppState) -> Result<Dashboard, String> {
         scan_row(schedule.interval_hours, schedule.error.as_deref()),
         extension_row(&state.extension_folder),
     ];
+    let attention = rows.iter().filter(|row| row.health == Health::Attention).count();
+    Ok(Dashboard {
+        ai_missing: !uses.any(),
+        headline: headline(attention),
+        all_ready: attention == 0,
+        rows,
+    })
+}
+
+pub async fn findings(state: &AppState) -> Result<Findings, String> {
     let counts = match_model::list_counts(state.db(), state.user_id)
         .await
         .map_err(database)?
@@ -118,15 +137,7 @@ pub async fn dashboard(state: &AppState) -> Result<Dashboard, String> {
         .iter()
         .map(SavedMatchRow::from)
         .collect();
-    let attention = rows.iter().filter(|row| row.health == Health::Attention).count();
-    Ok(Dashboard {
-        ai_missing: !uses.any(),
-        headline: headline(attention),
-        all_ready: attention == 0,
-        rows,
-        counts,
-        best,
-    })
+    Ok(Findings { counts, best })
 }
 
 /// The match page's link to a list.

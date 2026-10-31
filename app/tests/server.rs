@@ -963,6 +963,10 @@ async fn the_app_opens_on_the_dashboard_which_says_what_is_missing() {
     assert!(page.contains("Nothing on the shortlist."), "{page}");
     let (_, rejected) = send_to(&new, get("/match?list=rejected")).await;
     assert!(rejected.contains("No AI model is set up."));
+    // The list the page polls brings the findings along, so they keep up with it.
+    let (_, latest) = send_to(&new, get("/match/history_list")).await;
+    assert!(latest.contains(r#"id="dashboard-findings""#), "{latest}");
+    assert!(latest.contains("Nothing on the shortlist."), "{latest}");
 
     // With a key in use, the alert goes and the AI row says which.
     let (base_url, _) = stand_in_model().await;

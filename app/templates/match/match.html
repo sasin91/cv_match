@@ -42,24 +42,7 @@
                 {%- endfor %}
             </ul>
         </div>
-        <div class="panel dashboard-findings">
-            <h2>Your matches</h2>
-            <ul class="list-counts">
-                {%- for list in dashboard.counts %}
-                <li><a href="{{ list.href }}#history-panel"><span class="list-count">{{ list.count }}</span> <span class="list-label">{{ list.label }}</span></a></li>
-                {%- endfor %}
-            </ul>
-            {%- if dashboard.best.is_empty() %}
-            <p class="muted">Nothing on the shortlist. Match a job post below to start one.</p>
-            {%- else %}
-            <h3>Best on your shortlist</h3>
-            <ol class="best-matches">
-                {%- for m in dashboard.best %}
-                <li class="history-{{ m.tag }}"><a href="match/{{ m.id }}"><span class="history-title">{{ m.title }}</span><span class="history-meta">{{ m.about }} · <time datetime="{{ m.saved_at }}">{{ m.saved_on }}</time></span></a></li>
-                {%- endfor %}
-            </ol>
-            {%- endif %}
-        </div>
+        {% include "match/dashboard_findings.html" %}
     </section>
 
     <h2 class="new-match-heading">New match</h2>

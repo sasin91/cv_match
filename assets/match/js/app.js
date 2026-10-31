@@ -632,12 +632,14 @@ function filterVerdicts(e) {
 // saved elsewhere (a job search, a tool posting to its API) show up on their
 // own. Coming back to the page (another tab, a phone waking, the
 // back/forward cache) reads it at once. matchHistory puts an answer in
-// the list when it changed, revealing the new rows.
+// the list when it changed, revealing the new rows, and the dashboard's
+// findings that come with it in their place.
 let shownHistory = "";
 
 function watchHistory() {
   shownHistory = $("history").innerHTML;
   localDates($("history"));
+  if ($("dashboard-findings")) localDates($("dashboard-findings"));
   reveal($("history").children);
   $("history").addEventListener("click", (e) => {
     const link = e.target.closest("a[data-id]");
@@ -742,7 +744,13 @@ function localDates(list) {
 function showHistory() {
   const poller = $("history-latest");
   const latest = poller.querySelector(".history-latest ul");
+  // The dashboard's counts and best matches come with the list (match/history_list).
+  const findings = poller.querySelector("#dashboard-findings");
   poller.replaceChildren();
+  if (findings && $("dashboard-findings")) {
+    $("dashboard-findings").replaceWith(findings);
+    localDates(findings);
+  }
   if (!latest || latest.innerHTML === shownHistory) return;
   shownHistory = latest.innerHTML;
   const list = $("history");
