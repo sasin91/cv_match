@@ -105,6 +105,16 @@ pub fn systemd_timer(hours: u32) -> String {
     )
 }
 
+/// The program a task runs, from `schtasks /Query /XML`: the first quoted path of its
+/// <Arguments> (windows_task_run puts recruiter.exe there, after conhost.exe's --headless).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn windows_program_in(xml: &str) -> Option<PathBuf> {
+    let start = xml.find("<Arguments>")? + "<Arguments>".len();
+    let arguments = &xml[start..xml[start..].find("</Arguments>")? + start];
+    let arguments = arguments.replace("&quot;", "\"");
+    arguments.split('"').nth(1).map(PathBuf::from)
+}
+
 /// The program a service file's ExecStart runs (the quoted path exec_start writes first).
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn systemd_program_in(service: &str) -> Option<PathBuf> {
@@ -119,6 +129,15 @@ fn systemd_interval_in(timer: &str) -> Option<u32> {
         .lines()
         .find_map(|line| line.strip_prefix(SYSTEMD_INTERVAL_NOTE))
         .and_then(|hours| hours.trim().parse().ok())
+}
+
+/// The program file that is running, for the scheduler to run: the AppImage when it runs from
+/// one (its own file is inside the AppImage then, and gone once it ends), else this program.
+pub fn running_program() -> std::io::Result<PathBuf> {
+    match std::env::var_os("APPIMAGE") {
+        Some(appimage) if cfg!(target_os = "linux") && !appimage.is_empty() => Ok(PathBuf::from(appimage)),
+        _ => std::env::current_exe(),
+    }
 }
 
 pub struct ScanSchedule {
@@ -218,11 +237,24 @@ fn interval_in(xml: &str) -> Option<u32> {
 mod system {
     use super::*;
 
-    pub async fn interval_hours(_: &ScanCommand) -> Result<Option<u32>, String> {
+    /// The task's interval. When the program it runs is gone (recruiter.exe was moved, say), the
+    /// task is registered again for command's, so the scan doesn't run a missing file. A task
+    /// whose program is there is left alone: another copy (a build while developing, on another
+    /// database) mustn't take the schedule over.
+    pub async fn interval_hours(command: &ScanCommand) -> Result<Option<u32>, String> {
         let answer = schtasks(&["/Query", "/TN", TASK_NAME, "/XML"]).await?;
-        Ok(answer
-            .ok()
-            .map(|xml| interval_in(&xml).unwrap_or(DEFAULT_INTERVAL_HOURS)))
+        let Ok(xml) = answer else {
+            return Ok(None);
+        };
+        let hours = interval_in(&xml).unwrap_or(DEFAULT_INTERVAL_HOURS);
+        let gone = windows_program_in(&xml).is_none_or(|program| !program.exists());
+        if gone {
+            match register(command, hours).await {
+                Ok(()) => println!("The job scan's task now runs {}.", command.exe.display()),
+                Err(why) => eprintln!("scan_schedule: the job scan's task couldn't be moved to this program: {why}"),
+            }
+        }
+        Ok(Some(hours))
     }
 
     pub async fn register(command: &ScanCommand, hours: u32) -> Result<(), String> {
@@ -455,6 +487,15 @@ mod tests {
             "{}",
             command.systemd_service()
         );
+    }
+
+    #[test]
+    fn the_program_a_task_runs_is_read_back() {
+        let xml = r#"<Exec><Command>conhost.exe</Command><Arguments>--headless "C:\Apps\recruiter.exe" scan --database "C:\d.sqlite"</Arguments></Exec>"#;
+        assert_eq!(windows_program_in(xml), Some(PathBuf::from(r"C:\Apps\recruiter.exe")));
+        let escaped = "<Arguments>--headless &quot;D:\\r.exe&quot; scan</Arguments>";
+        assert_eq!(windows_program_in(escaped), Some(PathBuf::from("D:\\r.exe")));
+        assert_eq!(windows_program_in("<Task/>"), None);
     }
 
     #[test]

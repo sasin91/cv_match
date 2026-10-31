@@ -3,8 +3,7 @@ name: release
 # The programs for a release: pushing a tag like v0.2.0 builds the app and attaches it to that
 # tag's GitHub release.
 #
-# - Windows: recruiter.exe and Recruiter-setup.exe, the same program; started under the setup name
-#   (a double-click) it installs itself (app/src/install.rs).
+# - Windows: recruiter.exe, which runs from wherever it is kept (nothing to install).
 # - Linux: Recruiter-x86_64.AppImage, which runs from wherever it is kept (nothing to install).
 #   Built on the oldest Ubuntu runner, so it runs on distributions with an older glibc too.
 #
@@ -33,18 +32,16 @@ jobs:
         with:
           workspaces: app
       - run: cargo build --release
-      - name: Name the installer
+      - name: Put the program in dist
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item target/release/recruiter.exe dist/recruiter.exe
-          Copy-Item target/release/recruiter.exe dist/Recruiter-setup.exe
       - if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
             app/dist/recruiter.exe
-            app/dist/Recruiter-setup.exe
       - if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: actions/upload-artifact@v4
         with:

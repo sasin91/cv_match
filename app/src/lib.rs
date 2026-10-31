@@ -6,7 +6,6 @@ pub mod dashboard;
 pub mod db;
 pub mod dev_reload;
 pub mod extension;
-pub mod install;
 pub mod laya;
 pub mod llama;
 pub mod llm;

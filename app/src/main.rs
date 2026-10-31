@@ -13,13 +13,8 @@
 //!       the job scan, which the setup wizard's Task Scheduler task runs (scan_schedule); it
 //!       isn't in the desktop app yet, so for now it only says so
 //!
-//!   recruiter install [--database path\to\recruiter.sqlite]
-//!       puts the program in %LOCALAPPDATA%\Programs\Recruiter with a Start menu shortcut and an
-//!       entry in Windows' installed apps, then starts it there (install); double-clicking the
-//!       release's Recruiter-setup.exe, which is this program, does the same
-//!
-//!   recruiter uninstall [--database path\to\recruiter.sqlite]
-//!       undoes that, and keeps the data
+//! Nothing is installed: double-click recruiter.exe (or run the AppImage on Linux) wherever it is
+//! kept.
 //!
 //!   recruiter --dev ...
 //!       (debug builds only) reloads the page in the browser whenever the app restarts, for
@@ -32,19 +27,16 @@ use std::time::Instant;
 
 use recruiter::account::key_vault::KeyVault;
 use recruiter::dev_reload::DevReload;
-use recruiter::install;
 use recruiter::laya::laya_client::{self, LayaClient};
 use recruiter::llama::{self, hardware::Inventory, llama_server::LlamaServer};
-use recruiter::scan_schedule::ScanSchedule;
+use recruiter::scan_schedule::{self, ScanSchedule};
 use recruiter::server::{self, AppState, DatabaseFile};
 use recruiter::taxonomy::Taxonomy;
 use recruiter::{db, extension};
 
 const USAGE: &str = "usage: recruiter [--port <port>] [--database <file>] [--laya <folder>] [--llama <folder>]
                  [--no-browser] [--tailscale-name <name>] [--dev]
-       recruiter scan [--database <file>]
-       recruiter install [--database <file>]
-       recruiter uninstall [--database <file>]";
+       recruiter scan [--database <file>]";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -54,81 +46,8 @@ fn main() -> ExitCode {
             ExitCode::SUCCESS
         }
         Some("scan") => run_scan(&args[1..]),
-        Some("install") => run_install(&args[1..]),
-        Some("uninstall") => run_uninstall(&args[1..]),
-        None if started_as_setup() => run_install(&[]),
         _ => run_server(&args),
     }
-}
-
-/// Whether this program was started as Recruiter-setup.exe, the release's installer.
-fn started_as_setup() -> bool {
-    install::running_program().is_ok_and(|exe| install::is_setup_name(&exe))
-}
-
-/// `recruiter install`: installs this program, then starts the installed copy in a window of
-/// its own, which opens the dashboard.
-fn run_install(args: &[String]) -> ExitCode {
-    let Some(database) = database_arg(args) else {
-        return ExitCode::FAILURE;
-    };
-    let Some(runtime) = runtime() else {
-        return ended_by_hand(ExitCode::FAILURE);
-    };
-    // Whole, even before the file exists: the shortcut starts in the install folder, so a
-    // relative path would name another file there.
-    let database = std::path::absolute(&database).unwrap_or(database);
-    let database = PathBuf::from(shown_path(&database));
-    let named = (!args.is_empty()).then_some(database.as_path());
-    let installed = match runtime.block_on(install::install(&database, named)) {
-        Ok(installed) => installed,
-        Err(why) => {
-            eprintln!("Recruiter couldn't be installed: {why}");
-            return ended_by_hand(ExitCode::FAILURE);
-        }
-    };
-    for line in &installed.done {
-        println!("{line}");
-    }
-    match start_in_own_window(&installed.exe, &installed.arguments) {
-        Ok(()) => {
-            println!("Recruiter is starting from the installed copy, and opens its dashboard in your browser.");
-            ExitCode::SUCCESS
-        }
-        Err(e) => {
-            eprintln!("Recruiter is installed, but it couldn't be started ({e}). Start it from the Start menu.");
-            ended_by_hand(ExitCode::FAILURE)
-        }
-    }
-}
-
-/// `recruiter uninstall`: removes what install added, and keeps the data.
-fn run_uninstall(args: &[String]) -> ExitCode {
-    let Some(database) = database_arg(args) else {
-        return ExitCode::FAILURE;
-    };
-    let Some(runtime) = runtime() else {
-        return ended_by_hand(ExitCode::FAILURE);
-    };
-    let uninstalled = match runtime.block_on(install::uninstall(&database)) {
-        Ok(uninstalled) => uninstalled,
-        Err(why) => {
-            eprintln!("Recruiter couldn't be uninstalled: {why}");
-            return ended_by_hand(ExitCode::FAILURE);
-        }
-    };
-    for line in &uninstalled.done {
-        println!("{line}");
-    }
-    let code = ended_by_hand(ExitCode::SUCCESS);
-    // Last, after the wait for Enter: the clean-up's delay counts from here.
-    if let Some(folder) = &uninstalled.remove_after_exit
-        && let Err(why) = install::remove_after_exit(folder)
-    {
-        eprintln!("{why}");
-        return ExitCode::FAILURE;
-    }
-    code
 }
 
 /// The database a subcommand's `[--database <file>]` names, or the default one; None (with the
@@ -144,24 +63,8 @@ fn database_arg(args: &[String]) -> Option<PathBuf> {
     }
 }
 
-/// Starts exe with arguments in a console window of its own, so it keeps running (and says
-/// "close this window to stop it") after this one has ended.
-fn start_in_own_window(exe: &std::path::Path, arguments: &[String]) -> std::io::Result<()> {
-    let mut command = std::process::Command::new(exe);
-    command.args(arguments);
-    #[cfg(windows)]
-    {
-        use std::os::windows::process::CommandExt;
-        /// A process with a console window of its own (CREATE_NEW_CONSOLE).
-        const CREATE_NEW_CONSOLE: u32 = 0x0000_0010;
-        command.creation_flags(CREATE_NEW_CONSOLE);
-    }
-    command.spawn().map(|_| ())
-}
-
-/// code, after waiting for Enter when this program has its console to itself: started from
-/// Explorer or the installed apps list, whose window would otherwise close before what it said
-/// could be read.
+/// code, after waiting for Enter when this program has its console to itself: double-clicked in
+/// Explorer, whose window would otherwise close before what it said could be read.
 fn ended_by_hand(code: ExitCode) -> ExitCode {
     if own_console() {
         println!("Press Enter to close this window.");
@@ -255,14 +158,14 @@ fn run_server(args: &[String]) -> ExitCode {
         Ok(db) => db,
         Err(e) => {
             eprintln!("Couldn't open {}: {e}", database.display());
-            return ExitCode::FAILURE;
+            return ended_by_hand(ExitCode::FAILURE);
         }
     };
     let user_id = match runtime.block_on(server::local_user(&db)) {
         Ok(id) => id,
         Err(e) => {
             eprintln!("Couldn't read the local user: {e}");
-            return ExitCode::FAILURE;
+            return ended_by_hand(ExitCode::FAILURE);
         }
     };
     let mut state = AppState::new(
@@ -322,11 +225,11 @@ fn run_server(args: &[String]) -> ExitCode {
             Ok(Ok(())) => ExitCode::SUCCESS,
             Ok(Err(e)) => {
                 eprintln!("Couldn't serve on port {port}: {e}. Is Recruiter already running? Then open {address}.");
-                ExitCode::FAILURE
+                ended_by_hand(ExitCode::FAILURE)
             }
             Err(e) => {
                 eprintln!("The server stopped: {e}");
-                ExitCode::FAILURE
+                ended_by_hand(ExitCode::FAILURE)
             }
         }
     })
@@ -352,7 +255,7 @@ async fn preload_laya(state: Arc<AppState>) {
 /// The job scan's Task Scheduler task, running this recruiter.exe on database.
 fn scan_schedule(database: &std::path::Path) -> ScanSchedule {
     // The AppImage on Linux: the program's own path is inside it, and gone once it ends.
-    let exe = install::running_program().unwrap_or_else(|e| {
+    let exe = scan_schedule::running_program().unwrap_or_else(|e| {
         eprintln!(
             "This program's own path couldn't be read ({e}), so the job scan's task runs recruiter.exe from PATH."
         );
