@@ -1,14 +1,15 @@
 //! An error the match page shows: JSON {error} with its status, plus need_key when the user has no
-//! key to use for it and retryable when the language model may answer if asked again. Failures that
-//! aren't the user's input are written to the log as well, so they can be found after the page is
-//! closed.
+//! key to use for it and retryable when the language model may answer if asked again. The work's
+//! own errors (service_error) come in with the status their kind answers with; failures that
+//! aren't the user's input were written to the log when they were made, so they can be found
+//! after the page is closed.
 
 use axum::Json;
 use axum::http::StatusCode;
 use axum::response::{IntoResponse, Response};
 use serde_json::{Map, Value, json};
 
-use crate::llm::LlmException;
+use crate::service_error::{ErrorKind, ServiceError};
 
 #[derive(Debug)]
 pub struct PageError {
@@ -25,32 +26,6 @@ impl PageError {
             message: message.into(),
             extra: Map::new(),
         }
-    }
-
-    pub fn not_found() -> Self {
-        Self::new(StatusCode::NOT_FOUND, "That saved match was not found.")
-    }
-
-    /// A failure on the app's side, logged under where (the endpoint) with the message shown.
-    pub fn failed(where_: &str, message: impl Into<String>) -> Self {
-        let message = message.into();
-        eprintln!("match ({where_}): {message}");
-        Self::new(StatusCode::BAD_GATEWAY, message)
-    }
-
-    /// There is no key to use for this: the page links to the API key page (402).
-    pub fn need_key(message: impl Into<String>) -> Self {
-        let mut error = Self::new(StatusCode::PAYMENT_REQUIRED, message);
-        error.extra.insert("need_key".to_string(), Value::Bool(true));
-        error
-    }
-
-    /// A failed model call, logged with the provider's answer (502).
-    pub fn llm(where_: &str, e: &LlmException) -> Self {
-        eprintln!("match ({where_}): {}", e.details());
-        let mut error = Self::new(StatusCode::BAD_GATEWAY, e.message.clone());
-        error.extra.insert("retryable".to_string(), Value::Bool(e.retryable));
-        error
     }
 }
 
@@ -79,5 +54,32 @@ impl From<askama::Error> for PageError {
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("The page couldn't be printed: {e}"),
         )
+    }
+}
+
+impl From<ServiceError> for PageError {
+    /// The work's error with the status its kind answers with; it was logged when it was made.
+    fn from(e: ServiceError) -> Self {
+        let status = match e.kind {
+            ErrorKind::Invalid => StatusCode::UNPROCESSABLE_ENTITY,
+            ErrorKind::Malformed => StatusCode::BAD_REQUEST,
+            ErrorKind::TooLarge => StatusCode::PAYLOAD_TOO_LARGE,
+            ErrorKind::NotFound => StatusCode::NOT_FOUND,
+            ErrorKind::TooMany => StatusCode::TOO_MANY_REQUESTS,
+            ErrorKind::NeedKey => StatusCode::PAYMENT_REQUIRED,
+            ErrorKind::Failed | ErrorKind::Llm { .. } => StatusCode::BAD_GATEWAY,
+            ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
+        };
+        let mut error = Self::new(status, e.message);
+        match e.kind {
+            ErrorKind::NeedKey => {
+                error.extra.insert("need_key".to_string(), Value::Bool(true));
+            }
+            ErrorKind::Llm { retryable } => {
+                error.extra.insert("retryable".to_string(), Value::Bool(retryable));
+            }
+            _ => {}
+        }
+        error
     }
 }

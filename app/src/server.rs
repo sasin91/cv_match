@@ -11,7 +11,6 @@
 //! `--tailscale-name`, and still listens only on 127.0.0.1.
 
 use std::net::{Ipv4Addr, SocketAddr};
-use std::path::PathBuf;
 use std::sync::{Arc, Mutex};
 
 use axum::Router;
@@ -24,15 +23,12 @@ use axum::routing::{get, post};
 use rust_embed::RustEmbed;
 use sqlx::SqlitePool;
 
-use crate::account::{self, key_vault::KeyVault};
+use crate::account;
+use crate::app_core::AppCore;
 use crate::dev_reload::{self, DevReload};
 use crate::extension;
-use crate::laya::laya_client::LayaClient;
-use crate::llama::llama_server::LlamaServer;
 use crate::matches::pages;
-use crate::scan_schedule::ScanSchedule;
 use crate::setup;
-use crate::taxonomy::Taxonomy;
 
 /// The port the app listens on unless told otherwise, fixed so the Jobnet extension can find it.
 pub const DEFAULT_PORT: u16 = 8765;
@@ -52,84 +48,33 @@ struct MatchAssets;
 #[include = "trongate-mx.min.js"]
 struct PublicJs;
 
-/// What every request shares: the database, the taxonomy, the local user, where the user's API
-/// key is kept and the message the next page shows (Trongate's flashdata).
+/// What every request shares: the app's work (AppCore, which a desktop window shares too), and
+/// what only the web server has: the message the next page shows (Trongate's flashdata), the
+/// port, the Tailscale name and the page reloads.
 pub struct AppState {
-    db: SqlitePool,
-    pub taxonomy: Arc<Taxonomy>,
-    pub user_id: i64,
-    pub key_vault: KeyVault,
+    pub core: Arc<AppCore>,
     flash: Mutex<Option<String>>,
-    /// When the pages fetch_job read in its window were fetched, oldest first (unix seconds).
-    fetches: Mutex<Vec<i64>>,
     port: u16,
-    /// Where the Jobnet extension was written for the browser to load, or why it couldn't be.
-    pub extension_folder: Result<PathBuf, String>,
-    /// Laya's model, when its folder has one.
-    pub laya: Option<LayaClient>,
-    /// The llama folder, whose llama-server runs a "llama_cpp" key's model.
-    pub llama: Option<LlamaServer>,
     /// The PC's Tailscale name ("pc.tailnet.ts.net") that `tailscale serve` passes requests on
     /// from, or None when the app is only for this computer.
     pub tailscale_name: Option<String>,
     /// Reloads the browser's page when the app restarts, with `--dev` while developing.
     pub dev_reload: Option<DevReload>,
-    /// The database file, for the setup wizard.
-    pub database: DatabaseFile,
-    /// When the job scan runs by itself (Task Scheduler; in memory unless main sets it).
-    pub scan_schedule: ScanSchedule,
-}
-
-/// The database file the app runs on.
-#[derive(Debug, Clone, Default)]
-pub struct DatabaseFile {
-    /// Its full path, or "" for an in-memory one.
-    pub path: String,
-    /// Made by this start of the app, rather than found.
-    pub made_now: bool,
 }
 
 impl AppState {
-    pub fn new(db: SqlitePool, taxonomy: Arc<Taxonomy>, user_id: i64, port: u16, key_vault: KeyVault) -> Self {
+    pub fn new(core: Arc<AppCore>, port: u16) -> Self {
         AppState {
-            db,
-            taxonomy,
-            user_id,
-            key_vault,
+            core,
             flash: Mutex::new(None),
-            fetches: Mutex::new(Vec::new()),
             port,
-            extension_folder: Err("The extension wasn't written out.".to_string()),
-            laya: None,
-            llama: None,
             tailscale_name: None,
             dev_reload: None,
-            database: DatabaseFile::default(),
-            scan_schedule: ScanSchedule::in_memory(),
         }
-    }
-
-    pub fn db(&self) -> &SqlitePool {
-        &self.db
     }
 
     pub fn set_flash(&self, message: String) {
         *self.flash.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(message);
-    }
-
-    /// Counts a page fetch at now, or says in how many minutes the next one may go, when
-    /// pages::MAX_FETCHES were fetched in the last pages::FETCH_WINDOW_SECONDS.
-    pub fn count_fetch(&self, now: i64) -> Result<(), i64> {
-        /// Seconds in a minute, which the wait is told in.
-        const MINUTE: i64 = 60;
-        let mut fetches = self.fetches.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        fetches.retain(|at| *at > now - pages::FETCH_WINDOW_SECONDS);
-        if fetches.len() >= pages::MAX_FETCHES {
-            let wait = fetches[0] + pages::FETCH_WINDOW_SECONDS - now;
-            return Err((wait + MINUTE - 1) / MINUTE);
-        }
-        fetches.push(now);
-        Ok(())
     }
 
     pub fn take_flash(&self) -> Option<String> {

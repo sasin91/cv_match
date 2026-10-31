@@ -1,0 +1,83 @@
+//! What the app's work shares, whichever front end asks for it: the database, the taxonomy, the
+//! local user, where the API keys are kept, Laya, the app's own llama.cpp model, the Jobnet
+//! extension's folder, the database file and the job scan's schedule.
+//!
+//! The web server keeps its own state beside this (server::AppState: the flash message, the
+//! port, the Tailscale name, the page reloads), so a desktop window can run the same work
+//! (matches::match_service) without a web server's parts.
+
+use std::path::PathBuf;
+use std::sync::{Arc, Mutex};
+
+use sqlx::SqlitePool;
+
+use crate::account::key_vault::KeyVault;
+use crate::laya::laya_client::LayaClient;
+use crate::llama::llama_server::LlamaServer;
+use crate::matches::match_service;
+use crate::scan_schedule::ScanSchedule;
+use crate::taxonomy::Taxonomy;
+
+pub struct AppCore {
+    db: SqlitePool,
+    pub taxonomy: Arc<Taxonomy>,
+    pub user_id: i64,
+    pub key_vault: KeyVault,
+    /// When the pages fetch_job read in its window were fetched, oldest first (unix seconds).
+    fetches: Mutex<Vec<i64>>,
+    /// Where the Jobnet extension was written for the browser to load, or why it couldn't be.
+    pub extension_folder: Result<PathBuf, String>,
+    /// Laya's model, when its folder has one.
+    pub laya: Option<LayaClient>,
+    /// The llama folder, whose llama-server runs a "llama_cpp" key's model.
+    pub llama: Option<LlamaServer>,
+    /// The database file, for the setup wizard.
+    pub database: DatabaseFile,
+    /// When the job scan runs by itself (Task Scheduler; in memory unless main sets it).
+    pub scan_schedule: ScanSchedule,
+}
+
+/// The database file the app runs on.
+#[derive(Debug, Clone, Default)]
+pub struct DatabaseFile {
+    /// Its full path, or "" for an in-memory one.
+    pub path: String,
+    /// Made by this start of the app, rather than found.
+    pub made_now: bool,
+}
+
+impl AppCore {
+    pub fn new(db: SqlitePool, taxonomy: Arc<Taxonomy>, user_id: i64, key_vault: KeyVault) -> Self {
+        AppCore {
+            db,
+            taxonomy,
+            user_id,
+            key_vault,
+            fetches: Mutex::new(Vec::new()),
+            extension_folder: Err("The extension wasn't written out.".to_string()),
+            laya: None,
+            llama: None,
+            database: DatabaseFile::default(),
+            scan_schedule: ScanSchedule::in_memory(),
+        }
+    }
+
+    pub fn db(&self) -> &SqlitePool {
+        &self.db
+    }
+
+    /// Counts a page fetch at now, or says in how many minutes the next one may go, when
+    /// match_service::MAX_FETCHES were fetched in the last match_service::FETCH_WINDOW_SECONDS.
+    pub fn count_fetch(&self, now: i64) -> Result<(), i64> {
+        /// Seconds in a minute, which the wait is told in.
+        const MINUTE: i64 = 60;
+        let mut fetches = self.fetches.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        fetches.retain(|at| *at > now - match_service::FETCH_WINDOW_SECONDS);
+        if fetches.len() >= match_service::MAX_FETCHES {
+            let wait = fetches[0] + match_service::FETCH_WINDOW_SECONDS - now;
+            return Err((wait + MINUTE - 1) / MINUTE);
+        }
+        fetches.push(now);
+        Ok(())
+    }
+}

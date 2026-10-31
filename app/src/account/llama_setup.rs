@@ -109,11 +109,11 @@ pub struct ModelForm {
 
 /// GET llama_setup.
 pub async fn index(State(state): State<Arc<AppState>>) -> Response {
-    let Some(server) = &state.llama else {
+    let Some(server) = &state.core.llama else {
         return failure("The app was started without its llama folder.");
     };
     let mut page = page_of(server, state.take_flash());
-    page.setup_unfinished = setup::first_run_or_logged(&state).await;
+    page.setup_unfinished = setup::first_run_or_logged(&state.core).await;
     match page.render() {
         Ok(html) => Html(html).into_response(),
         Err(e) => failure(&format!("The page couldn't be printed: {e}")),
@@ -123,7 +123,7 @@ pub async fn index(State(state): State<Arc<AppState>>) -> Response {
 /// POST llama_setup/download_server: downloads llama.cpp's build for this card in the background.
 pub async fn download_server(State(state): State<Arc<AppState>>) -> Response {
     start_download(&state, SERVER_DOWNLOAD, |state| async move {
-        let Some(server) = &state.llama else {
+        let Some(server) = &state.core.llama else {
             return Err("The app was started without its llama folder.".to_string());
         };
         download::download_server(server.folder(), server.inventory(), &server.downloads).await
@@ -137,7 +137,7 @@ pub async fn download_model(State(state): State<Arc<AppState>>, Form(form): Form
         return Redirect::to(PAGE).into_response();
     };
     start_download(&state, model.file, move |state| async move {
-        let Some(server) = &state.llama else {
+        let Some(server) = &state.core.llama else {
             return Err("The app was started without its llama folder.".to_string());
         };
         download::download_model(model, &server.models_folder(), &server.downloads).await
@@ -146,7 +146,7 @@ pub async fn download_model(State(state): State<Arc<AppState>>, Form(form): Form
 
 /// POST llama_setup/use_model {file}: saves the downloaded model as this app's own model.
 pub async fn use_model(State(state): State<Arc<AppState>>, Form(form): Form<ModelForm>) -> Response {
-    let Some(server) = &state.llama else {
+    let Some(server) = &state.core.llama else {
         return failure("The app was started without its llama folder.");
     };
     let downloaded = server.models().iter().any(|model| model.name == form.file);
@@ -158,16 +158,16 @@ pub async fn use_model(State(state): State<Arc<AppState>>, Form(form): Form<Mode
         return Redirect::to(PAGE).into_response();
     }
     let saved = account_model::save(
-        state.db(),
-        &state.key_vault,
-        state.user_id,
+        state.core.db(),
+        &state.core.key_vault,
+        state.core.user_id,
         LLAMA_CPP,
         &form.file,
         "",
         "",
     )
     .await;
-    let first_run = setup::first_run_or_logged(&state).await;
+    let first_run = setup::first_run_or_logged(&state.core).await;
     match saved {
         Ok(()) if first_run => {
             state.set_flash(format!(
@@ -197,7 +197,7 @@ where
     Work: FnOnce(Arc<AppState>) -> Done + Send + 'static,
     Done: Future<Output = Result<(), String>> + Send,
 {
-    let Some(server) = &state.llama else {
+    let Some(server) = &state.core.llama else {
         return failure("The app was started without its llama folder.");
     };
     if let Err(why) = server.downloads.begin(what) {
@@ -207,7 +207,7 @@ where
     let state = Arc::clone(state);
     tokio::spawn(async move {
         let outcome = work(Arc::clone(&state)).await;
-        if let Some(server) = &state.llama {
+        if let Some(server) = &state.core.llama {
             server.downloads.end(outcome);
         }
     });
@@ -426,6 +426,7 @@ struct ProgressAnswer {
 /// GET llama_setup/progress: how the download is going. The page reloads when it isn't running.
 pub async fn progress(State(state): State<Arc<AppState>>) -> Response {
     let view = state
+        .core
         .llama
         .as_ref()
         .and_then(|server| download_view(&server.downloads.progress()));
