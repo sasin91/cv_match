@@ -14,7 +14,13 @@ use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
 use sqlx::{Executor, SqlitePool};
 
 /// Every migration, in the order they run. A new one goes at the end, never in between.
-const MIGRATIONS: &[(&str, &str)] = &[("0001_schema", include_str!("../migrations/0001_schema.sql"))];
+const MIGRATIONS: &[(&str, &str)] = &[
+    ("0001_schema", include_str!("../migrations/0001_schema.sql")),
+    (
+        "0002_llm_key_per_provider",
+        include_str!("../migrations/0002_llm_key_per_provider.sql"),
+    ),
+];
 
 /// How long a write waits for another connection's write to finish, in milliseconds.
 const BUSY_TIMEOUT_MS: u64 = 5_000;
@@ -218,5 +224,50 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(items, 0);
+    }
+
+    #[tokio::test]
+    async fn a_saved_key_stays_when_keys_become_per_provider() {
+        let options = SqliteConnectOptions::new().in_memory(true).foreign_keys(true);
+        let db = SqlitePoolOptions::new()
+            .max_connections(IN_MEMORY_CONNECTIONS)
+            .idle_timeout(None)
+            .max_lifetime(None)
+            .connect_with(options)
+            .await
+            .unwrap();
+        let (first_name, first_sql) = MIGRATIONS[0];
+        db.execute(sqlx::raw_sql(first_sql)).await.unwrap();
+        db.execute(sqlx::raw_sql(
+            r#"
+            CREATE TABLE schema_migrations (name TEXT PRIMARY KEY, sql TEXT NOT NULL, applied_at INTEGER NOT NULL);
+            INSERT INTO trongate_users (id) VALUES (1);
+            INSERT INTO user_llm_keys (trongate_user_id, provider, key_hint, use_for_resume, created_at, updated_at)
+            VALUES (1, 'openai', '65sA', 0, 5, 6);
+            "#,
+        ))
+        .await
+        .unwrap();
+        sqlx::query(r#"INSERT INTO schema_migrations (name, sql, applied_at) VALUES (?1, ?2, 0)"#)
+            .bind(first_name)
+            .bind(first_sql)
+            .execute(&db)
+            .await
+            .unwrap();
+
+        migrate(&db).await.unwrap();
+        let kept: (String, String, i64, i64) =
+            sqlx::query_as(r#"SELECT provider, key_hint, use_for_resume, use_for_application FROM user_llm_keys"#)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(kept, ("openai".to_string(), "65sA".to_string(), 0, 1));
+        sqlx::query(
+            r#"INSERT INTO user_llm_keys (trongate_user_id, provider, created_at, updated_at)
+               VALUES (1, 'anthropic', 7, 7)"#,
+        )
+        .execute(&db)
+        .await
+        .unwrap();
     }
 }

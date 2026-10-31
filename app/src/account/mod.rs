@@ -1,9 +1,9 @@
 //! account: the API key page for the one local user.
-//! The AI features of the CV match run on the user's own OpenAI or Anthropic API key, or on a
+//! The AI features of the CV match run on the user's own OpenAI or Anthropic API keys, or on a
 //! local OpenAI-compatible server (Ollama, LM Studio), or on a GGUF model the app runs itself with
-//! llama.cpp (the llama module), which needs no key. The key is kept in Windows Credential
-//! Manager and never shown again; only its last 4 characters are. Its uses (tailoring résumés,
-//! writing applications, evaluating job posts) can each be switched off.
+//! llama.cpp (the llama module), which needs no key. One key is kept per provider, in Windows
+//! Credential Manager, and never shown again; only its last 4 characters are. Each use (tailoring
+//! résumés, writing applications, evaluating job posts) runs on the key picked for it, or on none.
 //!
 //! There is no account on the desktop, so no profile links, data download or account deletion.
 
@@ -22,12 +22,11 @@ use axum::response::{Html, IntoResponse, Redirect, Response};
 use serde::Deserialize;
 use serde_json::json;
 
-use self::account_model::{PROVIDERS, Saved};
+use self::account_model::{PROVIDERS, Saved, UseChoices};
 use self::llama_panel::LlamaPanel;
-use self::saved_key::SavedKey;
+use self::saved_key::{KeyUse, SavedKey};
 use crate::llama;
 use crate::llm::{self, ANTHROPIC, Effort, LLAMA_CPP, LOCAL, OPENAI};
-use crate::matches::match_documents::Uses;
 use crate::server::AppState;
 
 /// Where the page is, and where its forms send the browser back to.
@@ -61,9 +60,9 @@ pub struct ProviderOption {
 #[template(path = "account/account.html")]
 struct AccountPage {
     flash: Option<String>,
-    saved: Option<SavedKey>,
-    /// Saved, but no longer in Credential Manager.
-    unreadable: bool,
+    saved: Vec<SavedKey>,
+    /// Per use, the list that picks its key; empty without saved keys.
+    key_uses: Vec<KeyUse>,
     /// Why Credential Manager couldn't be read, when it couldn't.
     vault_error: Option<String>,
     providers: Vec<ProviderOption>,
@@ -86,22 +85,29 @@ pub struct KeyForm {
     base_url: String,
 }
 
-/// The uses form: a ticked box is sent as 1, an unticked one not at all.
+/// The uses form: per use, the provider whose key runs it, or "" for none.
 #[derive(Debug, Default, Deserialize)]
 #[serde(default)]
 pub struct UsesForm {
-    use_for_resume: Option<String>,
-    use_for_application: Option<String>,
-    use_for_job_evaluation: Option<String>,
+    use_for_resume: String,
+    use_for_application: String,
+    use_for_job_evaluation: String,
 }
 
-/// GET account: the key form, and the saved key with its uses.
+/// The check and delete forms: the saved key's provider.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct ProviderForm {
+    provider: String,
+}
+
+/// GET account: the key form, and the saved keys with the uses they run.
 pub async fn index(State(state): State<Arc<AppState>>) -> Response {
     page(&state, None, Vec::new()).await
 }
 
-/// POST account/submit_key {provider, model, api_key, base_url}: saves the key, replacing any
-/// saved one. With errors the form comes back with them, and what was typed except the key.
+/// POST account/submit_key {provider, model, api_key, base_url}: saves the provider's key,
+/// replacing the one saved for that provider; other providers' keys stay. With errors the form comes back with them, and what was typed except the key.
 pub async fn submit_key(State(state): State<Arc<AppState>>, Form(form): Form<KeyForm>) -> Response {
     let form = KeyForm {
         provider: form.provider.trim().to_string(),
@@ -136,48 +142,52 @@ pub async fn submit_key(State(state): State<Arc<AppState>>, Form(form): Form<Key
     )
     .await;
     match saved {
-        Ok(()) => state.set_flash("Your key is saved. The AI features will run on it.".to_string()),
+        Ok(()) => state.set_flash(format!(
+            "Your {} key is saved. Pick below what it is used for.",
+            account_model::provider_label(&form.provider)
+        )),
         Err(e) => flash_failure(&state, "Your key couldn't be saved", &e),
     }
     Redirect::to(PAGE).into_response()
 }
 
-/// POST account/submit_uses {use_for_resume, use_for_application, use_for_job_evaluation}:
-/// switches the saved key's uses; a box left unticked is off.
+/// POST account/submit_uses {use_for_resume, use_for_application, use_for_job_evaluation}: runs
+/// each use on the key of the provider sent for it; "" runs it on none.
 pub async fn submit_uses(State(state): State<Arc<AppState>>, Form(form): Form<UsesForm>) -> Response {
-    let ticked = |field: &Option<String>| field.as_deref() == Some("1");
-    let on = Uses {
-        resume: ticked(&form.use_for_resume),
-        application: ticked(&form.use_for_application),
-        job_evaluation: ticked(&form.use_for_job_evaluation),
+    let picked = |provider: String| Some(provider).filter(|provider| !provider.is_empty());
+    let chosen = UseChoices {
+        resume: picked(form.use_for_resume),
+        application: picked(form.use_for_application),
+        job_evaluation: picked(form.use_for_job_evaluation),
     };
-    match account_model::save_uses(state.db(), state.user_id, on).await {
-        Ok(()) => state.set_flash("Saved where your key is used.".to_string()),
-        Err(e) => flash_failure(&state, "Where your key is used couldn't be saved", &e),
+    match account_model::save_uses(state.db(), state.user_id, &chosen).await {
+        Ok(()) => state.set_flash("Saved which key each use runs on.".to_string()),
+        Err(e) => flash_failure(&state, "Which key each use runs on couldn't be saved", &e),
     }
     Redirect::to(PAGE).into_response()
 }
 
-/// POST account/submit_delete: deletes the saved key.
-pub async fn submit_delete(State(state): State<Arc<AppState>>) -> Response {
-    match account_model::delete_key(state.db(), &state.key_vault, state.user_id).await {
-        Ok(()) => state.set_flash("Your key is deleted.".to_string()),
-        Err(e) => flash_failure(&state, "Your key couldn't be deleted", &e),
+/// POST account/submit_delete {provider}: deletes that provider's saved key.
+pub async fn submit_delete(State(state): State<Arc<AppState>>, Form(form): Form<ProviderForm>) -> Response {
+    let provider = account_model::provider_label(&form.provider).to_string();
+    match account_model::delete_key(state.db(), &state.key_vault, state.user_id, &form.provider).await {
+        Ok(()) => state.set_flash(format!("Your {provider} key is deleted.")),
+        Err(e) => flash_failure(&state, &format!("Your {provider} key couldn't be deleted"), &e),
     }
     Redirect::to(PAGE).into_response()
 }
 
-/// POST account/submit_check: asks the saved key's model for one tiny answer, and says whether
-/// it came.
-pub async fn submit_check(State(state): State<Arc<AppState>>) -> Response {
-    let said = check(&state).await.unwrap_or_else(|why| why);
+/// POST account/submit_check {provider}: asks that provider's saved key's model for one tiny
+/// answer, and says whether it came.
+pub async fn submit_check(State(state): State<Arc<AppState>>, Form(form): Form<ProviderForm>) -> Response {
+    let said = check(&state, &form.provider).await.unwrap_or_else(|why| why);
     state.set_flash(said);
     Redirect::to(PAGE).into_response()
 }
 
 /// "Your key works: …", or Err with why not; failures are logged.
-async fn check(state: &AppState) -> Result<String, String> {
-    let key = account_model::key_for(state.db(), &state.key_vault, state.user_id)
+async fn check(state: &AppState, provider: &str) -> Result<String, String> {
+    let key = account_model::key_of(state.db(), &state.key_vault, state.user_id, provider)
         .await
         .map_err(|e| logged("The check couldn't read your key", &e.to_string()))?
         .ok_or_else(|| "There's no key to check: save one first.".to_string())?;
@@ -200,24 +210,30 @@ async fn check(state: &AppState) -> Result<String, String> {
     Ok(format!("Your key works: {provider} answered on {}.", llm.model()))
 }
 
-/// The page, with the form as typed (None: as saved) and its errors.
+/// The page, with the form as typed (None: a provider without a saved key, if any) and its
+/// errors.
 async fn page(state: &AppState, typed: Option<&KeyForm>, errors: Vec<String>) -> Response {
     let together = state.key_vault.lock().await;
     let saved = match account_model::saved(state.db(), state.user_id).await {
         Ok(saved) => saved,
         Err(e) => return failure_page(&format!("The database couldn't answer: {e}")),
     };
-    let (unreadable, vault_error) = readable(state, saved.as_ref());
+    let (saved_keys, vault_error) = readable(state, &saved);
     drop(together);
     let provider = typed
         .map(|form| form.provider.as_str())
         .filter(|provider| !provider.is_empty())
-        .or(saved.as_ref().map(|saved| saved.provider.as_str()))
-        .unwrap_or(OPENAI);
-    let saved_field = |field: fn(&Saved) -> &str| saved.as_ref().map(field).unwrap_or("").to_string();
+        .unwrap_or_else(|| provider_to_add(&saved));
+    let saved_of_provider = saved.iter().find(|saved| saved.provider == provider);
+    let saved_field = |field: fn(&Saved) -> &str| saved_of_provider.map(field).unwrap_or("").to_string();
     let page = AccountPage {
         flash: state.take_flash(),
-        unreadable,
+        key_uses: if saved.is_empty() {
+            Vec::new()
+        } else {
+            saved_key::key_uses(&saved)
+        },
+        saved: saved_keys,
         vault_error,
         providers: PROVIDERS
             .iter()
@@ -233,7 +249,6 @@ async fn page(state: &AppState, typed: Option<&KeyForm>, errors: Vec<String>) ->
         model_placeholder: model_placeholder(),
         base_url_placeholder: BASE_URL_PLACEHOLDER,
         llama: state.llama.as_ref().map(|server| LlamaPanel::from(server.overview())),
-        saved: saved.as_ref().map(SavedKey::from),
     };
     match page.render() {
         Ok(html) => Html(html).into_response(),
@@ -241,19 +256,34 @@ async fn page(state: &AppState, typed: Option<&KeyForm>, errors: Vec<String>) ->
     }
 }
 
-/// Whether a saved key is gone from Credential Manager, and why Credential Manager couldn't be
-/// read, when it couldn't.
-fn readable(state: &AppState, saved: Option<&Saved>) -> (bool, Option<String>) {
-    let Some(saved) = saved.filter(|saved| !saved.key_hint.is_empty()) else {
-        return (false, None);
-    };
-    match state.key_vault.key_for(state.user_id) {
-        Ok(key) => (key.is_none(), None),
-        Err(e) => {
-            eprintln!("account: {e} (saved {} key)", saved.provider);
-            (false, Some(e))
-        }
-    }
+/// The first provider without a saved key, for the form to add; OpenAI when all have one.
+fn provider_to_add(saved: &[Saved]) -> &'static str {
+    PROVIDERS
+        .iter()
+        .map(|(name, _)| *name)
+        .find(|name| !saved.iter().any(|saved| saved.provider == *name))
+        .unwrap_or(OPENAI)
+}
+
+/// The saved keys for the page, each saying whether it is gone from Credential Manager, and why
+/// Credential Manager couldn't be read, when it couldn't. The caller holds the vault's lock.
+fn readable(state: &AppState, saved: &[Saved]) -> (Vec<SavedKey>, Option<String>) {
+    let mut vault_error = None;
+    let keys = saved
+        .iter()
+        .map(|saved| {
+            let unreadable = match account_model::with_key(&state.key_vault, state.user_id, saved) {
+                Ok(key) => key.is_none(),
+                Err(e) => {
+                    eprintln!("account: {e} (saved {} key)", saved.provider);
+                    vault_error.get_or_insert(e.to_string());
+                    false
+                }
+            };
+            SavedKey::from(saved, unreadable)
+        })
+        .collect();
+    (keys, vault_error)
 }
 
 /// "Default: gpt-5.4-mini or claude-sonnet-5-5".

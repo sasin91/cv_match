@@ -101,12 +101,14 @@ can't use it.
 
 ## The API key and the language models
 
-The AI features run on your own key, saved on the API key page (`account`): an OpenAI key, an Anthropic key, or a local OpenAI-compatible server
+The AI features run on your own keys, saved on the API key page (`account`): an OpenAI key, an Anthropic key, or a local OpenAI-compatible server
 such as Ollama (`http://localhost:11434/v1`) or LM Studio (`http://localhost:1234/v1`), which
-needs a model name and usually no key. The key goes in Windows Credential Manager (service
-`Recruiter`, user `user_llm_keys:1@` and the database file's full path, so each database has its
-own key), never in the database; `user_llm_keys` keeps the provider,
-model, address, the key's last 4 characters and what the key is used for. "Check key" sends one
+needs a model name and usually no key. One key is kept per provider. Each goes in Windows
+Credential Manager (service `Recruiter`, user `user_llm_keys:1:{provider}@` and the database
+file's full path, so each provider and each database has its own key), never in the database;
+`user_llm_keys` keeps a row per provider with the model, address, the key's last 4 characters
+and the uses it is picked for (each use on one key at most). A key saved before keys were kept
+per provider (`user_llm_keys:1@…`) moves to its provider's credential the first time it is read. "Check key" sends one
 tiny request and says whether it was answered.
 
 `src/llm` is modules/llm: `Llm::use_key` picks the adapter, and `structured()` asks for one JSON
@@ -117,11 +119,11 @@ gpt-5.4-mini (OpenAI) or claude-sonnet-5-5 (Anthropic). A call waits up to 180 s
 come back in the provider's own words for the page, and the log gets the status, the rate-limit
 headers and the body, with any key in it cut to its prefix.
 
-The match page runs each AI step on the key when it is switched on for that use: evaluating job
+The match page runs each AI step on the key picked for that use: evaluating job
 posts (extract_job, extract_cv, the judging in match), writing applications, tailoring résumés.
-With evaluating switched off, the free reader reads the post and CV instead, so a match is still
+With no key picked for evaluating, the free reader reads the post and CV instead, so a match is still
 saved and can have its application and résumé written. Without a key for a use, the page says
-why (none saved, switched off, or gone from Credential Manager) and links to the API key page.
+why (none saved, none picked for the use, or gone from Credential Manager) and links to the API key page.
 
 ## The Jobnet extension
 

@@ -492,7 +492,7 @@ async fn followed(app: &axum::Router, request: Request<Body>) -> String {
 }
 
 #[tokio::test]
-async fn the_api_key_page_saves_switches_and_deletes_a_key() {
+async fn the_api_key_page_keeps_a_key_per_provider_and_picks_one_per_use() {
     let app = app().await;
     let (status, page) = send_to(&app, get("/account")).await;
     assert_eq!(status, StatusCode::OK);
@@ -507,22 +507,55 @@ async fn the_api_key_page_saves_switches_and_deletes_a_key() {
         &app,
         post_form(
             "/account/submit_key",
+            "provider=anthropic&model=&api_key=sk-ant-api03-0123456789-abcd&base_url=",
+        ),
+    )
+    .await;
+    assert!(page.contains("Your Anthropic (Claude) key is saved."), "{page}");
+    assert!(page.contains("key ending in <code>…abcd</code>"), "{page}");
+    assert!(!page.contains("0123456789"), "the key is never shown again");
+    assert!(
+        page.contains(r#"<option value="openai" selected>OpenAI</option>"#),
+        "the form offers the next provider: {page}"
+    );
+
+    let page = followed(
+        &app,
+        post_form(
+            "/account/submit_key",
             "provider=openai&model=&api_key=sk-proj-0123456789abcdWXYZ&base_url=",
         ),
     )
     .await;
-    assert!(page.contains("Your key is saved."), "{page}");
+    assert!(
+        page.contains("key ending in <code>…abcd</code>"),
+        "the first key stays: {page}"
+    );
     assert!(page.contains("key ending in <code>…WXYZ</code>"), "{page}");
-    assert!(!page.contains("0123456789"), "the key is never shown again");
-    assert!(page.contains(r#"<input type="checkbox" name="use_for_job_evaluation" value="1" checked>"#));
+    assert!(
+        page.contains(r#"<option value="anthropic" selected>Anthropic (Claude) (…abcd)</option>"#),
+        "the uses stay on the first key: {page}"
+    );
 
-    let page = followed(&app, post_form("/account/submit_uses", "use_for_resume=1")).await;
-    assert!(page.contains("Saved where your key is used."));
-    assert!(page.contains(r#"name="use_for_resume" value="1" checked>"#));
-    assert!(page.contains(r#"name="use_for_application" value="1">"#), "{page}");
+    let page = followed(
+        &app,
+        post_form(
+            "/account/submit_uses",
+            "use_for_resume=openai&use_for_application=anthropic&use_for_job_evaluation=",
+        ),
+    )
+    .await;
+    assert!(page.contains("Saved which key each use runs on."), "{page}");
+    assert!(page.contains(r#"<option value="openai" selected>OpenAI (…WXYZ)</option>"#));
+    assert!(page.contains(r#"<option value="anthropic" selected>Anthropic (Claude) (…abcd)</option>"#));
+    assert!(page.contains(r#"<option value="" selected>No key (switched off)</option>"#));
 
-    let page = followed(&app, post_form("/account/submit_delete", "")).await;
-    assert!(page.contains("Your key is deleted."));
+    let page = followed(&app, post_form("/account/submit_delete", "provider=anthropic")).await;
+    assert!(page.contains("Your Anthropic (Claude) key is deleted."), "{page}");
+    assert!(!page.contains("…abcd"));
+    assert!(page.contains("key ending in <code>…WXYZ</code>"));
+
+    let page = followed(&app, post_form("/account/submit_delete", "provider=openai")).await;
     assert!(!page.contains("saved-key"));
 }
 
@@ -559,7 +592,7 @@ async fn the_api_key_page_shows_what_is_wrong_with_the_form() {
 #[tokio::test]
 async fn checking_without_a_key_says_so() {
     let app = app().await;
-    let page = followed(&app, post_form("/account/submit_check", "")).await;
+    let page = followed(&app, post_form("/account/submit_check", "provider=openai")).await;
     assert!(page.contains("no key to check: save one first."), "{page}");
 }
 
@@ -813,10 +846,10 @@ async fn a_key_switched_off_for_a_use_says_so() {
     recruiter::account::account_model::save_uses(
         &db,
         3,
-        recruiter::matches::match_documents::Uses {
-            resume: true,
-            application: false,
-            job_evaluation: false,
+        &recruiter::account::account_model::UseChoices {
+            resume: Some("local".to_string()),
+            application: None,
+            job_evaluation: None,
         },
     )
     .await
@@ -827,7 +860,7 @@ async fn a_key_switched_off_for_a_use_says_so() {
     assert_eq!(answer["need_key"], true);
     assert_eq!(
         answer["error"],
-        "Your API key is switched off for writing job applications. Switch it on on the API key page."
+        "None of your API keys is picked for writing job applications. Pick one on the API key page."
     );
     // Evaluating job posts off: the free reader reads, and the match is still saved.
     let (status, job) = send_to(

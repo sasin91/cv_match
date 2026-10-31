@@ -1,5 +1,5 @@
 {#- The API key page, for the one local user: the
-    saved key with its uses, and the form that saves one. -#}
+    saved keys, the key each use runs on, and the form that adds one. -#}
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -26,35 +26,46 @@
     <p class="notice">Your saved key couldn't be read: {{ vault_error }}</p>
     {%- endif %}
 
-    {%- if let Some(saved) = saved %}
+    {%- for saved_key in saved %}
     <div class="saved-key">
-        <p><strong>{{ saved.provider }}</strong>
-            {%- if !saved.key_hint.is_empty() %} key ending in <code>…{{ saved.key_hint }}</code>{% endif %}
-            {%- if !saved.model.is_empty() %}, model <code>{{ saved.model }}</code>{% endif %}
-            {%- if !saved.base_url.is_empty() %}, at <code>{{ saved.base_url }}</code>{% endif %}.<br>
-        <span class="muted">Saved {{ saved.saved_on }}.</span></p>
-        {%- if unreadable %}
+        <p><strong>{{ saved_key.provider }}</strong>
+            {%- if !saved_key.key_hint.is_empty() %} key ending in <code>…{{ saved_key.key_hint }}</code>{% endif %}
+            {%- if !saved_key.model.is_empty() %}, model <code>{{ saved_key.model }}</code>{% endif %}
+            {%- if !saved_key.base_url.is_empty() %}, at <code>{{ saved_key.base_url }}</code>{% endif %}.<br>
+        <span class="muted">Saved {{ saved_key.saved_on }}.</span></p>
+        {%- if saved_key.unreadable %}
         <p class="notice">This key isn't in Windows Credential Manager anymore, so the AI can't use it. Save it again below.</p>
         {%- else %}
-        <form method="post" action="account/submit_uses" class="stack key-uses">
-            <fieldset>
-                <legend>Use my key for</legend>
-                {%- for key_use in saved.uses %}
-                <label><input type="checkbox" name="{{ key_use.field }}" value="1"{% if key_use.on %} checked{% endif %}> {{ key_use.label }}</label>
-                {%- endfor %}
-                <span class="muted small">Switched off, the CV match reads job posts with the free reader instead of the AI, and résumés or applications aren't written.</span>
-            </fieldset>
-            <button type="submit">Save</button>
-        </form>
         <form method="post" action="account/submit_check" class="inline">
+            <input type="hidden" name="provider" value="{{ saved_key.provider_value }}">
             <button type="submit">Check key</button>
         </form>
         {%- endif %}
         <form method="post" action="account/submit_delete" class="inline">
+            <input type="hidden" name="provider" value="{{ saved_key.provider_value }}">
             <button type="submit">Delete key</button>
         </form>
     </div>
-    <h2>Replace it</h2>
+    {%- endfor %}
+
+    {%- if !key_uses.is_empty() %}
+    <form method="post" action="account/submit_uses" class="stack key-uses">
+        <fieldset>
+            <legend>Use my keys for</legend>
+            {%- for key_use in key_uses %}
+            <label for="{{ key_use.field }}">{{ key_use.label }}</label>
+            <select name="{{ key_use.field }}" id="{{ key_use.field }}">
+                {%- for choice in key_use.choices %}
+                <option value="{{ choice.value }}"{% if choice.selected %} selected{% endif %}>{{ choice.label }}</option>
+                {%- endfor %}
+            </select>
+            {%- endfor %}
+            <span class="muted small">With no key, the CV match reads job posts with the free reader instead of the AI, and résumés or applications aren't written.</span>
+        </fieldset>
+        <button type="submit">Save</button>
+    </form>
+    <h2>Add a key</h2>
+    <p class="muted small">One key is kept per provider: saving a key for a provider that has one replaces only that one.</p>
     {%- endif %}
 
     {%- if !errors.is_empty() %}

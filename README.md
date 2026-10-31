@@ -42,10 +42,11 @@ aside and start again.
 ### The API key
 
 Open http://127.0.0.1:8765/account. Pick OpenAI, Anthropic or a local server, paste the key
-(a local server needs its address and a model name instead), and save it. Choose what the key is
-used for: evaluating job posts, writing applications, tailoring résumés. **Check key** sends one
-tiny request. The key goes in Windows Credential Manager under `Recruiter`, never in the
-database. With no model named, OpenAI keys run on gpt-5.4-mini.
+(a local server needs its address and a model name instead), and save it. One key is kept per
+provider, so an OpenAI and an Anthropic key can be saved side by side. Under **Use my keys for**,
+pick the key each use runs on: evaluating job posts, writing applications, tailoring résumés.
+**Check key** sends one tiny request. The keys go in Windows Credential Manager under
+`Recruiter`, never in the database. With no model named, OpenAI keys run on gpt-5.4-mini.
 
 ### Laya's model
 
@@ -134,9 +135,9 @@ With a real key saved on the API key page, check these by hand after a change:
 
 - [ ] **The lists:** after a few matches, http://127.0.0.1:8765/match shows them under
       Shortlist, All and the other lists. Show more loads more.
-- [ ] **The free match:** paste a job post's text, with evaluating switched off on the key page.
+- [ ] **The free match:** paste a job post's text, with evaluating set to no key on the key page.
       A match is saved and scored by the free reader.
-- [ ] **The AI match:** switch evaluating on and paste another post's text. The result shows the
+- [ ] **The AI match:** pick a key for evaluating and paste another post's text. The result shows the
       requirements as the model read them, the score and, with the model in place, the Laya line.
 - [ ] **Fetching a job from a link:** paste a link to a public job post (Jobindex or LinkedIn,
       say). The post is read from the page and matched. A link to this PC or the home network is
