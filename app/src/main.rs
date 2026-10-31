@@ -118,7 +118,7 @@ fn run_cleanup(args: &[String]) -> ExitCode {
         return ExitCode::FAILURE;
     };
     // Held until the database's files are removed, so no Recruiter starts on it meanwhile.
-    let Ok(held) = cleanup::hold(&database) else {
+    let Ok(held) = cleanup::hold(&database, cleanup::Hold::Cleanup) else {
         eprintln!(
             "Recruiter is running on {}. Close its window, then run the cleanup again.",
             database.display()
@@ -276,20 +276,20 @@ fn run_server(args: &[String]) -> ExitCode {
     let Some(runtime) = runtime() else {
         return ExitCode::FAILURE;
     };
+    // Held while the app runs, so `recruiter cleanup` won't remove the database under it.
+    let Ok(_held) = cleanup::hold(&database, cleanup::Hold::Running) else {
+        eprintln!(
+            "Recruiter's cleanup is running on {}. Let it finish, then start Recruiter again.",
+            database.display()
+        );
+        return ended_by_hand(ExitCode::FAILURE);
+    };
     let made_now = !database.exists();
     let db = match runtime.block_on(db::open(&database)) {
         Ok(db) => db,
         Err(e) => {
             eprintln!("Couldn't open {}: {e}", database.display());
             return ended_by_hand(ExitCode::FAILURE);
-        }
-    };
-    // Held while the app runs, so `recruiter cleanup` won't remove the database under it.
-    let _held = match cleanup::hold(&database) {
-        Ok(held) => held,
-        Err(cleanup::InUse) => {
-            println!("Another Recruiter is running on {} too.", database.display());
-            None
         }
     };
     let user_id = match runtime.block_on(server::local_user(&db)) {

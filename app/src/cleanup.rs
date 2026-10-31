@@ -62,11 +62,22 @@ pub fn lock_file(database: &Path) -> PathBuf {
     PathBuf::from(name)
 }
 
-/// Takes database's lock, held until the file is dropped: the server holds it while it runs, and
-/// the cleanup takes it so it never removes a database that is in use (whatever port the app
-/// runs on). Ok(None) when the lock file can't be made or locked at all (a read-only folder,
-/// say), which doesn't stop either.
-pub fn hold(database: &Path) -> Result<Option<std::fs::File>, InUse> {
+/// How a lock on the database is held.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Hold {
+    /// The app while it runs: any number of apps share it (a dev build beside the release one).
+    Running,
+    /// The cleanup: alone, so it starts only when no app runs on the database, and no app starts
+    /// while it runs.
+    Cleanup,
+}
+
+/// Takes database's lock, held until the file is dropped. Ok(None) when the lock file can't be
+/// made or locked at all (a read-only folder, say), which doesn't stop either.
+pub fn hold(database: &Path, how: Hold) -> Result<Option<std::fs::File>, InUse> {
+    if let Some(folder) = database.parent() {
+        let _ = std::fs::create_dir_all(folder);
+    }
     let Ok(file) = std::fs::OpenOptions::new()
         .create(true)
         .truncate(false)
@@ -75,7 +86,11 @@ pub fn hold(database: &Path) -> Result<Option<std::fs::File>, InUse> {
     else {
         return Ok(None);
     };
-    match file.try_lock() {
+    let locked = match how {
+        Hold::Running => file.try_lock_shared(),
+        Hold::Cleanup => file.try_lock(),
+    };
+    match locked {
         Ok(()) => Ok(Some(file)),
         Err(std::fs::TryLockError::WouldBlock) => Err(InUse),
         Err(std::fs::TryLockError::Error(_)) => Ok(None),
@@ -205,15 +220,29 @@ mod tests {
     }
 
     #[test]
-    fn a_held_database_is_in_use_until_its_holder_lets_go() {
+    fn running_apps_share_the_lock_and_the_cleanup_needs_it_alone() {
         let folder = std::env::temp_dir().join(format!("recruiter-lock-{}", std::process::id()));
-        std::fs::create_dir_all(&folder).unwrap();
         let database = folder.join("recruiter.sqlite");
-        let held = hold(&database).unwrap();
-        assert!(held.is_some());
-        assert_eq!(hold(&database).err(), Some(InUse));
-        drop(held);
-        assert!(hold(&database).unwrap().is_some());
+        let app = hold(&database, Hold::Running).unwrap();
+        assert!(app.is_some());
+        let dev_build = hold(&database, Hold::Running).unwrap();
+        assert!(dev_build.is_some(), "a second app on the same database starts");
+        assert_eq!(hold(&database, Hold::Cleanup).err(), Some(InUse));
+        drop(app);
+        assert_eq!(
+            hold(&database, Hold::Cleanup).err(),
+            Some(InUse),
+            "the dev build still runs"
+        );
+        drop(dev_build);
+        let cleanup = hold(&database, Hold::Cleanup).unwrap();
+        assert!(cleanup.is_some());
+        assert_eq!(
+            hold(&database, Hold::Running).err(),
+            Some(InUse),
+            "no app starts during the cleanup"
+        );
+        drop(cleanup);
         std::fs::remove_dir_all(&folder).unwrap();
     }
 
