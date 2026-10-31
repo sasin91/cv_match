@@ -1,0 +1,47 @@
+name: release
+
+# The Windows program for a release: pushing a tag like v0.2.0 builds the app and attaches it to
+# that tag's GitHub release twice, as recruiter.exe and as Recruiter-setup.exe. They are the same
+# program; started under the setup name (a double-click) it installs itself (app/src/install.rs).
+# Run by hand, it builds the same two files as a workflow artifact instead.
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  windows:
+    name: Windows program
+    runs-on: windows-latest
+    defaults:
+      run:
+        working-directory: app
+    env:
+      SQLX_OFFLINE: true
+    steps:
+      - uses: actions/checkout@v4
+      - uses: dtolnay/rust-toolchain@stable
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: app
+      - run: cargo build --release
+      - name: Name the installer
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force dist | Out-Null
+          Copy-Item target/release/recruiter.exe dist/recruiter.exe
+          Copy-Item target/release/recruiter.exe dist/Recruiter-setup.exe
+      - if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            app/dist/recruiter.exe
+            app/dist/Recruiter-setup.exe
+      - if: ${{ !startsWith(github.ref, 'refs/tags/') }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: recruiter-windows
+          path: app/dist/

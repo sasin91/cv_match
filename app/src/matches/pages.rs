@@ -32,10 +32,10 @@ use super::resume_comparison::ResumeComparison;
 use super::saved_match_row::SavedMatchRow;
 use super::{Job, Profile, apply_instructions, match_prompts, pdf_writer, reject_reason};
 use crate::account::account_model::JOB_EVALUATION;
+use crate::dashboard::{self, Dashboard, Findings};
 use crate::laya::laya_client;
 use crate::profile;
 use crate::server::AppState;
-use crate::setup;
 
 /// Longest CV or job post quick_match reads, in characters.
 const MAX_TEXT: usize = 40_000;
@@ -71,6 +71,8 @@ pub struct ListTab {
 #[template(path = "match/match.html")]
 struct MatchPage {
     flash: Option<String>,
+    dashboard: Dashboard,
+    findings: Findings,
     ai_ready: bool,
     ai_uses_json: String,
     max_jobs: usize,
@@ -94,6 +96,7 @@ struct History {
 #[derive(Template)]
 #[template(path = "match/history_latest.html")]
 struct HistoryLatest {
+    findings: Findings,
     matches: Vec<SavedMatchRow>,
     next: Option<String>,
     list_query: String,
@@ -200,11 +203,8 @@ fn list_tabs(current: &str) -> Vec<ListTab> {
         .collect()
 }
 
-/// GET match: the match page, or the setup wizard while it is due.
+/// GET match: the dashboard, with the match form and the saved matches.
 pub async fn index(State(state): State<Arc<AppState>>, Query(query): Query<ListQuery>) -> Answer {
-    if setup::wizard_is_due(&state).await {
-        return Ok(Redirect::to(setup::PAGE).into_response());
-    }
     match_page(&state, &query, None).await
 }
 
@@ -229,8 +229,11 @@ async fn match_page(state: &AppState, query: &ListQuery, open_id: Option<i64>) -
         .find(|(name, ..)| *name == saved.list)
         .map(|(.., empty)| *empty)
         .unwrap_or("");
+    let dashboard = dashboard::dashboard(state).await.map_err(dashboard_error)?;
     html(MatchPage {
         flash: state.take_flash(),
+        dashboard,
+        findings: findings(state).await?,
         ai_ready: uses.any(),
         ai_uses_json:
             json!({ "resume": uses.resume, "application": uses.application, "job_evaluation": uses.job_evaluation })
@@ -246,11 +249,23 @@ async fn match_page(state: &AppState, query: &ListQuery, open_id: Option<i64>) -
     })
 }
 
+/// The dashboard's glance at the saved matches.
+async fn findings(state: &AppState) -> Result<Findings, PageError> {
+    dashboard::findings(state).await.map_err(dashboard_error)
+}
+
+/// Why the dashboard couldn't be read, logged.
+fn dashboard_error(why: String) -> PageError {
+    eprintln!("match: the dashboard couldn't be read: {why}");
+    PageError::new(StatusCode::INTERNAL_SERVER_ERROR, why)
+}
+
 /// GET match/history_list: the first batch of the page's list, polled by Trongate MX so
 /// matches saved elsewhere show up on their own.
 pub async fn history_list(State(state): State<Arc<AppState>>, Query(query): Query<ListQuery>) -> Answer {
     let saved = saved_matches(&state, &query, true).await?;
     html(HistoryLatest {
+        findings: findings(&state).await?,
         matches: saved.matches,
         next: saved.next,
         list_query: saved.list_query,

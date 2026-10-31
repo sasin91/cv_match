@@ -1,0 +1,20 @@
+{#- The dashboard's glance at the saved matches (dashboard.rs Findings): on the match page, and
+    in match/history_list's answer, which js/app.js puts in its place. -#}
+<div class="panel dashboard-findings" id="dashboard-findings">
+    <h2>Your matches</h2>
+    <ul class="list-counts">
+        {%- for list in findings.counts %}
+        <li><a href="{{ list.href }}#history-panel"><span class="list-count">{{ list.count }}</span> <span class="list-label">{{ list.label }}</span></a></li>
+        {%- endfor %}
+    </ul>
+    {%- if findings.best.is_empty() %}
+    <p class="muted">Nothing on the shortlist. Match a job post below to start one.</p>
+    {%- else %}
+    <h3>Best on your shortlist</h3>
+    <ol class="best-matches">
+        {%- for m in findings.best %}
+        <li class="history-{{ m.tag }}"><a href="match/{{ m.id }}"><span class="history-title">{{ m.title }}</span><span class="history-meta">{{ m.about }} · <time datetime="{{ m.saved_at }}">{{ m.saved_on }}</time></span></a></li>
+        {%- endfor %}
+    </ol>
+    {%- endif %}
+</div>

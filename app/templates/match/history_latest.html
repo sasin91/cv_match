@@ -1,3 +1,4 @@
 {#- The first batch of saved matches for the page to poll. The section
-    (not a div: Trongate MX unwraps an outer div) tells the page the answer is the list. -#}
-<section class="history-latest"><ul>{% include "match/history.html" %}</ul></section>
+    (not a div: Trongate MX unwraps an outer div) tells the page the answer is the list. The dashboard's findings
+    come with it, so they keep up too. -#}
+<section class="history-latest"><ul>{% include "match/history.html" %}</ul>{% include "match/dashboard_findings.html" %}</section>

@@ -20,7 +20,6 @@ use axum::Form;
 use axum::extract::State;
 use axum::http::StatusCode;
 use axum::response::{Html, IntoResponse, Redirect, Response};
-use chrono::DateTime;
 use serde::Deserialize;
 
 use self::setup_steps::{AiStep, CvStep, DatabaseStep, ScheduleStep};
@@ -29,7 +28,7 @@ use crate::profile::profile_fill::{self, MAX_CV_LENGTH};
 use crate::scan_schedule::{DEFAULT_INTERVAL_HOURS, INTERVALS};
 use crate::server::AppState;
 
-pub use self::setup_steps::{first_run_or_logged, is_first_run, wizard_is_due};
+pub use self::setup_steps::{first_run_or_logged, is_first_run};
 
 /// Where the wizard is, and where its forms send the browser back to.
 pub const PAGE: &str = "/setup";
@@ -94,13 +93,9 @@ pub struct ScheduleForm {
     hours: u32,
 }
 
-/// GET /: the wizard while it is due, else the dashboard.
-pub async fn home(State(state): State<Arc<AppState>>) -> Redirect {
-    if wizard_is_due(&state).await {
-        Redirect::to(PAGE)
-    } else {
-        Redirect::to(DASHBOARD)
-    }
+/// GET /: the dashboard, which says what is set up and what is missing, with links here.
+pub async fn home() -> Redirect {
+    Redirect::to(DASHBOARD)
 }
 
 /// GET setup.
@@ -134,7 +129,7 @@ pub async fn submit_schedule(State(state): State<Arc<AppState>>, Form(form): For
     let message = match state.scan_schedule.register(form.hours).await {
         Ok(()) => format!(
             "The job scan runs {} while you're signed in to Windows.",
-            interval_label(form.hours).to_lowercase()
+            setup_steps::interval_label(form.hours).to_lowercase()
         ),
         Err(why) => format!("The job scan couldn't be scheduled: {why}"),
     };
@@ -150,12 +145,6 @@ pub async fn submit_unschedule(State(state): State<Arc<AppState>>) -> Response {
     };
     state.set_flash(message);
     Redirect::to(PAGE).into_response()
-}
-
-/// POST setup/submit_finish: goes on to the dashboard, which stops sending the browser back here.
-pub async fn submit_finish(State(state): State<Arc<AppState>>) -> Redirect {
-    state.leave_setup();
-    Redirect::to(DASHBOARD)
 }
 
 /// The page, with the CV form as posted and why it couldn't be read, when it couldn't.
@@ -189,7 +178,7 @@ fn cv_view(step: CvStep, posted: Option<(String, CvForm)>) -> CvView {
         None => (None, CvForm::default()),
     };
     CvView {
-        done: step.filled.as_ref().map(filled_line),
+        done: step.filled.as_ref().map(setup_steps::filled_line),
         can_read: step.can_read,
         error,
         cv_text: form.cv_text,
@@ -198,26 +187,12 @@ fn cv_view(step: CvStep, posted: Option<(String, CvForm)>) -> CvView {
     }
 }
 
-/// "Mette Sørensen, read from cv.pdf on 31 October 2026"; without the parts it doesn't have.
-fn filled_line(filled: &crate::profile::profile_model::FilledFrom) -> String {
-    let mut line = filled.name.clone();
-    if !filled.cv_name.is_empty() {
-        line.push_str(&format!(", read from {}", filled.cv_name));
-    }
-    let day = filled
-        .filled_at
-        .and_then(|at| DateTime::from_timestamp(at, 0))
-        .map(|at| at.format("%-d %B %Y").to_string());
-    if let Some(day) = day {
-        line.push_str(&format!(" on {day}"));
-    }
-    line
-}
-
 fn schedule_view(step: ScheduleStep) -> ScheduleView {
     let picked = step.interval_hours.unwrap_or(DEFAULT_INTERVAL_HOURS);
     ScheduleView {
-        done: step.interval_hours.map(|hours| interval_label(hours).to_lowercase()),
+        done: step
+            .interval_hours
+            .map(|hours| setup_steps::interval_label(hours).to_lowercase()),
         error: step.error,
         intervals: INTERVALS
             .iter()
@@ -229,15 +204,6 @@ fn schedule_view(step: ScheduleStep) -> ScheduleView {
             .collect(),
         task_run: step.task_run,
     }
-}
-
-/// "Every 4 hours" for 4; "Every N hours" for one that isn't offered (set by hand).
-fn interval_label(hours: u32) -> &'static str {
-    INTERVALS
-        .iter()
-        .find(|(offered, _)| *offered == hours)
-        .map(|(_, label)| *label)
-        .unwrap_or("Every few hours")
 }
 
 /// The page when it can't be shown: what went wrong, logged too.
@@ -260,7 +226,7 @@ mod tests {
             filled_at: Some(1_793_448_000),
         };
         assert_eq!(
-            filled_line(&filled),
+            setup_steps::filled_line(&filled),
             "Mette Sørensen, read from cv.pdf on 31 October 2026"
         );
         let imported = FilledFrom {
@@ -268,7 +234,7 @@ mod tests {
             filled_at: None,
             ..filled
         };
-        assert_eq!(filled_line(&imported), "Mette Sørensen");
+        assert_eq!(setup_steps::filled_line(&imported), "Mette Sørensen");
     }
 
     #[test]

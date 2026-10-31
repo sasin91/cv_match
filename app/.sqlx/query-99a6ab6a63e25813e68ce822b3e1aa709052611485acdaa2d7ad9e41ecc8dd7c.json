@@ -1,0 +1,49 @@
+{
+  "db_name": "SQLite",
+  "query": "-- How many of the user's saved matches each list (LISTS) holds, picked as best_first.sql picks\n-- them. ?1 the user, ?2 the integration the Jobnet joblog is kept under, ?3 the applied\n-- statuses as a JSON array (APPLIED_STATUSES).\nSELECT\n  COALESCE(SUM(\n    m.rejected_at IS NULL\n    AND m.tag IN ('top', 'good')\n    AND (j.status IS NULL OR j.status NOT IN (SELECT value FROM json_each(?3)))\n    AND j.logged_at IS NULL\n  ), 0) AS \"shortlist!: i64\",\n  COALESCE(SUM(m.rejected_at IS NULL), 0) AS \"every!: i64\",\n  COALESCE(SUM(\n    m.rejected_at IS NULL\n    AND j.status IN (SELECT value FROM json_each(?3))\n    AND j.logged_at IS NULL\n  ), 0) AS \"not_joblogged!: i64\",\n  COALESCE(SUM(m.rejected_at IS NULL AND j.logged_at IS NOT NULL), 0) AS \"joblogged!: i64\",\n  COALESCE(SUM(m.rejected_at IS NOT NULL), 0) AS \"rejected!: i64\"\nFROM matches m\nLEFT JOIN match_integrations j ON j.match_id = m.id AND j.integration = ?2\nWHERE m.trongate_user_id IS ?1\n",
+  "describe": {
+    "columns": [
+      {
+        "name": "shortlist!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "every!: i64",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "not_joblogged!: i64",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "joblogged!: i64",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "rejected!: i64",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "99a6ab6a63e25813e68ce822b3e1aa709052611485acdaa2d7ad9e41ecc8dd7c"
+}
