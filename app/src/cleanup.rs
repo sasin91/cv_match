@@ -55,48 +55,68 @@ pub fn app_folders(database: &Path) -> Vec<PathBuf> {
 #[derive(Debug, PartialEq)]
 pub struct InUse;
 
-/// The file whose lock a running Recruiter holds for database: the database's name and -lock,
-/// beside the file itself, so a link to the database shares its lock.
-pub fn lock_file(database: &Path) -> PathBuf {
-    let database = std::fs::canonicalize(database).unwrap_or_else(|_| database.to_path_buf());
-    let mut name = database.into_os_string();
+/// The files whose locks a running Recruiter holds for database:
+/// - the database's own, its name and -lock beside the file itself, so a link to the database
+///   shares it;
+/// - its folder's, `recruiter-folder.lock`, since every database in a folder shares the
+///   llama, laya and jobnet-joblog folders there.
+pub fn lock_files(database: &Path) -> [PathBuf; 2] {
+    let file = std::fs::canonicalize(database).unwrap_or_else(|_| database.to_path_buf());
+    let mut name = file.into_os_string();
     name.push("-lock");
-    PathBuf::from(name)
+    let folder = database
+        .parent()
+        .filter(|folder| !folder.as_os_str().is_empty())
+        .unwrap_or(Path::new("."));
+    let folder = std::fs::canonicalize(folder).unwrap_or_else(|_| folder.to_path_buf());
+    [PathBuf::from(name), folder.join(FOLDER_LOCK)]
 }
+
+/// The folder lock's file name.
+const FOLDER_LOCK: &str = "recruiter-folder.lock";
 
 /// How a lock on the database is held.
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Hold {
     /// The app while it runs: any number of apps share it (a dev build beside the release one).
     Running,
-    /// The cleanup: alone, so it starts only when no app runs on the database, and no app starts
-    /// while it runs.
+    /// The cleanup: alone, so it starts only when no app runs on the database or another one in
+    /// its folder, and no app starts there while it runs.
     Cleanup,
 }
 
-/// Takes database's lock, held until the file is dropped. Ok(None) when the lock file can't be
-/// made or locked at all (a read-only folder, say), which doesn't stop either.
-pub fn hold(database: &Path, how: Hold) -> Result<Option<std::fs::File>, InUse> {
+/// The locks hold() took, held until this is dropped.
+pub struct Held {
+    _files: Vec<std::fs::File>,
+}
+
+/// Takes database's locks (lock_files). A lock file that can't be made or locked at all (a
+/// read-only folder, say) is skipped, which doesn't stop either.
+pub fn hold(database: &Path, how: Hold) -> Result<Held, InUse> {
     if let Some(folder) = database.parent() {
         let _ = std::fs::create_dir_all(folder);
     }
-    let Ok(file) = std::fs::OpenOptions::new()
-        .create(true)
-        .truncate(false)
-        .write(true)
-        .open(lock_file(database))
-    else {
-        return Ok(None);
-    };
-    let locked = match how {
-        Hold::Running => file.try_lock_shared(),
-        Hold::Cleanup => file.try_lock(),
-    };
-    match locked {
-        Ok(()) => Ok(Some(file)),
-        Err(std::fs::TryLockError::WouldBlock) => Err(InUse),
-        Err(std::fs::TryLockError::Error(_)) => Ok(None),
+    let mut files = Vec::new();
+    for path in lock_files(database) {
+        let Ok(file) = std::fs::OpenOptions::new()
+            .create(true)
+            .truncate(false)
+            .write(true)
+            .open(path)
+        else {
+            continue;
+        };
+        let locked = match how {
+            Hold::Running => file.try_lock_shared(),
+            Hold::Cleanup => file.try_lock(),
+        };
+        match locked {
+            Ok(()) => files.push(file),
+            Err(std::fs::TryLockError::WouldBlock) => return Err(InUse),
+            Err(std::fs::TryLockError::Error(_)) => {}
+        }
     }
+    Ok(Held { _files: files })
 }
 
 /// The database's own files: the file, and SQLite's -wal, -shm and -journal beside it (the lock
@@ -226,9 +246,9 @@ mod tests {
         let folder = std::env::temp_dir().join(format!("recruiter-lock-{}", std::process::id()));
         let database = folder.join("recruiter.sqlite");
         let app = hold(&database, Hold::Running).unwrap();
-        assert!(app.is_some());
-        let dev_build = hold(&database, Hold::Running).unwrap();
-        assert!(dev_build.is_some(), "a second app on the same database starts");
+
+        let dev_build = hold(&database, Hold::Running).expect("a second app on the same database starts");
+
         assert_eq!(hold(&database, Hold::Cleanup).err(), Some(InUse));
         drop(app);
         assert_eq!(
@@ -238,7 +258,6 @@ mod tests {
         );
         drop(dev_build);
         let cleanup = hold(&database, Hold::Cleanup).unwrap();
-        assert!(cleanup.is_some());
         assert_eq!(
             hold(&database, Hold::Running).err(),
             Some(InUse),
@@ -253,8 +272,12 @@ mod tests {
             let alias = folder.join("alias.sqlite");
             std::os::unix::fs::symlink(&database, &alias).unwrap();
             let app = hold(&database, Hold::Running).unwrap();
-            assert!(app.is_some());
+
             assert_eq!(hold(&alias, Hold::Cleanup).err(), Some(InUse));
+            // Another database in the same folder shares its folders, so its cleanup waits too.
+            assert_eq!(hold(&folder.join("test.sqlite"), Hold::Cleanup).err(), Some(InUse));
+            drop(app);
+            assert!(hold(&folder.join("test.sqlite"), Hold::Cleanup).is_ok());
         }
         std::fs::remove_dir_all(&folder).unwrap();
     }
