@@ -1,6 +1,6 @@
 //! When the job scan runs by itself: `recruiter scan --database <this database>` every few hours
-//! while the user is signed in, from the system's own scheduler. The schedule is only kept there,
-//! so nothing about it is in the database; the setup wizard reads it back. Tests keep it in memory.
+//! while the user is logged in to the computer, from the system's own scheduler. The schedule is
+//! only kept there, so nothing about it is in the database; the setup wizard reads it back. Tests keep it in memory.
 //!
 //! - Windows: a Task Scheduler task, TASK_NAME, that runs recruiter.exe through
 //!   `conhost.exe --headless`, so no console window opens on the desktop each time it runs.
