@@ -1,6 +1,6 @@
 # cv_match
 
-Recruiter's CV match as a desktop app: one program for Windows (or any desktop) that keeps your
+Recruiter's CV match as a desktop app: one program for Windows or Linux that keeps your
 saved matches in SQLite, serves the match page on http://127.0.0.1:8765 in your own browser, and
 works with Jobnet's joblog through its browser extension. One local user, no sign-in.
 
@@ -117,18 +117,35 @@ In short, run `tailscale serve --bg http://127.0.0.1:8765` once, start the app w
 `--tailscale-name pc.your-tailnet.ts.net`, and open `https://pc.your-tailnet.ts.net/match` on the
 phone with Tailscale on.
 
-### Installing it
+### From a release
 
-`recruiter.exe install` (from a build folder, say), or double-clicking `Recruiter-setup.exe` from a
-GitHub release (the same program under another name; pushing a `v*` tag makes the release),
-copies the program to `%LOCALAPPDATA%\Programs\Recruiter`, adds it to the Start menu and to
-Windows' installed apps, points the job scan's task at the copy when there is one, and starts the
-copy, which opens the setup wizard. It needs no administrator. Installing again replaces the
-program and keeps your data, which is how an update goes in; close Recruiter first.
+Pushing a `v*` tag builds a GitHub release with `recruiter.exe` for Windows and
+`Recruiter-x86_64.AppImage` for Linux. Neither is installed: keep the file where you like and
+double-click it. Moving it later is fine; at its next start the job scan's schedule follows it.
 
-Uninstall it from Windows' installed apps, or with `recruiter.exe uninstall`. It removes the
-program, the shortcut and the job scan's task, and keeps the database, the models and the API
-keys.
+To remove it, close it and run `recruiter.exe cleanup` (`./Recruiter-x86_64.AppImage cleanup` on
+Linux), then delete the file. The cleanup lists what the app keeps outside its file and asks before
+removing it: the job scan's schedule, the API keys in Credential Manager (or the keyring), and the
+Jobnet extension's files, llama.cpp and Laya next to the database. It then asks separately whether
+to delete the database too (no unless you type y), and says that the extension itself is removed
+in Edge. Give it `--database` for a database elsewhere. When it can't start (the port is taken, the database can't be opened), its window
+stays open until you press Enter, so the reason can be read.
+
+### On Linux (and WSL)
+
+Take `Recruiter-x86_64.AppImage` from a release (or build it with `cargo build --release` in
+`app/`), make it executable and run it from wherever you keep it. There is nothing to install:
+delete the file to remove it. Tools like AppImageLauncher can add it to the applications menu. The
+database is `~/.local/share/Recruiter/recruiter.sqlite`, and API keys go in the keyring (the
+Secret Service: GNOME Keyring or KWallet), which has to be running to save one.
+
+The job scan's schedule is a systemd user timer, `recruiter-scan.timer`, in
+`~/.config/systemd/user` (`systemctl --user list-timers` shows it), running the AppImage file
+itself. Move the AppImage and the next start points the timer at its new place. Without systemd
+(WSL with systemd off, say) the setup says it couldn't be scheduled; on WSL, turn systemd on in
+`/etc/wsl.conf` (`[boot]` `systemd=true`). Where FUSE is missing, run the AppImage with
+`--appimage-extract-and-run`. `cleanup` removes the timer, as it does the task on Windows. macOS
+isn't covered yet.
 
 ### Starting it at login
 
@@ -170,12 +187,13 @@ Stop it with Ctrl+C.
 
 With a real key saved on the API key page, check these by hand after a change:
 
-- [ ] **Installing:** copy `recruiter.exe` to `Recruiter-setup.exe` (or take it from a release)
-      and double-click it. It says what it did and a new window starts Recruiter from
-      `%LOCALAPPDATA%\Programs\Recruiter`, opening /setup. Recruiter is in the Start menu and in
-      Settings > Apps > Installed apps; with a job scan task, its action runs the installed copy.
-      Uninstall it there: the window lists what was removed and waits for Enter, the folder goes
-      a few seconds later, and `%APPDATA%\Recruiter` stays.
+- [ ] **A moved program:** schedule the job scan, close the app, move `recruiter.exe` (or the
+      AppImage) to another folder and start it from there. The task's action (or the timer's
+      service) now runs it from the new folder.
+- [ ] **The cleanup:** with the app closed, run `recruiter.exe cleanup --database` on a test
+      database with a scheduled scan and a saved key. It lists them, removes them on y (the task is
+      gone from Task Scheduler, the key from Credential Manager), and keeps the database unless the
+      second question gets a y. With the app open it refuses.
 - [ ] **The dashboard and the setup:** start with `--database` naming a new file. The browser
       opens /match with the "No AI model is set up" alert and the missing rows; Set one up opens
       /setup, which suggests the app's own model on a PC with a good graphics card, else an OpenAI key.

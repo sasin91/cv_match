@@ -3,11 +3,11 @@
 
 pub mod account;
 pub mod app_core;
+pub mod cleanup;
 pub mod dashboard;
 pub mod db;
 pub mod dev_reload;
 pub mod extension;
-pub mod install;
 pub mod laya;
 pub mod llama;
 pub mod llm;
