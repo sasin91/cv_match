@@ -35,19 +35,82 @@ pub struct GgufFile {
     pub layers: Option<u32>,
 }
 
-/// The GGUF files in folder, by name; none when the folder isn't there.
+/// The models in folder, by name; none when the folder isn't there. A model split into shards
+/// (name-00001-of-00003.gguf ...) is one model: its first shard, which llama.cpp is started with
+/// and loads the others from, with the size of them all. A split model missing a shard is left
+/// out, and logged.
 pub fn list(folder: &Path) -> Vec<GgufFile> {
     let Ok(entries) = std::fs::read_dir(folder) else {
         return Vec::new();
     };
-    let mut files: Vec<GgufFile> = entries
+    let paths: Vec<PathBuf> = entries
         .filter_map(Result::ok)
         .map(|entry| entry.path())
         .filter(|path| is_gguf(path))
-        .filter_map(|path| read(&path).ok())
+        .collect();
+    let mut files: Vec<GgufFile> = paths
+        .iter()
+        .filter_map(|path| match shard_of(path) {
+            None => read(path).ok(),
+            Some(Shard { index: 1, count }) => whole_split_model(path, count, &paths),
+            Some(_) => None,
+        })
         .collect();
     files.sort_by(|a, b| a.name.cmp(&b.name));
     files
+}
+
+/// Where a shard is in its split model: index (from 1) of count.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+struct Shard {
+    index: u32,
+    count: u32,
+}
+
+/// The digits llama.cpp's gguf-split writes a shard's index and count in.
+const SHARD_DIGITS: usize = 5;
+
+/// "-00001-of-00003" before .gguf, as gguf-split names shards.
+fn shard_of(path: &Path) -> Option<Shard> {
+    let stem = path.file_stem()?.to_str()?;
+    let (rest, count) = stem.rsplit_once("-of-")?;
+    let (_, index) = rest.rsplit_once('-')?;
+    let is_shard_number = |digits: &str| digits.len() == SHARD_DIGITS && digits.bytes().all(|b| b.is_ascii_digit());
+    if !is_shard_number(index) || !is_shard_number(count) {
+        return None;
+    }
+    Some(Shard {
+        index: index.parse().ok()?,
+        count: count.parse().ok()?,
+    })
+}
+
+/// The path of a split model's shard index, from its first shard's path.
+fn shard_path(first: &Path, index: u32, count: u32) -> PathBuf {
+    let name = first.file_name().unwrap_or_default().to_string_lossy();
+    let first_suffix = format!("-{:0w$}-of-{count:0w$}.", 1, w = SHARD_DIGITS);
+    let suffix = format!("-{index:0w$}-of-{count:0w$}.", w = SHARD_DIGITS);
+    first.with_file_name(name.replacen(&first_suffix, &suffix, 1))
+}
+
+/// The split model whose first shard is first, sized as all its shards together, or None (logged)
+/// when a shard is missing.
+fn whole_split_model(first: &Path, count: u32, paths: &[PathBuf]) -> Option<GgufFile> {
+    let mut model = read(first).ok()?;
+    for index in 2..=count {
+        let shard = shard_path(first, index, count);
+        let size = paths.contains(&shard).then(|| std::fs::metadata(&shard).ok()).flatten();
+        let Some(size) = size else {
+            eprintln!(
+                "llama: {} is missing {}, so it isn't listed.",
+                model.name,
+                shard.display()
+            );
+            return None;
+        };
+        model.bytes += size.len();
+    }
+    Some(model)
 }
 
 fn is_gguf(path: &Path) -> bool {
@@ -261,6 +324,31 @@ pub mod tests {
         // The pair count says 3, so the header ends before qwen3.block_count.
         bytes[16..24].copy_from_slice(&3u64.to_le_bytes());
         assert_eq!(layer_count(&mut Cursor::new(bytes)).unwrap(), None);
+    }
+
+    #[test]
+    fn a_split_model_is_one_model_of_all_its_shards() {
+        let folder = std::env::temp_dir().join(format!("recruiter-gguf-shards-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let mut first = header("qwen3", 64);
+        first.resize(1000, 0);
+        std::fs::write(folder.join("big-00001-of-00002.gguf"), &first).unwrap();
+        std::fs::write(folder.join("big-00002-of-00002.gguf"), vec![0u8; 3000]).unwrap();
+        std::fs::write(folder.join("broken-00001-of-00002.gguf"), header("qwen3", 64)).unwrap();
+        std::fs::write(folder.join("small.gguf"), header("phi3", 32)).unwrap();
+        let models = list(&folder);
+        std::fs::remove_dir_all(&folder).unwrap();
+        let summary: Vec<(&str, u64, Option<u32>)> = models
+            .iter()
+            .map(|model| (model.name.as_str(), model.bytes, model.layers))
+            .collect();
+        assert_eq!(summary[0], ("big-00001-of-00002.gguf", 4000, Some(64)));
+        assert_eq!(
+            summary.len(),
+            2,
+            "the shard and the broken split aren't models: {summary:?}"
+        );
+        assert_eq!(summary[1].0, "small.gguf");
     }
 
     #[test]
