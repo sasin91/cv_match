@@ -117,13 +117,14 @@ fn run_cleanup(args: &[String]) -> ExitCode {
     let Some(database) = database_arg(args) else {
         return ExitCode::FAILURE;
     };
-    if std::net::TcpListener::bind(("127.0.0.1", server::DEFAULT_PORT)).is_err() {
+    // Held until the database's files are removed, so no Recruiter starts on it meanwhile.
+    let Ok(held) = cleanup::hold(&database) else {
         eprintln!(
-            "Recruiter seems to be running (port {} is in use). Close its window, then run the cleanup again.",
-            server::DEFAULT_PORT
+            "Recruiter is running on {}. Close its window, then run the cleanup again.",
+            database.display()
         );
         return ended_by_hand(ExitCode::FAILURE);
-    }
+    };
     let Some(runtime) = runtime() else {
         return ExitCode::FAILURE;
     };
@@ -158,12 +159,18 @@ fn run_cleanup(args: &[String]) -> ExitCode {
         println!("Nothing was removed.");
         return ended_by_hand(ExitCode::SUCCESS);
     }
-    if !found.database_files.is_empty() {
+    if !database.exists() {
+        // Only the lock this cleanup took is left.
+        drop(held);
+        let _ = std::fs::remove_file(cleanup::lock_file(&database));
+    } else {
         println!(
             "Your database, {}, holds your profile, matches and applications, and can't be brought back once deleted.",
             database.display()
         );
         if ask("Delete your database too?") {
+            // Windows won't delete a file this program still has open.
+            drop(held);
             failed.extend(cleanup::remove_database(&found));
             let default_path = db::default_path();
             let default_folder = default_path.parent().unwrap_or(std::path::Path::new("."));
@@ -275,6 +282,14 @@ fn run_server(args: &[String]) -> ExitCode {
         Err(e) => {
             eprintln!("Couldn't open {}: {e}", database.display());
             return ended_by_hand(ExitCode::FAILURE);
+        }
+    };
+    // Held while the app runs, so `recruiter cleanup` won't remove the database under it.
+    let _held = match cleanup::hold(&database) {
+        Ok(held) => held,
+        Err(cleanup::InUse) => {
+            println!("Another Recruiter is running on {} too.", database.display());
+            None
         }
     };
     let user_id = match runtime.block_on(server::local_user(&db)) {

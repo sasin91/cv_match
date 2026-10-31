@@ -51,10 +51,41 @@ pub fn app_folders(database: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// The database's own files: the file, and SQLite's -wal, -shm and -journal beside it.
+/// Another Recruiter holds the database's lock: it is running on it.
+#[derive(Debug, PartialEq)]
+pub struct InUse;
+
+/// The file whose lock a running Recruiter holds for database: the database's name and -lock.
+pub fn lock_file(database: &Path) -> PathBuf {
+    let mut name = database.as_os_str().to_owned();
+    name.push("-lock");
+    PathBuf::from(name)
+}
+
+/// Takes database's lock, held until the file is dropped: the server holds it while it runs, and
+/// the cleanup takes it so it never removes a database that is in use (whatever port the app
+/// runs on). Ok(None) when the lock file can't be made or locked at all (a read-only folder,
+/// say), which doesn't stop either.
+pub fn hold(database: &Path) -> Result<Option<std::fs::File>, InUse> {
+    let Ok(file) = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(lock_file(database))
+    else {
+        return Ok(None);
+    };
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(std::fs::TryLockError::WouldBlock) => Err(InUse),
+        Err(std::fs::TryLockError::Error(_)) => Ok(None),
+    }
+}
+
+/// The database's own files: the file, SQLite's -wal, -shm and -journal beside it, and the lock.
 pub fn database_files(database: &Path) -> Vec<PathBuf> {
     let mut files = vec![database.to_path_buf()];
-    for suffix in ["-wal", "-shm", "-journal"] {
+    for suffix in ["-wal", "-shm", "-journal", "-lock"] {
         let mut name = database.as_os_str().to_owned();
         name.push(suffix);
         files.push(PathBuf::from(name));
@@ -166,10 +197,24 @@ mod tests {
                 "/data/recruiter.sqlite",
                 "/data/recruiter.sqlite-wal",
                 "/data/recruiter.sqlite-shm",
-                "/data/recruiter.sqlite-journal"
+                "/data/recruiter.sqlite-journal",
+                "/data/recruiter.sqlite-lock"
             ]
             .map(PathBuf::from)
         );
+    }
+
+    #[test]
+    fn a_held_database_is_in_use_until_its_holder_lets_go() {
+        let folder = std::env::temp_dir().join(format!("recruiter-lock-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let database = folder.join("recruiter.sqlite");
+        let held = hold(&database).unwrap();
+        assert!(held.is_some());
+        assert_eq!(hold(&database).err(), Some(InUse));
+        drop(held);
+        assert!(hold(&database).unwrap().is_some());
+        std::fs::remove_dir_all(&folder).unwrap();
     }
 
     #[test]
