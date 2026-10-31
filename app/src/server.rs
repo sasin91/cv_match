@@ -173,6 +173,16 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/account/submit_uses", post(account::submit_uses))
         .route("/account/submit_delete", post(account::submit_delete))
         .route("/account/submit_check", post(account::submit_check))
+        .route("/llama_setup", get(account::llama_setup::index))
+        .route(
+            "/llama_setup/download_server",
+            post(account::llama_setup::download_server),
+        )
+        .route(
+            "/llama_setup/download_model",
+            post(account::llama_setup::download_model),
+        )
+        .route("/llama_setup/use_model", post(account::llama_setup::use_model))
         .route("/match_module/{*path}", get(match_asset))
         .route("/js/{*path}", get(public_js));
     if state.dev_reload.is_some() {

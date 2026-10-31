@@ -28,7 +28,7 @@ dirs = "6"
 # Lookaround in some patterns (Apply_instructions), which the regex crate lacks.
 fancy-regex = "0.20"
 axum = "0.8"
-tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "process", "time"] }
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "sync", "process", "time", "fs", "io-util"] }
 askama = "0.16"
 # The page's CSS and JS, read from ../assets while developing and built into the exe for release.
 rust-embed = { version = "8", features = ["include-exclude"] }
@@ -51,6 +51,8 @@ ego-tree = "0.11"
 url = "2"
 html-escape = "0.3"
 encoding_rs = "0.8"
+# The llama.cpp release the setup wizard downloads, unzipped into the llama folder.
+zip = { version = "9", default-features = false, features = ["deflate"] }
 # Laya on ONNX Runtime, run in this process (ONNX Runtime linked in statically).
 laya-server = { path = "../laya-server" }
 

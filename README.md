@@ -65,10 +65,19 @@ Laya line.
 
 ### The app's own model (llama.cpp)
 
-Instead of a key, the app can run a GGUF model itself. Unzip a llama.cpp release for Windows
-(github.com/ggml-org/llama.cpp/releases: `win-cuda` for an NVIDIA card, `win-vulkan` for AMD or
-others, `win-cpu` without a card) into `%APPDATA%\Recruiter\llama`, or point `--llama` at
-another folder, and put models next to it:
+Instead of a key, the app can run a GGUF model itself. Open http://127.0.0.1:8765/llama_setup (or
+**Set it up** on the API key page):
+
+1. **Download llama.cpp** fetches the latest release's Windows build for this computer's card
+   (CUDA for NVIDIA, Vulkan for every other card, CPU without one) and unzips it into
+   `%APPDATA%\Recruiter\llama`, or the folder `--llama` names. A `llama-server.exe` already on
+   the PATH (winget's llama.cpp, say) is used instead, and nothing is downloaded.
+2. Each offered model (Qwen3 1.7B to 14B) is weighed against this computer's memory and graphics
+   card. **Download** the recommended one into `llama\models`.
+3. **Use this model** saves it as **This app's own model (llama.cpp)**, and the API key page
+   picks what it is used for.
+
+You can also put llama.cpp and `.gguf` files there by hand:
 
     llama\llama-server.exe      and the DLLs from the same zip
     llama\models\*.gguf         for example Qwen3-8B-Q4_K_M.gguf
@@ -144,8 +153,8 @@ With a real key saved on the API key page, check these by hand after a change:
       refused.
 - [ ] **Writing:** on a saved match, write the application, then the tailored résumé. Each one
       appears in its box. Write one again with notes, and the earlier version is listed under it.
-- [ ] **The app's own model:** with llama-server and a .gguf in the llama folder, the API key
-      page lists the model and how it fits. Save "This app's own model" with the model blank,
+- [ ] **The app's own model:** on /llama_setup, download llama.cpp and the recommended model,
+      then Use this model; the API key page lists the model and how it fits. Save "This app's own model" with the model blank,
       press Check key (the first check loads the model), then run an AI match on it.
 - [ ] **PDFs:** Download PDF on the application, the résumé, the CV and the job post. Each opens as
       an A4 page with the expected file name.

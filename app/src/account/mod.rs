@@ -10,6 +10,7 @@
 pub mod account_model;
 pub mod key_vault;
 pub mod llama_panel;
+pub mod llama_setup;
 pub mod saved_key;
 
 use std::sync::Arc;

@@ -103,10 +103,13 @@
     <h2>This app's own model</h2>
     <div class="saved-key">
         <p class="muted">The app runs a GGUF model itself with llama.cpp's <code>{{ llama.server_file }}</code>, from <code>{{ llama.folder }}</code>. It starts on the first AI call and stops with the app.</p>
-        {%- if !llama.server_found %}
-        <p class="notice">There's no <code>{{ llama.server_file }}</code> in <code>{{ llama.folder }}</code> yet. Unzip a llama.cpp release for Windows there: the "win-cuda" build for an NVIDIA card, "win-vulkan" for others.</p>
+        {%- if llama.server_found %}
+        <p>llama-server: <code>{{ llama.server_path }}</code>.</p>
+        {%- else %}
+        <p class="notice">There's no <code>{{ llama.server_file }}</code> in <code>{{ llama.folder }}</code> or on this computer's PATH yet.</p>
         {%- endif %}
         <p>This computer: {{ llama.computer }}.</p>
+        <p><a href="llama_setup">Set it up: download llama.cpp and a model that fits</a></p>
         {%- if let Some(card_problem) = llama.card_problem %}
         <p class="notice">{{ card_problem }}</p>
         {%- endif %}

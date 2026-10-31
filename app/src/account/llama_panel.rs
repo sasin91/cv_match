@@ -19,6 +19,8 @@ pub struct LlamaPanel {
     pub folder: String,
     pub server_file: &'static str,
     pub server_found: bool,
+    /// The llama-server that runs: the llama folder's, or one on PATH.
+    pub server_path: String,
     pub models_folder: String,
     /// "32.0 GB memory, NVIDIA GeForce RTX 4070 with 12.0 GB".
     pub computer: String,
@@ -34,7 +36,12 @@ impl LlamaPanel {
         LlamaPanel {
             folder: overview.folder.display().to_string(),
             server_file: llama_server::SERVER_FILE,
-            server_found: overview.server_found,
+            server_found: overview.server.is_some(),
+            server_path: overview
+                .server
+                .as_ref()
+                .map(|path| path.display().to_string())
+                .unwrap_or_default(),
             models_folder: overview.folder.join(llama_server::MODELS_FOLDER).display().to_string(),
             computer: overview.inventory.to_string(),
             card_problem: overview.card_problem.clone(),
