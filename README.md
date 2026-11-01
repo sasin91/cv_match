@@ -8,7 +8,7 @@ works with Jobnet's joblog through its browser extension. One local user, no sig
 | --- | --- |
 | `app/` | the app (`recruiter.exe`): the matching, the pages, the database. See its README. |
 | `laya-server/` | Laya on ONNX Runtime in Rust: the model the app runs in-process, and a `/v1/systemone` HTTP server |
-| `assets/` | what the app builds in: the page's CSS and JS, Trongate MX, the taxonomy index and the Danish postcodes; pdf.js 4.10.38 (`match/pdfjs`) and DejaVu Sans 2.37 (`fonts`) |
+| `assets/` | what the app builds in: the page's CSS and JS, Trongate MX, the taxonomy index and the Danish postcodes and DejaVu Sans 2.37 (`fonts`) |
 | `extension/jobnet-joblog/` | the Jobnet extension the app ships and you load once in Edge or Chrome |
 
 ## Setting it up on Windows

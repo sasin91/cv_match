@@ -18,6 +18,8 @@ use super::match_model::Version;
 pub const APPLICATION: &str = "application";
 /// The kind of document that is a tailored résumé (also documents.kind).
 pub const RESUME: &str = "resume";
+/// The CV a match was made with, kept once for every match made with it (match_documents).
+pub const CV: &str = "cv";
 
 /// The documents in the order the panel shows them: kind, title, noun, Write button.
 pub const KINDS: [(&str, &str, &str, &str); 2] = [

@@ -552,6 +552,13 @@ pub async fn extract_job(State(state): State<Arc<AppState>>, Json(input): Json<E
     Ok(Json(job).into_response())
 }
 
+/// POST match/pdf_text (the PDF's bytes): {text}, the PDF's text, which cv_file.js puts in the
+/// CV box.
+pub async fn pdf_text(State(state): State<Arc<AppState>>, body: axum::body::Bytes) -> Answer {
+    let text = match_service::read_pdf(&state.context, body.to_vec()).await?;
+    Ok(Json(json!({ "text": text })).into_response())
+}
+
 /// POST match/extract_cv {text}: the CV as a structured profile, read by the model, or by the
 /// free reader when the key is off for evaluating job posts.
 pub async fn extract_cv(State(state): State<Arc<AppState>>, Json(input): Json<ExtractInput>) -> Answer {

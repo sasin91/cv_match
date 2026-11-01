@@ -17,10 +17,12 @@ SELECT
   m.tag AS "tag?",
   m.rejected_at,
   EXISTS (
-    SELECT 1 FROM documents d WHERE d.match_id = p.match_id AND d.kind = 'application'
+    SELECT 1 FROM match_documents md JOIN documents d ON d.id = md.document_id
+    WHERE md.match_id = p.match_id AND d.kind = 'application'
   ) AS "has_application!: bool",
   EXISTS (
-    SELECT 1 FROM documents d WHERE d.match_id = p.match_id AND d.kind = 'resume'
+    SELECT 1 FROM match_documents md JOIN documents d ON d.id = md.document_id
+    WHERE md.match_id = p.match_id AND d.kind = 'resume'
   ) AS "has_resume!: bool",
   (
     SELECT i.text

@@ -25,6 +25,7 @@ use super::{Job, Profile, apply_instructions, match_prompts, pdf_writer, reject_
 use crate::account::account_model::JOB_EVALUATION;
 use crate::context::Context;
 use crate::laya::laya_client;
+use crate::pdf_text::child;
 use crate::profile;
 use crate::service_error::{ErrorKind, ServiceError};
 
@@ -409,6 +410,49 @@ pub async fn fetch_job(context: &Context, url: &str) -> Result<Page, ServiceErro
         crate::log_line!("match (fetch_job): {url}: {why}");
         ServiceError::new(ErrorKind::Invalid, why)
     })
+}
+
+/// The biggest PDF read for its text. A CV is rarely over a few MB; this leaves room for one
+/// with photos while keeping a wrong file from being held in memory.
+pub const MAX_PDF_BYTES: usize = 20 * 1024 * 1024;
+
+/// An uploaded PDF's text (a CV, or a job post saved as PDF), read by the app's PDF reader
+/// (pdf_text) in a child process, so a file that breaks the reader ends only that process. A PDF
+/// that holds no text, as a scan, is said so: its text must be pasted.
+pub async fn read_pdf(context: &Context, bytes: Vec<u8>) -> Result<String, ServiceError> {
+    if bytes.len() > MAX_PDF_BYTES {
+        return Err(ServiceError::new(
+            ErrorKind::TooLarge,
+            format!("The PDF is over {} MB.", MAX_PDF_BYTES / (1024 * 1024)),
+        ));
+    }
+    let Some(reader) = &context.pdf_reader else {
+        return Err(ServiceError::internal(
+            "match/pdf_text",
+            "The app couldn't find its own program to read the PDF with.",
+        ));
+    };
+    match child::text_of(reader, bytes).await {
+        Ok(text) if text.is_empty() => Err(ServiceError::new(
+            ErrorKind::Invalid,
+            "The PDF has no text to read; it may be a scan. Paste its text instead.",
+        )),
+        Ok(text) => Ok(text),
+        Err(child::Failed::Unreadable(why)) => {
+            crate::log_line!("match/pdf_text: {why}");
+            Err(ServiceError::new(
+                ErrorKind::Invalid,
+                format!("The PDF couldn't be read ({why}). Paste its text instead."),
+            ))
+        }
+        Err(child::Failed::Stopped(why)) => {
+            crate::log_line!("match/pdf_text: {why}");
+            Err(ServiceError::new(
+                ErrorKind::Invalid,
+                format!("The PDF couldn't be read: {why}. Paste its text instead."),
+            ))
+        }
+    }
 }
 
 /// The job post as structured requirements, read by the model, or by the free reader when the

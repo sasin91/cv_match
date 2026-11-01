@@ -196,7 +196,7 @@ async fn sites(db: &SqlitePool, id: i64) -> sqlx::Result<Vec<String>> {
 /// Saves a search (a new one when id is 0) and replaces its sites; an active search's pause is
 /// lifted. Returns the search's id.
 pub async fn save(db: &SqlitePool, id: i64, fields: &SearchFields, now: i64) -> sqlx::Result<i64> {
-    let mut tx = db.begin().await?;
+    let mut tx = crate::db::write_transaction(db).await?;
     let (remote_ok, active) = (i64::from(fields.remote_ok), i64::from(fields.active));
     let id = if id == 0 {
         sqlx::query!(
@@ -574,7 +574,7 @@ pub async fn scannable(db: &SqlitePool) -> sqlx::Result<Vec<i64>> {
 /// scanned_before. One statement, so two scans at once (the schedule's and Scan now's) can't
 /// both claim it. Returns the run's id when this scan has it.
 pub async fn start_run(db: &SqlitePool, search_id: i64, scanned_before: i64, now: i64) -> sqlx::Result<Option<i64>> {
-    let mut tx = db.begin().await?;
+    let mut tx = crate::db::write_transaction(db).await?;
     let claimed = sqlx::query!(
         r#"
         UPDATE job_searches

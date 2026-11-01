@@ -16,6 +16,7 @@ pub mod llama;
 pub mod llm;
 pub mod matches;
 pub mod pdf;
+pub mod pdf_text;
 pub mod profile;
 pub mod scan_schedule;
 pub mod server;

@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
-use sqlx::{Executor, SqlitePool};
+use sqlx::{Acquire, Executor, Sqlite, SqliteConnection, SqlitePool, Transaction};
 
 /// Every migration, in the order they run. A new one goes at the end, never in between.
 const MIGRATIONS: &[(&str, &str)] = &[
@@ -21,6 +21,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         include_str!("../migrations/0002_llm_key_per_provider.sql"),
     ),
     ("0003_job_scan", include_str!("../migrations/0003_job_scan.sql")),
+    (
+        "0004_match_documents",
+        include_str!("../migrations/0004_match_documents.sql"),
+    ),
 ];
 
 /// How long a write waits for another connection's write to finish, in milliseconds.
@@ -75,8 +79,22 @@ pub async fn open_in_memory() -> sqlx::Result<SqlitePool> {
     Ok(db)
 }
 
+/// A transaction that writes, holding the database's write lock from its start (BEGIN
+/// IMMEDIATE), so it waits its turn behind another writer for up to BUSY_TIMEOUT_MS. A plain
+/// (deferred) transaction takes the lock only at its first write, and then SQLite can answer
+/// "database is locked" at once instead of waiting, as overlapping rejects once did on Windows
+/// CI.
+pub async fn write_transaction(db: &SqlitePool) -> sqlx::Result<Transaction<'static, Sqlite>> {
+    db.begin_with("BEGIN IMMEDIATE").await
+}
+
 /// Applies the migrations schema_migrations doesn't list yet, each in its own transaction, after
 /// checking that the ones it lists are these.
+///
+/// Each runs with foreign keys off, as SQLite's way of making a table again asks
+/// (https://sqlite.org/lang_altertable.html#otheralter): dropping the old table would otherwise
+/// delete every row that hangs on it. Before it commits, every foreign key is checked, so a
+/// migration that leaves one dangling is rolled back.
 ///
 /// These queries aren't checked at compile time: schema_migrations is made here, not by a
 /// migration, so the database the checks run against (made from migrations/) doesn't have it.
@@ -100,16 +118,36 @@ async fn migrate(db: &SqlitePool) -> sqlx::Result<()> {
         if applied {
             continue;
         }
-        let mut tx = db.begin().await?;
-        tx.execute(sqlx::raw_sql(*sql)).await?;
-        sqlx::query(r#"INSERT INTO schema_migrations (name, sql, applied_at) VALUES (?1, ?2, unixepoch())"#)
-            .bind(name)
-            .bind(*sql)
-            .execute(&mut *tx)
-            .await?;
-        tx.commit().await?;
+        // The pragma is per connection and ignored inside a transaction, so it is set on the
+        // connection the transaction then runs on, and set back after.
+        let mut connection = db.acquire().await?;
+        connection.execute("PRAGMA foreign_keys = OFF").await?;
+        let applied = apply(&mut connection, name, sql).await;
+        connection.execute("PRAGMA foreign_keys = ON").await?;
+        applied?;
     }
     Ok(())
+}
+
+/// One migration in a transaction, committed only when every foreign key still points somewhere.
+async fn apply(connection: &mut SqliteConnection, name: &str, sql: &'static str) -> sqlx::Result<()> {
+    let mut tx = connection.begin().await?;
+    tx.execute(sqlx::raw_sql(sql)).await?;
+    let dangling: Vec<(String,)> = sqlx::query_as(r#"SELECT "table" FROM pragma_foreign_key_check"#)
+        .fetch_all(&mut *tx)
+        .await?;
+    if let Some((table,)) = dangling.first() {
+        return Err(sqlx::Error::Protocol(format!(
+            "migration {name} left {} rows pointing at nothing, first in {table}",
+            dangling.len()
+        )));
+    }
+    sqlx::query(r#"INSERT INTO schema_migrations (name, sql, applied_at) VALUES (?1, ?2, unixepoch())"#)
+        .bind(name)
+        .bind(sql)
+        .execute(&mut *tx)
+        .await?;
+    tx.commit().await
 }
 
 /// Fails when a migration schema_migrations lists isn't one of MIGRATIONS with the same text: the
@@ -210,9 +248,11 @@ mod tests {
         db.execute(sqlx::raw_sql(
             r#"
             INSERT INTO trongate_users (id) VALUES (1);
-            INSERT INTO matches (id, trongate_user_id, job_title, job_text, cv_text, score, points,
+            INSERT INTO matches (id, trongate_user_id, job_title, job_text, score, points,
                                     max_points, tag, created_at)
-            VALUES (7, 1, 'PHP developer', 'post', 'cv', 0.81, 8, 10, 'good', 0);
+            VALUES (7, 1, 'PHP developer', 'post', 0.81, 8, 10, 'good', 0);
+            INSERT INTO documents (id, kind, text, written_at) VALUES (1, 'cv', 'cv', 0);
+            INSERT INTO match_documents (match_id, document_id) VALUES (7, 1);
             INSERT INTO match_items (match_id, criterion, text, verdict, decided_by)
             VALUES (7, 'skills', 'PHP', 'met', 'exact');
             DELETE FROM matches WHERE id = 7;
@@ -270,5 +310,101 @@ mod tests {
         .execute(&db)
         .await
         .unwrap();
+    }
+
+    /// An in-memory database with the migrations before `upto` applied and recorded.
+    async fn migrated_before(upto: usize) -> SqlitePool {
+        let options = SqliteConnectOptions::new().in_memory(true).foreign_keys(true);
+        let db = SqlitePoolOptions::new()
+            .max_connections(IN_MEMORY_CONNECTIONS)
+            .idle_timeout(None)
+            .max_lifetime(None)
+            .connect_with(options)
+            .await
+            .unwrap();
+        db.execute(sqlx::raw_sql(
+            r#"CREATE TABLE schema_migrations (name TEXT PRIMARY KEY, sql TEXT NOT NULL, applied_at INTEGER NOT NULL)"#,
+        ))
+        .await
+        .unwrap();
+        for (name, sql) in &MIGRATIONS[..upto] {
+            db.execute(sqlx::raw_sql(*sql)).await.unwrap();
+            sqlx::query(r#"INSERT INTO schema_migrations (name, sql, applied_at) VALUES (?1, ?2, 0)"#)
+                .bind(name)
+                .bind(*sql)
+                .execute(&db)
+                .await
+                .unwrap();
+        }
+        db
+    }
+
+    #[tokio::test]
+    async fn each_cv_is_kept_once_when_documents_hang_on_matches_through_match_documents() {
+        let before = MIGRATIONS
+            .iter()
+            .position(|(name, _)| *name == "0004_match_documents")
+            .unwrap();
+        let db = migrated_before(before).await;
+        db.execute(sqlx::raw_sql(
+            r#"
+            INSERT INTO trongate_users (id) VALUES (1);
+            INSERT INTO matches (id, trongate_user_id, job_title, job_text, cv_name, cv_text, score, points,
+                                 max_points, tag, created_at)
+            VALUES (1, 1, 'A', 'post a', 'cv.pdf', 'PHP', 0.8, 8, 10, 'good', 10),
+                   (2, 1, 'B', 'post b', 'cv.pdf', 'PHP', 0.7, 7, 10, 'good', 20),
+                   (3, 1, 'C', 'post c', 'cv.pdf', 'PHP, Rust', 0.6, 6, 10, 'fair', 30);
+            INSERT INTO documents (id, match_id, kind, text, written_at) VALUES (9, 1, 'resume', 'Mette', 40);
+            INSERT INTO match_resumes (document_id, name, intro) VALUES (9, 'Mette', 'Backend.');
+            "#,
+        ))
+        .await
+        .unwrap();
+
+        migrate(&db).await.unwrap();
+        let cvs: Vec<(i64, String)> =
+            sqlx::query_as(r#"SELECT id, text FROM documents WHERE kind = 'cv' ORDER BY written_at"#)
+                .fetch_all(&db)
+                .await
+                .unwrap();
+        assert_eq!(
+            cvs.iter().map(|(_, text)| text.as_str()).collect::<Vec<_>>(),
+            ["PHP", "PHP, Rust"]
+        );
+        let links: Vec<(i64, i64)> =
+            sqlx::query_as(r#"SELECT match_id, document_id FROM match_documents ORDER BY match_id, document_id"#)
+                .fetch_all(&db)
+                .await
+                .unwrap();
+        assert_eq!(links, [(1, 9), (1, cvs[0].0), (2, cvs[0].0), (3, cvs[1].0)]);
+        // The résumé keeps its id, and the fields written for it.
+        let resume: (String,) = sqlx::query_as(r#"SELECT intro FROM match_resumes WHERE document_id = 9"#)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(resume.0, "Backend.");
+
+        // A match's own documents go with it; a CV stays while another match uses it.
+        db.execute(sqlx::raw_sql(r#"DELETE FROM matches WHERE id = 1"#))
+            .await
+            .unwrap();
+        let left: Vec<(i64,)> = sqlx::query_as(r#"SELECT id FROM documents ORDER BY id"#)
+            .fetch_all(&db)
+            .await
+            .unwrap();
+        assert_eq!(left, [(cvs[0].0,), (cvs[1].0,)]);
+        let fields: (i64,) = sqlx::query_as(r#"SELECT COUNT(*) FROM match_resumes"#)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(fields.0, 0);
+        db.execute(sqlx::raw_sql(r#"DELETE FROM matches WHERE id = 2"#))
+            .await
+            .unwrap();
+        let left: (i64,) = sqlx::query_as(r#"SELECT COUNT(*) FROM documents"#)
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(left.0, 1);
     }
 }

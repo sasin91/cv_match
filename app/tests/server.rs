@@ -1,6 +1,7 @@
 //! The local server answers the match page's requests as the page expects, and only from its
 //! own page.
 
+use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
 
 use axum::body::Body;
@@ -26,15 +27,18 @@ static TAXONOMY: LazyLock<Arc<Taxonomy>> = LazyLock::new(|| Arc::new(Taxonomy::l
 /// a rejected one.
 const SEED: &str = "
 INSERT INTO trongate_users (id) VALUES (3);
-INSERT INTO matches (id, trongate_user_id, job_title, company, job_url, job_text, cv_name, cv_text, score, points, max_points, tag, created_at)
-VALUES (21, 3, 'PHP-udvikler', 'Firma <A/S>', 'https://www.jobindex.dk/job/1', 'Vi søger en PHP-udvikler.\nSend din ansøgning til job@firma.dk. Skriv \"Backend\" i emnefeltet.', 'cv', 'PHP', 0.86, 9, 10, 'top', 1760000000),
-       (22, 3, 'Mekaniker', '', NULL, 'Mekaniker søges', 'cv', 'PHP', 0.2, 1, 10, 'poor', 1760000100);
+INSERT INTO matches (id, trongate_user_id, job_title, company, job_url, job_text, score, points, max_points, tag, created_at)
+VALUES (21, 3, 'PHP-udvikler', 'Firma <A/S>', 'https://www.jobindex.dk/job/1', 'Vi søger en PHP-udvikler.\nSend din ansøgning til job@firma.dk. Skriv \"Backend\" i emnefeltet.', 0.86, 9, 10, 'top', 1760000000),
+       (22, 3, 'Mekaniker', '', NULL, 'Mekaniker søges', 0.2, 1, 10, 'poor', 1760000100);
+INSERT INTO documents (id, kind, name, text, written_at) VALUES (1, 'cv', 'cv', 'PHP', 1760000000);
+INSERT INTO match_documents (match_id, document_id) VALUES (21, 1), (22, 1);
 INSERT INTO match_items (match_id, criterion, text, verdict, decided_by, reason, sort_order)
 VALUES (21, 'requirements', 'PHP', 'met', 'exact', 'Named in the CV.', 0),
        (21, 'location', 'Bor i København', 'missing', 'llm', 'Lives in Slagelse.', 1);
 INSERT INTO match_rejections (match_id, reason, note, created_at) VALUES (22, 'commute', '1h each way', 0);
 UPDATE matches SET rejected_at = 1 WHERE id = 22;
-INSERT INTO documents (id, match_id, kind, text, written_at) VALUES (5, 21, 'resume', 'Mette Sørensen', 1760000200);
+INSERT INTO documents (id, kind, text, written_at) VALUES (5, 'resume', 'Mette Sørensen', 1760000200);
+INSERT INTO match_documents (match_id, document_id) VALUES (21, 5);
 INSERT INTO match_resumes (document_id, name, intro) VALUES (5, 'Mette Sørensen', 'Backend-udvikler.');
 INSERT INTO match_resume_entries (id, document_id, section, title, sort_order) VALUES (1, 5, 'experience', 'Udvikler', 0);
 INSERT INTO match_resume_lines (document_id, entry_id, kind, text, sort_order)
@@ -51,10 +55,10 @@ async fn seeded() -> SqlitePool {
 async fn app() -> axum::Router {
     let db = seeded().await;
     let user_id = server::local_user(&db).await.unwrap();
-    server::router(Arc::new(AppState::new(
-        Arc::new(Context::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory())),
-        PORT,
-    )))
+    let mut context = Context::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory());
+    // PDFs are read by `recruiter read-pdf`; this test's own program isn't recruiter.
+    context.pdf_reader = Some(PathBuf::from(env!("CARGO_BIN_EXE_recruiter")));
+    server::router(Arc::new(AppState::new(Arc::new(context), PORT)))
 }
 
 async fn send(request: Request<Body>) -> (StatusCode, String) {
@@ -253,18 +257,34 @@ async fn the_page_css_and_js_are_served() {
     }
 }
 
+/// POST match/pdf_text with these bytes: the status and the JSON answer.
+async fn pdf_text(app: &axum::Router, bytes: Vec<u8>) -> (StatusCode, serde_json::Value) {
+    let request = Request::post("/match/pdf_text")
+        .header(header::HOST, HOST)
+        .header(header::ORIGIN, ORIGIN)
+        .header(header::CONTENT_TYPE, "application/pdf")
+        .body(Body::from(bytes))
+        .unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    let status = response.status();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    (status, serde_json::from_slice(&body).unwrap())
+}
+
 #[tokio::test]
-async fn pdf_js_is_served_from_the_app_for_offline_uploads() {
-    for path in [
-        "/match_module/pdfjs/pdf.min.mjs",
-        "/match_module/pdfjs/pdf.worker.min.mjs",
-    ] {
-        let response = app().await.oneshot(get(path)).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK, "{path}");
-        // Browsers only run a module whose type is JavaScript.
-        let mime = response.headers()[header::CONTENT_TYPE].to_str().unwrap();
-        assert!(mime.contains("javascript"), "{path}: {mime}");
-    }
+async fn an_uploaded_pdf_is_read_by_the_app_not_the_browser() {
+    let app = app().await;
+    // The app's own PDF of a saved job post reads back as its text.
+    let (status, _, _, job_pdf) = pdf(&app, r#"{"id": 22, "kind": "job"}"#).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, answer) = pdf_text(&app, job_pdf).await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert!(answer["text"].as_str().unwrap().contains("Mekaniker"), "{answer}");
+
+    // A file that isn't a PDF says why, so the text can be pasted instead.
+    let (status, answer) = pdf_text(&app, b"not a pdf".to_vec()).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(answer["error"].as_str().unwrap().contains("Paste its text"), "{answer}");
 }
 
 /// A saved match's PDF: its status, Content-Type and Content-Disposition, and its bytes.
@@ -1120,8 +1140,8 @@ async fn dismissing_a_found_post_rejects_its_match_and_rejecting_the_match_dismi
     followed_to(&app, post_form("/job_scan/submit/0", saved)).await;
     db.execute(sqlx::raw_sql(
         r#"
-        INSERT INTO matches (id, trongate_user_id, job_title, company, job_text, cv_text, score, points, max_points, tag, created_at)
-        VALUES (5, 1, 'PHP developer', 'Acme', 'post', 'cv', 0.8, 8, 10, 'good', 100);
+        INSERT INTO matches (id, trongate_user_id, job_title, company, job_text, score, points, max_points, tag, created_at)
+        VALUES (5, 1, 'PHP developer', 'Acme', 'post', 0.8, 8, 10, 'good', 100);
         INSERT INTO scanned_job_posts (id, job_search_id, url, url_hash, title, status, match_id, found_at)
         VALUES (1, 1, 'https://jobnet.dk/1', 'x', 'PHP developer', 'matched', 5, 100);
         "#,

@@ -10,7 +10,7 @@ use sqlx::sqlite::SqliteConnection;
 
 use super::Job;
 use super::apply_instructions::{self, ApplyInstructions};
-use super::document_box::{APPLICATION, RESUME};
+use super::document_box::{APPLICATION, CV, RESUME};
 use super::match_score;
 use super::matcher::{Groups, Score, Verdicts};
 use super::reject_reason::Rejection;
@@ -252,7 +252,7 @@ pub async fn save(
     let job_url = (!new.job_url.is_empty()).then(|| cut(new.job_url, lengths::JOB_URL));
     let cv_name = cut(new.cv_name, lengths::NAME);
     let index = match_score::round_to(score.index, SCORE_DECIMALS);
-    let mut tx = db.begin().await?;
+    let mut tx = crate::db::write_transaction(db).await?;
     let id = sqlx::query_file!(
         "queries/match_model/save.sql",
         user_id,
@@ -260,8 +260,6 @@ pub async fn save(
         company,
         job_url,
         new.job_text,
-        cv_name,
-        new.cv_text,
         index,
         score.rank,
         score.total,
@@ -271,6 +269,8 @@ pub async fn save(
     .execute(&mut *tx)
     .await?
     .last_insert_rowid();
+    let cv_id = saved_cv(&mut tx, &cv_name, new.cv_text, now).await?;
+    link_document(&mut tx, id, cv_id).await?;
     let mut order: i64 = 0;
     for (criterion, list) in groups {
         for item in list {
@@ -452,17 +452,58 @@ pub async fn existing(db: &SqlitePool, user_id: i64, cv_text: &str, job_text: &s
     }
     sqlx::query_scalar!(
         r#"
-        SELECT id FROM matches
-        WHERE trongate_user_id IS ?1 AND cv_text = ?2 AND job_text = ?3
-        ORDER BY created_at DESC, id DESC
+        SELECT m.id FROM matches m
+        JOIN match_documents md ON md.match_id = m.id
+        JOIN documents d ON d.id = md.document_id AND d.kind = ?4
+        WHERE m.trongate_user_id IS ?1 AND d.text = ?2 AND m.job_text = ?3
+        ORDER BY m.created_at DESC, m.id DESC
         LIMIT 1
         "#,
         user_id,
         cv_text,
-        job_text
+        job_text,
+        CV
     )
     .fetch_optional(db)
     .await
+}
+
+/// The id of the CV document with this name and text, saved now if there is none yet: each CV
+/// is kept once, however many matches are made with it.
+async fn saved_cv(tx: &mut SqliteConnection, name: &str, text: &str, now: i64) -> sqlx::Result<i64> {
+    let kept = sqlx::query_scalar!(
+        r#"SELECT id AS "id!" FROM documents WHERE kind = ?1 AND name = ?2 AND text = ?3"#,
+        CV,
+        name,
+        text
+    )
+    .fetch_optional(&mut *tx)
+    .await?;
+    if let Some(id) = kept {
+        return Ok(id);
+    }
+    Ok(sqlx::query!(
+        r#"INSERT INTO documents (kind, name, text, written_at) VALUES (?1, ?2, ?3, ?4)"#,
+        CV,
+        name,
+        text,
+        now
+    )
+    .execute(&mut *tx)
+    .await?
+    .last_insert_rowid())
+}
+
+/// Puts the document on the match (match_documents).
+async fn link_document(tx: &mut SqliteConnection, match_id: i64, document_id: i64) -> sqlx::Result<()> {
+    sqlx::query!(
+        r#"INSERT INTO match_documents (match_id, document_id) VALUES (?1, ?2)"#,
+        match_id,
+        document_id
+    )
+    .execute(&mut *tx)
+    .await?;
+    Ok(())
 }
 
 /// One of the user's saved matches with its items, joblog status and rejections, or None.
@@ -550,12 +591,14 @@ pub async fn version(db: &SqlitePool, id: i64, document_id: i64) -> sqlx::Result
     sqlx::query_as!(
         Version,
         r#"
-        SELECT id, kind, text, written_by, notes, written_at
-        FROM documents
-        WHERE id = ?1 AND match_id = ?2
+        SELECT d.id, d.kind, d.text, d.written_by, d.notes, d.written_at
+        FROM documents d
+        JOIN match_documents md ON md.document_id = d.id AND md.match_id = ?2
+        WHERE d.id = ?1 AND d.kind != ?3
         "#,
         document_id,
-        id
+        id,
+        CV
     )
     .fetch_optional(db)
     .await
@@ -597,7 +640,7 @@ pub async fn save_resume_fields(
     notes: &str,
     now: i64,
 ) -> sqlx::Result<Document> {
-    let mut tx = db.begin().await?;
+    let mut tx = crate::db::write_transaction(db).await?;
     let document = save_document(&mut tx, id, RESUME, text, written_by, notes, now).await?;
     save_resume_head(&mut tx, document.id, resume).await?;
     let sections = [
@@ -631,19 +674,19 @@ async fn save_document(
 ) -> sqlx::Result<Document> {
     let document_id = sqlx::query!(
         r#"
-        INSERT INTO documents (match_id, kind, text, written_by, notes, written_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6)
+        INSERT INTO documents (kind, text, written_by, notes, written_at)
+        VALUES (?1, ?2, ?3, ?4, ?5)
         "#,
-        id,
         kind,
         text,
         written_by,
         notes,
         now
     )
-    .execute(db)
+    .execute(&mut *db)
     .await?
     .last_insert_rowid();
+    link_document(db, id, document_id).await?;
     Ok(Document {
         id: document_id,
         text: text.to_string(),
@@ -785,7 +828,7 @@ pub async fn save_integration(
 
 /// Rejects one of the user's matches (not interested), with why; false when it isn't theirs.
 pub async fn reject(db: &SqlitePool, id: i64, user_id: i64, rows: &[Rejection], now: i64) -> sqlx::Result<bool> {
-    let mut tx = db.begin().await?;
+    let mut tx = crate::db::write_transaction(db).await?;
     if !mark_rejected(&mut tx, id, user_id, Some(now)).await? {
         return Ok(false);
     }
@@ -812,7 +855,7 @@ pub async fn reject(db: &SqlitePool, id: i64, user_id: i64, rows: &[Rejection], 
 
 /// Brings back one of the user's rejected matches; false when it isn't theirs.
 pub async fn bring_back(db: &SqlitePool, id: i64, user_id: i64) -> sqlx::Result<bool> {
-    let mut tx = db.begin().await?;
+    let mut tx = crate::db::write_transaction(db).await?;
     if !mark_rejected(&mut tx, id, user_id, None).await? {
         return Ok(false);
     }
@@ -824,10 +867,8 @@ pub async fn bring_back(db: &SqlitePool, id: i64, user_id: i64) -> sqlx::Result<
 }
 
 /// Sets when one of the user's matches was rejected (None: not rejected); false when it isn't
-/// theirs. It is the first statement of the reject and bring-back transactions, so each takes
-/// the database's write lock before it reads anything: a transaction that read first could find,
-/// once another one wrote, that SQLite won't let it write any more (SQLITE_BUSY), whatever the
-/// busy timeout.
+/// theirs. The reject and bring-back transactions hold the write lock from their start
+/// (db::write_transaction), so overlapping ones wait for each other.
 async fn mark_rejected(db: &mut SqliteConnection, id: i64, user_id: i64, at: Option<i64>) -> sqlx::Result<bool> {
     let updated = sqlx::query!(
         r#"UPDATE matches SET rejected_at = ?1 WHERE id = ?2 AND trongate_user_id IS ?3"#,
@@ -946,14 +987,14 @@ mod tests {
     /// One match per kind of list: scores fall with the id, so best first is by id.
     const SEED: &str = r#"
         INSERT INTO trongate_users (id) VALUES (1);
-        INSERT INTO matches (id, trongate_user_id, job_title, job_text, cv_text, score, points, max_points, tag,
+        INSERT INTO matches (id, trongate_user_id, job_title, job_text, score, points, max_points, tag,
                                 rejected_at, created_at)
-        VALUES (1, 1, 'Top, not applied', 'post', 'cv', 0.9, 9, 10, 'top', NULL, 0),
-               (2, 1, 'Applied, not logged', 'post', 'cv', 0.8, 8, 10, 'good', NULL, 0),
-               (3, 1, 'Logged', 'post', 'cv', 0.7, 7, 10, 'top', NULL, 0),
-               (4, 1, 'Rejected', 'post', 'cv', 0.6, 6, 10, 'good', 100, 0),
-               (5, 1, 'Poor', 'post', 'cv', 0.5, 5, 10, 'poor', NULL, 0),
-               (6, 1, 'Good, interested', 'post', 'cv', 0.4, 4, 10, 'good', NULL, 0);
+        VALUES (1, 1, 'Top, not applied', 'post', 0.9, 9, 10, 'top', NULL, 0),
+               (2, 1, 'Applied, not logged', 'post', 0.8, 8, 10, 'good', NULL, 0),
+               (3, 1, 'Logged', 'post', 0.7, 7, 10, 'top', NULL, 0),
+               (4, 1, 'Rejected', 'post', 0.6, 6, 10, 'good', 100, 0),
+               (5, 1, 'Poor', 'post', 0.5, 5, 10, 'poor', NULL, 0),
+               (6, 1, 'Good, interested', 'post', 0.4, 4, 10, 'good', NULL, 0);
         INSERT INTO match_integrations (match_id, integration, status, logged_at, created_at, updated_at)
         VALUES (2, 'jobnet_joblog', 'Soegt', NULL, 0, 0),
                (3, 'jobnet_joblog', 'Samtale', 50, 0, 0),
@@ -1038,7 +1079,7 @@ mod tests {
         assert!(found.resume_structured);
         assert_eq!(resume_fields(&db, 1).await.unwrap(), Some(second));
         assert_eq!(resume_fields_of(&db, older.id).await.unwrap(), Some(first));
-        let versions = sqlx::query_scalar!(r#"SELECT COUNT(*) FROM documents WHERE match_id = 1"#)
+        let versions = sqlx::query_scalar!(r#"SELECT COUNT(*) FROM match_documents md JOIN documents d ON d.id = md.document_id WHERE md.match_id = 1 AND d.kind != 'cv'"#)
             .fetch_one(&db)
             .await
             .unwrap();

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "-- The newest version of one kind of a saved match's documents, the one the page shows.\n-- ?1 the match, ?2 the kind (application, resume).\nSELECT id, text, written_at\nFROM documents\nWHERE match_id = ?1 AND kind = ?2\nORDER BY written_at DESC, id DESC\nLIMIT 1\n",
+  "query": "-- The newest version of one kind of a saved match's documents, the one the page shows.\n-- ?1 the match, ?2 the kind (application, resume).\nSELECT d.id, d.text, d.written_at\nFROM documents d\nJOIN match_documents md ON md.document_id = d.id\nWHERE md.match_id = ?1 AND d.kind = ?2\nORDER BY d.written_at DESC, d.id DESC\nLIMIT 1\n",
   "describe": {
     "columns": [
       {
@@ -46,5 +46,5 @@
       false
     ]
   },
-  "hash": "59034958a963245a20ba1bb26a8015c268838134e4925ee1a99356e169e4ad94"
+  "hash": "683b599d5b569334d1f649b983351a27a0f25d44a8a3405bf0fcbf30f20460c7"
 }

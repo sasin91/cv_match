@@ -1,4 +1,4 @@
-// The setup wizard's CV step: a PDF or text file picked is read in the browser into the CV box
+// The setup wizard's CV step: a PDF or text file picked is read into the CV box
 // (cv_file.js, as on the match page), so only its text is posted, with the file's name.
 
 import { readFile } from "./cv_file.js";

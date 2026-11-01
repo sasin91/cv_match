@@ -50,7 +50,7 @@ pub async fn replace_from_cv(
 ) -> sqlx::Result<()> {
     let now = chrono::Utc::now().timestamp();
     let cv_name: String = cv_name.trim().chars().take(CV_NAME_LENGTH).collect();
-    let mut tx = db.begin().await?;
+    let mut tx = crate::db::write_transaction(db).await?;
     let candidate_id = sqlx::query_scalar!(
         r#"
         INSERT INTO candidates (trongate_user_id, name, email, phone, created_at, updated_at)

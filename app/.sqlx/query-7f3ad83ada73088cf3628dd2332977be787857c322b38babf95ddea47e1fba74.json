@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "-- Every version of a saved match's documents, newest first in the order newest_document.sql\n-- picks the newest, for the \"Earlier versions\" lists. ?1 the match.\nSELECT id, kind, text, written_by, notes, written_at\nFROM documents\nWHERE match_id = ?1\nORDER BY written_at DESC, id DESC\n",
+  "query": "-- Every version of a saved match's documents, newest first in the order newest_document.sql\n-- picks the newest, for the \"Earlier versions\" lists. ?1 the match. The CV it was matched\n-- with has no versions of its own, so it isn't one.\nSELECT d.id, d.kind, d.text, d.written_by, d.notes, d.written_at\nFROM documents d\nJOIN match_documents md ON md.document_id = d.id\nWHERE md.match_id = ?1 AND d.kind != 'cv'\nORDER BY d.written_at DESC, d.id DESC\n",
   "describe": {
     "columns": [
       {
@@ -82,5 +82,5 @@
       false
     ]
   },
-  "hash": "e8543bd8467aab4b286d4346d08ca272e9ae60db16e5e1136964ea35088f5def"
+  "hash": "7f3ad83ada73088cf3628dd2332977be787857c322b38babf95ddea47e1fba74"
 }

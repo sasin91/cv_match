@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "-- A new saved match: the post and its score; the CV it was matched with is linked to it after\n-- (match_documents). ?1 the user, ?2 job_title, ?3 company, ?4 job_url, ?5 job_text, ?6 score,\n-- ?7 points, ?8 max_points, ?9 tag, ?10 created_at.\nINSERT INTO matches\n  (trongate_user_id, job_title, company, job_url, job_text, score, points, max_points, tag,\n   created_at)\nVALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 10
+    },
+    "nullable": []
+  },
+  "hash": "d2920c9339f17549a59a1b189ec4f1c532859baec054020a2cc20e066bbf3ac3"
+}
