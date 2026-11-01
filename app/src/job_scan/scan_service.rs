@@ -175,12 +175,13 @@ pub async fn scan(context: Arc<Context>) -> Result<ScanReport, ServiceError> {
         return Err(ServiceError::need_key(problem));
     }
     let keyed = llm_key::llm(&context, JOB_EVALUATION).await?;
-    let cv = profile_cv(&context).await?;
+    // Read when the first post needs it: a scan that finds nothing to match costs no call for it.
+    let mut cv: Option<ProfileCv> = None;
     let mut report = ScanReport::default();
     // What an earlier scan found but didn't get to match, before it stopped.
     let stopped_before = chrono::Utc::now().timestamp() - RUN_GIVE_UP_SECONDS;
     for post_id in model::unfinished_posts(db, stopped_before).await? {
-        match match_post_with(&context, post_id, &cv).await {
+        match match_post_once_read(&context, post_id, &mut cv).await {
             Ok(true) => report.matched += 1,
             Ok(false) => {}
             Err(e) => report.problems.push(e.message),
@@ -206,7 +207,7 @@ pub async fn scan(context: Arc<Context>) -> Result<ScanReport, ServiceError> {
         report.posts_found += found.posts_found;
         report.posts_new += found.new_posts.len() as i64;
         for post_id in found.new_posts {
-            match match_post_with(&context, post_id, &cv).await {
+            match match_post_once_read(&context, post_id, &mut cv).await {
                 Ok(true) => report.matched += 1,
                 Ok(false) => {}
                 Err(e) => report.problems.push(e.message),
@@ -220,6 +221,19 @@ pub async fn scan(context: Arc<Context>) -> Result<ScanReport, ServiceError> {
 pub struct ProfileCv {
     pub text: String,
     pub profile: Profile,
+}
+
+/// Matches a post with the profile, read on the first post of a scan and kept for the rest.
+async fn match_post_once_read(
+    context: &Arc<Context>,
+    post_id: i64,
+    cv: &mut Option<ProfileCv>,
+) -> Result<bool, ServiceError> {
+    let cv = match cv {
+        Some(cv) => cv,
+        None => cv.insert(profile_cv(context).await?),
+    };
+    match_post_with(context, post_id, cv).await
 }
 
 /// The profile read once for a whole scan, rather than once per post.
