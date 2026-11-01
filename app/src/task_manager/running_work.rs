@@ -11,8 +11,8 @@
 //!
 //! Stopping a piece asks it and every piece under it to stop. Work that only waits on something
 //! (a model's answer, a child process) is dropped at once, which ends its HTTP request or its
-//! process (kill_on_drop). Work that keeps the books (a scan, a post's match) is given
-//! STOP_GRACE to finish them: the pieces under it fail, so the post is marked failed and the scan
+//! process (kill_on_drop). Work that keeps the books (a scan, a post's match) is given its
+//! grace (WorkKind::grace) to finish them: the pieces under it fail, so the post is marked failed and the scan
 //! says it was stopped, rather than leaving a post claimed for half an hour.
 
 use std::collections::BTreeMap;
@@ -22,8 +22,9 @@ use std::time::{Duration, Instant};
 
 use tokio::sync::watch;
 
-/// How long work that keeps the books (WorkKind::winds_down) may take to finish once it was asked
-/// to stop; it is dropped after.
+/// How long the innermost work that keeps the books (a document being written) may take to finish
+/// once it was asked to stop; it is dropped after. Work around it gets one STOP_GRACE more for
+/// each level it holds (WorkKind::grace), so its own books get done after the inner's.
 pub const STOP_GRACE: Duration = Duration::from_secs(10);
 
 /// What a piece of work is.
@@ -59,10 +60,17 @@ impl WorkKind {
         }
     }
 
-    /// Whether the work finishes its books when asked to stop (STOP_GRACE), rather than being
-    /// dropped at once.
-    fn winds_down(self) -> bool {
-        matches!(self, WorkKind::Scan | WorkKind::Matching | WorkKind::Writing)
+    /// How long the work may take to finish its books when asked to stop, or None when it is
+    /// dropped at once. A scan holds a post's match, which holds the writing of its documents:
+    /// each outer one waits out the inner one's grace, and then does its own books.
+    fn grace(self) -> Option<Duration> {
+        let levels = match self {
+            WorkKind::Writing => 1,
+            WorkKind::Matching => 2,
+            WorkKind::Scan => 3,
+            _ => return None,
+        };
+        Some(STOP_GRACE * levels)
     }
 }
 
@@ -316,10 +324,10 @@ async fn track<F: Future>(
         done = &mut work => return Ok(done),
         () = asked_to_stop(&mut asked) => {}
     }
-    if !kind.winds_down() {
+    let Some(grace) = kind.grace() else {
         return Err(Stopped);
-    }
-    tokio::time::timeout(STOP_GRACE, work).await.map_err(|_| Stopped)
+    };
+    tokio::time::timeout(grace, work).await.map_err(|_| Stopped)
 }
 
 /// Waits until asked says stop; forever when it can't any more.
@@ -450,6 +458,14 @@ mod tests {
         assert_eq!(matching.await.unwrap(), Ok((Err(Stopped), true)));
         assert!(list.rows().is_empty());
         assert!(!list.stop(top), "it ended");
+    }
+
+    #[test]
+    fn outer_work_waits_out_the_inner_works_grace_before_its_own_runs_out() {
+        let grace = |kind: WorkKind| kind.grace().unwrap();
+        assert!(grace(WorkKind::Matching) > grace(WorkKind::Writing));
+        assert!(grace(WorkKind::Scan) > grace(WorkKind::Matching));
+        assert_eq!(WorkKind::ModelCall.grace(), None);
     }
 
     #[tokio::test]

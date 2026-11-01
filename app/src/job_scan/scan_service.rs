@@ -913,7 +913,7 @@ async fn match_post_with(
         .await
     {
         Ok(matched) => matched,
-        // Not finished in STOP_GRACE: dropped, so it is marked here.
+        // Not finished in its grace: dropped, so it is marked here.
         Err(Stopped) => {
             let now = chrono::Utc::now().timestamp();
             let failed = format!("The match failed: {}", Stopped::SAID);
@@ -954,13 +954,23 @@ async fn match_claimed(
     let started = timeline.start(run_steps::READ);
     let read = match sent {
         Some(page) => Ok(page),
-        None => page_reader::read(&post.url, context.readers()).await,
+        // A plain fetch isn't work of its own in the task manager: a stop ends it here.
+        None => tokio::select! {
+            read = page_reader::read(&post.url, context.readers()) => read,
+            () = running_work::until_stop_asked() => Err(Stopped::SAID.to_string()),
+        },
     };
     timeline
         .keep(started, &read_text(&post.url, &read), read.is_err(), &[])
         .await;
     let page = match read {
         Ok(page) => page,
+        // Stopped, not a link that doesn't open: the post is matched again by Retry.
+        Err(why) if read_was_stopped(&why) => {
+            let failed = format!("The match failed: {}", Stopped::SAID);
+            set(FAILED, failed, None, FoundAbout::default()).await?;
+            return Ok(false);
+        }
         Err(why) => {
             crate::log_line!("job_scan: post {post_id}: {}: {why}", post.url);
             // A link a scan found that doesn't open is most likely gone, or one the model got
@@ -1014,6 +1024,12 @@ async fn match_claimed(
     }
     set(MATCHED, errors.join(" "), Some(match_id), found).await?;
     Ok(!dismissed_meanwhile(context, post_id, match_id).await?)
+}
+
+/// Whether reading a post failed because it was stopped in the task manager: the post's match,
+/// or the browser reading it (whose error says so).
+fn read_was_stopped(why: &str) -> bool {
+    running_work::stop_asked() || why.contains(Stopped::SAID)
 }
 
 /// Claims a post for a match starting now (job_scan_model::claim_for_matching); false when it
