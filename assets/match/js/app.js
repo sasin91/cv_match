@@ -909,7 +909,7 @@ function chosenStatus(body) {
   return body.querySelector('.joblog-field[data-name="searchStatus"] .chip.chosen')?.dataset.value ?? "IkkeSoegt";
 }
 
-// What the candidate tells Recruiter about the entry (match/joblog_status):
+// What the candidate tells JobFinder about the entry (match/joblog_status):
 // the status and whether it's in their Jobnet joblog. The server answers the
 // "In your Jobnet joblog" section with when (templates/match/joblog_logged.html), and
 // the day applied for the date field, which follows the status.

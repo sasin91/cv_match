@@ -19,7 +19,7 @@ use page::Page;
 const COMPRESSION_LEVEL: u8 = 6;
 
 /// What the PDF says made it.
-const PRODUCER: &str = "Recruiter";
+const PRODUCER: &str = "JobFinder";
 
 /// The resource names of the regular and the bold font.
 const REGULAR_FONT: Name = Name(b"F1");

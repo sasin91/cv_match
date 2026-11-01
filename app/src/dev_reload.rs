@@ -1,4 +1,4 @@
-//! Reloading the page in the browser while developing (`recruiter --dev`, which `cargo dev`
+//! Reloading the page in the browser while developing (`jobfinder --dev`, which `cargo dev`
 //! starts under watchexec; xtask/).
 //!
 //! watchexec restarts the app whenever a Rust file, a template or an asset changes. Every page the

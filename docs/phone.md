@@ -32,7 +32,7 @@ internet.
    Use `serve`, never `funnel`, which would put the app on the public internet.
 4. Start the app with your PC's name:
 
-       recruiter.exe --tailscale-name pc.tailnet-name.ts.net
+       jobfinder.exe --tailscale-name pc.tailnet-name.ts.net
 
    Put the same flag in the shortcut or Task Scheduler task that starts it at login. The app then
    prints the address to open on your phone.
@@ -42,7 +42,7 @@ internet.
 With Tailscale switched on, open `https://pc.tailnet-name.ts.net/match`. On Android you can
 use **Add to Home screen**, and on iPhone **Share → Add to Home Screen**, to open it like an app.
 
-The PC has to be on with recruiter.exe running.
+The PC has to be on with jobfinder.exe running.
 
 ## Why `--tailscale-name` is needed
 

@@ -1,6 +1,6 @@
 //! The app's developer commands, run through the aliases in app/.cargo/config.toml.
 //!
-//!   cargo dev [--port 8765] [more recruiter options]
+//!   cargo dev [--port 8765] [more jobfinder options]
 //!       builds the app and starts it with --dev under watchexec, which rebuilds and restarts it
 //!       on every change to its code, templates, queries, assets or extension; the open page
 //!       then reloads itself (src/dev_reload.rs). Opens the match page once the first build
@@ -12,7 +12,7 @@ use std::process::{Command, ExitCode};
 use std::thread;
 use std::time::{Duration, Instant};
 
-const USAGE: &str = "usage: cargo dev [--port <port>] [more recruiter options, such as --database <file>]";
+const USAGE: &str = "usage: cargo dev [--port <port>] [more jobfinder options, such as --database <file>]";
 
 /// The port the app listens on unless --port says otherwise (server::DEFAULT_PORT).
 const DEFAULT_PORT: u16 = 8765;
@@ -47,12 +47,12 @@ fn main() -> ExitCode {
     }
 }
 
-fn dev(recruiter_args: &[String]) -> ExitCode {
+fn dev(app_args: &[String]) -> ExitCode {
     if Command::new("watchexec").arg("--version").output().is_err() {
         eprintln!("cargo dev needs watchexec. Install it once with: cargo install watchexec-cli --locked");
         return ExitCode::FAILURE;
     }
-    let port = match port(recruiter_args) {
+    let port = match port(app_args) {
         Ok(port) => port,
         Err(why) => {
             eprintln!("{why}\n{USAGE}");
@@ -60,11 +60,11 @@ fn dev(recruiter_args: &[String]) -> ExitCode {
         }
     };
     let address = format!("http://127.0.0.1:{port}/match");
-    println!("Building and starting Recruiter; {address} opens when it is up.");
+    println!("Building and starting JobFinder; {address} opens when it is up.");
     thread::spawn(move || open_when_up(port, &address));
     let status = Command::new("watchexec")
         .current_dir(app_folder())
-        .args(watchexec_args(recruiter_args))
+        .args(watchexec_args(app_args))
         .status();
     match status {
         Ok(status) if status.success() => ExitCode::SUCCESS,
@@ -85,11 +85,11 @@ fn app_folder() -> PathBuf {
 }
 
 /// The port given with --port, or DEFAULT_PORT.
-fn port(recruiter_args: &[String]) -> Result<u16, String> {
-    let Some(at) = recruiter_args.iter().position(|arg| arg == "--port") else {
+fn port(app_args: &[String]) -> Result<u16, String> {
+    let Some(at) = app_args.iter().position(|arg| arg == "--port") else {
         return Ok(DEFAULT_PORT);
     };
-    recruiter_args
+    app_args
         .get(at + 1)
         .and_then(|port| port.parse().ok())
         .ok_or_else(|| "--port needs a number".to_string())
@@ -97,13 +97,13 @@ fn port(recruiter_args: &[String]) -> Result<u16, String> {
 
 /// watchexec's arguments: restart on any change to WATCHED, running the app's debug build with
 /// --dev and the given options (no shell, so they reach it as they are).
-fn watchexec_args(recruiter_args: &[String]) -> Vec<String> {
+fn watchexec_args(app_args: &[String]) -> Vec<String> {
     let mut args = vec!["--restart".to_string(), "--shell=none".to_string()];
     for path in WATCHED {
         args.extend(["--watch".to_string(), path.to_string()]);
     }
     args.extend(["--", "cargo", "run", "--", "--dev", "--no-browser"].map(str::to_string));
-    args.extend(recruiter_args.iter().cloned());
+    args.extend(app_args.iter().cloned());
     args
 }
 

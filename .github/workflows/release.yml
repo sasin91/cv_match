@@ -3,8 +3,8 @@ name: release
 # The programs for a release: pushing a tag like v0.2.0 builds the app and attaches it to that
 # tag's GitHub release.
 #
-# - Windows: recruiter.exe, which runs from wherever it is kept (nothing to install).
-# - Linux: Recruiter-x86_64.AppImage, which runs from wherever it is kept (nothing to install).
+# - Windows: jobfinder.exe, which runs from wherever it is kept (nothing to install).
+# - Linux: JobFinder-x86_64.AppImage, which runs from wherever it is kept (nothing to install).
 #   Built on the oldest Ubuntu runner, so it runs on distributions with an older glibc too.
 #
 # Run by hand, it builds the same files as workflow artifacts instead.
@@ -36,16 +36,16 @@ jobs:
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
-          Copy-Item target/release/recruiter.exe dist/recruiter.exe
+          Copy-Item target/release/jobfinder.exe dist/jobfinder.exe
       - if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            app/dist/recruiter.exe
+            app/dist/jobfinder.exe
       - if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: actions/upload-artifact@v4
         with:
-          name: recruiter-windows
+          name: jobfinder-windows
           path: app/dist/
 
   linux:
@@ -70,23 +70,23 @@ jobs:
           ARCH: x86_64
         run: |
           mkdir -p AppDir/usr/bin dist
-          cp target/release/recruiter AppDir/usr/bin/recruiter
-          ln -s usr/bin/recruiter AppDir/AppRun
-          cp ../extension/jobnet-joblog/icons/icon-128.png AppDir/recruiter.png
-          printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=Recruiter' \
-            'Comment=Match your CV with job posts' 'Exec=recruiter' 'Icon=recruiter' \
-            'Terminal=true' 'Categories=Office;' > AppDir/recruiter.desktop
+          cp target/release/jobfinder AppDir/usr/bin/jobfinder
+          ln -s usr/bin/jobfinder AppDir/AppRun
+          cp ../extension/jobnet-joblog/icons/icon-128.png AppDir/jobfinder.png
+          printf '%s\n' '[Desktop Entry]' 'Type=Application' 'Name=JobFinder' \
+            'Comment=Match your CV with job posts' 'Exec=jobfinder' 'Icon=jobfinder' \
+            'Terminal=true' 'Categories=Office;' > AppDir/jobfinder.desktop
           curl -fsSL -o appimagetool \
             https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool
-          ./appimagetool AppDir dist/Recruiter-x86_64.AppImage
+          ./appimagetool AppDir dist/JobFinder-x86_64.AppImage
       - if: startsWith(github.ref, 'refs/tags/')
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            app/dist/Recruiter-x86_64.AppImage
+            app/dist/JobFinder-x86_64.AppImage
       - if: ${{ !startsWith(github.ref, 'refs/tags/') }}
         uses: actions/upload-artifact@v4
         with:
-          name: recruiter-linux
+          name: jobfinder-linux
           path: app/dist/

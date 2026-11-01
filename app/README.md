@@ -1,6 +1,6 @@
-# recruiter (desktop)
+# JobFinder (desktop)
 
-Recruiter's match as a standalone desktop app in Rust: one program with SQLite, Laya built in
+JobFinder: Recruiter's CV match as a standalone desktop app in Rust: one program with SQLite, Laya built in
 and one local user, in its own window (iced), with the match page served beside it. Its matching core is checked
 against a fixed snapshot of expected answers (tests/parity.rs).
 
@@ -76,7 +76,7 @@ Laya reads a match's requirement verdicts (the Laya summary) and answers how lik
 every requirement and how good a fit it is, 0 to 4; the result shows it as one line under the
 score. The model is `laya-server`'s, run inside the app on ONNX Runtime (linked into the exe), so
 no Laya service or Python is needed. It needs the exported English checkpoint in one folder,
-`%APPDATA%\Recruiter\laya` (next to the database, or `--laya folder`):
+`%APPDATA%\JobFinder\laya` (next to the database, or `--laya folder`):
 
     laya\rl_agent_config.json
     laya\tokenizer\            (tokenizer.json, tokenizer_config.json, ...)
@@ -109,7 +109,7 @@ can't use it.
 The AI features run on your own keys, saved on the API key page (`account`): an OpenAI key, an Anthropic key, or a local OpenAI-compatible server
 such as Ollama (`http://localhost:11434/v1`) or LM Studio (`http://localhost:1234/v1`), which
 needs a model name and usually no key. One key is kept per provider. Each goes in Windows
-Credential Manager (service `Recruiter`, user `user_llm_keys:1:{provider}@` and the database
+Credential Manager (service `JobFinder`, user `user_llm_keys:1:{provider}@` and the database
 file's full path, so each provider and each database has its own key), never in the database;
 `user_llm_keys` keeps a row per provider with the model, address, the key's last 4 characters
 and the uses it is picked for (each use on one key at most). A key saved before keys were kept
@@ -133,14 +133,14 @@ why (none saved, none picked for the use, or gone from Credential Manager) and l
 ## The Jobnet extension
 
 The app carries `extension/jobnet-joblog` and writes it to a `jobnet-joblog` folder next to the
-database at every start (`%APPDATA%\Recruiter\jobnet-joblog`). Load that folder once in Edge or
+database at every start (`%APPDATA%\JobFinder\jobnet-joblog`). Load that folder once in Edge or
 Chrome (extensions page, Developer mode, "Load unpacked"); the app's page
 http://127.0.0.1:8765/joblog_extension shows the folder and the steps. After an update, press
 Reload on the extension. Its manifest `key` fixes its ID, the one `src/extension.rs` lets in.
 
 ## Database
 
-The app keeps its data in one SQLite file, `%APPDATA%\Recruiter\recruiter.sqlite` on Windows.
+The app keeps its data in one SQLite file, `%APPDATA%\JobFinder\jobfinder.sqlite` on Windows.
 Its tables are cv_match's MariaDB tables (`migrations/`, applied in order at start-up and
 recorded in `schema_migrations`) without the `cv_match` prefix, since the whole app is the
 match: `cv_matches` is `matches`, `cv_match_id` is `match_id`, `cv_match_items` is
@@ -163,7 +163,7 @@ match: `cv_matches` is `matches`, `cv_match_id` is `match_id`, `cv_match_items` 
 
 While the app is new, `migrations/0001_schema.sql` is changed in place instead of getting new
 migrations. A database made from an older version of it is refused at start with a message
-saying so: move `recruiter.sqlite` aside and start again.
+saying so: move `jobfinder.sqlite` aside and start again.
 
 ### Queries
 

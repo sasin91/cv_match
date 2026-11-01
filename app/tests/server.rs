@@ -7,12 +7,12 @@ use std::sync::{Arc, LazyLock};
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
 use http_body_util::BodyExt;
-use recruiter::account::key_vault::KeyVault;
-use recruiter::context::Context;
-use recruiter::db;
-use recruiter::laya::laya_client::{self, LayaClient};
-use recruiter::server::{self, AppState};
-use recruiter::taxonomy::Taxonomy;
+use jobfinder::account::key_vault::KeyVault;
+use jobfinder::context::Context;
+use jobfinder::db;
+use jobfinder::laya::laya_client::{self, LayaClient};
+use jobfinder::server::{self, AppState};
+use jobfinder::taxonomy::Taxonomy;
 use serde_json::{Value, json};
 use sqlx::{Executor, SqlitePool};
 use tower::ServiceExt;
@@ -56,8 +56,8 @@ async fn app() -> axum::Router {
     let db = seeded().await;
     let user_id = server::local_user(&db).await.unwrap();
     let mut context = Context::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory());
-    // PDFs are read by `recruiter read-pdf`; this test's own program isn't recruiter.
-    context.pdf_reader = Some(PathBuf::from(env!("CARGO_BIN_EXE_recruiter")));
+    // PDFs are read by `jobfinder read-pdf`; this test's own program isn't jobfinder.
+    context.pdf_reader = Some(PathBuf::from(env!("CARGO_BIN_EXE_jobfinder")));
     server::router(Arc::new(AppState::new(Arc::new(context), PORT)))
 }
 
@@ -151,7 +151,7 @@ async fn the_free_match_reads_both_texts_and_saves_nothing() {
 
 /// An app whose Laya folder has a laya.onnx that isn't a model.
 async fn app_with_broken_laya() -> (axum::Router, std::path::PathBuf) {
-    let folder = std::env::temp_dir().join(format!("recruiter-laya-{}", std::process::id()));
+    let folder = std::env::temp_dir().join(format!("jobfinder-laya-{}", std::process::id()));
     std::fs::create_dir_all(&folder).unwrap();
     std::fs::write(folder.join(laya_client::ONNX_FILE), "not a model").unwrap();
     let db = seeded().await;
@@ -479,7 +479,7 @@ async fn the_extension_setup_page_says_where_it_is() {
 
 #[tokio::test]
 async fn a_resume_written_as_fields_is_read_back_whole() {
-    use recruiter::matches::match_model;
+    use jobfinder::matches::match_model;
     let db = seeded().await;
     let resume = match_model::resume_fields(&db, 21).await.unwrap().unwrap();
     assert_eq!(resume.name, "Mette Sørensen");
@@ -720,7 +720,7 @@ async fn app_with_model() -> (axum::Router, SqlitePool, Arc<std::sync::atomic::A
     let user_id = server::local_user(&db).await.unwrap();
     let vault = KeyVault::in_memory();
     let (base_url, calls) = stand_in_model().await;
-    recruiter::account::account_model::save(&db, &vault, user_id, "local", "stand-in", &base_url, "")
+    jobfinder::account::account_model::save(&db, &vault, user_id, "local", "stand-in", &base_url, "")
         .await
         .unwrap();
     let app = server::router(Arc::new(AppState::new(
@@ -770,7 +770,7 @@ async fn the_ai_match_reads_judges_scores_and_saves() {
     assert!(result.contains("Built payment flows"), "the model's evidence: {result}");
     assert!(result.contains(r#"class="document" data-kind="application""#));
     assert!(result.contains("For Laya"));
-    let found = recruiter::matches::match_model::find(&db, id, 3)
+    let found = jobfinder::matches::match_model::find(&db, id, 3)
         .await
         .unwrap()
         .unwrap();
@@ -848,7 +848,7 @@ async fn a_tailored_resume_comes_back_with_its_keywords_and_compares() {
         resume.contains("Earlier versions (1)"),
         "the seeded résumé stays: {resume}"
     );
-    let fields = recruiter::matches::match_model::resume_fields(&db, 21)
+    let fields = jobfinder::matches::match_model::resume_fields(&db, 21)
         .await
         .unwrap()
         .unwrap();
@@ -870,10 +870,10 @@ async fn a_tailored_resume_comes_back_with_its_keywords_and_compares() {
 #[tokio::test]
 async fn a_key_switched_off_for_a_use_says_so() {
     let (app, db, calls) = app_with_model().await;
-    recruiter::account::account_model::save_uses(
+    jobfinder::account::account_model::save_uses(
         &db,
         3,
-        &recruiter::account::account_model::UseChoices {
+        &jobfinder::account::account_model::UseChoices {
             resume: Some("local".to_string()),
             application: None,
             job_evaluation: None,
@@ -1030,7 +1030,7 @@ async fn the_setup_reads_the_cv_into_the_profile_the_match_page_uses() {
         "{page}"
     );
     assert!(page.contains(r#"name="replace""#));
-    let profile = recruiter::profile::text_for_user(&db, 1).await.unwrap().unwrap();
+    let profile = jobfinder::profile::text_for_user(&db, 1).await.unwrap().unwrap();
     assert!(profile.contains("Udvikler · Firma"), "{profile}");
     // The dashboard says whose profile it is, and the match form matches with it.
     let (_, match_page) = send_to(&app, get("/match")).await;

@@ -1,4 +1,4 @@
-//! One Recruiter per database: a second start on the same database opens the one that runs
+//! One JobFinder per database: a second start on the same database opens the one that runs
 //! instead of failing on its port. The running app says which database it runs on at
 //! GET instance; a start asks that first (running_on). A start on the same database then asks
 //! the running one's window to come to the front (bring_to_front, POST instance/front).
@@ -19,10 +19,10 @@ pub const PATH: &str = "/instance";
 /// Where a start asks the running app to bring its window to the front.
 pub const FRONT_PATH: &str = "/instance/front";
 
-/// What instance answers as app, so another program on the port isn't taken for Recruiter.
-const APP: &str = "recruiter";
+/// What instance answers as app, so another program on the port isn't taken for JobFinder.
+const APP: &str = "jobfinder";
 
-/// How long a start waits for a Recruiter on its port to answer: it answers in milliseconds, and
+/// How long a start waits for a JobFinder on its port to answer: it answers in milliseconds, and
 /// nothing on the port answers at once.
 const ASK_TIMEOUT: Duration = Duration::from_secs(2);
 
@@ -37,11 +37,11 @@ pub struct Instance {
 /// What runs on the port a start wants.
 #[derive(Debug, PartialEq)]
 pub enum Running {
-    /// No Recruiter: nothing, or another program (which the start's own bind then says).
+    /// No JobFinder: nothing, or another program (which the start's own bind then says).
     None,
-    /// A Recruiter on this database.
+    /// A JobFinder on this database.
     Same,
-    /// A Recruiter on another database, at this path.
+    /// A JobFinder on another database, at this path.
     Other { database: String },
 }
 
@@ -62,7 +62,7 @@ pub async fn front(State(state): State<Arc<AppState>>) -> StatusCode {
     }
 }
 
-/// Asks the Recruiter on 127.0.0.1:port to bring its window to the front; false when it has no
+/// Asks the JobFinder on 127.0.0.1:port to bring its window to the front; false when it has no
 /// window or didn't answer.
 pub async fn bring_to_front(port: u16) -> bool {
     let Ok(client) = reqwest::Client::builder().no_proxy().timeout(ASK_TIMEOUT).build() else {
@@ -78,7 +78,7 @@ pub async fn bring_to_front(port: u16) -> bool {
     sent.is_ok_and(|response| response.status() == StatusCode::NO_CONTENT)
 }
 
-/// Whether a Recruiter answers on 127.0.0.1:port, and on which database; database is this
+/// Whether a JobFinder answers on 127.0.0.1:port, and on which database; database is this
 /// start's, as DatabaseFile::path shows it.
 pub async fn running_on(port: u16, database: &str) -> Running {
     let Ok(client) = reqwest::Client::builder().no_proxy().timeout(ASK_TIMEOUT).build() else {
@@ -116,11 +116,11 @@ mod tests {
     #[test]
     fn the_same_database_is_the_same_path() {
         assert_eq!(
-            compared("/home/a/recruiter.sqlite".to_string(), "/home/a/recruiter.sqlite"),
+            compared("/home/a/jobfinder.sqlite".to_string(), "/home/a/jobfinder.sqlite"),
             Running::Same
         );
         assert_eq!(
-            compared("/home/a/other.sqlite".to_string(), "/home/a/recruiter.sqlite"),
+            compared("/home/a/other.sqlite".to_string(), "/home/a/jobfinder.sqlite"),
             Running::Other {
                 database: "/home/a/other.sqlite".to_string()
             }
@@ -128,7 +128,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn nothing_on_the_port_is_no_recruiter() {
+    async fn nothing_on_the_port_is_no_jobfinder() {
         // Port 1 (tcpmux) is privileged and unused on a desktop.
         assert_eq!(running_on(1, "x").await, Running::None);
     }

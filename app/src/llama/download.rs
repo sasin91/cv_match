@@ -29,7 +29,7 @@ const RELEASES_SEARCHED: usize = 10;
 const ASSETS_PER_PAGE: usize = 100;
 
 /// What the app calls itself to GitHub, whose API refuses requests without a User-Agent.
-const USER_AGENT: &str = "recruiter-desktop";
+const USER_AGENT: &str = "jobfinder-desktop";
 
 /// How long connecting may take, in seconds.
 const CONNECT_SECONDS: u64 = 15;
@@ -506,7 +506,7 @@ mod tests {
 
     #[test]
     fn a_staged_install_replaces_the_old_one() {
-        let folder = std::env::temp_dir().join(format!("recruiter-staging-{}", std::process::id()));
+        let folder = std::env::temp_dir().join(format!("jobfinder-staging-{}", std::process::id()));
         let staging = folder.join(STAGING_FOLDER);
         std::fs::create_dir_all(&staging).unwrap();
         std::fs::write(folder.join(SERVER_FILE), b"old").unwrap();
@@ -521,7 +521,7 @@ mod tests {
 
     #[test]
     fn a_zip_unzips_into_the_folder_only() {
-        let folder = std::env::temp_dir().join(format!("recruiter-unzip-{}", std::process::id()));
+        let folder = std::env::temp_dir().join(format!("jobfinder-unzip-{}", std::process::id()));
         std::fs::create_dir_all(&folder).unwrap();
         let zip_path = folder.join("build.zip");
         let mut writer = zip::ZipWriter::new(std::fs::File::create(&zip_path).unwrap());

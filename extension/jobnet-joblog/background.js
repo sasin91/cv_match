@@ -1,5 +1,5 @@
-// Talks to Recruiter for the content script on Jobnet: a content script can't
-// fetch from another site, the extension can. Recruiter is the desktop app on
+// Talks to JobFinder for the content script on Jobnet: a content script can't
+// fetch from another site, the extension can. JobFinder is the desktop app on
 // this computer (127.0.0.1:8765, app/ in this repo), which lets this extension
 // in by its fixed ID (manifest.json "key"); the "base" in its storage can point
 // it at the website instead, with the person's own sign-in there (the host
@@ -13,7 +13,7 @@
 // {type: "pdf", id, kind} one of its PDFs as {name, base64};
 // {type: "logged", id, status} marks it as entered in Jobnet's joblog
 // (match/joblog_status), keeping its status. Each answers
-// {error} when Recruiter says no, signed out included.
+// {error} when JobFinder says no, signed out included.
 
 const api = globalThis.browser ?? globalThis.chrome;
 const DEFAULT_BASE = "http://127.0.0.1:8765/";
@@ -30,7 +30,7 @@ async function call(path, options = {}) {
   try {
     response = await fetch(url, { credentials: "include", ...options });
   } catch {
-    throw new Error(desktop ? "Start the Recruiter app on this computer first." : "Recruiter can't be reached.");
+    throw new Error(desktop ? "Start the JobFinder app on this computer first." : "JobFinder can't be reached.");
   }
   // The desktop app has no sign-in: it says why it refused.
   if (desktop && response.status === 403) {
@@ -41,7 +41,7 @@ async function call(path, options = {}) {
   }
   if (!response.ok) {
     const data = await response.json().catch(() => ({}));
-    throw new Error(data.error ?? `Recruiter answered ${response.status}.`);
+    throw new Error(data.error ?? `JobFinder answered ${response.status}.`);
   }
   return response;
 }
@@ -69,7 +69,7 @@ async function answer(message) {
       body: JSON.stringify({ id: Number(message.id), kind: message.kind }),
     });
     if (!response.headers.get("Content-Type")?.startsWith("application/pdf")) {
-      throw new Error((await response.json().catch(() => ({}))).error ?? "Recruiter sent no PDF.");
+      throw new Error((await response.json().catch(() => ({}))).error ?? "JobFinder sent no PDF.");
     }
     const name = /filename\*=UTF-8''([^;]+)/.exec(response.headers.get("Content-Disposition") ?? "");
     const bytes = new Uint8Array(await response.arrayBuffer());
@@ -81,7 +81,7 @@ async function answer(message) {
 }
 
 // When the post names no postcode and town, the company's registered address
-// in the CVR register (cvrapi.dk), as the joblog panel on Recruiter does
+// in the CVR register (cvrapi.dk), as the joblog panel on JobFinder does
 // (modules/cv_match/js/app.js): only for a company whose name shares most
 // words with the post's, and a failed lookup changes nothing.
 const CVRAPI = "https://cvrapi.dk/api";

@@ -1,5 +1,5 @@
-//! `recruiter cleanup`: what the app leaves outside its program file, removed. The program itself
-//! is never installed, so removing Recruiter is deleting its file; this takes away the rest, after
+//! `jobfinder cleanup`: what the app leaves outside its program file, removed. The program itself
+//! is never installed, so removing JobFinder is deleting its file; this takes away the rest, after
 //! saying what it found:
 //!
 //! - the job scan's schedule (Task Scheduler's task, or the systemd user timer), which would
@@ -10,7 +10,7 @@
 //! - and only when asked again, the database itself, with its -wal and -shm files and the app's
 //!   log (app_log) beside it.
 //!
-//! The data folder itself goes too when it is the default one (%APPDATA%\Recruiter) and nothing
+//! The data folder itself goes too when it is the default one (%APPDATA%\JobFinder) and nothing
 //! else is left in it; a folder that --database names is never removed, only the app's own
 //! files in it.
 
@@ -52,14 +52,14 @@ pub fn app_folders(database: &Path) -> Vec<PathBuf> {
         .collect()
 }
 
-/// Another Recruiter holds the database's lock: it is running on it.
+/// Another JobFinder holds the database's lock: it is running on it.
 #[derive(Debug, PartialEq)]
 pub struct InUse;
 
-/// The files whose locks a running Recruiter holds for database:
+/// The files whose locks a running JobFinder holds for database:
 /// - the database's own, its name and -lock beside the file itself, so a link to the database
 ///   shares it;
-/// - its folder's, `recruiter-folder.lock`, since every database in a folder shares the
+/// - its folder's, `jobfinder-folder.lock`, since every database in a folder shares the
 ///   llama, laya and jobnet-joblog folders there.
 pub fn lock_files(database: &Path) -> [PathBuf; 2] {
     let file = std::fs::canonicalize(database).unwrap_or_else(|_| database.to_path_buf());
@@ -74,7 +74,7 @@ pub fn lock_files(database: &Path) -> [PathBuf; 2] {
 }
 
 /// The folder lock's file name.
-const FOLDER_LOCK: &str = "recruiter-folder.lock";
+const FOLDER_LOCK: &str = "jobfinder-folder.lock";
 
 /// How a lock on the database is held.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -231,17 +231,17 @@ mod tests {
 
     #[test]
     fn the_database_files_are_the_file_sqlites_own_and_the_log_beside_it() {
-        let files = database_files(Path::new("/data/recruiter.sqlite"));
+        let files = database_files(Path::new("/data/jobfinder.sqlite"));
         assert_eq!(
             files,
             [
-                "/data/recruiter.sqlite",
-                "/data/recruiter.sqlite-wal",
-                "/data/recruiter.sqlite-shm",
-                "/data/recruiter.sqlite-journal",
-                "/data/recruiter.log",
-                "/data/recruiter.old.log",
-                "/data/recruiter.log.lock"
+                "/data/jobfinder.sqlite",
+                "/data/jobfinder.sqlite-wal",
+                "/data/jobfinder.sqlite-shm",
+                "/data/jobfinder.sqlite-journal",
+                "/data/jobfinder.log",
+                "/data/jobfinder.old.log",
+                "/data/jobfinder.log.lock"
             ]
             .map(PathBuf::from)
         );
@@ -249,8 +249,8 @@ mod tests {
 
     #[test]
     fn running_apps_share_the_lock_and_the_cleanup_needs_it_alone() {
-        let folder = std::env::temp_dir().join(format!("recruiter-lock-{}", std::process::id()));
-        let database = folder.join("recruiter.sqlite");
+        let folder = std::env::temp_dir().join(format!("jobfinder-lock-{}", std::process::id()));
+        let database = folder.join("jobfinder.sqlite");
         let app = hold(&database, Hold::Running).unwrap();
 
         let dev_build = hold(&database, Hold::Running).expect("a second app on the same database starts");
@@ -291,17 +291,17 @@ mod tests {
     #[test]
     fn only_the_apps_own_folders_are_removed_from_a_named_folder() {
         assert_eq!(
-            app_folders(Path::new("/home/me/recruiter.sqlite")),
+            app_folders(Path::new("/home/me/jobfinder.sqlite")),
             ["/home/me/jobnet-joblog", "/home/me/llama", "/home/me/laya"].map(PathBuf::from)
         );
     }
 
     #[tokio::test]
     async fn the_cleanup_removes_the_schedule_the_keys_and_the_folders_and_keeps_the_database() {
-        let folder = std::env::temp_dir().join(format!("recruiter-cleanup-{}", std::process::id()));
+        let folder = std::env::temp_dir().join(format!("jobfinder-cleanup-{}", std::process::id()));
         std::fs::create_dir_all(folder.join("llama/models")).unwrap();
         std::fs::write(folder.join("llama/models/a.gguf"), "x").unwrap();
-        let database = folder.join("recruiter.sqlite");
+        let database = folder.join("jobfinder.sqlite");
         std::fs::write(&database, "db").unwrap();
         std::fs::create_dir_all(folder.join("mine")).unwrap();
 

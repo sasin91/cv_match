@@ -95,7 +95,7 @@ mod tests {
 
     #[test]
     fn the_extension_is_written_out_whole() {
-        let folder = std::env::temp_dir().join(format!("recruiter-extension-{}", std::process::id()));
+        let folder = std::env::temp_dir().join(format!("jobfinder-extension-{}", std::process::id()));
         write(&folder).unwrap();
         for name in ["manifest.json", "background.js", "content.js", "icons/icon-128.png"] {
             assert!(folder.join(name).is_file(), "{name}");
