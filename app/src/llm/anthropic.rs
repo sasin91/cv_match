@@ -104,7 +104,7 @@ impl Anthropic {
         ];
         let answer = super::post(&self.client, &url, &headers, body)
             .await
-            .map_err(|e| super::not_answered(NAME, &e))?;
+            .map_err(|e| super::not_answered(NAME, &self.base_url, &e))?;
         if answer.status < 400 && answer.is_json() {
             return Ok(answer);
         }

@@ -16,6 +16,7 @@
 //! the visible text of <main>, <article> or <body>.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
+use std::path::Path;
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -53,10 +54,11 @@ const USER_AGENT: &str = "Mozilla/5.0 (compatible; JobFinder desktop app)";
 const ACCEPT: &str = "text/html,application/xhtml+xml,text/plain;q=0.9";
 const ACCEPT_LANGUAGE: &str = "da,en;q=0.8";
 
-/// Elements whose content is never part of the post.
+/// Elements whose content is never part of the post. Not <form>: ASP.NET pages (Signatur's job
+/// portal, many employers' own) put the whole page in one, post and all.
 const DROP: [&str; 16] = [
     "script", "style", "noscript", "template", "svg", "iframe", "object", "embed", "canvas", "head", "nav", "footer",
-    "form", "button", "select", "dialog",
+    "textarea", "button", "select", "dialog",
 ];
 
 /// Elements that start a new line.
@@ -190,8 +192,9 @@ pub struct Target {
 
 /// The job post at url, or a message for the person who pasted it. A Jobnet post is read from
 /// Jobnet's own API (its page needs JavaScript); a page that comes back with next to no text is
-/// read again in the computer's own browser (job_sites::browser), which runs its JavaScript.
-pub async fn read(url: &str) -> Result<Page, String> {
+/// read again in the computer's own browser (job_sites::browser), which runs its JavaScript,
+/// with the app's PDF reader (pdf_reader, None where there is none).
+pub async fn read(url: &str, pdf_reader: Option<&Path>) -> Result<Page, String> {
     match crate::job_sites::read_post(url).await {
         Some(Ok(page)) => return Ok(page),
         Some(Err(why)) => crate::log_line!("page_reader: {url}: the site's own API failed, reading the page: {why}"),
@@ -200,9 +203,13 @@ pub async fn read(url: &str) -> Result<Page, String> {
     let fetched = get(url, &PAGE).await?;
     let page = to_text(&fetched.body, &fetched.content_type, &fetched.url);
     if needs_javascript(&page)
-        && let Some(rendered) = crate::job_sites::browser::render(&fetched.url).await
+        && let Some(pdf_reader) = pdf_reader
+        && let Some(rendered) = crate::job_sites::browser::render(&fetched.url, pdf_reader).await
     {
-        let rendered = to_text(rendered.as_bytes(), "text/html", &fetched.url);
+        let rendered = Ok(PageText {
+            title: page.as_ref().map(|page| page.title.clone()).unwrap_or_default(),
+            text: tidy(&rendered),
+        });
         if !needs_javascript(&rendered) {
             return rendered.map(|text| Page {
                 read_with: ReadWith::Browser,
@@ -765,6 +772,21 @@ mod tests {
         assert_eq!(
             page.text,
             "Backend-udvikler\n\nVi søger en udvikler med erfaring i PHP.\n\n- Laravel\n- MariaDB"
+        );
+    }
+
+    #[test]
+    fn a_page_inside_one_form_keeps_its_post() {
+        let html = format!(
+            "<html><body><form id=\"aspnetForm\"><input type=\"hidden\" value=\"x\"><h1>Lagermedarbejder</h1><p>{}</p><button>Søg</button></form></body></html>",
+            "Vi søger en lagermedarbejder. ".repeat(10)
+        );
+        let page = text(&html);
+        assert!(page.text.starts_with("Lagermedarbejder\n\nVi søger"), "{}", page.text);
+        assert!(
+            !page.text.contains("Søg\n") && !page.text.ends_with("Søg"),
+            "{}",
+            page.text
         );
     }
 

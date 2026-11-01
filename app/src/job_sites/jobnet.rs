@@ -97,13 +97,53 @@ pub fn post_id(url: &str) -> Option<String> {
 }
 
 /// Jobnet's post id, read from the API as a page: its title, and its text as the match reads a
-/// post.
+/// post. An ad Jobnet only lists from another site (isExternal) has no details (JobAdDetails
+/// answers 404), but its search result holds its text: it is read from a search for its id.
 pub async fn read_post(id: &str) -> Result<Page, String> {
     let url = format!("{API}/FindJob/JobAdDetails/{id}?incrementViews=false");
-    let fetched = page_reader::get(&url, &JSON).await?;
-    let details: Value =
-        serde_json::from_slice(&fetched.body).map_err(|e| format!("Jobnet answered something else: {e}"))?;
+    let details = match get_json(&url).await {
+        Ok(details) => details,
+        Err(why) => {
+            let Some(listed) = listed_ad(id).await? else {
+                return Err(why);
+            };
+            details_of_listed(&listed)
+        }
+    };
     post_page(id, &details)
+}
+
+/// The API's JSON answer at url.
+async fn get_json(url: &str) -> Result<Value, String> {
+    let fetched = page_reader::get(url, &JSON).await?;
+    serde_json::from_slice(&fetched.body).map_err(|e| format!("Jobnet answered something else: {e}"))
+}
+
+/// The ad with id as a search for its id lists it, if it does.
+async fn listed_ad(id: &str) -> Result<Option<Value>, String> {
+    let answer = get_json(&search_url(id, "")).await?;
+    Ok(answer["jobAds"]
+        .as_array()
+        .and_then(|ads| ads.iter().find(|ad| text(ad, "jobAdId").eq_ignore_ascii_case(id)))
+        .cloned())
+}
+
+/// A listed ad in the shape of its details (post_page): its description as the body, and the
+/// employer's own page as where to apply.
+fn details_of_listed(ad: &Value) -> Value {
+    serde_json::json!({
+        "title": text(ad, "title"),
+        "body": text(ad, "description"),
+        "employer": { "name": text(ad, "hiringOrgName") },
+        "job": { "address": {
+            "postalCode": text(ad, "postalCode"),
+            "city": first_of(&[text(ad, "postalDistrictName"), text(ad, "municipality")]),
+        } },
+        "application": {
+            "deadlineDate": text(ad, "applicationDeadline"),
+            "url": text(ad, "jobAdUrl"),
+        },
+    })
 }
 
 /// A post's details as a page: the title, then the employer, the place, the deadline and where
@@ -209,6 +249,21 @@ mod tests {
         assert_eq!(post_id(" https://www.jobnet.dk/job/123/ "), Some("123".to_string()));
         assert_eq!(post_id("https://jobnet.dk/find-job"), None);
         assert_eq!(post_id("https://example.com/find-job/1"), None);
+    }
+
+    #[test]
+    fn a_listed_ad_reads_as_its_details() {
+        let ad = json!({
+            "jobAdId": "3f09", "title": "Mekaniker", "hiringOrgName": "Carline", "postalCode": "5000",
+            "postalDistrictName": "Odense C", "applicationDeadline": "2026-11-20T00:00:00",
+            "jobAdUrl": "https://jscarline.dk/job/mekaniker/", "description": "<p>Vi søger en mekaniker.</p>",
+        });
+        let page = post_page("3f09", &details_of_listed(&ad)).unwrap();
+        assert_eq!(page.title, "Mekaniker");
+        assert_eq!(
+            page.text,
+            "Carline\n5000 Odense C\nAnsøgningsfrist: 2026-11-20\nSøg jobbet: https://jscarline.dk/job/mekaniker/\n\nVi søger en mekaniker."
+        );
     }
 
     #[test]

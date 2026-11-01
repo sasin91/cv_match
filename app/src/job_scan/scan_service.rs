@@ -729,7 +729,7 @@ async fn match_post_with(context: &Arc<Context>, post_id: i64, cv: &ProfileCv) -
         model::set_status(db, post_id, status, &error, match_id, &found, now).await
     };
     let started = timeline.start(run_steps::READ);
-    let read = page_reader::read(&post.url).await;
+    let read = page_reader::read(&post.url, context.pdf_reader.as_deref()).await;
     timeline
         .keep(started, &read_text(&post.url, &read), read.is_err(), &[])
         .await;

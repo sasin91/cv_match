@@ -31,6 +31,11 @@ pub const MODELS_FOLDER: &str = "models";
 /// llama-server's output, in the llama folder.
 pub const LOG_FILE: &str = "llama-server.log";
 
+/// The tokens a model may think for before it answers: none. Qwen3 thinks by default, which can
+/// add a thousand tokens or more to each answer; on a mid-range graphics card (about 20 tokens a
+/// second) that is a minute per call, and the answers follow a JSON schema anyway.
+const THINKING_TOKENS: u32 = 0;
+
 /// The context the server keeps, in tokens: a job post, a CV and a tailored résumé's answer.
 pub const CONTEXT_TOKENS: u32 = 16_384;
 
@@ -269,7 +274,8 @@ fn model_alias(model: &GgufFile) -> String {
 }
 
 /// llama-server's command line: the model, on 127.0.0.1 only, its context, its layers on the card,
-/// and the model's own chat template (--jinja).
+/// no thinking before answering (--reasoning-budget 0), and the model's own chat template
+/// (--jinja).
 fn server_arguments(model: &GgufFile, alias: &str, port: u16, fit: Fit) -> Vec<String> {
     vec![
         "--model".to_string(),
@@ -284,6 +290,8 @@ fn server_arguments(model: &GgufFile, alias: &str, port: u16, fit: Fit) -> Vec<S
         CONTEXT_TOKENS.to_string(),
         "--n-gpu-layers".to_string(),
         fit.gpu_layers().to_string(),
+        "--reasoning-budget".to_string(),
+        THINKING_TOKENS.to_string(),
         "--jinja".to_string(),
     ]
 }
@@ -436,6 +444,7 @@ mod tests {
         assert!(pairs.contains(&("--port", "50123")));
         assert!(pairs.contains(&("--n-gpu-layers", "20")));
         assert!(pairs.contains(&("--alias", "Qwen3-8B-Q4_K_M")));
+        assert!(pairs.contains(&("--reasoning-budget", "0")));
         assert_eq!(arguments.last().map(String::as_str), Some("--jinja"));
         assert_eq!(model_alias(&model()), "Qwen3-8B-Q4_K_M");
     }

@@ -406,10 +406,12 @@ pub async fn fetch_job(context: &Context, url: &str) -> Result<Page, ServiceErro
             ),
         ));
     }
-    page_reader::read(url).await.map_err(|why| {
-        crate::log_line!("match (fetch_job): {url}: {why}");
-        ServiceError::new(ErrorKind::Invalid, why)
-    })
+    page_reader::read(url, context.pdf_reader.as_deref())
+        .await
+        .map_err(|why| {
+            crate::log_line!("match (fetch_job): {url}: {why}");
+            ServiceError::new(ErrorKind::Invalid, why)
+        })
 }
 
 /// The biggest PDF read for its text. A CV is rarely over a few MB; this leaves room for one

@@ -46,6 +46,11 @@ pub const USER_DEFAULT_MODELS: [(&str, &str); 2] = [(OPENAI, "gpt-5.4-mini"), (A
 /// well over a minute.
 pub const CALL_SECONDS: u64 = 180;
 
+/// How long one call to a model on this computer may take, in seconds (15 minutes): it costs
+/// nothing, and a mid-range graphics card writes a job post's English text and requirements at
+/// about 20 tokens a second, so a long post takes minutes.
+pub const LOCAL_CALL_SECONDS: u64 = 900;
+
 /// How long connecting to the provider may take, in seconds.
 const CONNECT_SECONDS: u64 = 15;
 
@@ -181,7 +186,7 @@ pub fn default_model(provider: &str) -> Option<&'static str> {
 fn http_client(base_url: &str) -> Result<reqwest::Client, LlmException> {
     let builder = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(CONNECT_SECONDS))
-        .timeout(Duration::from_secs(CALL_SECONDS));
+        .timeout(Duration::from_secs(call_seconds(base_url)));
     let builder = if is_this_computer(base_url) {
         builder.no_proxy()
     } else {
@@ -191,6 +196,15 @@ fn http_client(base_url: &str) -> Result<reqwest::Client, LlmException> {
         crate::log_line!("llm: couldn't make the HTTP client: {}", error_chain(&e));
         LlmException::new(format!("The app couldn't make its HTTP client: {}", error_chain(&e)))
     })
+}
+
+/// How long a call to base_url may take: longer on this computer.
+pub fn call_seconds(base_url: &str) -> u64 {
+    if is_this_computer(base_url) {
+        LOCAL_CALL_SECONDS
+    } else {
+        CALL_SECONDS
+    }
 }
 
 /// Whether base_url names this computer (localhost, 127.x.x.x or ::1).
@@ -230,10 +244,11 @@ async fn post(
 }
 
 /// The request never got an answer: it timed out, or the provider couldn't be reached.
-fn not_answered(provider: &str, error: &reqwest::Error) -> LlmException {
+fn not_answered(provider: &str, base_url: &str, error: &reqwest::Error) -> LlmException {
     if error.is_timeout() {
         return LlmException::retryable(format!(
-            "{provider} didn't answer within {CALL_SECONDS} seconds. Try again; if it keeps happening, try with less text."
+            "{provider} didn't answer within {} seconds. Try again; if it keeps happening, try with less text.",
+            call_seconds(base_url)
         ));
     }
     LlmException::retryable(format!("{provider} could not be reached: {}", error_chain(error)))
@@ -326,5 +341,7 @@ mod tests {
         assert!(is_this_computer("http://[::1]:8080/v1"));
         assert!(!is_this_computer("https://api.openai.com/v1"));
         assert!(!is_this_computer("http://192.168.1.20:11434/v1"));
+        assert_eq!(call_seconds("http://127.0.0.1:1234/v1"), LOCAL_CALL_SECONDS);
+        assert_eq!(call_seconds("https://api.openai.com/v1"), CALL_SECONDS);
     }
 }

@@ -110,14 +110,21 @@ fn search_results(value: &Value, depth: usize) -> Option<&Vec<Value>> {
     }
 }
 
+/// Where a post is read. An ad on Jobindex itself (tid "h…") is its page there (share_url,
+/// /vis-job/); an ad Jobindex found on another site (tid "r…") has only a teaser there, so it is
+/// read where /jobannonce/ sends it, the employer's own page.
+fn post_url(id: &str, share_url: &str) -> String {
+    match id.chars().next() {
+        Some('h') if !share_url.is_empty() => share_url.to_string(),
+        Some('h') => format!("{SITE}/vis-job/{id}"),
+        Some(_) => format!("{SITE}/jobannonce/{id}"),
+        None => share_url.to_string(),
+    }
+}
+
 /// One result as a post, when it has a link.
 fn post(result: &Value) -> Option<ListedPost> {
-    let id = text(result, "tid");
-    let url = if id.is_empty() {
-        first_of(&[text(result, "share_url"), text(result, "url")]).to_string()
-    } else {
-        format!("{SITE}/jobannonce/{id}")
-    };
+    let url = post_url(text(result, "tid"), text(result, "share_url"));
     if url.is_empty() {
         return None;
     }
@@ -168,7 +175,7 @@ mod tests {
         assert_eq!(
             posts[0],
             ListedPost {
-                url: "https://www.jobindex.dk/jobannonce/h1647303".to_string(),
+                url: "https://www.jobindex.dk/vis-job/h1647303".to_string(),
                 title: "PHP-udvikler & Laravel".to_string(),
                 company: "Acme A/S".to_string(),
                 location: "Odense".to_string(),
@@ -177,5 +184,13 @@ mod tests {
         assert_eq!(posts[1].url, "https://www.jobindex.dk/vis-job/r1");
         assert_eq!(posts[1].company, "B \"x\"");
         assert!(listed("<html>nothing</html>").is_err());
+        assert_eq!(
+            post_url("r14077115", "x"),
+            "https://www.jobindex.dk/jobannonce/r14077115"
+        );
+        assert_eq!(
+            post_url("h1", "https://www.jobindex.dk/vis-job/h1"),
+            "https://www.jobindex.dk/vis-job/h1"
+        );
     }
 }

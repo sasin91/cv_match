@@ -1,8 +1,8 @@
 //! Pages that show their job post with JavaScript, read in the computer's own browser: Edge
 //! (always there on Windows 11) or Chrome, or Chromium on Linux, started headless for one page
 //! with a fresh profile of its own, so it never touches the user's. It runs the page's
-//! JavaScript for a few seconds and prints the finished HTML (--dump-dom), which page_reader
-//! reads as any page. JOBFINDER_BROWSER names another browser's program.
+//! JavaScript for a few seconds and prints the page to a PDF, whose text the app's PDF reader
+//! reads. JOBFINDER_BROWSER names another browser's program.
 //!
 //! The link itself is checked by page_reader before the browser gets it; what the page loads
 //! after that, the browser fetches as it would for the user.
@@ -10,6 +10,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
+
+use crate::pdf_text::child;
 
 /// The environment variable that names the browser's program, instead of looking for one.
 const BROWSER_VARIABLE: &str = "JOBFINDER_BROWSER";
@@ -21,8 +23,11 @@ const SCRIPT_BUDGET_MS: u64 = 10_000;
 /// How long the browser may take in all, in seconds, before it is stopped.
 const BROWSER_SECONDS: u64 = 45;
 
-/// Most bytes of HTML taken from the browser.
-const MAX_HTML: usize = 4_000_000;
+/// Most bytes of the PDF the browser prints that are read.
+const MAX_PDF: usize = 20_000_000;
+
+/// The PDF's name in the run's profile folder.
+const PDF_FILE: &str = "page.pdf";
 
 /// Where Windows keeps the browsers, under Program Files or the user's local app data.
 #[cfg(windows)]
@@ -44,19 +49,29 @@ const PATH_BROWSERS: [&str; 5] = [
     "chromium-browser",
 ];
 
-/// The page at url as the browser shows it after its JavaScript ran, or None when there is no
-/// browser or it failed (logged).
-pub async fn render(url: &str) -> Option<String> {
+/// The text of the page at url as the browser shows it after its JavaScript ran, or None when
+/// there is no browser or it failed (logged). The browser prints the page to a PDF, which the
+/// app's PDF reader (pdf_reader, `jobfinder read-pdf`) reads: Edge on Windows prints nothing
+/// for --dump-dom, but --print-to-pdf works everywhere.
+pub async fn render(url: &str, pdf_reader: &Path) -> Option<String> {
     let Some(browser) = find() else {
         crate::log_line!("browser: no Edge, Chrome or Chromium found to read {url}");
         return None;
     };
-    match dump_dom(&browser, url).await {
-        Ok(html) => Some(html),
-        Err(why) => {
-            crate::log_line!("browser: {} couldn't read {url}: {why}", browser.display());
-            None
-        }
+    let read = match print_pdf(&browser, url).await {
+        Ok(pdf) => child::text_of(pdf_reader, pdf)
+            .await
+            .map_err(|e| format!("its PDF couldn't be read: {}", failure(&e))),
+        Err(why) => Err(why),
+    };
+    read.map_err(|why| crate::log_line!("browser: {} couldn't read {url}: {why}", browser.display()))
+        .ok()
+}
+
+/// Why the PDF reader gave no text, in words.
+fn failure(failed: &child::Failed) -> &str {
+    match failed {
+        child::Failed::Unreadable(why) | child::Failed::Stopped(why) => why,
     }
 }
 
@@ -89,9 +104,9 @@ fn installed() -> Option<PathBuf> {
     })
 }
 
-/// The arguments that print url's finished HTML from a headless browser with the profile in
-/// profile.
-fn arguments(url: &str, profile: &Path) -> Vec<String> {
+/// The arguments that print url, once its JavaScript ran, to the PDF pdf from a headless browser
+/// with the profile in profile.
+fn arguments(url: &str, profile: &Path, pdf: &Path) -> Vec<String> {
     vec![
         "--headless=new".to_string(),
         "--disable-gpu".to_string(),
@@ -102,35 +117,50 @@ fn arguments(url: &str, profile: &Path) -> Vec<String> {
         "--mute-audio".to_string(),
         format!("--user-data-dir={}", profile.display()),
         format!("--virtual-time-budget={SCRIPT_BUDGET_MS}"),
-        "--dump-dom".to_string(),
+        "--no-pdf-header-footer".to_string(),
+        format!("--print-to-pdf={}", pdf.display()),
         url.to_string(),
     ]
 }
 
-/// Runs browser on url with a fresh profile, removed after, and takes what it prints.
-async fn dump_dom(browser: &Path, url: &str) -> Result<String, String> {
+/// Runs browser on url with a fresh profile, removed after with the PDF it printed in it, and
+/// takes the PDF.
+async fn print_pdf(browser: &Path, url: &str) -> Result<Vec<u8>, String> {
     let profile = fresh_profile();
-    let mut command = tokio::process::Command::new(browser);
-    command
-        .args(arguments(url, &profile))
-        .stdin(std::process::Stdio::null())
-        .stderr(std::process::Stdio::null())
-        .kill_on_drop(true);
-    crate::no_window::hide(&mut command);
-    let ran = tokio::time::timeout(Duration::from_secs(BROWSER_SECONDS), command.output()).await;
+    let pdf = profile.join(PDF_FILE);
+    let printed = run_printing(browser, url, &profile, &pdf).await;
     // The profile goes whatever happened; a browser still holding a file of it leaves it in the
     // temp folder, which Windows empties.
     let _ = tokio::fs::remove_dir_all(&profile).await;
-    let output = ran
+    printed
+}
+
+async fn run_printing(browser: &Path, url: &str, profile: &Path, pdf: &Path) -> Result<Vec<u8>, String> {
+    tokio::fs::create_dir_all(profile)
+        .await
+        .map_err(|e| format!("its profile folder couldn't be made: {e}"))?;
+    let mut command = tokio::process::Command::new(browser);
+    command
+        .args(arguments(url, profile, pdf))
+        .stdin(std::process::Stdio::null())
+        .stdout(std::process::Stdio::null())
+        .stderr(std::process::Stdio::null())
+        .kill_on_drop(true);
+    crate::no_window::hide(&mut command);
+    let status = tokio::time::timeout(Duration::from_secs(BROWSER_SECONDS), command.status())
+        .await
         .map_err(|_| format!("it took more than {BROWSER_SECONDS} seconds"))?
         .map_err(|e| format!("it didn't start: {e}"))?;
-    if !output.status.success() {
-        return Err(format!("it stopped with {}", output.status));
+    if !status.success() {
+        return Err(format!("it stopped with {status}"));
     }
-    if output.stdout.len() > MAX_HTML {
+    let printed = tokio::fs::read(pdf)
+        .await
+        .map_err(|e| format!("it printed no PDF: {e}"))?;
+    if printed.len() > MAX_PDF {
         return Err("the page is too large".to_string());
     }
-    Ok(String::from_utf8_lossy(&output.stdout).into_owned())
+    Ok(printed)
 }
 
 /// Browser runs started by this process, which names each run's profile: only ever counts up.
@@ -148,10 +178,10 @@ mod tests {
 
     #[test]
     fn the_browser_runs_headless_on_its_own_profile() {
-        let arguments = arguments("https://example.com/job", Path::new("profile"));
+        let arguments = arguments("https://example.com/job", Path::new("profile"), Path::new("page.pdf"));
         assert_eq!(arguments.first().map(String::as_str), Some("--headless=new"));
         assert!(arguments.contains(&"--user-data-dir=profile".to_string()));
-        assert!(arguments.contains(&"--dump-dom".to_string()));
+        assert!(arguments.contains(&"--print-to-pdf=page.pdf".to_string()));
         assert_eq!(arguments.last().map(String::as_str), Some("https://example.com/job"));
     }
 
