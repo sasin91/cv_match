@@ -201,6 +201,17 @@ impl RunningWork {
         CURRENT.scope(current, work).await
     }
 
+    /// Runs work as a task of its own (tokio::spawn) within this list: work a page or a window
+    /// starts and leaves running, whose model calls are listed then.
+    pub fn spawn<F>(self: &Arc<Self>, work: F) -> tokio::task::JoinHandle<F::Output>
+    where
+        F: Future + Send + 'static,
+        F::Output: Send + 'static,
+    {
+        let list = Arc::clone(self);
+        tokio::spawn(async move { list.within(work).await })
+    }
+
     /// The pieces running now, each followed by the pieces under it, oldest first.
     pub fn rows(&self) -> Vec<WorkRow> {
         let entries = self.lock();

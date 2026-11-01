@@ -1236,7 +1236,7 @@ pub async fn scan_now(context: Arc<Context>) -> Result<&'static str, ServiceErro
     if let Some(running) = running_scan(&context).await? {
         return Err(ServiceError::new(ErrorKind::TooMany, running_text(Some(&running))));
     }
-    tokio::spawn(async move {
+    context.running.clone().spawn(async move {
         match scan(context).await {
             Ok(report) => crate::say!("job_scan: {}", report.summary()),
             Err(e) => crate::log_line!("job_scan: the scan failed: {}", e.message),
@@ -1320,7 +1320,7 @@ pub async fn add_page(
     let Some(post_id) = model::add_post(db, search_id, None, &post, now).await? else {
         return Ok("JobFinder has this post already: it's on the search's page.");
     };
-    tokio::spawn(async move {
+    context.running.clone().spawn(async move {
         let matched = match profile_cv(&context).await {
             Ok(cv) => match_post_with(&context, post_id, &cv, Some(page)).await,
             Err(e) => Err(e),
@@ -1355,9 +1355,9 @@ pub async fn retry(context: Arc<Context>, post_id: i64) -> Result<(i64, &'static
 }
 
 /// Matches a post as its own task, so it finishes when the page that asked is gone; how it went
-/// is the post's status, and the log.
+/// is the post's status, and the log. Reading the profile's CV is in the task manager too.
 fn match_in_background(context: Arc<Context>, post_id: i64) {
-    tokio::spawn(async move {
+    context.running.clone().spawn(async move {
         if let Err(e) = match_post(context, post_id).await {
             crate::log_line!("job_scan: matching post {post_id} failed: {}", e.message);
         }
