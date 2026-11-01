@@ -21,6 +21,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use iced::futures::Stream;
+use iced::theme::Mode;
 use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::{Column, Row, button, column, container, row, scrollable, space, text};
 use iced::{Center, Element, Fill, Size, Task};
@@ -100,6 +101,8 @@ pub struct Shell {
     local_model: local_model::State,
     job_searches: job_searches::State,
     matching: matching::State,
+    /// Windows' light or dark mode, which the window follows.
+    mode: Mode,
 }
 
 /// Clone, as iced's buttons need; a reload's answer is shared rather than copied.
@@ -118,6 +121,8 @@ pub enum Message {
     LocalModel(local_model::Msg),
     JobSearches(job_searches::Msg),
     Matching(matching::Msg),
+    /// Windows' light or dark mode, read at the start and whenever it changes.
+    ThemeMode(Mode),
 }
 
 /// Opens the window and runs until it is closed.
@@ -129,7 +134,8 @@ pub fn run(launch: Launch) -> iced::Result {
         .title(TITLE)
         .window(window_settings())
         .default_font(style::font())
-        .theme(style::theme())
+        .theme(|shell: &Shell| style::theme(shell.mode))
+        .subscription(|_: &Shell| iced::system::theme_changes().map(Message::ThemeMode))
         .run()
 }
 
@@ -140,7 +146,7 @@ pub fn show_failure(why: String) -> iced::Result {
         .title(TITLE)
         .window_size(FAILURE_WINDOW_SIZE)
         .default_font(style::font())
-        .theme(style::theme())
+        .theme(style::theme(Mode::Light))
         .run()
 }
 
@@ -203,9 +209,11 @@ fn boot(launch: &Mutex<Option<Launch>>) -> (Shell, Task<Message>) {
         local_model: local_model::State::default(),
         job_searches: job_searches::State::default(),
         matching: matching::State::default(),
+        mode: Mode::Light,
     };
     let tasks = Task::batch([
         Task::done(Message::Reload),
+        iced::system::theme().map(Message::ThemeMode),
         Task::run(received(front), |()| Message::Front),
         Task::run(received(ticks), |()| Message::Reload),
     ]);
@@ -443,6 +451,7 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
             .chain(Task::done(Message::Reload));
         }
         Message::Said(said) => shell.said = Some(said),
+        Message::ThemeMode(mode) => shell.mode = mode,
         Message::Front => {
             return iced::window::latest().and_then(|window| {
                 // Out of the taskbar first, when it was minimised there.
