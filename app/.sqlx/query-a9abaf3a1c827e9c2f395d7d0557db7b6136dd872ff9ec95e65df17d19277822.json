@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO match_documents (match_id, document_id) VALUES (?1, ?2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "a9abaf3a1c827e9c2f395d7d0557db7b6136dd872ff9ec95e65df17d19277822"
+}

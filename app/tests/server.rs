@@ -26,15 +26,18 @@ static TAXONOMY: LazyLock<Arc<Taxonomy>> = LazyLock::new(|| Arc::new(Taxonomy::l
 /// a rejected one.
 const SEED: &str = "
 INSERT INTO trongate_users (id) VALUES (3);
-INSERT INTO matches (id, trongate_user_id, job_title, company, job_url, job_text, cv_name, cv_text, score, points, max_points, tag, created_at)
-VALUES (21, 3, 'PHP-udvikler', 'Firma <A/S>', 'https://www.jobindex.dk/job/1', 'Vi søger en PHP-udvikler.\nSend din ansøgning til job@firma.dk. Skriv \"Backend\" i emnefeltet.', 'cv', 'PHP', 0.86, 9, 10, 'top', 1760000000),
-       (22, 3, 'Mekaniker', '', NULL, 'Mekaniker søges', 'cv', 'PHP', 0.2, 1, 10, 'poor', 1760000100);
+INSERT INTO matches (id, trongate_user_id, job_title, company, job_url, job_text, score, points, max_points, tag, created_at)
+VALUES (21, 3, 'PHP-udvikler', 'Firma <A/S>', 'https://www.jobindex.dk/job/1', 'Vi søger en PHP-udvikler.\nSend din ansøgning til job@firma.dk. Skriv \"Backend\" i emnefeltet.', 0.86, 9, 10, 'top', 1760000000),
+       (22, 3, 'Mekaniker', '', NULL, 'Mekaniker søges', 0.2, 1, 10, 'poor', 1760000100);
+INSERT INTO documents (id, kind, name, text, written_at) VALUES (1, 'cv', 'cv', 'PHP', 1760000000);
+INSERT INTO match_documents (match_id, document_id) VALUES (21, 1), (22, 1);
 INSERT INTO match_items (match_id, criterion, text, verdict, decided_by, reason, sort_order)
 VALUES (21, 'requirements', 'PHP', 'met', 'exact', 'Named in the CV.', 0),
        (21, 'location', 'Bor i København', 'missing', 'llm', 'Lives in Slagelse.', 1);
 INSERT INTO match_rejections (match_id, reason, note, created_at) VALUES (22, 'commute', '1h each way', 0);
 UPDATE matches SET rejected_at = 1 WHERE id = 22;
-INSERT INTO documents (id, match_id, kind, text, written_at) VALUES (5, 21, 'resume', 'Mette Sørensen', 1760000200);
+INSERT INTO documents (id, kind, text, written_at) VALUES (5, 'resume', 'Mette Sørensen', 1760000200);
+INSERT INTO match_documents (match_id, document_id) VALUES (21, 5);
 INSERT INTO match_resumes (document_id, name, intro) VALUES (5, 'Mette Sørensen', 'Backend-udvikler.');
 INSERT INTO match_resume_entries (id, document_id, section, title, sort_order) VALUES (1, 5, 'experience', 'Udvikler', 0);
 INSERT INTO match_resume_lines (document_id, entry_id, kind, text, sort_order)
@@ -1136,8 +1139,8 @@ async fn dismissing_a_found_post_rejects_its_match_and_rejecting_the_match_dismi
     followed_to(&app, post_form("/job_scan/submit/0", saved)).await;
     db.execute(sqlx::raw_sql(
         r#"
-        INSERT INTO matches (id, trongate_user_id, job_title, company, job_text, cv_text, score, points, max_points, tag, created_at)
-        VALUES (5, 1, 'PHP developer', 'Acme', 'post', 'cv', 0.8, 8, 10, 'good', 100);
+        INSERT INTO matches (id, trongate_user_id, job_title, company, job_text, score, points, max_points, tag, created_at)
+        VALUES (5, 1, 'PHP developer', 'Acme', 'post', 0.8, 8, 10, 'good', 100);
         INSERT INTO scanned_job_posts (id, job_search_id, url, url_hash, title, status, match_id, found_at)
         VALUES (1, 1, 'https://jobnet.dk/1', 'x', 'PHP developer', 'matched', 5, 100);
         "#,

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "-- One of the user's saved matches. ?1 the match, ?2 the user.\nSELECT\n  id,\n  trongate_user_id,\n  job_title,\n  company,\n  job_url,\n  job_text,\n  cv_name,\n  cv_text,\n  score,\n  points,\n  max_points,\n  tag,\n  rejected_at,\n  created_at\nFROM matches\nWHERE id = ?1 AND trongate_user_id IS ?2\n",
+  "query": "-- One of the user's saved matches, with the CV it was matched with. ?1 the match, ?2 the user.\nSELECT\n  m.id,\n  m.trongate_user_id,\n  m.job_title,\n  m.company,\n  m.job_url,\n  m.job_text,\n  COALESCE(cv.name, '') AS \"cv_name!: String\",\n  COALESCE(cv.text, '') AS \"cv_text!: String\",\n  m.score,\n  m.points,\n  m.max_points,\n  m.tag,\n  m.rejected_at,\n  m.created_at\nFROM matches m\nLEFT JOIN (\n  SELECT md.match_id, d.name, d.text\n  FROM match_documents md\n  JOIN documents d ON d.id = md.document_id AND d.kind = 'cv'\n) cv ON cv.match_id = m.id\nWHERE m.id = ?1 AND m.trongate_user_id IS ?2\n",
   "describe": {
     "columns": [
       {
@@ -70,26 +70,16 @@
         }
       },
       {
-        "name": "cv_name",
+        "name": "cv_name!: String",
         "ordinal": 6,
         "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "matches",
-            "name": "cv_name"
-          }
-        }
+        "origin": "Expression"
       },
       {
-        "name": "cv_text",
+        "name": "cv_text!: String",
         "ordinal": 7,
         "type_info": "Text",
-        "origin": {
-          "Table": {
-            "table": "matches",
-            "name": "cv_text"
-          }
-        }
+        "origin": "Expression"
       },
       {
         "name": "score",
@@ -178,5 +168,5 @@
       false
     ]
   },
-  "hash": "f63a98f926716847bdb6af68ee79fb47439fcd7f1e11f5dd09c180cac24dc9f7"
+  "hash": "9d3caab918fcdf845ac772da67ba766dd84b2f4975fd5663b0da8b535f735f6b"
 }

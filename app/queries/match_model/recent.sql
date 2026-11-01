@@ -6,16 +6,23 @@ SELECT
   m.job_title,
   m.company,
   m.job_url,
-  m.cv_name,
+  COALESCE((
+    SELECT d.name
+    FROM match_documents md
+    JOIN documents d ON d.id = md.document_id AND d.kind = 'cv'
+    WHERE md.match_id = m.id
+  ), '') AS "cv_name!: String",
   m.score,
   m.points,
   m.max_points,
   m.tag,
   EXISTS (
-    SELECT 1 FROM documents d WHERE d.match_id = m.id AND d.kind = 'application'
+    SELECT 1 FROM match_documents md JOIN documents d ON d.id = md.document_id
+    WHERE md.match_id = m.id AND d.kind = 'application'
   ) AS "has_application: bool",
   EXISTS (
-    SELECT 1 FROM documents d WHERE d.match_id = m.id AND d.kind = 'resume'
+    SELECT 1 FROM match_documents md JOIN documents d ON d.id = md.document_id
+    WHERE md.match_id = m.id AND d.kind = 'resume'
   ) AS "has_resume: bool",
   m.created_at,
   (

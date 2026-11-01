@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT COUNT(*) FROM documents WHERE match_id = 1",
+  "query": "SELECT COUNT(*) FROM match_documents md JOIN documents d ON d.id = md.document_id WHERE md.match_id = 1 AND d.kind != 'cv'",
   "describe": {
     "columns": [
       {
@@ -17,5 +17,5 @@
       false
     ]
   },
-  "hash": "c61d9b559e3450eba60d5a40e2769df31f523a7f235470d5c2864e07f946a5b0"
+  "hash": "91ef562d2d86d5911af4aa8a7228eadb11c9df0baf7f5a4bd9436cb246e7930f"
 }

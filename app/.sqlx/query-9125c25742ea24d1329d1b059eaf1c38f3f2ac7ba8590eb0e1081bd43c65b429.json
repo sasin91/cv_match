@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT m.id FROM matches m\n        JOIN match_documents md ON md.match_id = m.id\n        JOIN documents d ON d.id = md.document_id AND d.kind = ?4\n        WHERE m.trongate_user_id IS ?1 AND d.text = ?2 AND m.job_text = ?3\n        ORDER BY m.created_at DESC, m.id DESC\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "9125c25742ea24d1329d1b059eaf1c38f3f2ac7ba8590eb0e1081bd43c65b429"
+}

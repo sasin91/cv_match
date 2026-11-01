@@ -139,7 +139,7 @@ The app keeps its data in one SQLite file, `%APPDATA%\Recruiter\recruiter.sqlite
 Its tables are cv_match's MariaDB tables (`migrations/`, applied in order at start-up and
 recorded in `schema_migrations`) without the `cv_match` prefix, since the whole app is the
 match: `cv_matches` is `matches`, `cv_match_id` is `match_id`, `cv_match_items` is
-`match_items`, and so on. Besides the names, there are four changes:
+`match_items`, and so on. Besides the names, there are five changes:
 
 - `trongate_users` keeps only `id`, and `candidates` drops the login columns.
 - `user_llm_keys.uses` (a SET) is three yes/no columns, `use_for_resume`,
@@ -151,6 +151,10 @@ match: `cv_matches` is `matches`, `cv_match_id` is `match_id`, `cv_match_items` 
   it (`written_by`) and the notes it was written with. The résumé's fields (`match_resumes`,
   `match_resume_entries`, `match_resume_lines`) hang on the résumé version
   (`document_id`) instead of the match.
+- The CV a match was made with is a document too (kind `cv`), instead of
+  `matches.cv_name` and `cv_text`. `match_documents` says which match uses which document, so
+  a CV is kept once however many matches are made with it; a document no match uses any more
+  is deleted with the last one (migration 0004).
 
 While the app is new, `migrations/0001_schema.sql` is changed in place instead of getting new
 migrations. A database made from an older version of it is refused at start with a message
