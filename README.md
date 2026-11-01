@@ -1,12 +1,12 @@
 # cv_match
 
-Recruiter's CV match as a desktop app: one program for Windows or Linux that keeps your
+JobFinder: Recruiter's CV match as a desktop app: one program for Windows or Linux that keeps your
 saved matches in SQLite, serves the match page on http://127.0.0.1:8765 in your own browser, and
 works with Jobnet's joblog through its browser extension. One local user, no sign-in.
 
 | Folder | What |
 | --- | --- |
-| `app/` | the app (`recruiter.exe`): the matching, the pages, the database. See its README. |
+| `app/` | the app (`jobfinder.exe`): the matching, the pages, the database. See its README. |
 | `laya-server/` | Laya on ONNX Runtime in Rust: the model the app runs in-process, and a `/v1/systemone` HTTP server |
 | `assets/` | what the app builds in: the page's CSS and JS, Trongate MX, the taxonomy index and the Danish postcodes and DejaVu Sans 2.37 (`fonts`) |
 | `extension/jobnet-joblog/` | the Jobnet extension the app ships and you load once in Edge or Chrome |
@@ -30,13 +30,21 @@ The first build downloads ONNX Runtime for Laya (from cdn.pyke.io) and links it 
 
 ### Starting it
 
-    .\target\release\recruiter.exe
+    .\target\release\jobfinder.exe
 
-On the first start the app makes an empty database, `%APPDATA%\Recruiter\recruiter.sqlite`,
+On the first start the app makes an empty database, `%APPDATA%\JobFinder\jobfinder.sqlite`,
 writes the Jobnet extension next to it and opens the dashboard (http://127.0.0.1:8765/match). It
 has an alert while no AI model is in use, and a row each for the AI model, your profile, Laya, the
 job scan and the Jobnet extension, saying what is set up and linking to what is missing. Under them
 are how many matches each list holds and the shortlist's best three, then the match form.
+
+The app was called Recruiter before. On the default database, the first start of JobFinder moves
+`%APPDATA%\Recruiter` to `%APPDATA%\JobFinder` (renaming `recruiter.sqlite` and `recruiter.log`
+to the new names), moves the API keys from Credential Manager's `Recruiter` entries to
+`JobFinder` ones, and replaces the `Recruiter\Job scan` task with `JobFinder\Job scan` at the
+same interval (on Linux, the `recruiter-scan` timer with `jobfinder-scan`). It won't start while
+Recruiter still runs on that folder; close it first. Delete the old `recruiter.exe` afterwards:
+started again, it would make a new empty database in the old folder.
 
 The links go to the setup (http://127.0.0.1:8765/setup), whose steps are:
 
@@ -46,13 +54,13 @@ The links go to the setup (http://127.0.0.1:8765/setup), whose steps are:
    or a Claude key; the steps are /llama_setup and /account, which come back to the setup while
    the database has no profile or saved matches;
 3. your CV, read by that model into your profile, which the match page matches with;
-4. how often the job scan runs by itself: a Task Scheduler task, `Recruiter\Job scan`, running
-   `recruiter.exe scan`, which scans every active job search (Job scan in the menu) for new
+4. how often the job scan runs by itself: a Task Scheduler task, `JobFinder\Job scan`, running
+   `jobfinder.exe scan`, which scans every active job search (Job scan in the menu) for new
    posts and matches them with your profile. The dashboard's Scan now runs the same scan.
 
-Close its window to stop it. `recruiter.exe --help` lists the options.
+Close its window to stop it. `jobfinder.exe --help` lists the options.
 
-If the app refuses, at start, a database made from an older schema, move `recruiter.sqlite`
+If the app refuses, at start, a database made from an older schema, move `jobfinder.sqlite`
 aside and start again.
 
 ### The API key
@@ -62,12 +70,12 @@ Open http://127.0.0.1:8765/account. Pick OpenAI, Anthropic or a local server, pa
 provider, so an OpenAI and an Anthropic key can be saved side by side. Under **Use my keys for**,
 pick the key each use runs on: evaluating job posts, writing applications, tailoring résumés.
 **Check key** sends one tiny request. The keys go in Windows Credential Manager under
-`Recruiter`, never in the database. With no model named, OpenAI keys run on gpt-5.4-mini.
+`JobFinder`, never in the database. With no model named, OpenAI keys run on gpt-5.4-mini.
 
 ### Laya's model
 
 Export the English checkpoint once, as `laya-server/README.md` ("One-time: export the model")
-describes. Then put these in `%APPDATA%\Recruiter\laya`, or point `--laya` at another folder:
+describes. Then put these in `%APPDATA%\JobFinder\laya`, or point `--laya` at another folder:
 
     laya\rl_agent_config.json   from the checkpoint folder
     laya\tokenizer\             from the checkpoint folder
@@ -86,7 +94,7 @@ Instead of a key, the app can run a GGUF model itself. Open http://127.0.0.1:876
 
 1. **Download llama.cpp** fetches the latest release's Windows build for this computer's card
    (CUDA for NVIDIA, Vulkan for every other card, CPU without one) and unzips it into
-   `%APPDATA%\Recruiter\llama`, or the folder `--llama` names. A `llama-server.exe` already on
+   `%APPDATA%\JobFinder\llama`, or the folder `--llama` names. A `llama-server.exe` already on
    the PATH (winget's llama.cpp, say) is used instead, and nothing is downloaded.
 2. Each offered model (Qwen3 1.7B to 14B) is weighed against this computer's memory and graphics
    card. **Download** the recommended one into `llama\models`.
@@ -108,7 +116,7 @@ said on the page instead of quietly running on the CPU.
 ### The Jobnet extension
 
 Open http://127.0.0.1:8765/joblog_extension and press **Copy the folder and open Edge's
-extensions**. It copies `%APPDATA%\Recruiter\jobnet-joblog` and opens `edge://extensions`. There,
+extensions**. It copies `%APPDATA%\JobFinder\jobnet-joblog` and opens `edge://extensions`. There,
 switch on Developer mode, choose **Load unpacked**, paste the folder and press Select Folder. After an app update writes a newer version, press Reload on the extension.
 
 ### Your phone
@@ -120,11 +128,11 @@ phone with Tailscale on.
 
 ### From a release
 
-Pushing a `v*` tag builds a GitHub release with `recruiter.exe` for Windows and
-`Recruiter-x86_64.AppImage` for Linux. Neither is installed: keep the file where you like and
+Pushing a `v*` tag builds a GitHub release with `jobfinder.exe` for Windows and
+`JobFinder-x86_64.AppImage` for Linux. Neither is installed: keep the file where you like and
 double-click it. Moving it later is fine; at its next start the job scan's schedule follows it.
 
-To remove it, close it and run `recruiter.exe cleanup` (`./Recruiter-x86_64.AppImage cleanup` on
+To remove it, close it and run `jobfinder.exe cleanup` (`./JobFinder-x86_64.AppImage cleanup` on
 Linux), then delete the file. The cleanup lists what the app keeps outside its file and asks before
 removing it: the job scan's schedule, the API keys in Credential Manager (or the keyring), and the
 Jobnet extension's files, llama.cpp and Laya next to the database. It then asks separately whether
@@ -134,13 +142,13 @@ stays open until you press Enter, so the reason can be read.
 
 ### On Linux (and WSL)
 
-Take `Recruiter-x86_64.AppImage` from a release (or build it with `cargo build --release` in
+Take `JobFinder-x86_64.AppImage` from a release (or build it with `cargo build --release` in
 `app/`), make it executable and run it from wherever you keep it. There is nothing to install:
 delete the file to remove it. Tools like AppImageLauncher can add it to the applications menu. The
-database is `~/.local/share/Recruiter/recruiter.sqlite`, and API keys go in the keyring (the
+database is `~/.local/share/JobFinder/jobfinder.sqlite`, and API keys go in the keyring (the
 Secret Service: GNOME Keyring or KWallet), which has to be running to save one.
 
-The job scan's schedule is a systemd user timer, `recruiter-scan.timer`, in
+The job scan's schedule is a systemd user timer, `jobfinder-scan.timer`, in
 `~/.config/systemd/user` (`systemctl --user list-timers` shows it), running the AppImage file
 itself. Move the AppImage and the next start points the timer at its new place. Without systemd
 (WSL with systemd off, say) the setup says it couldn't be scheduled; on WSL, turn systemd on in
@@ -150,16 +158,16 @@ isn't covered yet.
 
 ### Logs
 
-What the app says in its console is kept too. On Windows it goes to `recruiter.log` next to the
-database (`%APPDATA%\Recruiter\recruiter.log`), which moves to `recruiter.old.log` once it passes
-5 MB. On Linux it goes to the systemd journal: `journalctl --user -t recruiter` (add `-f` to
-follow it). The job scan's timer logs there too, under `recruiter-scan.service`. Starting the app
+What the app says in its console is kept too. On Windows it goes to `jobfinder.log` next to the
+database (`%APPDATA%\JobFinder\jobfinder.log`), which moves to `jobfinder.old.log` once it passes
+5 MB. On Linux it goes to the systemd journal: `journalctl --user -t jobfinder` (add `-f` to
+follow it). The job scan's timer logs there too, under `jobfinder-scan.service`. Starting the app
 again on the same database opens the one that runs.
 
 ### Starting it at login
 
 In Task Scheduler, create a task that runs at log on, with the action
-`<repo>\app\target\release\recruiter.exe`, and arguments `--no-browser` plus any of
+`<repo>\app\target\release\jobfinder.exe`, and arguments `--no-browser` plus any of
 `--tailscale-name ...`, `--laya ...` or `--llama ...` you use.
 
 ## Developing
@@ -186,8 +194,8 @@ It needs [watchexec](https://github.com/watchexec/watchexec) once:
   of the app it is, and reloads the page when that changes. Release builds refuse `--dev` and
   never send the script.
 - It uses your real database unless you give it another, for example
-  `cargo dev --database $env:TEMP\recruiter-dev.sqlite` (or `/tmp/recruiter-dev.sqlite` on
-  Linux). Other `recruiter` options go on to the app the same way, and `--port 8766` runs it
+  `cargo dev --database $env:TEMP\jobfinder-dev.sqlite` (or `/tmp/jobfinder-dev.sqlite` on
+  Linux). Other `jobfinder` options go on to the app the same way, and `--port 8766` runs it
   beside a running release build (the Jobnet extension only talks to 8765).
 
 Stop it with Ctrl+C.
@@ -196,10 +204,10 @@ Stop it with Ctrl+C.
 
 With a real key saved on the API key page, check these by hand after a change:
 
-- [ ] **A moved program:** schedule the job scan, close the app, move `recruiter.exe` (or the
+- [ ] **A moved program:** schedule the job scan, close the app, move `jobfinder.exe` (or the
       AppImage) to another folder and start it from there. The task's action (or the timer's
       service) now runs it from the new folder.
-- [ ] **The cleanup:** with the app closed, run `recruiter.exe cleanup --database` on a test
+- [ ] **The cleanup:** with the app closed, run `jobfinder.exe cleanup --database` on a test
       database with a scheduled scan and a saved key. It lists them, removes them on y (the task is
       gone from Task Scheduler, the key from Credential Manager), and keeps the database unless the
       second question gets a y. With the app open it refuses.
@@ -207,14 +215,14 @@ With a real key saved on the API key page, check these by hand after a change:
       opens /match with the "No AI model is set up" alert and the missing rows; Set one up opens
       /setup, which suggests the app's own model on a PC with a good graphics card, else an OpenAI key.
       Set one up and land back on /setup; read a PDF CV into the profile; pick how often to check
-      for new jobs, and `Recruiter\Job scan` shows in Task Scheduler (run it once: no console
+      for new jobs, and `JobFinder\Job scan` shows in Task Scheduler (run it once: no console
       window opens). Go to the dashboard: the alert is gone, the rows say which model and whose profile, and
       the match form has the CV filled in.
 - [ ] **The job scan:** with your OpenAI key picked for evaluating job posts, make a job search
       under Job scan, then press Scan now on the dashboard. The Job scan row says "Scanning now",
       and after a few minutes (reload) the last scan's result; the search's page lists the posts it
       found, matched, with a tailored résumé and application from its score up. Run
-      `recruiter.exe scan` right after: it says every search was scanned less than an hour ago.
+      `jobfinder.exe scan` right after: it says every search was scanned less than an hour ago.
       Dismiss a post: its match is in the Rejected list.
 - [ ] **The lists:** after a few matches, http://127.0.0.1:8765/match shows them under
       Shortlist, All and the other lists. Show more loads more.

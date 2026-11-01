@@ -1,8 +1,8 @@
-//! When the job scan runs by itself: `recruiter scan --database <this database>` every few hours
+//! When the job scan runs by itself: `jobfinder scan --database <this database>` every few hours
 //! while the user is logged in to the computer, from the system's own scheduler. The schedule is
 //! only kept there, so nothing about it is in the database; the setup wizard reads it back. Tests keep it in memory.
 //!
-//! - Windows: a Task Scheduler task, TASK_NAME, that runs recruiter.exe through
+//! - Windows: a Task Scheduler task, TASK_NAME, that runs jobfinder.exe through
 //!   `conhost.exe --headless`, so no console window opens on the desktop each time it runs.
 //! - Linux: a systemd user timer, SYSTEMD_UNIT.timer, starting SYSTEMD_UNIT.service, in
 //!   ~/.config/systemd/user. The timer file notes its interval, which is read back from it.
@@ -11,8 +11,12 @@
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-/// The task's name in Task Scheduler, in a Recruiter folder.
-pub const TASK_NAME: &str = r"Recruiter\Job scan";
+/// The task's name in Task Scheduler, in a JobFinder folder.
+pub const TASK_NAME: &str = r"JobFinder\Job scan";
+
+/// The task's name while the app was called Recruiter; see ScanSchedule::take_over_former().
+#[cfg_attr(not(windows), allow(dead_code))]
+const FORMER_TASK_NAME: &str = r"Recruiter\Job scan";
 
 /// How often the scan can run, in hours, with what the wizard calls it.
 pub const INTERVALS: [(u32, &str); 4] = [
@@ -35,11 +39,15 @@ const DAILY_START: &str = "09:00";
 #[cfg_attr(not(windows), allow(dead_code))]
 const TASK_RUN_MAX_LENGTH: usize = 261;
 
-/// The systemd user units' name: recruiter-scan.timer starts recruiter-scan.service.
-pub const SYSTEMD_UNIT: &str = "recruiter-scan";
+/// The systemd user units' name: jobfinder-scan.timer starts jobfinder-scan.service.
+pub const SYSTEMD_UNIT: &str = "jobfinder-scan";
+
+/// The units' name while the app was called Recruiter; see ScanSchedule::take_over_former().
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const FORMER_SYSTEMD_UNIT: &str = "recruiter-scan";
 
 /// What the timer file's interval line starts with; the rest is the hours.
-const SYSTEMD_INTERVAL_NOTE: &str = "# Recruiter's scan interval in hours: ";
+const SYSTEMD_INTERVAL_NOTE: &str = "# JobFinder's scan interval in hours: ";
 
 /// The scan command the task runs.
 #[derive(Debug, Clone)]
@@ -61,7 +69,7 @@ impl ScanCommand {
         }
     }
 
-    /// The task's command line (schtasks /TR): recruiter.exe scan, with this database, through a
+    /// The task's command line (schtasks /TR): jobfinder.exe scan, with this database, through a
     /// console without a window.
     pub fn windows_task_run(&self) -> String {
         format!(
@@ -89,7 +97,7 @@ impl ScanCommand {
             ""
         };
         format!(
-            "[Unit]\nDescription=Recruiter's job scan\n\n[Service]\nType=oneshot\n{environment}ExecStart={}\n",
+            "[Unit]\nDescription=JobFinder's job scan\n\n[Service]\nType=oneshot\n{environment}ExecStart={}\n",
             self.exec_start()
         )
     }
@@ -104,7 +112,7 @@ pub fn systemd_timer(hours: u32) -> String {
         format!("*-*-* 0/{hours}:00:00")
     };
     format!(
-        "{SYSTEMD_INTERVAL_NOTE}{hours}\n[Unit]\nDescription=Recruiter's job scan, {}\n\n\
+        "{SYSTEMD_INTERVAL_NOTE}{hours}\n[Unit]\nDescription=JobFinder's job scan, {}\n\n\
          [Timer]\nOnCalendar={calendar}\nPersistent=true\n\n[Install]\nWantedBy=timers.target\n",
         INTERVALS
             .iter()
@@ -115,7 +123,7 @@ pub fn systemd_timer(hours: u32) -> String {
 }
 
 /// The program a task runs, from `schtasks /Query /XML`: the first quoted path of its
-/// <Arguments> (windows_task_run puts recruiter.exe there, after conhost.exe's --headless).
+/// <Arguments> (windows_task_run puts jobfinder.exe there, after conhost.exe's --headless).
 #[cfg_attr(not(windows), allow(dead_code))]
 fn windows_program_in(xml: &str) -> Option<PathBuf> {
     let start = xml.find("<Arguments>")? + "<Arguments>".len();
@@ -298,6 +306,28 @@ impl ScanSchedule {
         }
     }
 
+    /// Moves the schedule the app kept while it was called Recruiter (FORMER_TASK_NAME, or the
+    /// FORMER_SYSTEMD_UNIT timer) to this one, keeping its interval unless this one is already
+    /// scheduled, and removes it: it runs recruiter.exe on the former database, which would make
+    /// an empty one there again. The interval moved, or None when there was no former schedule.
+    pub async fn take_over_former(&self) -> Result<Option<u32>, String> {
+        let Store::System(command) = &self.store else {
+            return Ok(None);
+        };
+        let Some(hours) = system::former_interval_hours().await? else {
+            return Ok(None);
+        };
+        let registered = match system::interval_hours(command).await {
+            Ok(Some(_)) => Ok(()),
+            Ok(None) => system::register(command, hours).await,
+            Err(why) => Err(why),
+        };
+        // Removed even when this one couldn't be registered, since it would run on a database
+        // that has moved.
+        system::remove_former().await?;
+        registered.map(|()| Some(hours))
+    }
+
     /// Removes the task, so the scan only runs from the Scan now button.
     pub async fn remove(&self) -> Result<(), String> {
         match &self.store {
@@ -337,7 +367,7 @@ fn interval_in(xml: &str) -> Option<u32> {
 mod system {
     use super::*;
 
-    /// The task's interval. When the program it runs is gone (recruiter.exe was moved, say), the
+    /// The task's interval. When the program it runs is gone (jobfinder.exe was moved, say), the
     /// task is registered again for command's, so the scan doesn't run a missing file. A task
     /// whose program is there is left alone: another copy (a build while developing, on another
     /// database) mustn't take the schedule over.
@@ -376,6 +406,18 @@ mod system {
         schtasks(&["/Delete", "/F", "/TN", TASK_NAME]).await?.map(|_| ())
     }
 
+    /// The former task's interval (FORMER_TASK_NAME), or None when there is none.
+    pub async fn former_interval_hours() -> Result<Option<u32>, String> {
+        let answer = schtasks(&["/Query", "/TN", FORMER_TASK_NAME, "/XML"]).await?;
+        Ok(answer
+            .ok()
+            .map(|xml| interval_in(&xml).unwrap_or(DEFAULT_INTERVAL_HOURS)))
+    }
+
+    pub async fn remove_former() -> Result<(), String> {
+        schtasks(&["/Delete", "/F", "/TN", FORMER_TASK_NAME]).await?.map(|_| ())
+    }
+
     /// Runs schtasks.exe: Ok(Ok(stdout)) when it succeeded, Ok(Err(stderr)) when it answered
     /// with a failure (like "the task doesn't exist"), Err when it couldn't run at all.
     async fn schtasks(args: &[&str]) -> Result<Result<String, String>, String> {
@@ -411,7 +453,11 @@ mod system {
     }
 
     fn unit(kind: &str) -> Result<PathBuf, String> {
-        Ok(units_folder()?.join(format!("{SYSTEMD_UNIT}.{kind}")))
+        unit_named(SYSTEMD_UNIT, kind)
+    }
+
+    fn unit_named(name: &str, kind: &str) -> Result<PathBuf, String> {
+        Ok(units_folder()?.join(format!("{name}.{kind}")))
     }
 
     /// The timer's interval. When the program its service runs is gone (the AppImage was moved,
@@ -467,12 +513,30 @@ mod system {
     }
 
     pub async fn remove() -> Result<(), String> {
+        remove_units(SYSTEMD_UNIT).await
+    }
+
+    /// The former timer's interval (FORMER_SYSTEMD_UNIT), or None when there is none.
+    pub async fn former_interval_hours() -> Result<Option<u32>, String> {
+        match tokio::fs::read_to_string(unit_named(FORMER_SYSTEMD_UNIT, "timer")?).await {
+            Ok(timer) => Ok(Some(systemd_interval_in(&timer).unwrap_or(DEFAULT_INTERVAL_HOURS))),
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
+            Err(e) => Err(format!("The former job scan's timer couldn't be read: {e}")),
+        }
+    }
+
+    pub async fn remove_former() -> Result<(), String> {
+        remove_units(FORMER_SYSTEMD_UNIT).await
+    }
+
+    /// Stops the timer name and removes its timer and service files.
+    async fn remove_units(name: &str) -> Result<(), String> {
         // A timer that isn't loaded (no systemd here, say) is still removed by its files.
-        if let Err(why) = systemctl(&["disable", "--now", &format!("{SYSTEMD_UNIT}.timer")]).await {
+        if let Err(why) = systemctl(&["disable", "--now", &format!("{name}.timer")]).await {
             crate::log_line!("scan_schedule: {why}");
         }
         for kind in ["timer", "service"] {
-            match tokio::fs::remove_file(unit(kind)?).await {
+            match tokio::fs::remove_file(unit_named(name, kind)?).await {
                 Ok(()) => {}
                 Err(e) if e.kind() == std::io::ErrorKind::NotFound => {}
                 Err(e) => return Err(format!("The job scan's {kind} couldn't be removed: {e}")),
@@ -509,7 +573,7 @@ mod system {
     use super::*;
 
     const NOT_HERE: &str =
-        "The job scan can't be scheduled on this system yet. Run `recruiter scan` from cron or launchd instead.";
+        "The job scan can't be scheduled on this system yet. Run `jobfinder scan` from cron or launchd instead.";
 
     pub async fn interval_hours(_: &ScanCommand) -> Result<Option<u32>, String> {
         Ok(None)
@@ -521,6 +585,14 @@ mod system {
 
     pub async fn remove() -> Result<(), String> {
         Err(NOT_HERE.to_string())
+    }
+
+    pub async fn former_interval_hours() -> Result<Option<u32>, String> {
+        Ok(None)
+    }
+
+    pub async fn remove_former() -> Result<(), String> {
+        Ok(())
     }
 }
 
@@ -554,13 +626,13 @@ mod tests {
     #[test]
     fn the_task_runs_the_scan_on_this_database_without_a_window() {
         let command = ScanCommand {
-            exe: PathBuf::from(r"C:\Apps\recruiter.exe"),
-            database: PathBuf::from(r"C:\Users\me\AppData\Roaming\Recruiter\recruiter.sqlite"),
+            exe: PathBuf::from(r"C:\Apps\jobfinder.exe"),
+            database: PathBuf::from(r"C:\Users\me\AppData\Roaming\JobFinder\jobfinder.sqlite"),
             extract_and_run: false,
         };
         assert_eq!(
             command.windows_task_run(),
-            r#"conhost.exe --headless "C:\Apps\recruiter.exe" scan --database "C:\Users\me\AppData\Roaming\Recruiter\recruiter.sqlite""#
+            r#"conhost.exe --headless "C:\Apps\jobfinder.exe" scan --database "C:\Users\me\AppData\Roaming\JobFinder\jobfinder.sqlite""#
         );
     }
 
@@ -569,7 +641,7 @@ mod tests {
         let every_four = systemd_timer(4);
         assert!(every_four.contains("OnCalendar=*-*-* 0/4:00:00"), "{every_four}");
         assert!(
-            every_four.contains("Description=Recruiter's job scan, every 4 hours"),
+            every_four.contains("Description=JobFinder's job scan, every 4 hours"),
             "{every_four}"
         );
         assert_eq!(systemd_interval_in(&every_four), Some(4));
@@ -582,13 +654,13 @@ mod tests {
     #[test]
     fn the_systemd_service_runs_the_scan_on_this_database() {
         let command = ScanCommand {
-            exe: PathBuf::from("/home/me/.local/lib/recruiter/recruiter"),
-            database: PathBuf::from("/home/me/My data/recruiter.sqlite"),
+            exe: PathBuf::from("/home/me/.local/lib/jobfinder/jobfinder"),
+            database: PathBuf::from("/home/me/My data/jobfinder.sqlite"),
             extract_and_run: false,
         };
         assert!(
             command.systemd_service().contains(
-                r#"ExecStart="/home/me/.local/lib/recruiter/recruiter" scan --database "/home/me/My data/recruiter.sqlite""#
+                r#"ExecStart="/home/me/.local/lib/jobfinder/jobfinder" scan --database "/home/me/My data/jobfinder.sqlite""#
             ),
             "{}",
             command.systemd_service()
@@ -597,8 +669,8 @@ mod tests {
 
     #[test]
     fn the_program_a_task_runs_is_read_back() {
-        let xml = r#"<Exec><Command>conhost.exe</Command><Arguments>--headless "C:\Apps\recruiter.exe" scan --database "C:\d.sqlite"</Arguments></Exec>"#;
-        assert_eq!(windows_program_in(xml), Some(PathBuf::from(r"C:\Apps\recruiter.exe")));
+        let xml = r#"<Exec><Command>conhost.exe</Command><Arguments>--headless "C:\Apps\jobfinder.exe" scan --database "C:\d.sqlite"</Arguments></Exec>"#;
+        assert_eq!(windows_program_in(xml), Some(PathBuf::from(r"C:\Apps\jobfinder.exe")));
         let escaped = "<Arguments>--headless &quot;D:\\r.exe&quot; scan</Arguments>";
         assert_eq!(windows_program_in(escaped), Some(PathBuf::from("D:\\r.exe")));
         let ampersand = "<Arguments>--headless &quot;C:\\R&amp;D\\r.exe&quot; scan</Arguments>";
@@ -613,7 +685,7 @@ mod tests {
     #[test]
     fn the_program_a_service_runs_is_read_back() {
         let command = ScanCommand {
-            exe: PathBuf::from("/home/me/Apps/Recruiter-x86_64.AppImage"),
+            exe: PathBuf::from("/home/me/Apps/JobFinder-x86_64.AppImage"),
             database: PathBuf::from("/home/me/r.sqlite"),
             extract_and_run: false,
         };
@@ -624,13 +696,13 @@ mod tests {
     #[test]
     fn paths_are_escaped_for_systemd_and_read_back() {
         let command = ScanCommand {
-            exe: PathBuf::from(r#"/tmp/100%ready/$HOME/a\b"c/recruiter"#),
+            exe: PathBuf::from(r#"/tmp/100%ready/$HOME/a\b"c/jobfinder"#),
             database: PathBuf::from("/home/me/50% off/$cash.sqlite"),
             extract_and_run: false,
         };
         assert_eq!(
             command.exec_start(),
-            r#""/tmp/100%%ready/$HOME/a\\b\"c/recruiter" scan --database "/home/me/50%% off/$$cash.sqlite""#
+            r#""/tmp/100%%ready/$HOME/a\\b\"c/jobfinder" scan --database "/home/me/50%% off/$$cash.sqlite""#
         );
         assert_eq!(systemd_program_in(&command.systemd_service()), Some(command.exe));
     }
@@ -638,7 +710,7 @@ mod tests {
     #[test]
     fn an_unpacked_appimage_is_scheduled_unpacked() {
         let mut command = ScanCommand {
-            exe: PathBuf::from("/home/me/Recruiter-x86_64.AppImage"),
+            exe: PathBuf::from("/home/me/JobFinder-x86_64.AppImage"),
             database: PathBuf::from("/home/me/r.sqlite"),
             extract_and_run: false,
         };

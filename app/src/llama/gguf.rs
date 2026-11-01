@@ -328,7 +328,7 @@ pub mod tests {
 
     #[test]
     fn a_split_model_is_one_model_of_all_its_shards() {
-        let folder = std::env::temp_dir().join(format!("recruiter-gguf-shards-{}", std::process::id()));
+        let folder = std::env::temp_dir().join(format!("jobfinder-gguf-shards-{}", std::process::id()));
         std::fs::create_dir_all(&folder).unwrap();
         let mut first = header("qwen3", 64);
         first.resize(1000, 0);

@@ -2,18 +2,18 @@
 //! also kept where it can be found after the fact. A window build has no console, and the job
 //! scan runs from Task Scheduler or a systemd timer without one.
 //!
-//! - Linux: the systemd journal, as `recruiter` (`journalctl --user -t recruiter`), which keeps
+//! - Linux: the systemd journal, as `jobfinder` (`journalctl --user -t jobfinder`), which keeps
 //!   and rotates it. Run by systemd (the scan's timer), the console already goes to the journal,
 //!   so nothing is added; without a journal (no systemd) the log file below is used instead.
-//! - Windows (and Linux without a journal): recruiter.log next to the database, with the time.
+//! - Windows (and Linux without a journal): jobfinder.log next to the database, with the time.
 //!   The Event Log was set aside: its event source must be registered by an administrator,
 //!   and nothing is installed.
 //!
 //! The log is opened once, at start-up (open); before that, and in tests, lines only go to the
-//! console. A log file over MAX_LOG_BYTES is moved to recruiter.old.log when the app starts,
+//! console. A log file over MAX_LOG_BYTES is moved to jobfinder.old.log when the app starts,
 //! replacing the old one, so the two together stay under twice that. Every process that writes
 //! the file (the app, a dev build beside it, the job scan) holds a shared lock on
-//! recruiter.log.lock while it runs, and the file is only moved by a start that gets that lock
+//! jobfinder.log.lock while it runs, and the file is only moved by a start that gets that lock
 //! alone: a log another process still writes to is never moved under it.
 //!
 //! log_line! is eprintln! plus the log; say! is println! plus the log.
@@ -24,11 +24,11 @@ use std::path::{Path, PathBuf};
 use std::sync::{Mutex, OnceLock};
 
 /// The log's file name, in the database's folder.
-pub const FILE: &str = "recruiter.log";
+pub const FILE: &str = "jobfinder.log";
 /// The log before the last start-up that found it too big.
-pub const OLD_FILE: &str = "recruiter.old.log";
+pub const OLD_FILE: &str = "jobfinder.old.log";
 /// The lock every writer of the log shares (see the module's comment).
-pub const LOCK_FILE: &str = "recruiter.log.lock";
+pub const LOCK_FILE: &str = "jobfinder.log.lock";
 /// How big the log may grow before a start-up moves it aside: 5 MB, months of normal use.
 const MAX_LOG_BYTES: u64 = 5 * 1024 * 1024;
 
@@ -60,8 +60,8 @@ pub enum Opened {
 /// threads don't interleave.
 static LOG: OnceLock<Mutex<Sink>> = OnceLock::new();
 
-/// Opens the log for this run: the journal on Linux, else folder's recruiter.log (moved to
-/// recruiter.old.log first when it is over MAX_LOG_BYTES and no other process writes it). A
+/// Opens the log for this run: the journal on Linux, else folder's jobfinder.log (moved to
+/// jobfinder.old.log first when it is over MAX_LOG_BYTES and no other process writes it). A
 /// second call keeps the first.
 pub fn open(folder: &Path) -> std::io::Result<Opened> {
     #[cfg(target_os = "linux")]
@@ -175,8 +175,8 @@ mod journal {
 
     /// Where journald takes entries.
     const SOCKET: &str = "/run/systemd/journal/socket";
-    /// The name entries are kept under: `journalctl --user -t recruiter`.
-    const IDENTIFIER: &str = "recruiter";
+    /// The name entries are kept under: `journalctl --user -t jobfinder`.
+    const IDENTIFIER: &str = "jobfinder";
     /// Set by systemd when it keeps the program's console in the journal.
     const JOURNAL_STREAM: &str = "JOURNAL_STREAM";
 
@@ -236,7 +236,7 @@ mod tests {
     #[test]
     fn a_journal_entry_keeps_a_line_with_newlines_as_one_message() {
         let entry = journal::entry("usage: a\n  b\n", Priority::Error as u8);
-        let mut expected = b"SYSLOG_IDENTIFIER=recruiter\nPRIORITY=3\nMESSAGE\n".to_vec();
+        let mut expected = b"SYSLOG_IDENTIFIER=jobfinder\nPRIORITY=3\nMESSAGE\n".to_vec();
         expected.extend_from_slice(&12u64.to_le_bytes());
         expected.extend_from_slice(b"usage: a\n  b");
         expected.push(b'\n');
@@ -245,7 +245,7 @@ mod tests {
 
     #[test]
     fn a_log_over_its_size_is_moved_aside_at_start_up_unless_another_process_writes_it() {
-        let folder = std::env::temp_dir().join(format!("recruiter-log-test-{}", std::process::id()));
+        let folder = std::env::temp_dir().join(format!("jobfinder-log-test-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&folder);
         let (path, mut log) = open_file(&folder, 10).unwrap();
         log.file.write_all(b"short\n").unwrap();

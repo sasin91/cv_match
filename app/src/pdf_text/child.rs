@@ -1,4 +1,4 @@
-//! Reading a PDF in a child process (`recruiter read-pdf`), so a file that still exhausts memory
+//! Reading a PDF in a child process (`jobfinder read-pdf`), so a file that still exhausts memory
 //! or the stack, or never finishes, ends only that process and not the app. The child reads the
 //! PDF's bytes on stdin and prints its text on stdout, or why it couldn't on stderr.
 
@@ -99,7 +99,7 @@ mod tests {
 
     #[tokio::test]
     async fn a_reader_that_cant_start_is_said_not_crashed_on() {
-        let missing = Path::new("no-such-recruiter-program");
+        let missing = Path::new("no-such-jobfinder-program");
         match text_of(missing, b"%PDF-1.4".to_vec()).await {
             Err(Failed::Stopped(why)) => assert!(why.contains("couldn't start"), "{why}"),
             other => panic!("{other:?}"),

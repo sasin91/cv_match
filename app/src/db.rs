@@ -37,12 +37,30 @@ const MAX_CONNECTIONS: u32 = 4;
 /// database, so the pool must never open a second one or close the first.
 const IN_MEMORY_CONNECTIONS: u32 = 1;
 
-/// %APPDATA%\Recruiter\recruiter.sqlite on Windows (~/.local/share/Recruiter on Linux).
+/// The app's data folder's name, in the user's data folder.
+pub const FOLDER: &str = "JobFinder";
+
+/// The database's file name in the data folder.
+pub const FILE: &str = "jobfinder.sqlite";
+
+/// %APPDATA%\JobFinder\jobfinder.sqlite on Windows (~/.local/share/JobFinder on Linux).
 pub fn default_path() -> PathBuf {
-    dirs::data_dir()
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join("Recruiter")
-        .join("recruiter.sqlite")
+    users_data_folder().join(FOLDER).join(FILE)
+}
+
+/// The user's data folder that the app's data folder is in: %APPDATA% on Windows,
+/// ~/.local/share on Linux (the current folder when there is none).
+pub fn users_data_folder() -> PathBuf {
+    dirs::data_dir().unwrap_or_else(|| PathBuf::from("."))
+}
+
+/// A file's full path, which names its key's credential (key_vault); as given when it can't be
+/// resolved. On Windows it starts with \\?\, as std::fs::canonicalize gives it.
+pub fn full_path(file: &Path) -> String {
+    std::fs::canonicalize(file)
+        .unwrap_or_else(|_| file.to_path_buf())
+        .display()
+        .to_string()
 }
 
 /// The database at path, made if it isn't there, with every migration applied.

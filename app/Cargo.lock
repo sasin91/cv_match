@@ -2672,6 +2672,47 @@ dependencies = [
 ]
 
 [[package]]
+name = "jobfinder"
+version = "0.1.0"
+dependencies = [
+ "askama",
+ "axum",
+ "base64 0.22.1",
+ "chrono",
+ "dirs",
+ "ego-tree",
+ "encoding_rs",
+ "fancy-regex 0.20.0",
+ "html-escape",
+ "http-body-util",
+ "iced",
+ "indexmap",
+ "keyring",
+ "laya-server",
+ "mime_guess",
+ "miniz_oxide",
+ "pdf-writer",
+ "regex",
+ "reqwest",
+ "rust-embed",
+ "scraper",
+ "serde",
+ "serde_json",
+ "sha1 0.10.7",
+ "sha2 0.10.9",
+ "sqlx",
+ "subsetter",
+ "tokio",
+ "tower",
+ "ttf-parser",
+ "unicode-normalization",
+ "url",
+ "webbrowser",
+ "windows 0.62.2",
+ "zip",
+]
+
+[[package]]
 name = "jobserver"
 version = "0.1.35"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -4249,47 +4290,6 @@ checksum = "c4ed38b89c2c77ff968c524145ad65fb010f38af5c7a224b53b81d47ac2daa81"
 dependencies = [
  "bytemuck",
  "font-types 0.11.3",
-]
-
-[[package]]
-name = "recruiter"
-version = "0.1.0"
-dependencies = [
- "askama",
- "axum",
- "base64 0.22.1",
- "chrono",
- "dirs",
- "ego-tree",
- "encoding_rs",
- "fancy-regex 0.20.0",
- "html-escape",
- "http-body-util",
- "iced",
- "indexmap",
- "keyring",
- "laya-server",
- "mime_guess",
- "miniz_oxide",
- "pdf-writer",
- "regex",
- "reqwest",
- "rust-embed",
- "scraper",
- "serde",
- "serde_json",
- "sha1 0.10.7",
- "sha2 0.10.9",
- "sqlx",
- "subsetter",
- "tokio",
- "tower",
- "ttf-parser",
- "unicode-normalization",
- "url",
- "webbrowser",
- "windows 0.62.2",
- "zip",
 ]
 
 [[package]]

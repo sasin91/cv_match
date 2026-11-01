@@ -1095,7 +1095,7 @@ mod tests {
     #[tokio::test(flavor = "multi_thread")]
     async fn overlapping_rejects_and_bring_backs_all_save() {
         // A file, not :memory:, so the pool has several connections, as the app does.
-        let path = std::env::temp_dir().join(format!("recruiter-overlap-{}.sqlite", std::process::id()));
+        let path = std::env::temp_dir().join(format!("jobfinder-overlap-{}.sqlite", std::process::id()));
         let db = db::open(&path).await.unwrap();
         db.execute(sqlx::raw_sql(SEED)).await.unwrap();
         let requests: Vec<_> = (0..OVERLAPPING_REQUESTS)

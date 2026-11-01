@@ -199,7 +199,7 @@ pub async fn search(
 }
 
 /// POST job_scan/submit_scan {back}: Scan now, from the dashboard, the searches or a search. It
-/// runs the one scan `recruiter scan` runs (scan_service::scan), in the background, and goes back.
+/// runs the one scan `jobfinder scan` runs (scan_service::scan), in the background, and goes back.
 pub async fn submit_scan(State(state): State<Arc<AppState>>, Form(form): Form<ScanForm>) -> Response {
     let said = scan_service::scan_now(Arc::clone(&state.context)).await;
     state.set_flash(said.map_or_else(|e| e.message, str::to_string));

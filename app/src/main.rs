@@ -1,6 +1,6 @@
-//! recruiter: the desktop app's command line.
+//! jobfinder: the desktop app's command line.
 //!
-//!   recruiter [--port 8765] [--database path\to\recruiter.sqlite] [--laya path\to\laya]
+//!   jobfinder [--port 8765] [--database path\to\jobfinder.sqlite] [--laya path\to\laya]
 //!             [--llama path\to\llama] [--browser | --no-browser]
 //!             [--tailscale-name pc.tailnet.ts.net]
 //!       opens the app's window (desktop/) and serves the app on 127.0.0.1 beside it, for the
@@ -12,20 +12,20 @@
 //!       --tailscale-name it also answers `tailscale serve` for that name, so a phone can open it
 //!       (docs/phone.md)
 //!
-//!   recruiter scan [--database path\to\recruiter.sqlite]
+//!   jobfinder scan [--database path\to\jobfinder.sqlite]
 //!       the job scan, which the setup wizard's Task Scheduler task runs (scan_schedule): every
 //!       active job search is searched for new posts, which are matched with the profile
 //!       (job_scan::scan_service, the same scan as the dashboard's Scan now)
 //!
-//!   recruiter cleanup [--database path\to\recruiter.sqlite]
+//!   jobfinder cleanup [--database path\to\jobfinder.sqlite]
 //!       removes what the app keeps outside its own file, after saying what it found and asking:
 //!       the job scan's schedule, the API keys, and the downloaded and written folders next to the
 //!       database; then, asked again, the database itself (cleanup.rs)
 //!
-//! Nothing is installed: double-click recruiter.exe (or run the AppImage on Linux) wherever it is
+//! Nothing is installed: double-click jobfinder.exe (or run the AppImage on Linux) wherever it is
 //! kept.
 //!
-//!   recruiter --dev ...
+//!   jobfinder --dev ...
 //!       (debug builds only) reloads the page in the browser whenever the app restarts, for
 //!       `cargo dev` (xtask/), which restarts it under watchexec on every change
 
@@ -34,18 +34,19 @@ use std::process::ExitCode;
 use std::sync::Arc;
 use std::time::Instant;
 
-use recruiter::account::key_vault::KeyVault;
-use recruiter::app_log::{self, Opened};
-use recruiter::context::{Context, DatabaseFile};
-use recruiter::dev_reload::DevReload;
-use recruiter::instance::{self, Running};
-use recruiter::job_scan::scan_service;
-use recruiter::laya::laya_client::{self, LayaClient};
-use recruiter::llama::{self, hardware::Inventory, llama_server::LlamaServer};
-use recruiter::scan_schedule::{self, ScanSchedule};
-use recruiter::server::{self, AppState};
-use recruiter::taxonomy::Taxonomy;
-use recruiter::{cleanup, db, desktop, extension};
+use jobfinder::account::key_vault::KeyVault;
+use jobfinder::app_log::{self, Opened};
+use jobfinder::context::{Context, DatabaseFile};
+use jobfinder::dev_reload::DevReload;
+use jobfinder::from_recruiter::{self, Moved};
+use jobfinder::instance::{self, Running};
+use jobfinder::job_scan::scan_service;
+use jobfinder::laya::laya_client::{self, LayaClient};
+use jobfinder::llama::{self, hardware::Inventory, llama_server::LlamaServer};
+use jobfinder::scan_schedule::{self, ScanSchedule};
+use jobfinder::server::{self, AppState};
+use jobfinder::taxonomy::Taxonomy;
+use jobfinder::{cleanup, db, desktop, extension};
 
 /// How a start shows the app.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -58,11 +59,11 @@ enum FrontEnd {
     Neither,
 }
 
-const USAGE: &str = "usage: recruiter [--port <port>] [--database <file>] [--laya <folder>] [--llama <folder>]
+const USAGE: &str = "usage: jobfinder [--port <port>] [--database <file>] [--laya <folder>] [--llama <folder>]
                  [--browser | --no-browser] [--tailscale-name <name>] [--dev]
-       recruiter scan [--database <file>]
-       recruiter cleanup [--database <file>]
-       recruiter read-pdf   (a PDF on stdin, its text on stdout; the app runs it)";
+       jobfinder scan [--database <file>]
+       jobfinder cleanup [--database <file>]
+       jobfinder read-pdf   (a PDF on stdin, its text on stdout; the app runs it)";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -73,7 +74,7 @@ fn main() -> ExitCode {
         }
         Some("scan") => run_scan(&args[1..]),
         Some("cleanup") => run_cleanup(&args[1..]),
-        Some(recruiter::pdf_text::child::SUBCOMMAND) => recruiter::pdf_text::child::run(),
+        Some(jobfinder::pdf_text::child::SUBCOMMAND) => jobfinder::pdf_text::child::run(),
         _ => run_server(&args),
     }
 }
@@ -85,7 +86,7 @@ fn database_arg(args: &[String]) -> Option<PathBuf> {
         [] => Some(db::default_path()),
         [flag, value] if flag == "--database" => Some(PathBuf::from(value)),
         _ => {
-            recruiter::log_line!("{USAGE}");
+            jobfinder::log_line!("{USAGE}");
             None
         }
     }
@@ -136,18 +137,23 @@ fn hide_own_console() {
 #[cfg(not(windows))]
 fn hide_own_console() {}
 
-/// `recruiter scan`: the job scan (job_scan::scan_service::scan), the same scan as the
+/// `jobfinder scan`: the job scan (job_scan::scan_service::scan), the same scan as the
 /// dashboard's Scan now. It fails (which Task Scheduler shows as the last run result) when it
 /// couldn't scan at all; a search or post that failed is said and kept with it.
 fn run_scan(args: &[String]) -> ExitCode {
     let Some(database) = database_arg(args) else {
         return ExitCode::FAILURE;
     };
+    let moved = from_recruiter::move_data_folder(&database);
     open_log(database.parent().unwrap_or(std::path::Path::new(".")));
-    // Held while it runs, so `recruiter cleanup` won't remove the database under it.
+    if let Err(why) = said_move(moved) {
+        jobfinder::log_line!("{why}");
+        return ExitCode::FAILURE;
+    }
+    // Held while it runs, so `jobfinder cleanup` won't remove the database under it.
     let Ok(_held) = cleanup::hold(&database, cleanup::Hold::Running) else {
-        recruiter::log_line!(
-            "Recruiter's cleanup is running on {}, so nothing was scanned.",
+        jobfinder::log_line!(
+            "JobFinder's cleanup is running on {}, so nothing was scanned.",
             database.display()
         );
         return ExitCode::FAILURE;
@@ -158,32 +164,36 @@ fn run_scan(args: &[String]) -> ExitCode {
     let context = match app_context(&runtime, &database, None, None) {
         Ok(context) => context,
         Err(why) => {
-            recruiter::log_line!("{why}");
+            jobfinder::log_line!("{why}");
             return ExitCode::FAILURE;
         }
     };
     match runtime.block_on(scan_service::scan(Arc::new(context))) {
         Ok(report) => {
-            recruiter::say!("{}", report.summary());
+            jobfinder::say!("{}", report.summary());
             ExitCode::SUCCESS
         }
         Err(e) => {
-            recruiter::log_line!("The job scan couldn't run: {}", e.message);
+            jobfinder::log_line!("The job scan couldn't run: {}", e.message);
             ExitCode::FAILURE
         }
     }
 }
 
-/// `recruiter cleanup`: says what the app left outside its file, and removes it once the user
+/// `jobfinder cleanup`: says what the app left outside its file, and removes it once the user
 /// says yes; the database only after a second yes.
 fn run_cleanup(args: &[String]) -> ExitCode {
     let Some(database) = database_arg(args) else {
         return ExitCode::FAILURE;
     };
-    // Held until the database's files are removed, so no Recruiter starts on it meanwhile.
+    if let Err(why) = said_move(from_recruiter::move_data_folder(&database)) {
+        jobfinder::log_line!("{why}");
+        return ended_by_hand(ExitCode::FAILURE);
+    }
+    // Held until the database's files are removed, so no JobFinder starts on it meanwhile.
     let Ok(held) = cleanup::hold(&database, cleanup::Hold::Cleanup) else {
-        recruiter::log_line!(
-            "Recruiter is running on {}. Close its window, then run the cleanup again.",
+        jobfinder::log_line!(
+            "JobFinder is running on {}. Close its window, then run the cleanup again.",
             database.display()
         );
         return ended_by_hand(ExitCode::FAILURE);
@@ -193,12 +203,13 @@ fn run_cleanup(args: &[String]) -> ExitCode {
     };
     // The keys' credentials are named by the database's full path, so it is read before the
     // database is gone.
-    let vault = KeyVault::credential_manager(full_path(&database));
+    let vault = KeyVault::credential_manager(db::full_path(&database));
     let user_id = runtime.block_on(user_id_in(&database));
     let schedule = scan_schedule(&database);
+    runtime.block_on(take_over_from_recruiter(&database, &vault, user_id, &schedule));
     let found = runtime.block_on(cleanup::find(&database, &schedule, &vault, user_id));
 
-    println!("Recruiter's cleanup, for {}:", database.display());
+    println!("JobFinder's cleanup, for {}:", database.display());
     match (found.schedule, &found.schedule_error) {
         (Some(hours), _) => println!("- the job scan's schedule (every {hours} hours)"),
         (None, Some(why)) => println!("  (the job scan's schedule couldn't be read: {why})"),
@@ -255,12 +266,12 @@ fn run_cleanup(args: &[String]) -> ExitCode {
     }
     println!("The Jobnet extension, if you loaded it, is removed in Edge's extensions page (edge://extensions).");
     if failed.is_empty() {
-        println!("Done. To remove Recruiter itself, delete its program file.");
+        println!("Done. To remove JobFinder itself, delete its program file.");
         ended_by_hand(ExitCode::SUCCESS)
     } else {
-        recruiter::log_line!("These couldn't be removed:");
+        jobfinder::log_line!("These couldn't be removed:");
         for why in &failed {
-            recruiter::log_line!("- {why}");
+            jobfinder::log_line!("- {why}");
         }
         ended_by_hand(ExitCode::FAILURE)
     }
@@ -319,7 +330,7 @@ fn run_server(args: &[String]) -> ExitCode {
         }
         if flag == "--dev" {
             if !cfg!(debug_assertions) {
-                recruiter::log_line!(
+                jobfinder::log_line!(
                     "--dev is for debug builds (cargo dev, or cargo run -- --dev); release builds have the CSS and JS built in."
                 );
                 return ExitCode::FAILURE;
@@ -328,14 +339,14 @@ fn run_server(args: &[String]) -> ExitCode {
             continue;
         }
         let Some(value) = args.next() else {
-            recruiter::log_line!("{flag} needs a value\n{USAGE}");
+            jobfinder::log_line!("{flag} needs a value\n{USAGE}");
             return ExitCode::FAILURE;
         };
         match flag.as_str() {
             "--port" => match value.parse() {
                 Ok(value) => port = value,
                 Err(_) => {
-                    recruiter::log_line!("--port needs a number\n{USAGE}");
+                    jobfinder::log_line!("--port needs a number\n{USAGE}");
                     return ExitCode::FAILURE;
                 }
             },
@@ -344,7 +355,7 @@ fn run_server(args: &[String]) -> ExitCode {
             "--llama" => llama_folder = Some(PathBuf::from(value)),
             "--tailscale-name" => tailscale_name = Some(value.trim().to_ascii_lowercase()),
             _ => {
-                recruiter::log_line!("unknown option {flag}\n{USAGE}");
+                jobfinder::log_line!("unknown option {flag}\n{USAGE}");
                 return ExitCode::FAILURE;
             }
         }
@@ -354,8 +365,12 @@ fn run_server(args: &[String]) -> ExitCode {
         // goes to the log instead. Started from a terminal, it keeps printing there.
         hide_own_console();
     }
+    let moved = from_recruiter::move_data_folder(&database);
     let data_folder = database.parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
     open_log(&data_folder);
+    if let Err(why) = said_move(moved) {
+        return failed(front_end, why);
+    }
     let Some(runtime) = runtime() else {
         return failed(front_end, "The app's runtime couldn't start (see the log).".to_string());
     };
@@ -365,12 +380,12 @@ fn run_server(args: &[String]) -> ExitCode {
         Running::None => {}
         Running::Same => {
             if front_end == FrontEnd::Window && runtime.block_on(instance::bring_to_front(port)) {
-                recruiter::say!("Recruiter is already running; its window is brought to the front.");
+                jobfinder::say!("JobFinder is already running; its window is brought to the front.");
                 return ExitCode::SUCCESS;
             }
-            recruiter::say!("Recruiter is already running at {address}.");
+            jobfinder::say!("JobFinder is already running at {address}.");
             if front_end != FrontEnd::Neither && webbrowser::open(&address).is_err() {
-                recruiter::say!("Open {address} in your browser.");
+                jobfinder::say!("Open {address} in your browser.");
             }
             return ExitCode::SUCCESS;
         }
@@ -378,17 +393,17 @@ fn run_server(args: &[String]) -> ExitCode {
             return failed(
                 front_end,
                 format!(
-                    "Port {port} is taken by a Recruiter on another database ({running}). Close it, or start this one with --port and another number."
+                    "Port {port} is taken by a JobFinder on another database ({running}). Close it, or start this one with --port and another number."
                 ),
             );
         }
     }
-    // Held while the app runs, so `recruiter cleanup` won't remove the database under it.
+    // Held while the app runs, so `jobfinder cleanup` won't remove the database under it.
     let Ok(_held) = cleanup::hold(&database, cleanup::Hold::Running) else {
         return failed(
             front_end,
             format!(
-                "Recruiter's cleanup is running on {}. Let it finish, then start Recruiter again.",
+                "JobFinder's cleanup is running on {}. Let it finish, then start JobFinder again.",
                 database.display()
             ),
         );
@@ -399,7 +414,7 @@ fn run_server(args: &[String]) -> ExitCode {
     };
     let folder = data_folder.join(extension::FOLDER);
     context.extension_folder = extension::write(&folder).map_err(|e| {
-        recruiter::log_line!("Couldn't write the Jobnet extension to {}: {e}", folder.display());
+        jobfinder::log_line!("Couldn't write the Jobnet extension to {}: {e}", folder.display());
         format!("It couldn't be written to {}: {e}", folder.display())
     });
     // Taken before the window opens, so a taken port is said now rather than behind it.
@@ -408,7 +423,7 @@ fn run_server(args: &[String]) -> ExitCode {
         Err(e) => {
             return failed(
                 front_end,
-                format!("Couldn't serve on port {port}: {e}. Is Recruiter already running? Then open {address}."),
+                format!("Couldn't serve on port {port}: {e}. Is JobFinder already running? Then open {address}."),
             );
         }
     };
@@ -424,25 +439,25 @@ fn run_server(args: &[String]) -> ExitCode {
     let state = Arc::new(state);
     runtime.spawn(preload_laya(Arc::clone(&context)));
     let serving = runtime.spawn(server::serve_on(listener, state));
-    recruiter::say!("Recruiter is serving at {address} (data in {}).", database.display());
+    jobfinder::say!("JobFinder is serving at {address} (data in {}).", database.display());
     if let Some(phone_address) = &phone_address {
-        recruiter::say!("On your phone, with Tailscale on and `tailscale serve` set up: {phone_address}");
+        jobfinder::say!("On your phone, with Tailscale on and `tailscale serve` set up: {phone_address}");
     }
     if front_end == FrontEnd::Window {
         return run_window(runtime, context, address, front, serving);
     }
-    recruiter::say!("Close this window to stop it.");
+    jobfinder::say!("Close this window to stop it.");
     if front_end == FrontEnd::Browser && webbrowser::open(&address).is_err() {
-        recruiter::say!("Open {address} in your browser.");
+        jobfinder::say!("Open {address} in your browser.");
     }
     match runtime.block_on(serving) {
         Ok(Ok(())) => ExitCode::SUCCESS,
         Ok(Err(e)) => {
-            recruiter::log_line!("The server stopped: {e}");
+            jobfinder::log_line!("The server stopped: {e}");
             ended_by_hand(ExitCode::FAILURE)
         }
         Err(e) => {
-            recruiter::log_line!("The server stopped: {e}");
+            jobfinder::log_line!("The server stopped: {e}");
             ended_by_hand(ExitCode::FAILURE)
         }
     }
@@ -464,8 +479,8 @@ fn run_window(
     runtime.spawn(async move {
         match serving.await {
             Ok(Ok(())) => {}
-            Ok(Err(e)) => recruiter::log_line!("The server stopped: {e}"),
-            Err(e) => recruiter::log_line!("The server stopped: {e}"),
+            Ok(Err(e)) => jobfinder::log_line!("The server stopped: {e}"),
+            Err(e) => jobfinder::log_line!("The server stopped: {e}"),
         }
     });
     let launch = desktop::Launch {
@@ -479,8 +494,8 @@ fn run_window(
     match shown {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            recruiter::log_line!(
-                "The window couldn't open: {e}. Start Recruiter with --browser to use it in the browser."
+            jobfinder::log_line!(
+                "The window couldn't open: {e}. Start JobFinder with --browser to use it in the browser."
             );
             ExitCode::FAILURE
         }
@@ -490,17 +505,17 @@ fn run_window(
 /// Says why the app couldn't start (and logs it): in a small window when it was to show its
 /// window, else on the console, which waits for Enter when it would close at once.
 fn failed(front_end: FrontEnd, why: String) -> ExitCode {
-    recruiter::log_line!("{why}");
+    jobfinder::log_line!("{why}");
     if front_end == FrontEnd::Window {
         if let Err(e) = desktop::show_failure(why) {
-            recruiter::log_line!("The window couldn't open to say so: {e}");
+            jobfinder::log_line!("The window couldn't open to say so: {e}");
         }
         return ExitCode::FAILURE;
     }
     ended_by_hand(ExitCode::FAILURE)
 }
 
-/// What the app's work runs on, for the server and `recruiter scan`: the database (made when
+/// What the app's work runs on, for the server and `jobfinder scan`: the database (made when
 /// there is none), the local user, the key store, the job scan's schedule, Laya's model and the
 /// llama folder (next to the database unless laya_folder or llama_folder names another). Err
 /// says why when the database can't be opened.
@@ -521,18 +536,24 @@ fn app_context(
         db,
         Arc::new(Taxonomy::load()),
         user_id,
-        KeyVault::credential_manager(full_path(database)),
+        KeyVault::credential_manager(db::full_path(database)),
     );
     context.database = DatabaseFile {
         path: shown_path(database),
         made_now,
     };
     context.scan_schedule = scan_schedule(database);
+    runtime.block_on(take_over_from_recruiter(
+        database,
+        &context.key_vault,
+        user_id,
+        &context.scan_schedule,
+    ));
     let data_folder = database.parent().unwrap_or(std::path::Path::new("."));
     let laya_folder = laya_folder.unwrap_or_else(|| data_folder.join(laya_client::FOLDER));
     context.laya = LayaClient::from_folder(&laya_folder);
     if context.laya.is_none() {
-        recruiter::say!(
+        jobfinder::say!(
             "No Laya model in {} (no {}), so matches go on without Laya.",
             laya_folder.display(),
             laya_client::ONNX_FILE
@@ -540,12 +561,51 @@ fn app_context(
     }
     let llama_folder = llama_folder.unwrap_or_else(|| data_folder.join(llama::FOLDER));
     let inventory = Inventory::detect();
-    recruiter::say!(
+    jobfinder::say!(
         "This computer, for the app's own model: {inventory}. Its llama folder is {}.",
         llama_folder.display()
     );
     context.llama = Some(LlamaServer::new(&llama_folder, inventory));
     Ok(context)
+}
+
+/// Says (and logs) what the data folder's move from the former name did; Err when it failed.
+fn said_move(moved: Result<Moved, String>) -> Result<(), String> {
+    match moved? {
+        Moved::Nothing => {}
+        Moved::Moved { from, to } => jobfinder::say!(
+            "Recruiter is now called JobFinder: its data moved from {} to {}.",
+            from.display(),
+            to.display()
+        ),
+        Moved::BothThere { former } => jobfinder::say!(
+            "Recruiter's former data folder, {}, is left as it is: JobFinder already has its own database. Delete the former folder once you don't need it.",
+            former.display()
+        ),
+    }
+    Ok(())
+}
+
+/// Moves what the app kept outside the database while it was called Recruiter: the API keys,
+/// and on the default database the job scan's schedule. What failed is logged; the app goes on.
+async fn take_over_from_recruiter(database: &std::path::Path, vault: &KeyVault, user_id: i64, schedule: &ScanSchedule) {
+    match vault.take_over_former_keys(&from_recruiter::former_key_database(database), user_id) {
+        Ok(0) => {}
+        Ok(moved) => {
+            jobfinder::say!("Moved {moved} API key(s) from Recruiter's name in Credential Manager to JobFinder's.")
+        }
+        Err(why) => jobfinder::log_line!("The API keys kept under Recruiter's name couldn't be moved: {why}"),
+    }
+    if !from_recruiter::is_default(database) {
+        return;
+    }
+    match schedule.take_over_former().await {
+        Ok(None) => {}
+        Ok(Some(hours)) => {
+            jobfinder::say!("The job scan's schedule (every {hours} hours) moved from Recruiter's name to JobFinder's.")
+        }
+        Err(why) => jobfinder::log_line!("Recruiter's job scan schedule couldn't be moved to JobFinder: {why}"),
+    }
 }
 
 /// Loads Laya's model in the background, so the first match needn't wait for it, and says how
@@ -556,23 +616,23 @@ async fn preload_laya(context: Arc<Context>) {
     };
     let started = Instant::now();
     match laya.load().await {
-        Ok(_) => recruiter::say!(
+        Ok(_) => jobfinder::say!(
             "Laya is loaded from {} ({:.1} s).",
             laya.folder().display(),
             started.elapsed().as_secs_f64()
         ),
-        Err(e) => recruiter::log_line!("{e}"),
+        Err(e) => jobfinder::log_line!("{e}"),
     }
 }
 
-/// The job scan's Task Scheduler task, running this recruiter.exe on database.
+/// The job scan's Task Scheduler task, running this jobfinder.exe on database.
 fn scan_schedule(database: &std::path::Path) -> ScanSchedule {
     // The AppImage on Linux: the program's own path is inside it, and gone once it ends.
     let exe = scan_schedule::running_program().unwrap_or_else(|e| {
-        recruiter::log_line!(
-            "This program's own path couldn't be read ({e}), so the job scan's task runs recruiter.exe from PATH."
+        jobfinder::log_line!(
+            "This program's own path couldn't be read ({e}), so the job scan's task runs jobfinder.exe from PATH."
         );
-        PathBuf::from("recruiter.exe")
+        PathBuf::from("jobfinder.exe")
     });
     ScanSchedule::system(
         &exe,
@@ -584,7 +644,7 @@ fn scan_schedule(database: &std::path::Path) -> ScanSchedule {
 /// The database file's full path as people and other programs read it: without the \\?\ that
 /// Windows' canonical paths start with.
 fn shown_path(database: &std::path::Path) -> String {
-    let full = full_path(database);
+    let full = db::full_path(database);
     match full.strip_prefix(VERBATIM_PREFIX) {
         Some(plain) => plain.to_string(),
         None => full,
@@ -594,22 +654,13 @@ fn shown_path(database: &std::path::Path) -> String {
 /// What std::fs::canonicalize puts before a path on Windows.
 const VERBATIM_PREFIX: &str = r"\\?\";
 
-/// The database file's full path, which names its key's credential; as given when it can't be
-/// resolved.
-fn full_path(database: &std::path::Path) -> String {
-    std::fs::canonicalize(database)
-        .unwrap_or_else(|_| database.to_path_buf())
-        .display()
-        .to_string()
-}
-
 /// Opens the log (app_log) and says where it goes, or why it couldn't be opened.
 fn open_log(folder: &std::path::Path) {
     match app_log::open(folder) {
-        Ok(Opened::File(path)) => recruiter::say!("Logging to {}.", path.display()),
-        Ok(Opened::Journal) => recruiter::say!("Logging to the systemd journal: journalctl --user -t recruiter"),
-        Ok(Opened::Console) => recruiter::say!("Logging to the systemd journal, as this program's output."),
-        Err(e) => recruiter::log_line!(
+        Ok(Opened::File(path)) => jobfinder::say!("Logging to {}.", path.display()),
+        Ok(Opened::Journal) => jobfinder::say!("Logging to the systemd journal: journalctl --user -t jobfinder"),
+        Ok(Opened::Console) => jobfinder::say!("Logging to the systemd journal, as this program's output."),
+        Err(e) => jobfinder::log_line!(
             "The log file couldn't be opened in {}: {e}. What the app says goes only to this window.",
             folder.display()
         ),
@@ -619,6 +670,6 @@ fn open_log(folder: &std::path::Path) {
 /// The async runtime the database and the server run on, or None (said why) when it can't start.
 fn runtime() -> Option<tokio::runtime::Runtime> {
     tokio::runtime::Runtime::new()
-        .map_err(|e| recruiter::log_line!("Couldn't start: {e}"))
+        .map_err(|e| jobfinder::log_line!("Couldn't start: {e}"))
         .ok()
 }

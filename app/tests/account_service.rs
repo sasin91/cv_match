@@ -4,16 +4,16 @@
 
 use std::sync::{Arc, LazyLock};
 
-use recruiter::account::account_model::UseChoices;
-use recruiter::account::account_service::{self, KeyForm, SaveKey};
-use recruiter::account::key_vault::KeyVault;
-use recruiter::account::llama_setup_service;
-use recruiter::context::Context;
-use recruiter::db;
-use recruiter::server;
-use recruiter::service_error::ErrorKind;
-use recruiter::setup::setup_steps;
-use recruiter::taxonomy::Taxonomy;
+use jobfinder::account::account_model::UseChoices;
+use jobfinder::account::account_service::{self, KeyForm, SaveKey};
+use jobfinder::account::key_vault::KeyVault;
+use jobfinder::account::llama_setup_service;
+use jobfinder::context::Context;
+use jobfinder::db;
+use jobfinder::server;
+use jobfinder::service_error::ErrorKind;
+use jobfinder::setup::setup_steps;
+use jobfinder::taxonomy::Taxonomy;
 
 static TAXONOMY: LazyLock<Arc<Taxonomy>> = LazyLock::new(|| Arc::new(Taxonomy::load()));
 

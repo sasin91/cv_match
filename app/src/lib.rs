@@ -1,4 +1,4 @@
-//! Recruiter's match as a local desktop app. tests/parity.rs checks the matching context's answers
+//! JobFinder: Recruiter's CV match as a local desktop app. tests/parity.rs checks the matching context's answers
 //! against the fixed expected answers in tests/fixtures/parity.json.
 
 pub mod account;
@@ -10,6 +10,7 @@ pub mod db;
 pub mod desktop;
 pub mod dev_reload;
 pub mod extension;
+pub mod from_recruiter;
 pub mod instance;
 pub mod job_scan;
 pub mod laya;

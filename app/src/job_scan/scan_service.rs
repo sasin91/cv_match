@@ -1,4 +1,4 @@
-//! The job scan's work, for whichever front end asks: `recruiter scan` (which the schedule runs),
+//! The job scan's work, for whichever front end asks: `jobfinder scan` (which the schedule runs),
 //! the dashboard's and a search's Scan now, and a desktop window later all call scan(), so a scan
 //! is the same whoever starts it. Ported from recruiter's Job_scan (_scan and _auto_match),
 //! without its queue: a scan finds each search's new posts and matches them one by one before it
@@ -159,7 +159,7 @@ pub async fn status(context: &Context) -> Result<ScanStatus, ServiceError> {
     })
 }
 
-/// Whether a scan is running now (here, or in the scheduled `recruiter scan`).
+/// Whether a scan is running now (here, or in the scheduled `jobfinder scan`).
 pub async fn is_running(context: &Context) -> Result<bool, ServiceError> {
     let now = chrono::Utc::now().timestamp();
     Ok(model::is_running(context.db(), now - RUN_GIVE_UP_SECONDS).await?)
@@ -167,7 +167,7 @@ pub async fn is_running(context: &Context) -> Result<bool, ServiceError> {
 
 /// Scans every active search that isn't paused and wasn't scanned in the last
 /// MIN_SECONDS_BETWEEN_SCANS, and matches the new posts it finds. The one scan behind
-/// `recruiter scan`, Scan now and a desktop window.
+/// `jobfinder scan`, Scan now and a desktop window.
 pub async fn scan(context: Arc<Context>) -> Result<ScanReport, ServiceError> {
     let db = context.db();
     model::resume_after_new_key(db).await?;

@@ -36,7 +36,7 @@ pub struct Context {
     /// When the job scan runs by itself (Task Scheduler; in memory unless main sets it).
     pub scan_schedule: ScanSchedule,
     /// The program whose `read-pdf` reads an uploaded PDF (pdf_text::child): this one, unless
-    /// a test names the built recruiter.
+    /// a test names the built jobfinder.
     pub pdf_reader: Option<PathBuf>,
 }
 

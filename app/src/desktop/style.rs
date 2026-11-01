@@ -72,7 +72,7 @@ pub const STAT_SIZE: f32 = 24.0;
 /// The window's theme: its palette, which iced's own widgets (scrollbars, focus) take colours from.
 pub fn theme() -> Theme {
     Theme::custom(
-        "Recruiter",
+        "JobFinder",
         iced::theme::Palette {
             background: PAGE,
             text: TEXT,
