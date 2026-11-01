@@ -164,8 +164,8 @@ In Task Scheduler, create a task that runs at log on, with the action
 
 ## Developing
 
-One command, on Windows and Linux alike, builds the app, starts it, rebuilds and restarts it on
-every change, and reloads the page in the browser:
+One command, on Windows and Linux alike, builds the app, opens its window, and rebuilds and
+restarts it on every change (the window opens again, and a page open in the browser reloads):
 
     cd app
     cargo dev
@@ -175,8 +175,8 @@ It needs [watchexec](https://github.com/watchexec/watchexec) once:
 
 - `cargo dev` is an alias (`app/.cargo/config.toml`) for the small program in `app/xtask/`, the
   usual Rust stand-in for npm or Composer scripts. It runs watchexec, which runs a debug build
-  (`cargo run -- --dev --no-browser`), and it opens http://127.0.0.1:8765/match once the first
-  build is up.
+  (`cargo run -- --dev`). `cargo dev --no-browser` runs only the server, for work on the web
+  pages at http://127.0.0.1:8765/match.
 - A change to `src/`, `templates/`, `queries/`, `migrations/`, `.sqlx/`, `Cargo.toml`,
   `../assets/`, `../extension/` or `../laya-server/src/` restarts it, and the open page reloads
   itself as soon as the new run answers. A CSS or JS change needs no compiling, since debug

@@ -59,6 +59,8 @@ pub struct SearchPage {
     pub posts: Vec<FoundPostCard>,
     /// The query of the next batch's page ("dismissed=1&after=…"), when there is one.
     pub next: Option<String>,
+    /// The next batch's cursor (search_page's after), when there is one.
+    pub next_after: Option<String>,
     pub dismissed: bool,
     /// The first batch, not one after a cursor.
     pub first_batch: bool,
@@ -74,13 +76,14 @@ pub async fn search_page(context: &Context, id: i64, dismissed: bool, after: &st
     let tokens = model::token_use(db, search.id, now - USAGE_DAYS * DAY_SECONDS).await?;
     let summary = JobSearchSummary::from(&search, last_run.as_ref(), tokens, now - RUN_GIVE_UP_SECONDS);
     let batch = model::posts(db, search.id, dismissed, PER_PAGE, after).await?;
-    let next = batch.next.map(|cursor| next_query(dismissed, &cursor));
+    let next = batch.next.as_ref().map(|cursor| next_query(dismissed, cursor));
     Ok(SearchPage {
         search,
         summary,
         problem: scan_service::scan_problem(context).await?,
         posts: batch.rows.iter().map(FoundPostCard::from).collect(),
         next,
+        next_after: batch.next,
         dismissed,
         first_batch: crate::matches::score_cursor::place(after).is_none(),
     })
