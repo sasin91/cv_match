@@ -130,7 +130,7 @@ pub fn database_files(database: &Path) -> Vec<PathBuf> {
         files.push(PathBuf::from(name));
     }
     let data_folder = database.parent().unwrap_or(Path::new("."));
-    files.extend([app_log::FILE, app_log::OLD_FILE].map(|name| data_folder.join(name)));
+    files.extend([app_log::FILE, app_log::OLD_FILE, app_log::LOCK_FILE].map(|name| data_folder.join(name)));
     files
 }
 
@@ -240,7 +240,8 @@ mod tests {
                 "/data/recruiter.sqlite-shm",
                 "/data/recruiter.sqlite-journal",
                 "/data/recruiter.log",
-                "/data/recruiter.old.log"
+                "/data/recruiter.old.log",
+                "/data/recruiter.log.lock"
             ]
             .map(PathBuf::from)
         );
