@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use super::{ListedPost, first_of, text};
 use crate::matches::joblog;
-use crate::matches::page_reader::{self, Page, Wanted};
+use crate::matches::page_reader::{self, Page, ReadWith, Wanted};
 
 /// The domain the sites box keeps for Jobnet.
 pub const DOMAIN: &str = "jobnet.dk";
@@ -150,6 +150,7 @@ fn post_page(id: &str, details: &Value) -> Result<Page, String> {
         url: page_url,
         title,
         text: lines.join("\n").trim().to_string(),
+        read_with: ReadWith::SiteApi,
     })
 }
 

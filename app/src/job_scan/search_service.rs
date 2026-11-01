@@ -6,7 +6,9 @@ use super::job_scan_model::{self as model, JobSearch, SearchFields};
 use super::job_search_card::JobSearchCard;
 use super::job_search_rules::{self, MAX_FIELD, MAX_KEYWORDS, MAX_NAME, MAX_SITES_TEXT, MAX_TAILOR_FROM};
 use super::job_search_summary::JobSearchSummary;
+use super::run_steps;
 use super::scan_service::{self, RUN_GIVE_UP_SECONDS};
+use super::scan_timeline::ScanTimeline;
 use crate::context::Context;
 use crate::matches::match_model;
 use crate::profile;
@@ -66,6 +68,8 @@ pub struct SearchPage {
     pub dismissed: bool,
     /// The first batch, not one after a cursor.
     pub first_batch: bool,
+    /// What the latest scan did, step by step.
+    pub timeline: ScanTimeline,
 }
 
 /// A search's page, with the dismissed posts too when dismissed, after the cursor after ("" for
@@ -77,6 +81,10 @@ pub async fn search_page(context: &Context, id: i64, dismissed: bool, after: &st
     let last_run = model::last_run(db, Some(search.id)).await?;
     let tokens = model::token_use(db, search.id, now - USAGE_DAYS * DAY_SECONDS).await?;
     let summary = JobSearchSummary::from(&search, last_run.as_ref(), tokens, now - RUN_GIVE_UP_SECONDS);
+    let steps = match &last_run {
+        Some(run) => run_steps::of_run(db, run.id).await?,
+        None => Vec::new(),
+    };
     let batch = model::posts(db, search.id, dismissed, PER_PAGE, after).await?;
     let next = batch.next.as_ref().map(|cursor| next_query(dismissed, cursor));
     let problem = match scan_service::scan_problem(context).await? {
@@ -93,7 +101,24 @@ pub async fn search_page(context: &Context, id: i64, dismissed: bool, after: &st
         next_after: batch.next,
         dismissed,
         first_batch: crate::matches::score_cursor::place(after).is_none(),
+        timeline: ScanTimeline::from(&steps),
     })
+}
+
+/// What the model was asked and answered in a step of a scan's timeline.
+pub struct StepExchange {
+    pub asked: String,
+    pub answered: String,
+}
+
+pub async fn step_exchange(context: &Context, step_id: i64) -> Result<StepExchange, ServiceError> {
+    let Some((asked, answered)) = run_steps::exchange(context.db(), step_id).await? else {
+        return Err(ServiceError::new(
+            ErrorKind::NotFound,
+            "That step is gone: only a search's latest scans keep theirs.",
+        ));
+    };
+    Ok(StepExchange { asked, answered })
 }
 
 /// "dismissed=1&after=0.8140_1792620000_7", or without dismissed.

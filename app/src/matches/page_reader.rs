@@ -152,6 +152,21 @@ pub struct Page {
     pub url: String,
     pub title: String,
     pub text: String,
+    /// How it was read, for the job scan's timeline.
+    #[serde(skip)]
+    pub read_with: ReadWith,
+}
+
+/// How a job post was read.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub enum ReadWith {
+    /// Its page, fetched as it is.
+    #[default]
+    Page,
+    /// Its site's own API (Jobnet).
+    SiteApi,
+    /// Its page in the computer's browser, after its JavaScript ran.
+    Browser,
 }
 
 /// A page's title and the text of its post.
@@ -189,7 +204,10 @@ pub async fn read(url: &str) -> Result<Page, String> {
     {
         let rendered = to_text(rendered.as_bytes(), "text/html", &fetched.url);
         if !needs_javascript(&rendered) {
-            return rendered.map(|text| Page::of(fetched.url, text));
+            return rendered.map(|text| Page {
+                read_with: ReadWith::Browser,
+                ..Page::of(fetched.url, text)
+            });
         }
     }
     page.map(|text| Page::of(fetched.url, text))
@@ -201,6 +219,7 @@ impl Page {
             url,
             title: text.title,
             text: text.text,
+            read_with: ReadWith::Page,
         }
     }
 }

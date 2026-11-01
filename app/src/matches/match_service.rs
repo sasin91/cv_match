@@ -559,7 +559,8 @@ pub async fn write(
     let notes = document_writer::notes(notes);
     let task_context = context.clone();
     let task_found = found.clone();
-    let writing = tokio::spawn(async move {
+    let recording = crate::llm::transcript::is_recording();
+    let writing = tokio::spawn(crate::llm::transcript::carried(recording, async move {
         let db = task_context.db();
         let now = chrono::Utc::now().timestamp();
         if kind == RESUME {
@@ -571,20 +572,21 @@ pub async fn write(
                 .await
                 .map(|_| (Vec::new(), Vec::new()))
         }
-    });
+    }));
     let work = if kind == RESUME {
         "match/tailor_resume"
     } else {
         "match/write_application"
     };
-    let (keywords, left_out) = writing
+    let (written, calls) = writing
         .await
-        .map_err(|e| ServiceError::failed(work, format!("The writing stopped: {e}")))?
-        .map_err(|e| match e {
-            WriteError::Llm(e) => ServiceError::llm(work, &e),
-            WriteError::Database(e) => ServiceError::from(e),
-            WriteError::Empty(why) => ServiceError::failed(work, why),
-        })?;
+        .map_err(|e| ServiceError::failed(work, format!("The writing stopped: {e}")))?;
+    crate::llm::transcript::keep(calls);
+    let (keywords, left_out) = written.map_err(|e| match e {
+        WriteError::Llm(e) => ServiceError::llm(work, &e),
+        WriteError::Database(e) => ServiceError::from(e),
+        WriteError::Empty(why) => ServiceError::failed(work, why),
+    })?;
     let found = saved_match(&context, found.id).await?;
     let uses = llm_key::ai_uses(&context).await?;
     let (application, resume) = match_documents::written_of(&found);

@@ -15,6 +15,7 @@ pub mod anthropic;
 pub mod llm_exception;
 pub mod llm_response;
 pub mod openai;
+pub mod transcript;
 
 use std::error::Error as _;
 use std::time::Duration;
@@ -118,10 +119,13 @@ impl Llm {
         schema: &Value,
         effort: Effort,
     ) -> Result<Value, LlmException> {
-        match &self.adapter {
+        let call = transcript::call(system, user);
+        let answer = match &self.adapter {
             Adapter::Openai(openai) => openai.structured(system, user, schema, effort).await,
             Adapter::Anthropic(anthropic) => anthropic.structured(system, user, schema, effort).await,
-        }
+        };
+        call.answered(|| answer_text(answer.as_ref()));
+        answer
     }
 
     /// structured(), searching the web while answering, on a provider that can (OpenAI's
@@ -136,12 +140,15 @@ impl Llm {
         country: &str,
         effort: Effort,
     ) -> Result<WebSearchAnswer, LlmException> {
-        match &self.adapter {
+        let call = transcript::call(system, user);
+        let answer = match &self.adapter {
             Adapter::Openai(openai) => openai.web_search(system, user, schema, domains, country, effort).await,
             Adapter::Anthropic(_) => Err(LlmException::new(
                 "Searching the web needs an OpenAI key; this key is for another provider.",
             )),
-        }
+        };
+        call.answered(|| answer_text(answer.as_ref().map(|found| &found.answer)));
+        answer
     }
 
     /// The model the calls run on.
@@ -150,6 +157,14 @@ impl Llm {
             Adapter::Openai(openai) => &openai.model,
             Adapter::Anthropic(anthropic) => &anthropic.model,
         }
+    }
+}
+
+/// An answer as the transcript keeps it: its JSON, pretty, or the error.
+fn answer_text(answer: Result<&Value, &LlmException>) -> String {
+    match answer {
+        Ok(json) => serde_json::to_string_pretty(json).unwrap_or_default(),
+        Err(e) => format!("Failed: {}", e.message),
     }
 }
 

@@ -1,0 +1,119 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT step.id, step.scanned_job_post_id, step.kind, step.text, step.failed, step.started_at_ms,\n          step.took_ms, step.asked != '' AS \"asked_model!: bool\",\n          COALESCE(post.title, '') AS \"post_title!: String\", COALESCE(post.url, '') AS \"post_url!: String\"\n        FROM job_search_run_steps step\n        LEFT JOIN scanned_job_posts post ON post.id = step.scanned_job_post_id\n        WHERE step.job_search_run_id = ?1\n        ORDER BY step.id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_search_run_steps",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "scanned_job_post_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_search_run_steps",
+            "name": "scanned_job_post_id"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "job_search_run_steps",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "name": "text",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "job_search_run_steps",
+            "name": "text"
+          }
+        }
+      },
+      {
+        "name": "failed",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_search_run_steps",
+            "name": "failed"
+          }
+        }
+      },
+      {
+        "name": "started_at_ms",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_search_run_steps",
+            "name": "started_at_ms"
+          }
+        }
+      },
+      {
+        "name": "took_ms",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_search_run_steps",
+            "name": "took_ms"
+          }
+        }
+      },
+      {
+        "name": "asked_model!: bool",
+        "ordinal": 7,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "post_title!: String",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "name": "post_url!: String",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "c72d0ee59869a64c925e4498e8eefd0729b7465fe4057ab638e662596642ce97"
+}
