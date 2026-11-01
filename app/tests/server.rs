@@ -1202,3 +1202,66 @@ async fn a_second_start_brings_the_window_to_the_front_or_is_told_there_is_none(
     assert_eq!(send_to(&app, front()).await.0, StatusCode::NO_CONTENT);
     assert_eq!(asked.try_recv(), Ok(()));
 }
+
+/// A request from the extension: its origin, JSON.
+fn extension_json(path: &str, json: &str) -> Request<Body> {
+    Request::post(path)
+        .header(header::HOST, HOST)
+        .header(header::ORIGIN, EXTENSION)
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(json.to_string()))
+        .unwrap()
+}
+
+#[tokio::test]
+async fn the_extension_sends_the_post_the_browser_shows_to_a_search() {
+    let (app, db) = new_app(KeyVault::in_memory()).await;
+    let description = "Vi søger en erfaren PHP-udvikler til vores team i Odense. ".repeat(5);
+    let html = format!(
+        r#"<html><body><div class="job-details-jobs-unified-top-card__job-title"><h1>PHP-udvikler</h1></div><div id="job-details"><p>{description}</p></div></body></html>"#
+    );
+    let sent = serde_json::json!({
+        "url": "https://www.linkedin.com/jobs/search/?keywords=php&currentJobId=4012345678",
+        "html": html,
+    })
+    .to_string();
+
+    let (status, answer) = send_to(&app, extension_json("/job_scan/submit_page", &sent)).await;
+    assert_eq!(status, StatusCode::NOT_FOUND, "{answer}");
+    assert!(answer.contains("no job search to add the post to"), "{answer}");
+
+    let saved = "name=Backend&keywords=PHP&tailor_from_score=60&active=1";
+    followed_to(&app, post_form("/job_scan/submit/0", saved)).await;
+    let (status, names) = send_to(&app, get("/job_scan/search_names")).await;
+    assert_eq!(status, StatusCode::OK);
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&names).unwrap()["searches"],
+        serde_json::json!([{"id": 1, "name": "Backend", "active": true}])
+    );
+
+    let (status, answer) = send_to(&app, extension_json("/job_scan/submit_page", &sent)).await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert!(answer.contains("Sent."), "{answer}");
+    let (url, title): (String, String) =
+        sqlx::query_as("SELECT url, title FROM scanned_job_posts WHERE job_search_id = 1")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(url, "https://www.linkedin.com/jobs/view/4012345678/");
+    assert_eq!(title, "PHP-udvikler");
+
+    // The same post sent again is the one post.
+    let (status, answer) = send_to(&app, extension_json("/job_scan/submit_page", &sent)).await;
+    assert_eq!(status, StatusCode::OK);
+    assert!(answer.contains("has this post already"), "{answer}");
+
+    // Only the extension and the app's pages may send one.
+    let request = Request::post("/job_scan/submit_page")
+        .header(header::HOST, HOST)
+        .header(header::ORIGIN, "https://example.com")
+        .header(header::CONTENT_TYPE, "application/json")
+        .body(Body::from(sent))
+        .unwrap();
+    let (status, _) = send_to(&app, request).await;
+    assert_eq!(status, StatusCode::FORBIDDEN);
+}

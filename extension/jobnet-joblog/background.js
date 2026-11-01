@@ -12,8 +12,12 @@
 // CVR's address when the post has none (withCvrAddress);
 // {type: "pdf", id, kind} one of its PDFs as {name, base64};
 // {type: "logged", id, status} marks it as entered in Jobnet's joblog
-// (match/joblog_status), keeping its status. Each answers
-// {error} when JobFinder says no, signed out included.
+// (match/joblog_status), keeping its status;
+// {type: "searches"} the job searches a post can be sent to (job_scan/search_names);
+// {type: "send_page", search_id, url, html} adds the post the browser shows to
+// one, from its HTML as shown (job_scan/submit_page), and answers what
+// JobFinder says. Each answers {error} when JobFinder says no, signed out
+// included.
 
 const api = globalThis.browser ?? globalThis.chrome;
 const DEFAULT_BASE = "http://127.0.0.1:8765/";
@@ -58,6 +62,17 @@ async function answer(message) {
       body: JSON.stringify({ id: Number(message.id), status: message.status, logged: true }),
     });
     return true;
+  }
+  if (message.type === "searches") {
+    return (await (await call("job_scan/search_names")).json()).searches ?? [];
+  }
+  if (message.type === "send_page") {
+    const response = await call("job_scan/submit_page", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ search_id: message.search_id ?? null, url: message.url, html: message.html }),
+    });
+    return (await response.json()).said;
   }
   if (message.type === "joblog") {
     return withCvrAddress(await (await call(`match/joblog/${Number(message.id)}`)).json());

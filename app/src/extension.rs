@@ -21,6 +21,7 @@ pub const EDGE_EXTENSIONS_PAGE: &str = "edge://extensions/";
 #[folder = "../extension/jobnet-joblog/"]
 #[include = "manifest.json"]
 #[include = "*.js"]
+#[include = "*.html"]
 #[include = "icons/*"]
 struct Files;
 

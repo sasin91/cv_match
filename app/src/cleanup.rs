@@ -46,10 +46,15 @@ impl Found {
 /// The folders the app writes next to database.
 pub fn app_folders(database: &Path) -> Vec<PathBuf> {
     let data_folder = database.parent().unwrap_or(Path::new("."));
-    [extension::FOLDER, llama::FOLDER, laya::laya_client::FOLDER]
-        .iter()
-        .map(|name| data_folder.join(name))
-        .collect()
+    [
+        extension::FOLDER,
+        llama::FOLDER,
+        laya::laya_client::FOLDER,
+        crate::job_sites::signed_in::FOLDER,
+    ]
+    .iter()
+    .map(|name| data_folder.join(name))
+    .collect()
 }
 
 /// Another JobFinder holds the database's lock: it is running on it.
@@ -293,7 +298,13 @@ mod tests {
     fn only_the_apps_own_folders_are_removed_from_a_named_folder() {
         assert_eq!(
             app_folders(Path::new("/home/me/jobfinder.sqlite")),
-            ["/home/me/jobnet-joblog", "/home/me/llama", "/home/me/laya"].map(PathBuf::from)
+            [
+                "/home/me/jobnet-joblog",
+                "/home/me/llama",
+                "/home/me/laya",
+                "/home/me/signed-in-browser"
+            ]
+            .map(PathBuf::from)
         );
     }
 

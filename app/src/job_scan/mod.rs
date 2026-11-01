@@ -33,6 +33,7 @@ use self::job_search_card::JobSearchCard;
 use self::job_search_rules::{MAX_FIELD, MAX_KEYWORDS, MAX_NAME, MAX_TAILOR_FROM};
 use self::job_search_summary::JobSearchSummary;
 use self::search_service::{SaveError, SearchForm};
+use crate::matches::page_error::PageError;
 use crate::server::AppState;
 use crate::service_error::{ErrorKind, ServiceError};
 
@@ -328,4 +329,32 @@ mod tests {
         assert_eq!(back_to("//evil.example"), "/match");
         assert_eq!(back_to("https://evil.example"), "/match");
     }
+}
+
+/// GET job_scan/search_names: the searches the extension can send a post to, as JSON
+/// {searches: [{id, name, active}]}, active ones first.
+pub async fn search_names(State(state): State<Arc<AppState>>) -> Result<Response, PageError> {
+    let searches = search_service::search_names(&state.context).await?;
+    Ok(axum::Json(serde_json::json!({ "searches": searches })).into_response())
+}
+
+/// What the extension sends of the page the user's browser shows.
+#[derive(Deserialize)]
+pub struct SentPage {
+    /// The search to add the post to; none for the newest active one.
+    #[serde(default)]
+    pub search_id: Option<i64>,
+    pub url: String,
+    /// The page's HTML as the browser shows it, its JavaScript run.
+    pub html: String,
+}
+
+/// POST job_scan/submit_page {search_id?, url, html}: adds the job post the user's browser shows
+/// to a search and matches it, from the extension. Answers {said}.
+pub async fn submit_page(
+    State(state): State<Arc<AppState>>,
+    axum::Json(page): axum::Json<SentPage>,
+) -> Result<Response, PageError> {
+    let said = scan_service::add_page(Arc::clone(&state.context), page.search_id, &page.url, &page.html).await?;
+    Ok(axum::Json(serde_json::json!({ "said": said })).into_response())
 }

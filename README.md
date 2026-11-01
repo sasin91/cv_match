@@ -59,6 +59,14 @@ The links go to the setup (http://127.0.0.1:8765/setup), whose steps are:
    `jobfinder.exe scan`, which scans every active job search (Job scan in the menu) for new
    posts and matches them with your profile. It reads Jobnet and Jobindex itself, so it runs on
    any model, the app's own too; with an OpenAI key it also searches the web for other sites. The dashboard's Scan now runs the same scan.
+   LinkedIn and Indeed are read too for a search whose sites name `linkedin.com` or
+   `dk.indeed.com` (list `jobnet.dk` and `jobindex.dk` there as well to keep them), in a browser
+   of JobFinder's own (Edge, on its own profile in `%APPDATA%\JobFinder\signed-in-browser`):
+   press **Sign in to job sites** under Job searches once, sign in, and close the window. A scan
+   reads two search terms per site and the new posts, one page every 10 seconds or more, and stops
+   reading a site the moment it asks to sign in again or for a check (the Job searches screen says
+   so until you sign in again). Both sites' terms forbid reading them with programs: your account
+   takes that risk.
 
 Close its window to stop it. `jobfinder.exe --help` lists the options.
 
@@ -120,6 +128,11 @@ said on the page instead of quietly running on the CPU.
 Open http://127.0.0.1:8765/joblog_extension and press **Copy the folder and open Edge's
 extensions**. It copies `%APPDATA%\JobFinder\jobnet-joblog` and opens `edge://extensions`. There,
 switch on Developer mode, choose **Load unpacked**, paste the folder and press Select Folder. After an app update writes a newer version, press Reload on the extension.
+
+Its toolbar button sends the job post you have open (LinkedIn, Indeed, or any other site) to
+JobFinder, as your browser shows it: pick the job search to add it to and press Send. JobFinder
+matches it like a post the scan found. The button reads the page only when you press it, and
+JobFinder asks the site for nothing.
 
 ### Your phone
 

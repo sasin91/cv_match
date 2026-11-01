@@ -189,6 +189,8 @@ pub enum Msg {
     CancelDelete,
     Delete(i64),
     ScanNow,
+    /// Opens JobFinder's signed-in browser to sign in to LinkedIn and Indeed.
+    SignIn,
     AddUrl(String),
     Add(i64),
     Retry(i64),
@@ -379,6 +381,12 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                         then: page,
                     },
                 },
+            );
+        }
+        Msg::SignIn => {
+            return runner.run(
+                |context| async move { search_service::open_sign_in(&context).map(str::to_string) },
+                said(Page::List),
             );
         }
         Msg::AddUrl(url) => state.add_url = url,
@@ -643,7 +651,28 @@ fn list_view(state: &State) -> Element<'_, Msg> {
     } else {
         widgets::rows(list.searches.iter().map(search_row))
     };
-    screen.push(widgets::section("Your searches", searches)).into()
+    screen = screen.push(widgets::section("Your searches", searches));
+    screen.push(signed_in_section(list)).into()
+}
+
+/// LinkedIn and Indeed: what reading them takes, why the scan leaves one alone, and the button
+/// that opens JobFinder's signed-in browser to sign in.
+fn signed_in_section(list: &SearchList) -> Element<'_, Msg> {
+    let mut section = Column::new()
+        .spacing(GAP)
+        .push(widgets::note(
+            "The scan reads LinkedIn and Indeed in a browser of JobFinder's own, signed in to your account, for searches that name linkedin.com or dk.indeed.com in their sites. It reads a few pages a scan, one at a time, and stops at once when a site asks to sign in again or to check you're a person. Both sites' terms forbid reading them with programs, so your account takes that risk.",
+        ));
+    for paused in &list.paused_sites {
+        section = section.push(widgets::message_bar(Health::Attention, paused.as_str()));
+    }
+    section = section.push(
+        button(text("Sign in to job sites").size(style::BODY_SIZE))
+            .padding([8.0, 16.0])
+            .style(style::standard_button)
+            .on_press(Msg::SignIn),
+    );
+    widgets::section("LinkedIn and Indeed", section.into())
 }
 
 /// A saved search: its name and chip, what it looks for and found, opening its page.

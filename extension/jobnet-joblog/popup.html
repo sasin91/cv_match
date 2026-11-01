@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Send to JobFinder</title>
+<style>
+  :root { color-scheme: light dark; --accent: #0067c0; --muted: #5f6368; --line: #d0d4d9; }
+  @media (prefers-color-scheme: dark) { :root { --accent: #4cc2ff; --muted: #a8adb3; --line: #3d4248; } }
+  body { font: 14px/1.4 "Segoe UI", system-ui, sans-serif; margin: 0; padding: 14px 16px; width: 300px; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0 0 6px; }
+  p { margin: 0 0 10px; color: var(--muted); overflow-wrap: anywhere; }
+  label { display: block; margin: 0 0 4px; font-weight: 600; }
+  select { width: 100%; margin: 0 0 12px; padding: 4px; }
+  button { font: inherit; padding: 6px 16px; border-radius: 4px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
+  button:disabled { opacity: 0.5; cursor: default; }
+  #said { margin: 10px 0 0; color: inherit; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<h1>Send this job post to JobFinder</h1>
+<p id="page">Reading the page…</p>
+<div id="pick" hidden>
+  <label for="search">Add it to</label>
+  <select id="search"></select>
+</div>
+<button id="send" disabled>Send</button>
+<p id="said" role="status"></p>
+<script src="popup.js"></script>
+</body>
+</html>
