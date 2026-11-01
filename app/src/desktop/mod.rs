@@ -32,7 +32,7 @@ use crate::job_scan::scan_service;
 use crate::laya::laya_client::LayaState;
 
 /// The window's title.
-const TITLE: &str = "Recruiter";
+const TITLE: &str = "JobFinder";
 /// The window's size when it opens, in logical pixels.
 const WINDOW_SIZE: Size = Size::new(980.0, 720.0);
 /// The failure window's size.
@@ -131,7 +131,7 @@ pub fn run(launch: Launch) -> iced::Result {
 }
 
 /// A small window saying why the app couldn't start, for a start without a console to say it
-/// in (the window is how a double-clicked Recruiter talks).
+/// in (the window is how a double-clicked JobFinder talks).
 pub fn show_failure(why: String) -> iced::Result {
     iced::application(move || Failure(why.clone()), |_: &mut Failure, _: ()| {}, failure_view)
         .title(TITLE)
@@ -148,7 +148,7 @@ fn failure_view(failure: &Failure) -> Element<'_, ()> {
     let message = column![
         row![
             style::mark(Health::Attention),
-            text("Recruiter couldn't start")
+            text("JobFinder couldn't start")
                 .font(style::semibold())
                 .size(style::SECTION_SIZE),
         ]

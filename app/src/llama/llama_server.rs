@@ -442,7 +442,7 @@ mod tests {
 
     #[tokio::test]
     async fn without_the_program_the_folder_is_named() {
-        let folder = std::env::temp_dir().join("recruiter-llama-test-no-server");
+        let folder = std::env::temp_dir().join("jobfinder-llama-test-no-server");
         let server = LlamaServer::new(&folder, Inventory::default());
         let why = server.start("").await.unwrap_err();
         assert!(why.starts_with(&format!("There's no {SERVER_FILE} in ")), "{why}");
@@ -459,7 +459,7 @@ mod tests {
 
     #[test]
     fn an_amd_card_is_not_said_to_lack_vulkan_before_llama_server_is_there() {
-        let folder = std::env::temp_dir().join("recruiter-llama-test-amd-no-server");
+        let folder = std::env::temp_dir().join("jobfinder-llama-test-amd-no-server");
         let amd = Inventory {
             memory_bytes: 32 * GIB,
             gpu: Some(crate::llama::hardware::Gpu {

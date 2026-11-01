@@ -8,7 +8,7 @@ use axum::body::Bytes;
 use axum::extract::State;
 use axum::http::{HeaderMap, StatusCode, Uri};
 use axum::response::IntoResponse;
-use recruiter::llm::{Anthropic, Effort, Llm, Openai};
+use jobfinder::llm::{Anthropic, Effort, Llm, Openai};
 use serde_json::{Value, json};
 
 /// A request the stand-in got: its path, headers and JSON body.
@@ -219,7 +219,7 @@ async fn openai_searches_the_web_through_the_responses_api() {
     )
     .await;
     let llm = Llm {
-        adapter: recruiter::llm::Adapter::Openai(Openai::new(OPENAI_KEY, "gpt-5.4-mini", &address).unwrap()),
+        adapter: jobfinder::llm::Adapter::Openai(Openai::new(OPENAI_KEY, "gpt-5.4-mini", &address).unwrap()),
     };
     let found = llm
         .web_search("Find jobs.", "PHP", &schema(), &["jobnet.dk"], "DK", Effort::Low)

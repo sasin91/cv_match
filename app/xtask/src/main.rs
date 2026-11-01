@@ -1,6 +1,6 @@
 //! The app's developer commands, run through the aliases in app/.cargo/config.toml.
 //!
-//!   cargo dev [recruiter options]
+//!   cargo dev [--port 8765] [more jobfinder options]
 //!       builds the app and starts it with --dev under watchexec, which rebuilds and restarts it
 //!       on every change to its code, templates, queries, assets or extension. The window opens
 //!       again with each restart, and a web page open in the browser reloads itself
@@ -10,7 +10,16 @@
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-const USAGE: &str = "usage: cargo dev [recruiter options, such as --database <file> or --no-browser]";
+const USAGE: &str = "usage: cargo dev [--port <port>] [more jobfinder options, such as --database <file>]";
+
+/// The port the app listens on unless --port says otherwise (server::DEFAULT_PORT).
+const DEFAULT_PORT: u16 = 8765;
+
+/// How long to wait for the first build to answer before giving up on opening the page.
+const FIRST_BUILD_WAIT: Duration = Duration::from_secs(15 * 60);
+
+/// How often to try the app's port while the first build runs.
+const PORT_CHECK_INTERVAL: Duration = Duration::from_secs(1);
 
 /// What restarts the app when it changes, relative to app/.
 const WATCHED: &[&str] = &[
@@ -36,15 +45,24 @@ fn main() -> ExitCode {
     }
 }
 
-fn dev(recruiter_args: &[String]) -> ExitCode {
+fn dev(app_args: &[String]) -> ExitCode {
     if Command::new("watchexec").arg("--version").output().is_err() {
         eprintln!("cargo dev needs watchexec. Install it once with: cargo install watchexec-cli --locked");
         return ExitCode::FAILURE;
     }
-    println!("Building and starting Recruiter; its window opens when it is built.");
+    let port = match port(app_args) {
+        Ok(port) => port,
+        Err(why) => {
+            eprintln!("{why}\n{USAGE}");
+            return ExitCode::FAILURE;
+        }
+    };
+    let address = format!("http://127.0.0.1:{port}/match");
+    println!("Building and starting JobFinder; {address} opens when it is up.");
+    thread::spawn(move || open_when_up(port, &address));
     let status = Command::new("watchexec")
         .current_dir(app_folder())
-        .args(watchexec_args(recruiter_args))
+        .args(watchexec_args(app_args))
         .status();
     match status {
         Ok(status) if status.success() => ExitCode::SUCCESS,
@@ -64,15 +82,26 @@ fn app_folder() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
 }
 
+/// The port given with --port, or DEFAULT_PORT.
+fn port(app_args: &[String]) -> Result<u16, String> {
+    let Some(at) = app_args.iter().position(|arg| arg == "--port") else {
+        return Ok(DEFAULT_PORT);
+    };
+    app_args
+        .get(at + 1)
+        .and_then(|port| port.parse().ok())
+        .ok_or_else(|| "--port needs a number".to_string())
+}
+
 /// watchexec's arguments: restart on any change to WATCHED, running the app's debug build with
-/// --dev (its window, unless the options say --no-browser or --browser) and the given options (no shell, so they reach it as they are).
-fn watchexec_args(recruiter_args: &[String]) -> Vec<String> {
+/// --dev and the given options (no shell, so they reach it as they are).
+fn watchexec_args(app_args: &[String]) -> Vec<String> {
     let mut args = vec!["--restart".to_string(), "--shell=none".to_string()];
     for path in WATCHED {
         args.extend(["--watch".to_string(), path.to_string()]);
     }
-    args.extend(["--", "cargo", "run", "--", "--dev"].map(str::to_string));
-    args.extend(recruiter_args.iter().cloned());
+    args.extend(["--", "cargo", "run", "--", "--dev", "--no-browser"].map(str::to_string));
+    args.extend(app_args.iter().cloned());
     args
 }
 

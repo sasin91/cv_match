@@ -4,14 +4,14 @@
 use std::sync::LazyLock;
 
 use indexmap::IndexMap;
-use recruiter::laya::laya_client::{self, LayaReading};
-use recruiter::matches::free_reader::{self, FreeReader, YearMonth};
-use recruiter::matches::match_model::{Integration, SavedItem, SavedMatch};
-use recruiter::matches::match_result::LayaLine;
-use recruiter::matches::matcher::{self, Matcher, Verdicts};
-use recruiter::matches::tailored_resume::TailoredResume;
-use recruiter::matches::{apply_instructions, joblog, match_score, pdf_writer};
-use recruiter::taxonomy::{self, Taxonomy};
+use jobfinder::laya::laya_client::{self, LayaReading};
+use jobfinder::matches::free_reader::{self, FreeReader, YearMonth};
+use jobfinder::matches::match_model::{Integration, SavedItem, SavedMatch};
+use jobfinder::matches::match_result::LayaLine;
+use jobfinder::matches::matcher::{self, Matcher, Verdicts};
+use jobfinder::matches::tailored_resume::TailoredResume;
+use jobfinder::matches::{apply_instructions, joblog, match_score, pdf_writer};
+use jobfinder::taxonomy::{self, Taxonomy};
 use serde::Serialize;
 use serde_json::{Value, json};
 

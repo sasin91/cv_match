@@ -1,9 +1,9 @@
 // On Jobnet: a small panel next to the "Opret joblog" form that fills it in
-// from a saved match in Recruiter's CV checker (match/joblog/{id}, see
+// from a saved match in JobFinder's CV checker (match/joblog/{id}, see
 // app/src/matches/joblog.rs), PDFs included. It never presses Gem: the
 // person checks the form and saves it. The matches applied for but not on
 // Jobnet yet come first, and when the person saves a filled form with Gem,
-// the match is marked as on Jobnet in Recruiter.
+// the match is marked as on Jobnet in JobFinder.
 //
 // Jobnet's form is React, which keeps its own copy of each value and ignores
 // values set from outside. So a value is set through the element's own
@@ -21,13 +21,13 @@
   const TYPEAHEADS = ["name", "postalCodeAndCity"];
   // Jobnet's date fields, typed as dd-mm-yyyy.
   const DATES = ["submissionDeadline", "submissionDate"];
-  const ROOT_ID = "recruiter-joblog";
+  const ROOT_ID = "jobfinder-joblog";
   // How long after Gem the form may take to go for it to count as saved.
   const SAVE_WINDOW_MS = 30000;
 
   // The match the form was filled from ({id, label}); the same with the
   // status the form had, once Gem is pressed. When the form then goes,
-  // Jobnet saved it, and the match is marked as on Jobnet in Recruiter
+  // Jobnet saved it, and the match is marked as on Jobnet in JobFinder
   // (afterForm). Closing it with Luk, Fortryd or Escape saves nothing.
   let filled = null;
   let saving = null;
@@ -86,8 +86,8 @@
     saving = null;
     if (!saved || Date.now() - saved.at > SAVE_WINDOW_MS) return;
     ask({ type: "logged", id: saved.id, status: saved.status }).then(
-      () => (marked = [`${saved.label}: marked as on Jobnet in Recruiter.`, true]),
-      (error) => (marked = [`${saved.label}: saved on Jobnet, but Recruiter wasn't told (${error.message}). Tick "entered on Jobnet" there.`, false]),
+      () => (marked = [`${saved.label}: marked as on Jobnet in JobFinder.`, true]),
+      (error) => (marked = [`${saved.label}: saved on Jobnet, but JobFinder wasn't told (${error.message}). Tick "entered on Jobnet" there.`, false]),
     );
   }
 
@@ -116,8 +116,8 @@
         li.ok { color: #1f7a4d; }
         p { margin: 8px 0 0; color: #6b6b66; }
       </style>
-      <div class="box" role="region" aria-label="Recruiter: Jobnet joblog">
-        <h2>Fill from Recruiter <button class="close" type="button" aria-label="Close">×</button></h2>
+      <div class="box" role="region" aria-label="JobFinder: Jobnet joblog">
+        <h2>Fill from JobFinder <button class="close" type="button" aria-label="Close">×</button></h2>
         <select aria-label="Saved match"><option>Loading your saved matches…</option></select>
         <p class="waiting" hidden></p>
         <button class="primary fill" type="button" disabled>Fill in the form</button>
@@ -139,7 +139,7 @@
       .then(({ matches, not_joblogged }) => {
         for (const m of not_joblogged) waiting.add(String(m.id));
         const others = matches.filter((m) => !waiting.has(String(m.id)));
-        if (!not_joblogged.length && !others.length) throw new Error("No saved matches yet: match a job post in Recruiter's CV checker first.");
+        if (!not_joblogged.length && !others.length) throw new Error("No saved matches yet: match a job post in JobFinder's CV checker first.");
         if (!not_joblogged.length) {
           $("select").replaceChildren(...others.map(option));
         } else {
@@ -184,7 +184,7 @@
       try {
         await fill(Number(id), (text, ok) => log($(".log"), text, ok));
         filled = { id, label: $("select").selectedOptions[0]?.textContent ?? `Match ${id}` };
-        log($(".log"), "Press Gem when it's right: Recruiter then marks it as on Jobnet.", true);
+        log($(".log"), "Press Gem when it's right: JobFinder then marks it as on Jobnet.", true);
       } catch (error) {
         log($(".log"), error.message, false);
       }

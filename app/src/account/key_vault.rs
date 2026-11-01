@@ -10,7 +10,11 @@ use std::collections::HashMap;
 use std::sync::Mutex;
 
 /// The service the keys' credentials are filed under in Credential Manager.
-const SERVICE: &str = "Recruiter";
+const SERVICE: &str = "JobFinder";
+
+/// The service the keys were filed under while the app was called Recruiter; see
+/// take_over_former_keys().
+const FORMER_SERVICE: &str = "Recruiter";
 
 /// The provider part of the credential the app kept its one key in before a key was kept per
 /// provider (user_llm_keys:{id}@{database}); see key_from_before_providers().
@@ -103,15 +107,39 @@ impl KeyVault {
         self.delete(user_id, BEFORE_PROVIDERS)
     }
 
+    /// Moves the user's keys that the app kept while it was called Recruiter (under
+    /// FORMER_SERVICE, for the database then at former_database's full path) to this vault: each
+    /// is kept here unless a key for its provider already is, and then forgotten there. How many
+    /// were moved; none kept there is fine.
+    pub fn take_over_former_keys(&self, former_database: &str, user_id: i64) -> Result<usize, String> {
+        if let Store::InMemory(_) = self.store {
+            return Ok(0);
+        }
+        let mut moved = 0;
+        for provider in every_provider() {
+            let former = entry_in(FORMER_SERVICE, former_database, user_id, provider)?;
+            let key = match former.get_password() {
+                Ok(key) => key,
+                Err(keyring::Error::NoEntry) => continue,
+                Err(e) => return Err(failed(e)),
+            };
+            if self.key_for(user_id, provider)?.is_none() {
+                self.save(user_id, provider, &key)?;
+                moved += 1;
+            }
+            match former.delete_credential() {
+                Ok(()) | Err(keyring::Error::NoEntry) => {}
+                Err(e) => return Err(failed(e)),
+            }
+        }
+        Ok(moved)
+    }
+
     /// The providers the user has a key kept for, the key from before providers among them (as
     /// ""), for the cleanup.
     pub fn kept(&self, user_id: i64) -> Result<Vec<&'static str>, String> {
         let mut kept = Vec::new();
-        for provider in super::account_model::PROVIDERS
-            .iter()
-            .map(|(provider, _)| *provider)
-            .chain([BEFORE_PROVIDERS])
-        {
+        for provider in every_provider() {
             if self.key_for(user_id, provider)?.is_some() {
                 kept.push(provider);
             }
@@ -120,9 +148,22 @@ impl KeyVault {
     }
 }
 
+/// Every provider a key can be kept for, the key from before providers among them (as "").
+fn every_provider() -> impl Iterator<Item = &'static str> {
+    super::account_model::PROVIDERS
+        .iter()
+        .map(|(provider, _)| *provider)
+        .chain([BEFORE_PROVIDERS])
+}
+
 /// The user's credential for provider in Credential Manager.
 fn entry(database: &str, user_id: i64, provider: &str) -> Result<keyring::Entry, String> {
-    keyring::Entry::new(SERVICE, &credential_user(database, user_id, provider)).map_err(failed)
+    entry_in(SERVICE, database, user_id, provider)
+}
+
+/// The user's credential for provider, filed under service.
+fn entry_in(service: &str, database: &str, user_id: i64, provider: &str) -> Result<keyring::Entry, String> {
+    keyring::Entry::new(service, &credential_user(database, user_id, provider)).map_err(failed)
 }
 
 /// user_llm_keys:{id}:{provider}@{database}, or user_llm_keys:{id}@{database} for the key from
@@ -171,7 +212,7 @@ mod tests {
 
     #[test]
     fn each_database_and_provider_has_its_own_credential() {
-        let main = r"C:\Users\me\AppData\Roaming\Recruiter\recruiter.sqlite";
+        let main = r"C:\Users\me\AppData\Roaming\JobFinder\jobfinder.sqlite";
         assert_ne!(
             credential_user(main, 1, "openai"),
             credential_user(r"C:\Users\me\scratch.sqlite", 1, "openai")

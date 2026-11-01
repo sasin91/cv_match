@@ -3,13 +3,13 @@
 
 use std::sync::{Arc, LazyLock};
 
-use recruiter::account::key_vault::KeyVault;
-use recruiter::context::Context;
-use recruiter::db;
-use recruiter::matches::match_service::{self, RejectOutcome};
-use recruiter::server;
-use recruiter::service_error::ErrorKind;
-use recruiter::taxonomy::Taxonomy;
+use jobfinder::account::key_vault::KeyVault;
+use jobfinder::context::Context;
+use jobfinder::db;
+use jobfinder::matches::match_service::{self, RejectOutcome};
+use jobfinder::server;
+use jobfinder::service_error::ErrorKind;
+use jobfinder::taxonomy::Taxonomy;
 use sqlx::Executor;
 
 static TAXONOMY: LazyLock<Arc<Taxonomy>> = LazyLock::new(|| Arc::new(Taxonomy::load()));
@@ -99,7 +99,7 @@ async fn a_pdf_is_named_for_the_job_and_needs_a_known_kind() {
 async fn the_apps_own_pdf_reads_back_as_its_text() {
     let context = context().await;
     let made = match_service::pdf(&context, 21, "job", "", None).await.unwrap();
-    let text = recruiter::pdf_text::text_of(made.bytes).unwrap();
+    let text = jobfinder::pdf_text::text_of(made.bytes).unwrap();
     assert!(text.contains("Vi søger en PHP-udvikler."), "{text}");
 }
 

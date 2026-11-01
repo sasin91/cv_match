@@ -46,7 +46,7 @@ const CHARSET_SCAN_BYTES: usize = 4000;
 /// it is HTML.
 const HTML_SCAN_BYTES: usize = 2000;
 
-const USER_AGENT: &str = "Mozilla/5.0 (compatible; Recruiter desktop app)";
+const USER_AGENT: &str = "Mozilla/5.0 (compatible; JobFinder desktop app)";
 const ACCEPT: &str = "text/html,application/xhtml+xml,text/plain;q=0.9";
 const ACCEPT_LANGUAGE: &str = "da,en;q=0.8";
 

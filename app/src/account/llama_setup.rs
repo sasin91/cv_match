@@ -191,7 +191,7 @@ mod tests {
                 vram_bytes: 8 * GIB,
             }),
         };
-        let folder = std::env::temp_dir().join("recruiter-llama-setup-page-test");
+        let folder = std::env::temp_dir().join("jobfinder-llama-setup-page-test");
         let server = LlamaServer::new(&folder, inventory);
         let page = LlamaSetupPage::new(llama_setup_service::view_of(&server), None);
         let html = page.render().unwrap();

@@ -1,8 +1,8 @@
 [package]
-name = "recruiter"
+name = "jobfinder"
 version = "0.1.0"
 edition = "2024"
-description = "Recruiter's cv_match as a local desktop app"
+description = "JobFinder: Recruiter's CV match as a local desktop app"
 publish = false
 
 # xtask/ holds the developer commands (`cargo dev`). It shares this Cargo.lock and target/, and

@@ -68,7 +68,7 @@ The first build downloads a prebuilt ONNX Runtime (the `ort` crate does this).
 
 The app (`../app`) runs this crate's model in its own process: copy the checkpoint folder's
 `rl_agent_config.json` and `tokenizer\`, and `out\laya.onnx` with `out\laya.onnx.data`, into
-`%APPDATA%\Recruiter\laya` (see the app's README). The server below is only for clients that call Laya over HTTP, such as the web app.
+`%APPDATA%\JobFinder\laya` (see the app's README). The server below is only for clients that call Laya over HTTP, such as the web app.
 
 ## Point Recruiter at it
 

@@ -411,7 +411,7 @@ mod tests {
                 vram_bytes: 79 * GIB / 10,
             }),
         };
-        let folder = std::env::temp_dir().join("recruiter-llama-setup-test");
+        let folder = std::env::temp_dir().join("jobfinder-llama-setup-test");
         let server = LlamaServer::new(&folder, inventory);
         let page = view_of(&server);
         assert_eq!(
@@ -431,7 +431,7 @@ mod tests {
 
     #[test]
     fn a_computer_without_room_on_its_card_for_a_good_model_gets_none() {
-        let folder = std::env::temp_dir().join("recruiter-llama-advice-test");
+        let folder = std::env::temp_dir().join("jobfinder-llama-advice-test");
         let card = |vram_tenths: u64| Inventory {
             memory_bytes: 16 * GIB,
             gpu: Some(Gpu {
@@ -469,7 +469,7 @@ mod tests {
 
     #[test]
     fn an_intel_card_counts_and_a_llama_server_that_cant_drive_it_is_said() {
-        let folder = std::env::temp_dir().join(format!("recruiter-llama-intel-{}", std::process::id()));
+        let folder = std::env::temp_dir().join(format!("jobfinder-llama-intel-{}", std::process::id()));
         std::fs::create_dir_all(&folder).unwrap();
         let arc = Inventory {
             memory_bytes: 32 * GIB,

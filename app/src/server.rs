@@ -229,7 +229,7 @@ fn allowed(method: &Method, headers: &HeaderMap, port: u16, tailscale_name: Opti
         .and_then(|host| host.to_str().ok())
         .unwrap_or("");
     if !own_hosts(port, tailscale_name).iter().any(|own| own == host) {
-        return Err("This is the Recruiter app on this computer; open it at its own address.");
+        return Err("This is the JobFinder app on this computer; open it at its own address.");
     }
     if method == Method::GET || method == Method::HEAD {
         return Ok(());
@@ -238,7 +238,7 @@ fn allowed(method: &Method, headers: &HeaderMap, port: u16, tailscale_name: Opti
     match origin {
         Some(origin) if own_origins(port, tailscale_name).iter().any(|own| own == origin) => Ok(()),
         Some(origin) if origin == format!("chrome-extension://{}", extension::ID) => Ok(()),
-        _ => Err("Only the Recruiter app's own pages and its Jobnet extension can send it changes."),
+        _ => Err("Only the JobFinder app's own pages and its Jobnet extension can send it changes."),
     }
 }
 
