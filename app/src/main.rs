@@ -599,7 +599,7 @@ async fn take_over_from_recruiter(database: &std::path::Path, vault: &KeyVault, 
     if !from_recruiter::is_default(database) {
         return;
     }
-    match schedule.take_over_former().await {
+    match schedule.take_over_former(&from_recruiter::former_default_path()).await {
         Ok(None) => {}
         Ok(Some(hours)) => {
             jobfinder::say!("The job scan's schedule (every {hours} hours) moved from Recruiter's name to JobFinder's.")

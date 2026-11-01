@@ -49,6 +49,10 @@ const FORMER_SYSTEMD_UNIT: &str = "recruiter-scan";
 /// What the timer file's interval line starts with; the rest is the hours.
 const SYSTEMD_INTERVAL_NOTE: &str = "# JobFinder's scan interval in hours: ";
 
+/// The interval line's start in a timer written while the app was called Recruiter.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+const FORMER_SYSTEMD_INTERVAL_NOTE: &str = "# Recruiter's scan interval in hours: ";
+
 /// The scan command the task runs.
 #[derive(Debug, Clone)]
 pub struct ScanCommand {
@@ -131,6 +135,15 @@ fn windows_program_in(xml: &str) -> Option<PathBuf> {
     xml_text(arguments).split('"').nth(1).map(PathBuf::from)
 }
 
+/// The database a task scans, from `schtasks /Query /XML`: the second quoted path of its
+/// <Arguments>, after `--database` (see windows_task_run).
+#[cfg_attr(not(windows), allow(dead_code))]
+fn windows_database_in(xml: &str) -> Option<PathBuf> {
+    let start = xml.find("<Arguments>")? + "<Arguments>".len();
+    let arguments = &xml[start..xml[start..].find("</Arguments>")? + start];
+    xml_text(arguments).split('"').nth(3).map(PathBuf::from)
+}
+
 /// XML text with its entities decoded: the five named ones and numeric ones like &#38; or &#x26;.
 #[cfg_attr(not(windows), allow(dead_code))]
 fn xml_text(xml: &str) -> String {
@@ -196,24 +209,58 @@ fn systemd_quote(text: &str, argument: bool) -> String {
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn systemd_program_in(service: &str) -> Option<PathBuf> {
     let quoted = service.lines().find_map(|line| line.strip_prefix("ExecStart=\""))?;
-    let mut program = String::new();
+    systemd_unquote(quoted, false).map(PathBuf::from)
+}
+
+/// The database a service file's ExecStart scans: the quoted path after `--database`, with
+/// systemd_quote's escapes undone.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn systemd_database_in(service: &str) -> Option<PathBuf> {
+    let exec_start = service.lines().find_map(|line| line.strip_prefix("ExecStart="))?;
+    let after = exec_start.rsplit_once(" --database \"")?.1;
+    systemd_unquote(after, true).map(PathBuf::from)
+}
+
+/// The text up to the closing quote of what systemd_quote(text, argument) wrote, from just after
+/// its opening quote, with the escapes undone; None when it isn't closed.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn systemd_unquote(quoted: &str, argument: bool) -> Option<String> {
+    let mut text = String::new();
     let mut chars = quoted.chars();
     while let Some(c) = chars.next() {
         match c {
-            '"' => return Some(PathBuf::from(program)),
-            '\\' | '%' => program.push(chars.next()?),
-            c => program.push(c),
+            '"' => return Some(text),
+            '\\' | '%' => text.push(chars.next()?),
+            '$' if argument => text.push(chars.next()?),
+            c => text.push(c),
         }
     }
     None
 }
 
+/// Whether a schedule's database is database: by the path's letters, which are the same in
+/// either case on Windows.
+#[cfg_attr(not(any(windows, target_os = "linux")), allow(dead_code))]
+fn is_database(scheduled: &Path, database: &Path) -> bool {
+    if cfg!(windows) {
+        scheduled.to_string_lossy().to_lowercase() == database.to_string_lossy().to_lowercase()
+    } else {
+        scheduled == database
+    }
+}
+
 /// The interval a timer file notes, in hours; None for a file without the note.
 #[cfg_attr(not(target_os = "linux"), allow(dead_code))]
 fn systemd_interval_in(timer: &str) -> Option<u32> {
+    systemd_interval_noted(timer, SYSTEMD_INTERVAL_NOTE)
+}
+
+/// The interval a timer file notes on its line starting with note, in hours.
+#[cfg_attr(not(target_os = "linux"), allow(dead_code))]
+fn systemd_interval_noted(timer: &str, note: &str) -> Option<u32> {
     timer
         .lines()
-        .find_map(|line| line.strip_prefix(SYSTEMD_INTERVAL_NOTE))
+        .find_map(|line| line.strip_prefix(note))
         .and_then(|hours| hours.trim().parse().ok())
 }
 
@@ -307,14 +354,15 @@ impl ScanSchedule {
     }
 
     /// Moves the schedule the app kept while it was called Recruiter (FORMER_TASK_NAME, or the
-    /// FORMER_SYSTEMD_UNIT timer) to this one, keeping its interval unless this one is already
-    /// scheduled, and removes it: it runs recruiter.exe on the former database, which would make
-    /// an empty one there again. The interval moved, or None when there was no former schedule.
-    pub async fn take_over_former(&self) -> Result<Option<u32>, String> {
+    /// FORMER_SYSTEMD_UNIT timer) to this one when it scans former_database (the database that
+    /// moved here), keeping its interval unless this one is already scheduled, and removes it: it
+    /// runs recruiter.exe on the former database, which would make an empty one there again. A
+    /// former schedule of another database is left alone. The interval moved, or None.
+    pub async fn take_over_former(&self, former_database: &Path) -> Result<Option<u32>, String> {
         let Store::System(command) = &self.store else {
             return Ok(None);
         };
-        let Some(hours) = system::former_interval_hours().await? else {
+        let Some(hours) = system::former_interval_hours(former_database).await? else {
             return Ok(None);
         };
         let registered = match system::interval_hours(command).await {
@@ -406,12 +454,16 @@ mod system {
         schtasks(&["/Delete", "/F", "/TN", TASK_NAME]).await?.map(|_| ())
     }
 
-    /// The former task's interval (FORMER_TASK_NAME), or None when there is none.
-    pub async fn former_interval_hours() -> Result<Option<u32>, String> {
-        let answer = schtasks(&["/Query", "/TN", FORMER_TASK_NAME, "/XML"]).await?;
-        Ok(answer
-            .ok()
-            .map(|xml| interval_in(&xml).unwrap_or(DEFAULT_INTERVAL_HOURS)))
+    /// The former task's interval (FORMER_TASK_NAME), or None when there is none or it scans
+    /// another database than former_database.
+    pub async fn former_interval_hours(former_database: &Path) -> Result<Option<u32>, String> {
+        let Ok(xml) = schtasks(&["/Query", "/TN", FORMER_TASK_NAME, "/XML"]).await? else {
+            return Ok(None);
+        };
+        if !windows_database_in(&xml).is_some_and(|scanned| is_database(&scanned, former_database)) {
+            return Ok(None);
+        }
+        Ok(Some(interval_in(&xml).unwrap_or(DEFAULT_INTERVAL_HOURS)))
     }
 
     pub async fn remove_former() -> Result<(), String> {
@@ -516,13 +568,23 @@ mod system {
         remove_units(SYSTEMD_UNIT).await
     }
 
-    /// The former timer's interval (FORMER_SYSTEMD_UNIT), or None when there is none.
-    pub async fn former_interval_hours() -> Result<Option<u32>, String> {
-        match tokio::fs::read_to_string(unit_named(FORMER_SYSTEMD_UNIT, "timer")?).await {
-            Ok(timer) => Ok(Some(systemd_interval_in(&timer).unwrap_or(DEFAULT_INTERVAL_HOURS))),
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
-            Err(e) => Err(format!("The former job scan's timer couldn't be read: {e}")),
+    /// The former timer's interval (FORMER_SYSTEMD_UNIT), or None when there is none or its
+    /// service scans another database than former_database.
+    pub async fn former_interval_hours(former_database: &Path) -> Result<Option<u32>, String> {
+        let timer = match tokio::fs::read_to_string(unit_named(FORMER_SYSTEMD_UNIT, "timer")?).await {
+            Ok(timer) => timer,
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+            Err(e) => return Err(format!("The former job scan's timer couldn't be read: {e}")),
+        };
+        let service = tokio::fs::read_to_string(unit_named(FORMER_SYSTEMD_UNIT, "service")?)
+            .await
+            .unwrap_or_default();
+        if !systemd_database_in(&service).is_some_and(|scanned| is_database(&scanned, former_database)) {
+            return Ok(None);
         }
+        Ok(Some(
+            systemd_interval_noted(&timer, FORMER_SYSTEMD_INTERVAL_NOTE).unwrap_or(DEFAULT_INTERVAL_HOURS),
+        ))
     }
 
     pub async fn remove_former() -> Result<(), String> {
@@ -587,7 +649,7 @@ mod system {
         Err(NOT_HERE.to_string())
     }
 
-    pub async fn former_interval_hours() -> Result<Option<u32>, String> {
+    pub async fn former_interval_hours(_: &Path) -> Result<Option<u32>, String> {
         Ok(None)
     }
 
@@ -603,6 +665,32 @@ fn lock<T>(mutex: &Mutex<T>) -> std::sync::MutexGuard<'_, T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn a_former_schedules_database_is_read_back() {
+        let xml = r#"<Exec><Command>conhost.exe</Command><Arguments>--headless "C:\Apps\recruiter.exe" scan --database "C:\Users\me\AppData\Roaming\Recruiter\recruiter.sqlite"</Arguments></Exec>"#;
+        assert_eq!(
+            windows_database_in(xml),
+            Some(PathBuf::from(r"C:\Users\me\AppData\Roaming\Recruiter\recruiter.sqlite"))
+        );
+        let command = ScanCommand {
+            exe: PathBuf::from("/home/me/recruiter"),
+            database: PathBuf::from("/home/me/50% off/$cash \"a\".sqlite"),
+            extract_and_run: false,
+        };
+        assert_eq!(
+            systemd_database_in(&command.systemd_service()),
+            Some(command.database.clone())
+        );
+        assert_eq!(systemd_program_in(&command.systemd_service()), Some(command.exe));
+    }
+
+    #[test]
+    fn a_former_timers_interval_is_read_with_its_own_note() {
+        let former = "# Recruiter's scan interval in hours: 8\n[Unit]\n";
+        assert_eq!(systemd_interval_noted(former, FORMER_SYSTEMD_INTERVAL_NOTE), Some(8));
+        assert_eq!(systemd_interval_in(former), None);
+    }
 
     #[test]
     fn the_interval_is_read_back_from_the_tasks_xml() {

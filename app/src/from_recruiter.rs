@@ -89,15 +89,26 @@ fn move_data_folder_from(former: &Path, database: &Path) -> Result<Moved, String
                 former: former_folder.to_path_buf(),
             });
         }
-        // A former Recruiter that runs on it holds its lock (cleanup::hold).
-        if cleanup::hold(former, cleanup::Hold::Cleanup).is_err() {
-            return Err(format!(
+        // A former Recruiter that runs on it holds its lock (cleanup::hold); held here until the
+        // files are moved, so no scheduled `recruiter scan` opens the database meanwhile.
+        let held = cleanup::hold(former, cleanup::Hold::Cleanup).map_err(|_| {
+            format!(
                 "Recruiter, this app's former name, is still running on {}. Close it, then start JobFinder again, which moves its data to {}.",
                 former.display(),
                 folder.display()
-            ));
+            )
+        })?;
+        let lock_files = cleanup::lock_files(former);
+        let held_names: Vec<_> = lock_files.iter().filter_map(|file| file.file_name()).collect();
+        let moving = move_folder(former_folder, folder, &held_names);
+        drop(held);
+        for lock_file in &lock_files {
+            // A lock file is only a name to lock; one that stays does no harm.
+            let _ = std::fs::remove_file(lock_file);
         }
-        move_folder(former_folder, folder)?;
+        // remove_dir only removes an empty folder; one with entries left stays.
+        let _ = std::fs::remove_dir(former_folder);
+        moving?;
         moved = true;
     }
     // Also when the folder moved at an earlier start whose renames below didn't all finish.
@@ -116,9 +127,9 @@ fn folder_of(file: &Path) -> &Path {
     file.parent().unwrap_or(Path::new("."))
 }
 
-/// Moves former_folder to folder: renamed whole when folder isn't there, else entry by entry
-/// (an entry folder already has stays in former_folder, which is removed once empty).
-fn move_folder(former_folder: &Path, folder: &Path) -> Result<(), String> {
+/// Moves former_folder's entries to folder, made when it isn't there, except the lock files
+/// named held (open while this runs) and the entries folder already has, which stay.
+fn move_folder(former_folder: &Path, folder: &Path, held: &[&std::ffi::OsStr]) -> Result<(), String> {
     let couldnt = |e: std::io::Error| {
         format!(
             "Recruiter's data folder, {}, couldn't be moved to {}: {e}. Close Recruiter if it is open, then start JobFinder again.",
@@ -126,21 +137,15 @@ fn move_folder(former_folder: &Path, folder: &Path) -> Result<(), String> {
             folder.display()
         )
     };
-    if !folder.exists() {
-        if let Some(parent) = folder.parent() {
-            std::fs::create_dir_all(parent).map_err(couldnt)?;
-        }
-        return std::fs::rename(former_folder, folder).map_err(couldnt);
-    }
+    std::fs::create_dir_all(folder).map_err(couldnt)?;
     for entry in std::fs::read_dir(former_folder).map_err(couldnt)? {
         let entry = entry.map_err(couldnt)?;
-        let target = folder.join(entry.file_name());
-        if !target.exists() {
+        let name = entry.file_name();
+        let target = folder.join(&name);
+        if !held.contains(&name.as_os_str()) && !target.exists() {
             std::fs::rename(entry.path(), target).map_err(couldnt)?;
         }
     }
-    // remove_dir only removes an empty folder; one with entries left stays.
-    let _ = std::fs::remove_dir(former_folder);
     Ok(())
 }
 
