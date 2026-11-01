@@ -411,6 +411,38 @@ pub async fn fetch_job(context: &Context, url: &str) -> Result<Page, ServiceErro
     })
 }
 
+/// The biggest PDF read for its text. A CV is rarely over a few MB; this leaves room for one
+/// with photos while keeping a wrong file from being held in memory.
+pub const MAX_PDF_BYTES: usize = 20 * 1024 * 1024;
+
+/// An uploaded PDF's text (a CV, or a job post saved as PDF), read in the app (pdf_text). A PDF
+/// that holds no text, as a scan, is said so: its text must be pasted.
+pub async fn read_pdf(bytes: Vec<u8>) -> Result<String, ServiceError> {
+    if bytes.len() > MAX_PDF_BYTES {
+        return Err(ServiceError::new(
+            ErrorKind::TooLarge,
+            format!("The PDF is over {} MB.", MAX_PDF_BYTES / (1024 * 1024)),
+        ));
+    }
+    let read = tokio::task::spawn_blocking(move || crate::pdf_text::text_of(bytes))
+        .await
+        .map_err(|e| ServiceError::internal("match/pdf_text", format!("Reading the PDF stopped: {e}")))?;
+    match read {
+        Ok(text) if text.is_empty() => Err(ServiceError::new(
+            ErrorKind::Invalid,
+            "The PDF has no text to read; it may be a scan. Paste its text instead.",
+        )),
+        Ok(text) => Ok(text),
+        Err(why) => {
+            crate::log_line!("match/pdf_text: {why}");
+            Err(ServiceError::new(
+                ErrorKind::Invalid,
+                format!("The PDF couldn't be read ({why}). Paste its text instead."),
+            ))
+        }
+    }
+}
+
 /// The job post as structured requirements, read by the model, or by the free reader when the
 /// key is off for evaluating job posts.
 pub async fn extract_job(context: &Context, text: &str) -> Result<Job, ServiceError> {

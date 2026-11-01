@@ -94,6 +94,14 @@ async fn a_pdf_is_named_for_the_job_and_needs_a_known_kind() {
 }
 
 #[tokio::test]
+async fn the_apps_own_pdf_reads_back_as_its_text() {
+    let context = context().await;
+    let made = match_service::pdf(&context, 21, "job", "", None).await.unwrap();
+    let text = recruiter::pdf_text::text_of(made.bytes).unwrap();
+    assert!(text.contains("Vi søger en PHP-udvikler."), "{text}");
+}
+
+#[tokio::test]
 async fn a_joblog_status_must_be_one_of_jobnets() {
     let context = context().await;
     let error = match_service::save_joblog_status(&context, 21, "maybe", true)

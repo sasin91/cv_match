@@ -15,7 +15,7 @@ use std::sync::{Arc, Mutex};
 
 use axum::Router;
 use axum::body::Body;
-use axum::extract::{Path, Request, State};
+use axum::extract::{DefaultBodyLimit, Path, Request, State};
 use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -29,19 +29,17 @@ use crate::dev_reload::{self, DevReload};
 use crate::extension;
 use crate::instance;
 use crate::job_scan;
-use crate::matches::pages;
+use crate::matches::{match_service, pages};
 use crate::setup;
 
 /// The port the app listens on unless told otherwise, fixed so the Jobnet extension can find it.
 pub const DEFAULT_PORT: u16 = 8765;
 
-/// modules/cv_match's css/ and js/, served under match_module/ as Trongate serves them, and
-/// pdf.js beside them, which js/app.js reads uploaded PDFs with.
+/// modules/cv_match's css/ and js/, served under match_module/ as Trongate serves them.
 #[derive(RustEmbed)]
 #[folder = "../assets/match/"]
 #[include = "css/*"]
 #[include = "js/*"]
-#[include = "pdfjs/*.mjs"]
 struct MatchAssets;
 
 /// Trongate MX, served under js/.
@@ -126,6 +124,10 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/match/fetch_job", post(pages::fetch_job))
         .route("/match/extract_job", post(pages::extract_job))
         .route("/match/extract_cv", post(pages::extract_cv))
+        .route(
+            "/match/pdf_text",
+            post(pages::pdf_text).layer(DefaultBodyLimit::max(match_service::MAX_PDF_BYTES + 1)),
+        )
         .route("/match/match", post(pages::r#match))
         .route("/match/saved/{id}", get(pages::saved))
         .route("/match/write_application", post(pages::write_application))

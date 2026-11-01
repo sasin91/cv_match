@@ -253,18 +253,34 @@ async fn the_page_css_and_js_are_served() {
     }
 }
 
+/// POST match/pdf_text with these bytes: the status and the JSON answer.
+async fn pdf_text(app: &axum::Router, bytes: Vec<u8>) -> (StatusCode, serde_json::Value) {
+    let request = Request::post("/match/pdf_text")
+        .header(header::HOST, HOST)
+        .header(header::ORIGIN, ORIGIN)
+        .header(header::CONTENT_TYPE, "application/pdf")
+        .body(Body::from(bytes))
+        .unwrap();
+    let response = app.clone().oneshot(request).await.unwrap();
+    let status = response.status();
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    (status, serde_json::from_slice(&body).unwrap())
+}
+
 #[tokio::test]
-async fn pdf_js_is_served_from_the_app_for_offline_uploads() {
-    for path in [
-        "/match_module/pdfjs/pdf.min.mjs",
-        "/match_module/pdfjs/pdf.worker.min.mjs",
-    ] {
-        let response = app().await.oneshot(get(path)).await.unwrap();
-        assert_eq!(response.status(), StatusCode::OK, "{path}");
-        // Browsers only run a module whose type is JavaScript.
-        let mime = response.headers()[header::CONTENT_TYPE].to_str().unwrap();
-        assert!(mime.contains("javascript"), "{path}: {mime}");
-    }
+async fn an_uploaded_pdf_is_read_by_the_app_not_the_browser() {
+    let app = app().await;
+    // The app's own PDF of a saved job post reads back as its text.
+    let (status, _, _, job_pdf) = pdf(&app, r#"{"id": 22, "kind": "job"}"#).await;
+    assert_eq!(status, StatusCode::OK);
+    let (status, answer) = pdf_text(&app, job_pdf).await;
+    assert_eq!(status, StatusCode::OK, "{answer}");
+    assert!(answer["text"].as_str().unwrap().contains("Mekaniker"), "{answer}");
+
+    // A file that isn't a PDF says why, so the text can be pasted instead.
+    let (status, answer) = pdf_text(&app, b"not a pdf".to_vec()).await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY);
+    assert!(answer["error"].as_str().unwrap().contains("Paste its text"), "{answer}");
 }
 
 /// A saved match's PDF: its status, Content-Type and Content-Disposition, and its bytes.

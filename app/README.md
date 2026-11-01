@@ -60,8 +60,8 @@ one local user who is always signed in:
 - a match's Jobnet joblog panel, and what the Jobnet extension asks for (the history, a joblog
   entry, marking a match as on Jobnet, the PDFs it attaches);
 - the application, the tailored résumé, the CV and the job post as PDFs (`POST match/pdf`);
-- reading an uploaded PDF CV in the browser with pdf.js, which the app serves itself
-  (`assets/match/pdfjs`), so it works offline;
+- reading an uploaded PDF CV's text in the app (`POST match/pdf_text`, `src/pdf_text`, from
+  sappkit's PDF reader), so it works offline and a desktop window can read it too;
 - the API key page (http://127.0.0.1:8765/account), below;
 - Laya's reading of the free match and the AI match, when its model is there (below).
 
