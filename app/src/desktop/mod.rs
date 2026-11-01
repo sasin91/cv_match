@@ -337,6 +337,21 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
             let runner = shell.runner();
             return job_searches::update(&mut shell.job_searches, msg, &runner).map(Message::JobSearches);
         }
+        Message::LocalModel(local_model::Msg::ModelInUse {
+            message,
+            setup_unfinished,
+        }) => {
+            // As the web page goes on: to Setup while it is unfinished, else to where the
+            // model's uses are picked, since the uses stay on the key they were on.
+            if setup_unfinished {
+                return Task::batch([
+                    Task::done(Message::OpenPage("setup".to_string())),
+                    Task::done(Message::Said(message)),
+                ]);
+            }
+            return Task::done(Message::Show(Screen::LanguageModels))
+                .chain(Task::done(Message::LanguageModels(language_models::Msg::Tell(message))));
+        }
         Message::LocalModel(msg) => {
             let runner = shell.runner();
             return local_model::update(&mut shell.local_model, msg, &runner).map(Message::LocalModel);

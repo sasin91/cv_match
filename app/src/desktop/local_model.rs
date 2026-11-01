@@ -42,6 +42,12 @@ pub enum Msg {
     Said(Result<String, String>),
     /// The next look at a running download.
     Poll,
+    /// A downloaded model is saved as this app's own model; the shell goes on to where its uses
+    /// are picked (Language models), or to Setup while that is unfinished, saying message there.
+    ModelInUse {
+        message: String,
+        setup_unfinished: bool,
+    },
 }
 
 pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
@@ -82,14 +88,18 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
         }
         Msg::UseModel(file) => {
             return runner.run(
-                move |context| async move {
-                    llama_setup_service::use_model(&context, file)
-                        .await
-                        .map(|saved| saved.message)
+                move |context| async move { llama_setup_service::use_model(&context, file).await },
+                |answer| match answer.and_then(|saved| saved.map_err(|e| e.message)) {
+                    Ok(saved) => Msg::ModelInUse {
+                        message: saved.message,
+                        setup_unfinished: saved.setup_unfinished,
+                    },
+                    Err(why) => Msg::Said(Err(why)),
                 },
-                said,
             );
         }
+        // The shell goes on.
+        Msg::ModelInUse { .. } => {}
         Msg::Said(said) => {
             state.said = Some(match said {
                 Ok(said) => (Health::Ready, said),

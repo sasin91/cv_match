@@ -78,6 +78,8 @@ pub enum Msg {
     },
     /// Goes to the Local model screen.
     ShowLocalModel,
+    /// What another screen's work came to, said here (a local model saved: pick its uses).
+    Tell(String),
 }
 
 pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
@@ -175,6 +177,10 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
         }
         // The shell changes screens.
         Msg::ShowLocalModel => {}
+        Msg::Tell(said) => {
+            state.said = Some((Health::Ready, said));
+            return Task::done(Msg::Load);
+        }
     }
     Task::none()
 }
