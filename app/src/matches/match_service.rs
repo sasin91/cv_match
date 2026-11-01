@@ -544,6 +544,148 @@ pub async fn ai_match_result(
     Ok(MatchResult::from(&fresh, true, Some(documents), &laya_input))
 }
 
+/// A CV read for matching: its text, and the profile read from it.
+#[derive(Debug, Clone)]
+pub struct ReadCv {
+    pub text: String,
+    pub profile: Profile,
+}
+
+/// What to match, as a front end has it: the job post's text or a link to it, and the CV.
+pub struct MatchAsk<'a> {
+    /// The job post's text, or a link to it.
+    pub job_text: &'a str,
+    /// A link to the post, fetched when job_text is empty.
+    pub job_url: &'a str,
+    pub cv_text: &'a str,
+    /// The CV read the last time, used again while its text is cv_text, so an unchanged CV costs
+    /// no model call.
+    pub read_cv: Option<&'a ReadCv>,
+}
+
+/// What match_job came to.
+#[derive(Debug)]
+pub struct MatchAnswer {
+    /// The post read from its link, for the job box.
+    pub fetched: Option<Page>,
+    /// The CV as read, to give back next time; None for the free match, which reads it itself.
+    pub read_cv: Option<ReadCv>,
+    pub result: MatchResult,
+    /// The same post was matched with the same CV before: result is that saved match.
+    pub matched_before: bool,
+    /// Why the match couldn't be saved, when it couldn't.
+    pub save_error: Option<String>,
+}
+
+/// What says each step of match_job as it starts ("Reading the job post…").
+pub type Say<'a> = &'a (dyn Fn(&str) + Send + Sync);
+
+/// Whether text is one link and nothing else.
+pub fn is_link(text: &str) -> bool {
+    let text = text.trim();
+    let lower = text.to_ascii_lowercase();
+    (lower.starts_with("http://") || lower.starts_with("https://"))
+        && text.len() > "https://".len()
+        && !text.contains(char::is_whitespace)
+}
+
+/// Matches a job post with a CV, as the match page does: a link is fetched first; with an AI
+/// model, the CV is read (unless it was already), a post matched with this CV before opens its
+/// saved match, and otherwise the post is read and matched (ai_match) and saved; without one,
+/// it is the free match (quick_match), which saves nothing.
+pub async fn match_job(context: &Context, ask: MatchAsk<'_>, say: Say<'_>) -> Result<MatchAnswer, ServiceError> {
+    let typed = ask.job_text.trim();
+    let link = if is_link(typed) {
+        Some(typed)
+    } else if typed.is_empty() {
+        Some(ask.job_url.trim()).filter(|url| !url.is_empty())
+    } else {
+        None
+    };
+    let fetched = match link {
+        Some(url) if !is_link(url) => {
+            return Err(ServiceError::new(
+                ErrorKind::Invalid,
+                "Paste a link starting with http:// or https://.",
+            ));
+        }
+        Some(url) => {
+            say("Fetching the job post…");
+            Some(fetch_job(context, url).await?)
+        }
+        None => None,
+    };
+    let (job_text, job_url) = match &fetched {
+        Some(page) => (page.text.trim().to_string(), page.url.clone()),
+        None => (typed.to_string(), ask.job_url.trim().to_string()),
+    };
+    if job_text.is_empty() {
+        return Err(ServiceError::new(
+            ErrorKind::Invalid,
+            "Paste a link, the text or choose a file with the job post first.",
+        ));
+    }
+    let cv_text = ask.cv_text.trim();
+    if cv_text.is_empty() {
+        return Err(ServiceError::new(ErrorKind::Invalid, "Paste or choose a CV first."));
+    }
+    let uses = llm_key::ai_uses(context).await?;
+    if !uses.any() {
+        say("Matching…");
+        return Ok(MatchAnswer {
+            result: quick_match(context, &job_text, cv_text).await?,
+            fetched,
+            read_cv: None,
+            matched_before: false,
+            save_error: None,
+        });
+    }
+    let read_cv = match ask.read_cv.filter(|read| read.text == cv_text) {
+        Some(read) => read.clone(),
+        None => {
+            say("Reading the CV…");
+            ReadCv {
+                text: cv_text.to_string(),
+                profile: extract_cv(context, cv_text).await?,
+            }
+        }
+    };
+    say("Checking your saved matches…");
+    if let Some(id) = already_matched(context, cv_text, &job_text).await? {
+        return Ok(MatchAnswer {
+            result: saved_result(context, id).await?,
+            fetched,
+            read_cv: Some(read_cv),
+            matched_before: true,
+            save_error: None,
+        });
+    }
+    say("Reading the job post…");
+    let job = extract_job(context, &job_text).await?;
+    say(if uses.job_evaluation {
+        "Matching: the taxonomy first, then the AI for what it can't decide…"
+    } else {
+        "Matching with the taxonomy…"
+    });
+    let request = MatchRequest {
+        job,
+        cv_name: read_cv.profile.name.clone(),
+        profile: read_cv.profile.clone(),
+        job_text,
+        job_url,
+        cv_text: cv_text.to_string(),
+    };
+    let found = ai_match(context, &request).await?;
+    let result = ai_match_result(context, &request, &found).await?;
+    Ok(MatchAnswer {
+        result,
+        fetched,
+        read_cv: Some(read_cv),
+        matched_before: false,
+        save_error: found.save_error.clone().filter(|why| !why.is_empty()),
+    })
+}
+
 /// Writes kind (document_box::APPLICATION or RESUME) for a saved match from its CV and post, with
 /// the candidate's notes, keeps it as the match's newest version, and answers its box. The
 /// writing runs as its own task, so it finishes and is saved even when the one who asked stops
