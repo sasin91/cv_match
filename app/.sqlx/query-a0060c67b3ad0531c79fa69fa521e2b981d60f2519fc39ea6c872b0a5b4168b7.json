@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE scanned_job_posts\n        SET status = 'matching', matching_since = ?3, error = ''\n        WHERE id = ?1\n          AND (\n            status IN ('new', 'failed', 'not_a_job')\n            OR (status = 'matching' AND (matching_since IS NULL OR matching_since < ?2))\n          )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "a0060c67b3ad0531c79fa69fa521e2b981d60f2519fc39ea6c872b0a5b4168b7"
+}

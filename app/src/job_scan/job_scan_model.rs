@@ -429,18 +429,46 @@ pub async fn for_matching(db: &SqlitePool, post_id: i64) -> sqlx::Result<Option<
     }))
 }
 
-/// Posts left new or matching by a scan or a match that stopped before it finished (the program
-/// was closed): found before found_before and still not matched, oldest first.
-pub async fn unfinished_posts(db: &SqlitePool, found_before: i64) -> sqlx::Result<Vec<i64>> {
+/// Claims a post for a match starting now: it is new, failed or not a job post, or its last
+/// match started before stale_before and stopped without finishing. One statement, so two
+/// matches (a scan's and Try again, or two scans) can't both claim it. False when it isn't to be
+/// matched now: matching already, matched, dismissed or gone.
+pub async fn claim_for_matching(db: &SqlitePool, post_id: i64, stale_before: i64, now: i64) -> sqlx::Result<bool> {
+    let claimed = sqlx::query!(
+        r#"
+        UPDATE scanned_job_posts
+        SET status = 'matching', matching_since = ?3, error = ''
+        WHERE id = ?1
+          AND (
+            status IN ('new', 'failed', 'not_a_job')
+            OR (status = 'matching' AND (matching_since IS NULL OR matching_since < ?2))
+          )
+        "#,
+        post_id,
+        stale_before,
+        now
+    )
+    .execute(db)
+    .await?;
+    Ok(claimed.rows_affected() > 0)
+}
+
+/// Posts a scan or a match left unmatched when it stopped (the program was closed): new ones
+/// found before stale_before, and ones whose match started before it, oldest first.
+pub async fn unfinished_posts(db: &SqlitePool, stale_before: i64) -> sqlx::Result<Vec<i64>> {
     sqlx::query_scalar!(
         r#"
         SELECT p.id AS "id!"
         FROM scanned_job_posts p
         JOIN job_searches s ON s.id = p.job_search_id
-        WHERE p.status IN ('new', 'matching') AND p.found_at < ?1 AND s.active = 1
+        WHERE s.active = 1
+          AND (
+            (p.status = 'new' AND p.found_at < ?1)
+            OR (p.status = 'matching' AND (p.matching_since IS NULL OR p.matching_since < ?1))
+          )
         ORDER BY p.found_at, p.id
         "#,
-        found_before
+        stale_before
     )
     .fetch_all(db)
     .await
@@ -476,6 +504,7 @@ pub async fn set_status(
         r#"
         UPDATE scanned_job_posts
         SET status = CASE WHEN status = 'dismissed' THEN status ELSE ?2 END,
+            matching_since = NULL,
             error = ?3,
             match_id = COALESCE(?4, match_id),
             matched_at = CASE WHEN ?4 IS NULL THEN matched_at ELSE ?5 END,
@@ -801,6 +830,13 @@ mod tests {
         assert_eq!(post_status(&db, first.unwrap()).await.unwrap().unwrap().1, NEW);
         assert_eq!(unfinished_posts(&db, 101).await.unwrap().len(), 2);
         assert!(unfinished_posts(&db, 100).await.unwrap().is_empty());
+
+        // A match claims a post; a second can't, until the first is stale.
+        let second = rest.rows[0].id.max(batch.rows[0].id);
+        assert!(claim_for_matching(&db, second, 100, 200).await.unwrap());
+        assert!(!claim_for_matching(&db, second, 150, 201).await.unwrap());
+        assert_eq!(unfinished_posts(&db, 150).await.unwrap(), vec![first.unwrap()]);
+        assert!(claim_for_matching(&db, second, 250, 300).await.unwrap());
 
         // Dismissed while its match runs, a post stays dismissed when the match ends.
         dismiss(&db, first.unwrap(), false).await.unwrap();

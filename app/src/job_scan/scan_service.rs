@@ -428,14 +428,13 @@ async fn match_post_with(context: &Arc<Context>, post_id: i64, cv: &ProfileCv) -
     let Some(post) = model::for_matching(db, post_id).await? else {
         return Ok(false);
     };
-    if post.status == DISMISSED {
+    if !claim(context, post_id).await? {
         return Ok(false);
     }
     let set = |status: &'static str, error: String, match_id: Option<i64>, found: FoundAbout| async move {
         let now = chrono::Utc::now().timestamp();
         model::set_status(db, post_id, status, &error, match_id, &found, now).await
     };
-    set(MATCHING, String::new(), None, FoundAbout::default()).await?;
     let page = match page_reader::read(&post.url).await {
         Ok(page) => page,
         Err(why) => {
@@ -491,6 +490,13 @@ async fn match_post_with(context: &Arc<Context>, post_id: i64, cv: &ProfileCv) -
     }
     set(MATCHED, errors.join(" "), Some(match_id), found).await?;
     Ok(!dismissed_meanwhile(context, post_id, match_id).await?)
+}
+
+/// Claims a post for a match starting now (job_scan_model::claim_for_matching); false when it
+/// isn't to be matched now (one is running on it, or it is matched or dismissed).
+async fn claim(context: &Context, post_id: i64) -> Result<bool, ServiceError> {
+    let now = chrono::Utc::now().timestamp();
+    Ok(model::claim_for_matching(context.db(), post_id, now - RUN_GIVE_UP_SECONDS, now).await?)
 }
 
 /// Whether the user dismissed the post while it was being matched; its new match is rejected
@@ -656,7 +662,16 @@ pub async fn retry(context: Arc<Context>, post_id: i64) -> Result<(i64, &'static
     let Some((search_id, status)) = model::post_status(context.db(), post_id).await? else {
         return Err(ServiceError::new(ErrorKind::NotFound, "That post was not found."));
     };
-    if ![FAILED, NOT_A_JOB, model::NEW, MATCHING].contains(&status.as_str()) {
+    if status == MATCHING {
+        let now = chrono::Utc::now().timestamp();
+        let stale = model::unfinished_posts(context.db(), now - RUN_GIVE_UP_SECONDS).await?;
+        if !stale.contains(&post_id) {
+            return Ok((
+                search_id,
+                "That post is being matched now; reload in a minute to see it.",
+            ));
+        }
+    } else if ![FAILED, NOT_A_JOB, model::NEW].contains(&status.as_str()) {
         return Ok((search_id, "That post is matched already."));
     }
     match_in_background(context, post_id);

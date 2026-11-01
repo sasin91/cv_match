@@ -53,7 +53,10 @@ CREATE INDEX job_search_runs_search_started ON job_search_runs (job_search_id, s
 -- A job post a scan found (or the user added by its link), and what the auto-match made of it.
 -- status: new (waiting), matching, matched (match_id is the saved match), not_a_job (the page
 -- doesn't read as a job post), failed (error says why) or dismissed (by the user; dismissing a
--- post rejects its match). url_hash is sha1 of the normalised url (job_search_rules::normal_url),
+-- post rejects its match). matching_since is when the match running on it started, NULL when
+-- none is: a match claims the post by setting it (job_scan_model::claim_for_matching), so a
+-- second one can't start beside it, and one older than the give-up time stopped without
+-- finishing and may be taken over. url_hash is sha1 of the normalised url (job_search_rules::normal_url),
 -- so a search never lists the same post twice.
 CREATE TABLE scanned_job_posts (
   id INTEGER PRIMARY KEY,
@@ -69,6 +72,7 @@ CREATE TABLE scanned_job_posts (
   match_id INTEGER DEFAULT NULL REFERENCES matches (id) ON DELETE SET NULL,
   found_at INTEGER NOT NULL,
   matched_at INTEGER DEFAULT NULL,
+  matching_since INTEGER DEFAULT NULL,
   UNIQUE (job_search_id, url_hash)
 );
 CREATE INDEX scanned_job_posts_search_found ON scanned_job_posts (job_search_id, found_at);
