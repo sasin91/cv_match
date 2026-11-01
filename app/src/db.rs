@@ -58,6 +58,23 @@ pub fn users_data_folder() -> PathBuf {
     dirs::data_dir().unwrap_or_else(|| PathBuf::from("."))
 }
 
+/// A file's full path as people and other programs read it: full_path without the \\?\ that
+/// Windows' canonical paths start with.
+pub fn shown_path(file: &Path) -> String {
+    without_verbatim_prefix(full_path(file))
+}
+
+/// path without the \\?\ that std::fs::canonicalize puts before a path on Windows.
+pub fn without_verbatim_prefix(path: String) -> String {
+    match path.strip_prefix(VERBATIM_PREFIX) {
+        Some(plain) => plain.to_string(),
+        None => path,
+    }
+}
+
+/// What std::fs::canonicalize puts before a path on Windows.
+const VERBATIM_PREFIX: &str = r"\\?\";
+
 /// A file's full path, which names its key's credential (key_vault); as given when it can't be
 /// resolved. On Windows it starts with \\?\, as std::fs::canonicalize gives it.
 pub fn full_path(file: &Path) -> String {

@@ -377,7 +377,7 @@ fn run_server(args: &[String]) -> ExitCode {
     };
     // The home page opens the setup wizard on a new database, and the match page after that.
     let address = format!("http://127.0.0.1:{port}/");
-    match runtime.block_on(instance::running_on(port, &shown_path(&database))) {
+    match runtime.block_on(instance::running_on(port, &db::shown_path(&database))) {
         Running::None => {}
         Running::Same => {
             if front_end == FrontEnd::Window && runtime.block_on(instance::bring_to_front(port)) {
@@ -540,7 +540,7 @@ fn app_context(
         KeyVault::credential_manager(db::full_path(database)),
     );
     context.database = DatabaseFile {
-        path: shown_path(database),
+        path: db::shown_path(database),
         made_now,
     };
     context.scan_schedule = scan_schedule(database);
@@ -606,7 +606,10 @@ async fn take_over_from_recruiter(database: &std::path::Path, vault: &KeyVault, 
     if !from_recruiter::is_default(database) {
         return;
     }
-    match schedule.take_over_former(&from_recruiter::former_default_path()).await {
+    match schedule
+        .take_over_former(&from_recruiter::former_scheduled_database())
+        .await
+    {
         Ok(None) => {}
         Ok(Some(hours)) => {
             jobfinder::say!("The job scan's schedule (every {hours} hours) moved from Recruiter's name to JobFinder's.")
@@ -643,23 +646,10 @@ fn scan_schedule(database: &std::path::Path) -> ScanSchedule {
     });
     ScanSchedule::system(
         &exe,
-        std::path::Path::new(&shown_path(database)),
+        std::path::Path::new(&db::shown_path(database)),
         scan_schedule::extracted_appimage(),
     )
 }
-
-/// The database file's full path as people and other programs read it: without the \\?\ that
-/// Windows' canonical paths start with.
-fn shown_path(database: &std::path::Path) -> String {
-    let full = db::full_path(database);
-    match full.strip_prefix(VERBATIM_PREFIX) {
-        Some(plain) => plain.to_string(),
-        None => full,
-    }
-}
-
-/// What std::fs::canonicalize puts before a path on Windows.
-const VERBATIM_PREFIX: &str = r"\\?\";
 
 /// Opens the log (app_log) and says where it goes, or why it couldn't be opened.
 fn open_log(folder: &std::path::Path) {
