@@ -7,6 +7,7 @@
 //! Not read: encrypted files, and text a PDF only has as glyph shapes (a scan, or a font without
 //! a ToUnicode map or known encoding). Those answer an empty text, which the caller says.
 
+pub mod child;
 mod document;
 mod encoding;
 mod font;

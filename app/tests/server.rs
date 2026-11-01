@@ -1,6 +1,7 @@
 //! The local server answers the match page's requests as the page expects, and only from its
 //! own page.
 
+use std::path::PathBuf;
 use std::sync::{Arc, LazyLock};
 
 use axum::body::Body;
@@ -54,10 +55,10 @@ async fn seeded() -> SqlitePool {
 async fn app() -> axum::Router {
     let db = seeded().await;
     let user_id = server::local_user(&db).await.unwrap();
-    server::router(Arc::new(AppState::new(
-        Arc::new(Context::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory())),
-        PORT,
-    )))
+    let mut context = Context::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory());
+    // PDFs are read by `recruiter read-pdf`; this test's own program isn't recruiter.
+    context.pdf_reader = Some(PathBuf::from(env!("CARGO_BIN_EXE_recruiter")));
+    server::router(Arc::new(AppState::new(Arc::new(context), PORT)))
 }
 
 async fn send(request: Request<Body>) -> (StatusCode, String) {

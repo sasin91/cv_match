@@ -47,7 +47,8 @@ use recruiter::{cleanup, db, extension};
 const USAGE: &str = "usage: recruiter [--port <port>] [--database <file>] [--laya <folder>] [--llama <folder>]
                  [--no-browser] [--tailscale-name <name>] [--dev]
        recruiter scan [--database <file>]
-       recruiter cleanup [--database <file>]";
+       recruiter cleanup [--database <file>]
+       recruiter read-pdf   (a PDF on stdin, its text on stdout; the app runs it)";
 
 fn main() -> ExitCode {
     let args: Vec<String> = std::env::args().skip(1).collect();
@@ -58,6 +59,7 @@ fn main() -> ExitCode {
         }
         Some("scan") => run_scan(&args[1..]),
         Some("cleanup") => run_cleanup(&args[1..]),
+        Some(recruiter::pdf_text::child::SUBCOMMAND) => recruiter::pdf_text::child::run(),
         _ => run_server(&args),
     }
 }

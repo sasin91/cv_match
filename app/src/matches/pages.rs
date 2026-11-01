@@ -554,8 +554,8 @@ pub async fn extract_job(State(state): State<Arc<AppState>>, Json(input): Json<E
 
 /// POST match/pdf_text (the PDF's bytes): {text}, the PDF's text, which cv_file.js puts in the
 /// CV box.
-pub async fn pdf_text(body: axum::body::Bytes) -> Answer {
-    let text = match_service::read_pdf(body.to_vec()).await?;
+pub async fn pdf_text(State(state): State<Arc<AppState>>, body: axum::body::Bytes) -> Answer {
+    let text = match_service::read_pdf(&state.context, body.to_vec()).await?;
     Ok(Json(json!({ "text": text })).into_response())
 }
 
