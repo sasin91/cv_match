@@ -31,7 +31,7 @@ impl LastScan {
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct JobSearchSummary {
-    /// "php developer · Odense · remote too · on jobnet.dk · tailors from 60 · last scanned 21 Oct 2026 08:12".
+    /// "php developer · Odense · remote too · skips jobnet.dk · tailors from 60 · last scanned 21 Oct 2026 08:12".
     pub line: String,
     pub last_scan: Option<LastScan>,
 }
@@ -48,10 +48,10 @@ impl JobSearchSummary {
 }
 
 fn line(search: &JobSearch) -> String {
-    let sites = if search.sites.is_empty() {
+    let sites = if search.skipped_sites.is_empty() {
         String::new()
     } else {
-        format!("on {}", search.sites.join(", "))
+        format!("skips {}", search.skipped_sites.join(", "))
     };
     let scanned = match search.last_scanned_at {
         Some(at) => format!("last scanned {}", dates::moment(at)),
@@ -163,12 +163,12 @@ mod tests {
             location: "Odense".to_string(),
             remote_ok: true,
             tailor_from_score: 60,
-            sites: vec!["jobnet.dk".to_string()],
+            skipped_sites: vec!["jobnet.dk".to_string()],
             ..JobSearch::default()
         };
         assert_eq!(
             line(&search),
-            "php developer · Odense · remote too · on jobnet.dk · tailors from 60 · not scanned yet"
+            "php developer · Odense · remote too · skips jobnet.dk · tailors from 60 · not scanned yet"
         );
     }
 }

@@ -283,7 +283,7 @@ async fn form(state: &AppState, id: i64, posted: &SearchForm, errors: Vec<String
             tailor_from_score: posted.tailor_from_score.clone(),
             active: posted.active == "1",
         },
-        sites_text: posted.sites.clone(),
+        sites_text: posted.skipped_sites.clone(),
         errors,
         has_profile,
         max_name: MAX_NAME,

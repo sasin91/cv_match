@@ -25,9 +25,9 @@
 
         <label class="check"><input type="checkbox" name="remote_ok" value="1"{% if search.remote_ok %} checked{% endif %}> Remote jobs too</label>
 
-        <label for="sites">Only these sites (optional)</label>
-        <textarea name="sites" id="sites" rows="3" placeholder="jobnet.dk&#10;jobindex.dk">{{ sites_text }}</textarea>
-        <span class="muted small">One site per line. Leave it empty to look on the usual Danish job sites and company career pages.</span>
+        <label for="skipped_sites">Sites to skip (optional)</label>
+        <textarea name="skipped_sites" id="skipped_sites" rows="3" placeholder="indeed.com">{{ sites_text }}</textarea>
+        <span class="muted small">One site per line. Every other site is read: Jobnet, Jobindex, LinkedIn and Indeed (once you have signed in to them), and the rest of the web with OpenAI's web search when your OpenAI key is picked.</span>
 
         <p class="notice">Every post is matched with your profile as it is when the post is found.{% if !has_profile %} You have none yet: <a href="setup#cv">read your CV in setup</a> first.{% endif %}</p>
 
