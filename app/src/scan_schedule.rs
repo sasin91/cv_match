@@ -379,7 +379,7 @@ mod system {
     /// Runs schtasks.exe: Ok(Ok(stdout)) when it succeeded, Ok(Err(stderr)) when it answered
     /// with a failure (like "the task doesn't exist"), Err when it couldn't run at all.
     async fn schtasks(args: &[&str]) -> Result<Result<String, String>, String> {
-        let output = tokio::process::Command::new("schtasks.exe")
+        let output = crate::no_window::hide(&mut tokio::process::Command::new("schtasks.exe"))
             .args(args)
             .output()
             .await

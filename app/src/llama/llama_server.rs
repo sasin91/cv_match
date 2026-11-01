@@ -216,7 +216,7 @@ impl LlamaServer {
             .try_clone()
             .map_err(|e| format!("Couldn't write {}: {e}", log_path.display()))?;
         let alias = model_alias(model);
-        let mut child = Command::new(server)
+        let mut child = crate::no_window::hide(&mut Command::new(server))
             .current_dir(&self.folder)
             .args(server_arguments(model, &alias, port, fit))
             .stdin(Stdio::null())
