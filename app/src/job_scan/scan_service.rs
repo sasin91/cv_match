@@ -87,11 +87,35 @@ pub struct ScanReport {
     pub matched: usize,
     /// Why a search's scan or a post's match failed, in words to show.
     pub problems: Vec<String>,
+    /// Why the scan stopped before it was done (the user stayed busy), in words to show.
+    pub stopped: Option<String>,
 }
 
 impl ScanReport {
-    /// "Scanned 2 searches: 14 posts found, 5 new, 4 matched." and what went wrong.
+    /// "Scanned 2 searches: 14 posts found, 5 new, 4 matched." and what went wrong, also when no
+    /// search was scanned (posts an earlier scan left may have been matched, or have failed).
     pub fn summary(&self) -> String {
+        let mut said = match &self.stopped {
+            // Stopped before any search: "no active search" would be wrong.
+            Some(why) if self.scanned == 0 => why.clone(),
+            _ => self.searches_text(),
+        };
+        if self.scanned == 0 && self.matched > 0 {
+            said.push_str(&format!(" {} post(s) an earlier scan left were matched.", self.matched));
+        }
+        for problem in &self.problems {
+            said.push(' ');
+            said.push_str(problem);
+        }
+        if let Some(why) = self.stopped.as_ref().filter(|_| self.scanned > 0) {
+            said.push(' ');
+            said.push_str(why);
+        }
+        said
+    }
+
+    /// What the scan did with the searches.
+    fn searches_text(&self) -> String {
         if self.scanned == 0 {
             return if self.skipped > 0 {
                 "Every search was scanned less than an hour ago. Scan again a little later.".to_string()
@@ -100,15 +124,10 @@ impl ScanReport {
             };
         }
         let searches = if self.scanned == 1 { "search" } else { "searches" };
-        let mut said = format!(
+        format!(
             "Scanned {} {searches}: {} posts found, {} new, {} matched.",
             self.scanned, self.posts_found, self.posts_new, self.matched
-        );
-        for problem in &self.problems {
-            said.push(' ');
-            said.push_str(problem);
-        }
-        said
+        )
     }
 }
 
@@ -309,11 +328,11 @@ struct Matching {
 
 impl Matching {
     /// Matches posts into report, each after make_way. False when the scan should stop (the
-    /// user stayed busy; said in report), the posts left waiting for the next scan.
+    /// user stayed busy; report.stopped says so), the posts left waiting for the next scan.
     async fn match_posts(&mut self, context: &Arc<Context>, post_ids: Vec<i64>, report: &mut ScanReport) -> bool {
         for post_id in post_ids {
             if let Err(why) = self.make_way().await {
-                report.problems.push(why);
+                report.stopped = Some(why);
                 return false;
             }
             match match_post_once_read(context, post_id, &mut self.cv).await {
@@ -1409,6 +1428,32 @@ mod tests {
         assert_eq!(
             ScanReport::default().summary(),
             "There is no active job search to scan."
+        );
+    }
+
+    #[test]
+    fn a_scan_stopped_for_a_game_says_so_whenever_it_stopped() {
+        let busy = "A full-screen app or game ran for 60 minutes, so the scan stopped.".to_string();
+        let before_searches = ScanReport {
+            matched: 2,
+            stopped: Some(busy.clone()),
+            ..ScanReport::default()
+        };
+        assert_eq!(
+            before_searches.summary(),
+            format!("{busy} 2 post(s) an earlier scan left were matched.")
+        );
+        let during_a_search = ScanReport {
+            scanned: 1,
+            posts_found: 3,
+            posts_new: 3,
+            matched: 1,
+            stopped: Some(busy.clone()),
+            ..ScanReport::default()
+        };
+        assert_eq!(
+            during_a_search.summary(),
+            format!("Scanned 1 search: 3 posts found, 3 new, 1 matched. {busy}")
         );
     }
 }
