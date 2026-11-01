@@ -8,19 +8,21 @@
 
 mod match_screen;
 mod settings_screen;
+mod style;
 
 use std::future::Future;
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use iced::futures::Stream;
-use iced::widget::{button, column, container, row, rule, scrollable, text};
-use iced::{Element, Fill, Font, Size, Task};
+use iced::widget::scrollable::{Direction, Scrollbar};
+use iced::widget::{Column, Row, button, column, container, row, scrollable, space, text};
+use iced::{Center, Element, Fill, Size, Task};
 use tokio::runtime::Handle;
 use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 
 use crate::context::Context;
-use crate::dashboard::{self, Dashboard, Findings, Work};
+use crate::dashboard::{self, Dashboard, Findings, Health, Work};
 use crate::job_scan::scan_service;
 use crate::laya::laya_client::LayaState;
 
@@ -28,6 +30,8 @@ use crate::laya::laya_client::LayaState;
 const TITLE: &str = "Recruiter";
 /// The window's size when it opens, in logical pixels.
 const WINDOW_SIZE: Size = Size::new(980.0, 720.0);
+/// The failure window's size.
+const FAILURE_WINDOW_SIZE: Size = Size::new(560.0, 240.0);
 /// The smallest the window can be made.
 const MIN_WINDOW_SIZE: Size = Size::new(560.0, 420.0);
 /// How often the Match screen reads its status again, so a scan or a match saved in the browser
@@ -37,8 +41,6 @@ const RELOAD_EVERY: Duration = Duration::from_secs(30);
 const GAP: f32 = 12.0;
 /// The window's padding.
 const PADDING: f32 = 16.0;
-/// The status line's text size.
-const STATUS_SIZE: f32 = 13.0;
 
 /// What the window needs from main: the app's work, the runtime it runs on, the server's address
 /// (for the pages the window doesn't have yet), and what tells it to come to the front.
@@ -69,7 +71,7 @@ pub struct Overview {
 #[derive(Clone)]
 pub struct Read {
     overview: Result<Overview, String>,
-    status: Vec<String>,
+    status: Vec<(Health, String)>,
 }
 
 /// The window's state.
@@ -82,7 +84,7 @@ pub struct Shell {
     overview: Option<Result<Overview, String>>,
     /// The status line, read with the overview (it looks in the llama folder, too slow for
     /// every redraw).
-    status: Vec<String>,
+    status: Vec<(Health, String)>,
     /// The last thing a click said (Scan now's answer, a page that couldn't open).
     said: Option<String>,
 }
@@ -109,7 +111,8 @@ pub fn run(launch: Launch) -> iced::Result {
     iced::application(move || boot(&launch), update, view)
         .title(TITLE)
         .window(window_settings())
-        .default_font(default_font())
+        .default_font(style::font())
+        .theme(style::theme())
         .run()
 }
 
@@ -118,8 +121,9 @@ pub fn run(launch: Launch) -> iced::Result {
 pub fn show_failure(why: String) -> iced::Result {
     iced::application(move || Failure(why.clone()), |_: &mut Failure, _: ()| {}, failure_view)
         .title(TITLE)
-        .window_size(Size::new(560.0, 220.0))
-        .default_font(default_font())
+        .window_size(FAILURE_WINDOW_SIZE)
+        .default_font(style::font())
+        .theme(style::theme())
         .run()
 }
 
@@ -127,14 +131,27 @@ pub fn show_failure(why: String) -> iced::Result {
 struct Failure(String);
 
 fn failure_view(failure: &Failure) -> Element<'_, ()> {
-    column![
-        text("Recruiter couldn't start").size(20),
-        text(failure.0.as_str()),
-        text("This is in the log too.").size(STATUS_SIZE),
+    let message = column![
+        row![
+            style::mark(Health::Attention),
+            text("Recruiter couldn't start")
+                .font(style::semibold())
+                .size(style::SECTION_SIZE),
+        ]
+        .spacing(GAP)
+        .align_y(Center),
+        text(failure.0.as_str()).size(style::BODY_SIZE),
+        text("This is in the log too.")
+            .size(style::CAPTION_SIZE)
+            .style(style::secondary),
     ]
-    .spacing(GAP)
-    .padding(PADDING)
-    .into()
+    .spacing(GAP);
+    container(container(message).padding(PADDING * 1.5).width(Fill).style(style::card))
+        .padding(PADDING)
+        .width(Fill)
+        .height(Fill)
+        .style(style::page)
+        .into()
 }
 
 fn window_settings() -> iced::window::Settings {
@@ -142,15 +159,6 @@ fn window_settings() -> iced::window::Settings {
         size: WINDOW_SIZE,
         min_size: Some(MIN_WINDOW_SIZE),
         ..iced::window::Settings::default()
-    }
-}
-
-/// Windows 11's own font; elsewhere the system's sans-serif.
-fn default_font() -> Font {
-    if cfg!(windows) {
-        Font::with_name("Segoe UI")
-    } else {
-        Font::DEFAULT
     }
 }
 
@@ -274,63 +282,119 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
 }
 
 fn view(shell: &Shell) -> Element<'_, Message> {
-    let tabs = row![
-        tab("Match", Screen::Match, shell.screen),
-        tab("Settings", Screen::Settings, shell.screen),
-    ]
-    .spacing(GAP);
     let screen = match shell.screen {
         Screen::Match => match_screen::view(shell.overview.as_ref()),
         Screen::Settings => settings_screen::view(&shell.context),
     };
-    let mut page = column![tabs, rule::horizontal(1)].spacing(GAP);
+    let mut page = Column::new().spacing(GAP).max_width(PAGE_MAX_WIDTH);
     if let Some(said) = &shell.said {
-        page = page.push(container(text(said.as_str())).padding(8).style(container::rounded_box));
+        page = page.push(
+            container(text(said.as_str()).size(style::BODY_SIZE))
+                .padding([10.0, 14.0])
+                .width(Fill)
+                .style(style::card),
+        );
     }
-    page.push(scrollable(container(screen).width(Fill).padding([0.0, PADDING])).height(Fill))
-        .push(rule::horizontal(1))
-        .push(status_line(&shell.status))
-        .padding(PADDING)
+    let page = page.push(screen);
+    let main = column![
+        scrollable(container(page).padding([PADDING, PADDING * 2.0]).center_x(Fill))
+            .direction(Direction::Vertical(
+                Scrollbar::new()
+                    .width(SCROLLBAR_WIDTH)
+                    .scroller_width(SCROLLBAR_WIDTH)
+                    .margin(2),
+            ))
+            .height(Fill),
+        status_line(&shell.status),
+    ];
+    container(row![sidebar(shell.screen), main])
+        .width(Fill)
+        .height(Fill)
+        .style(style::page)
         .into()
 }
 
-fn tab(label: &str, screen: Screen, current: Screen) -> Element<'_, Message> {
-    let style = if screen == current {
-        button::primary
+/// The widest a page's cards get, so lines stay readable on a wide window.
+const PAGE_MAX_WIDTH: f32 = 920.0;
+/// The scrollbar's width: thin, as Windows 11's.
+const SCROLLBAR_WIDTH: f32 = 6.0;
+/// The sidebar's width.
+const SIDEBAR_WIDTH: f32 = 200.0;
+/// The accent strip's size beside the selected sidebar item.
+const STRIP_SIZE: Size = Size::new(3.0, 16.0);
+
+/// The app's name and its screens, as Windows 11's Settings has them.
+fn sidebar(current: Screen) -> Element<'static, Message> {
+    column![
+        container(text(TITLE).font(style::semibold()).size(style::SECTION_SIZE)).padding([8.0, 12.0]),
+        nav_item("Match", Screen::Match, current),
+        nav_item("Settings", Screen::Settings, current),
+    ]
+    .spacing(4)
+    .padding(PADDING / 2.0)
+    .width(SIDEBAR_WIDTH)
+    .into()
+}
+
+fn nav_item(label: &'static str, screen: Screen, current: Screen) -> Element<'static, Message> {
+    let selected = screen == current;
+    let strip: Element<'static, Message> = if selected {
+        container(space())
+            .width(STRIP_SIZE.width)
+            .height(STRIP_SIZE.height)
+            .style(style::selected_strip)
+            .into()
     } else {
-        button::secondary
+        space().width(STRIP_SIZE.width).into()
     };
-    button(label).style(style).on_press(Message::Show(screen)).into()
-}
-
-/// Laya and the app's own model, as they stood at the last reload.
-fn status_line(status: &[String]) -> Element<'_, Message> {
-    iced::widget::Row::with_children(status.iter().map(|part| text(part.as_str()).size(STATUS_SIZE).into()))
-        .spacing(GAP * 2.0)
+    let label = text(label)
+        .size(style::BODY_SIZE)
+        .font(if selected { style::semibold() } else { style::font() });
+    button(row![strip, label].spacing(10).align_y(Center))
+        .padding([8.0, 4.0])
+        .width(Fill)
+        .style(style::subtle_button(selected))
+        .on_press(Message::Show(screen))
         .into()
 }
 
-fn laya_status(context: &Context) -> String {
+/// Laya and the app's own model, as they stood at the last reload: a dot and a word each.
+fn status_line(status: &[(Health, String)]) -> Element<'_, Message> {
+    let parts = status.iter().map(|(health, part)| {
+        row![
+            style::dot(*health),
+            text(part.as_str()).size(style::CAPTION_SIZE).style(style::secondary)
+        ]
+        .spacing(6)
+        .align_y(Center)
+        .into()
+    });
+    container(Row::with_children(parts).spacing(GAP * 2.0))
+        .padding([8.0, PADDING * 2.0])
+        .into()
+}
+
+fn laya_status(context: &Context) -> (Health, String) {
     match context.laya.as_ref().map(|laya| laya.state()) {
-        None => "Laya: no model".to_string(),
-        Some(LayaState::Loading) => "Laya: loading".to_string(),
-        Some(LayaState::Loaded) => "Laya: ready".to_string(),
-        Some(LayaState::Failed(_)) => "Laya: couldn't load (see the log)".to_string(),
+        None => (Health::Neutral, "Laya: no model".to_string()),
+        Some(LayaState::Loading) => (Health::Neutral, "Laya: loading".to_string()),
+        Some(LayaState::Loaded) => (Health::Ready, "Laya: ready".to_string()),
+        Some(LayaState::Failed(_)) => (Health::Attention, "Laya: couldn't load (see the log)".to_string()),
     }
 }
 
-fn local_model_status(context: &Context) -> String {
+fn local_model_status(context: &Context) -> (Health, String) {
     let Some(llama) = &context.llama else {
-        return "Local model: none".to_string();
+        return (Health::Neutral, "Local model: none".to_string());
     };
     if let Some(model) = llama.running_model() {
-        return format!("Local model: {model}, running");
+        return (Health::Ready, format!("Local model: {model}, running"));
     }
     if llama.server_path().is_none() {
-        return "Local model: not set up".to_string();
+        return (Health::Neutral, "Local model: not set up".to_string());
     }
     match llama.overview().chosen {
-        Ok(model) => format!("Local model: {model}, starts when used"),
-        Err(_) => "Local model: no model fits".to_string(),
+        Ok(model) => (Health::Ready, format!("Local model: {model}, starts when used")),
+        Err(_) => (Health::Attention, "Local model: no model fits".to_string()),
     }
 }
