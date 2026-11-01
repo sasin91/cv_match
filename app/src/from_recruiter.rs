@@ -94,8 +94,8 @@ fn move_data_folder_from(former: &Path, database: &Path) -> Result<Moved, String
         });
     }
     let mut moved = false;
-    // Also when a start before moved the database but not all of its SQLite files.
-    if any_database_file(former) {
+    // Also when a start before was cut off with some of them moved and some not.
+    if any_left_to_move(former_folder, folder) {
         moved = move_held(former, folder)?;
     }
     // Also when the folder moved at an earlier start whose renames below didn't all finish.
@@ -110,13 +110,11 @@ fn move_data_folder_from(former: &Path, database: &Path) -> Result<Moved, String
     })
 }
 
-/// Whether database or any of SQLite's files beside it is there.
-fn any_database_file(database: &Path) -> bool {
-    DATABASE_SUFFIXES.iter().any(|suffix| {
-        let mut name = database.as_os_str().to_owned();
-        name.push(suffix);
-        Path::new(&name).exists()
-    })
+/// Whether any of the app's entries (app_entries) is in former_folder and not yet in folder.
+fn any_left_to_move(former_folder: &Path, folder: &Path) -> bool {
+    app_entries()
+        .iter()
+        .any(|name| former_folder.join(name).exists() && !folder.join(name).exists())
 }
 
 /// Moves former's folder's app entries (app_entries) to folder while holding the locks a running Recruiter
@@ -404,6 +402,25 @@ mod tests {
 
         assert_eq!(read(&database), "database");
         assert_eq!(read(&folder.join("jobfinder.sqlite-wal")), "wal");
+        let _ = std::fs::remove_dir_all(&users);
+    }
+
+    #[test]
+    fn a_folder_left_by_an_interrupted_move_follows_the_database() {
+        let users = test_folder("stranded-llama");
+        let former = former_path_in(&users);
+        write(
+            &former.parent().unwrap().join("llama").join("models").join("m.gguf"),
+            "model",
+        );
+        let folder = users.join(db::FOLDER);
+        write(&folder.join(db::FILE), "database");
+        let database = folder.join(db::FILE);
+
+        move_data_folder_from(&former, &database).unwrap();
+
+        assert_eq!(read(&folder.join("llama").join("models").join("m.gguf")), "model");
+        assert!(!former.parent().unwrap().exists());
         let _ = std::fs::remove_dir_all(&users);
     }
 
