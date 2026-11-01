@@ -2,16 +2,15 @@
 //! match page shows them (dashboard.rs). Matching itself is still the web page's, so its button
 //! opens it in the browser.
 
-use iced::widget::{Column, button, column, container, row, space, text};
+use iced::widget::{Column, button, column, container, row, text};
 use iced::{Center, Element, Fill};
 
 use super::style;
+use super::widgets::{CARD_PADDING, rows, section, section_title};
 use super::{GAP, Message};
 use crate::dashboard::{Health, ListCount, StatusRow};
 use crate::matches::saved_match_row::SavedMatchRow;
 
-/// The padding inside a card.
-const CARD_PADDING: f32 = 16.0;
 /// A stat tile's height, the same for each, so a label that wraps doesn't make one taller.
 const TILE_HEIGHT: f32 = 76.0;
 /// Space between a status row's parts.
@@ -94,29 +93,6 @@ fn heading<'a>(title: &'a str, under: Element<'a, Message>) -> Element<'a, Messa
     ]
     .align_y(Center)
     .into()
-}
-
-fn section_title(title: &str) -> Element<'_, Message> {
-    text(title).font(style::semibold()).size(style::SECTION_SIZE).into()
-}
-
-/// A titled card.
-fn section<'a>(title: &'a str, body: Element<'a, Message>) -> Element<'a, Message> {
-    column![section_title(title), container(body).width(Fill).style(style::card)]
-        .spacing(10)
-        .into()
-}
-
-/// Rows in a card, a hairline between each.
-fn rows<'a>(items: impl Iterator<Item = Element<'a, Message>>) -> Element<'a, Message> {
-    let mut list = Column::new();
-    for (index, item) in items.enumerate() {
-        if index > 0 {
-            list = list.push(container(space()).width(Fill).height(1).style(style::divider));
-        }
-        list = list.push(item);
-    }
-    list.into()
 }
 
 /// The browser opening path.

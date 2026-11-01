@@ -1,4 +1,5 @@
-//! The desktop window (iced): Match and Settings, with a status line for Laya and the app's own
+//! The desktop window (iced): Match, the settings screens (Language models, Local model, Job
+//! searches) and Settings, with a status line for Laya and the app's own
 //! model under them. Its screens print what the service layer gives the web pages (dashboard,
 //! setup_steps), so the two can't disagree; what the window can't do yet opens the web page for
 //! it in the browser, from the server that still runs beside it (for the Jobnet extension too).
@@ -6,9 +7,13 @@
 //! The window runs on the main thread, as the OS's windowing wants; the app's work runs on the
 //! tokio runtime the server runs on (on_runtime), since the database and HTTP clients need it.
 
+mod job_searches;
+mod language_models;
+mod local_model;
 mod match_screen;
 mod settings_screen;
 mod style;
+mod widgets;
 
 use std::future::Future;
 use std::sync::{Arc, Mutex};
@@ -57,6 +62,9 @@ pub struct Launch {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Screen {
     Match,
+    LanguageModels,
+    LocalModel,
+    JobSearches,
     Settings,
 }
 
@@ -87,6 +95,9 @@ pub struct Shell {
     status: Vec<(Health, String)>,
     /// The last thing a click said (Scan now's answer, a page that couldn't open).
     said: Option<String>,
+    language_models: language_models::State,
+    local_model: local_model::State,
+    job_searches: job_searches::State,
 }
 
 /// Clone, as iced's buttons need; a reload's answer is shared rather than copied.
@@ -101,6 +112,9 @@ pub enum Message {
     Said(String),
     /// A second start asked for the window.
     Front,
+    LanguageModels(language_models::Msg),
+    LocalModel(local_model::Msg),
+    JobSearches(job_searches::Msg),
 }
 
 /// Opens the window and runs until it is closed.
@@ -182,6 +196,9 @@ fn boot(launch: &Mutex<Option<Launch>>) -> (Shell, Task<Message>) {
         overview: None,
         status: Vec::new(),
         said: None,
+        language_models: language_models::State::default(),
+        local_model: local_model::State::default(),
+        job_searches: job_searches::State::default(),
     };
     let tasks = Task::batch([
         Task::done(Message::Reload),
@@ -228,6 +245,58 @@ fn on_runtime<T: Send + 'static>(
     })
 }
 
+impl Shell {
+    fn runner(&self) -> Runner {
+        Runner {
+            context: Arc::clone(&self.context),
+            runtime: self.runtime.clone(),
+        }
+    }
+}
+
+/// Runs a screen's work on the app's runtime, with the app's work (Context).
+pub struct Runner {
+    context: Arc<Context>,
+    runtime: Handle,
+}
+
+impl Runner {
+    /// Runs work(context) on the runtime and gives its answer to done: Err when the work
+    /// panicked (logged). work is called on the runtime too, not on the window's thread, which
+    /// has no runtime: a timer or a client made there would panic.
+    pub fn run<T, F, M>(
+        &self,
+        work: impl FnOnce(Arc<Context>) -> F + Send + 'static,
+        done: impl Fn(Result<T, String>) -> M + Send + 'static,
+    ) -> Task<M>
+    where
+        F: Future<Output = T> + Send + 'static,
+        T: Send + 'static,
+        M: Send + 'static,
+    {
+        let job = spawn_work(&self.runtime, Arc::clone(&self.context), work);
+        Task::perform(job, move |answer| {
+            done(answer.map_err(|e| {
+                crate::log_line!("The window's work stopped: {e}");
+                format!("That stopped with an error: {e}")
+            }))
+        })
+    }
+}
+
+/// Calls work(context) on the runtime and runs what it gives there.
+fn spawn_work<T, F>(
+    runtime: &Handle,
+    context: Arc<Context>,
+    work: impl FnOnce(Arc<Context>) -> F + Send + 'static,
+) -> tokio::task::JoinHandle<T>
+where
+    F: Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    runtime.spawn(async move { work(context).await })
+}
+
 /// The Match screen's status and saved matches, and the status line.
 async fn read(context: Arc<Context>) -> Arc<Read> {
     Arc::new(Read {
@@ -244,7 +313,53 @@ async fn overview(context: &Context) -> Result<Overview, String> {
 
 fn update(shell: &mut Shell, message: Message) -> Task<Message> {
     match message {
-        Message::Show(screen) => shell.screen = screen,
+        Message::Show(screen) => {
+            shell.screen = screen;
+            shell.said = None;
+            // Each visit reads the screen's data again, so it shows what the browser changed.
+            match screen {
+                Screen::LanguageModels => return Task::done(Message::LanguageModels(language_models::Msg::Load)),
+                Screen::LocalModel => return Task::done(Message::LocalModel(local_model::Msg::Load)),
+                Screen::JobSearches => {
+                    shell.job_searches.show_list();
+                    return Task::done(Message::JobSearches(job_searches::Msg::Load));
+                }
+                Screen::Match | Screen::Settings => {}
+            }
+        }
+        Message::LanguageModels(language_models::Msg::ShowLocalModel) => {
+            return Task::done(Message::Show(Screen::LocalModel));
+        }
+        Message::JobSearches(job_searches::Msg::OpenPage(path)) => {
+            return Task::done(Message::OpenPage(path));
+        }
+        Message::JobSearches(msg) => {
+            let runner = shell.runner();
+            return job_searches::update(&mut shell.job_searches, msg, &runner).map(Message::JobSearches);
+        }
+        Message::LocalModel(local_model::Msg::ModelInUse {
+            message,
+            setup_unfinished,
+        }) => {
+            // As the web page goes on: to Setup while it is unfinished, else to where the
+            // model's uses are picked, since the uses stay on the key they were on.
+            if setup_unfinished {
+                return Task::batch([
+                    Task::done(Message::OpenPage("setup".to_string())),
+                    Task::done(Message::Said(message)),
+                ]);
+            }
+            return Task::done(Message::Show(Screen::LanguageModels))
+                .chain(Task::done(Message::LanguageModels(language_models::Msg::Tell(message))));
+        }
+        Message::LocalModel(msg) => {
+            let runner = shell.runner();
+            return local_model::update(&mut shell.local_model, msg, &runner).map(Message::LocalModel);
+        }
+        Message::LanguageModels(msg) => {
+            let runner = shell.runner();
+            return language_models::update(&mut shell.language_models, msg, &runner).map(Message::LanguageModels);
+        }
         Message::Reload => {
             return on_runtime(&shell.runtime, read(Arc::clone(&shell.context)), Message::Loaded);
         }
@@ -284,6 +399,9 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
 fn view(shell: &Shell) -> Element<'_, Message> {
     let screen = match shell.screen {
         Screen::Match => match_screen::view(shell.overview.as_ref()),
+        Screen::LanguageModels => language_models::view(&shell.language_models).map(Message::LanguageModels),
+        Screen::LocalModel => local_model::view(&shell.local_model).map(Message::LocalModel),
+        Screen::JobSearches => job_searches::view(&shell.job_searches).map(Message::JobSearches),
         Screen::Settings => settings_screen::view(&shell.context),
     };
     let mut page = Column::new().spacing(GAP).max_width(PAGE_MAX_WIDTH);
@@ -328,6 +446,9 @@ fn sidebar(current: Screen) -> Element<'static, Message> {
     column![
         container(text(TITLE).font(style::semibold()).size(style::SECTION_SIZE)).padding([8.0, 12.0]),
         nav_item("Match", Screen::Match, current),
+        nav_item("Language models", Screen::LanguageModels, current),
+        nav_item("Local model", Screen::LocalModel, current),
+        nav_item("Job searches", Screen::JobSearches, current),
         nav_item("Settings", Screen::Settings, current),
     ]
     .spacing(4)
@@ -396,5 +517,29 @@ fn local_model_status(context: &Context) -> (Health, String) {
     match llama.overview().chosen {
         Ok(model) => (Health::Ready, format!("Local model: {model}, starts when used")),
         Err(_) => (Health::Attention, "Local model: no model fits".to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::account::key_vault::KeyVault;
+
+    #[test]
+    fn a_screens_work_may_make_a_timer_from_a_thread_without_the_runtime() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let context = runtime.block_on(async {
+            let db = crate::db::open_in_memory().await.unwrap();
+            let user_id = crate::server::local_user(&db).await.unwrap();
+            let taxonomy = Arc::new(crate::taxonomy::Taxonomy::load());
+            Arc::new(Context::new(db, taxonomy, user_id, KeyVault::in_memory()))
+        });
+        let handle = runtime.handle().clone();
+        // The window's thread: no runtime entered, as in run_window.
+        let job =
+            std::thread::spawn(move || spawn_work(&handle, context, |_| tokio::time::sleep(Duration::from_millis(1))))
+                .join()
+                .unwrap();
+        runtime.block_on(job).unwrap();
     }
 }

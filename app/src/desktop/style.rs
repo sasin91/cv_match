@@ -3,7 +3,8 @@
 //! Every colour and size the screens use is named here, so they stay one design.
 
 use iced::border::Radius;
-use iced::widget::{button, container, text};
+use iced::overlay::menu;
+use iced::widget::{button, checkbox, container, pick_list, text, text_editor, text_input};
 use iced::{Background, Border, Color, Element, Font, Shadow, Theme, Vector, font};
 
 use crate::dashboard::Health;
@@ -184,6 +185,26 @@ pub fn primary_button(_theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
+/// A button that deletes: Windows' red, white text.
+pub fn danger_button(_theme: &Theme, status: button::Status) -> button::Style {
+    let background = match status {
+        button::Status::Hovered => hex(0xB02A1C),
+        button::Status::Pressed => hex(0x9E2618),
+        button::Status::Disabled => SUBTLE_PRESSED,
+        button::Status::Active => DANGER,
+    };
+    button::Style {
+        background: Some(Background::Color(background)),
+        text_color: Color::WHITE,
+        border: Border {
+            radius: Radius::from(CONTROL_RADIUS),
+            ..Border::default()
+        },
+        shadow: Shadow::default(),
+        snap: true,
+    }
+}
+
 /// Any other button: white with a hairline, grey under the pointer.
 pub fn standard_button(_theme: &Theme, status: button::Status) -> button::Style {
     let background = match status {
@@ -248,6 +269,147 @@ pub fn row_button(_theme: &Theme, status: button::Status) -> button::Style {
         border: Border::default(),
         shadow: Shadow::default(),
         snap: true,
+    }
+}
+
+/// A field's bottom edge, darker, as Windows 11 draws its text boxes.
+const FIELD_BORDER: Color = hex(0xD1D1D1);
+
+/// A field's border: the accent when focused, else the hairline.
+fn field_border(focused: bool) -> Border {
+    Border {
+        color: if focused { ACCENT } else { FIELD_BORDER },
+        width: if focused { 1.5 } else { 1.0 },
+        radius: Radius::from(CONTROL_RADIUS),
+    }
+}
+
+/// A text box: white, a hairline, the accent around it while typing.
+pub fn text_field(_theme: &Theme, status: text_input::Status) -> text_input::Style {
+    let focused = matches!(status, text_input::Status::Focused { .. });
+    text_input::Style {
+        background: Background::Color(if status == text_input::Status::Hovered {
+            hex(0xFDFDFD)
+        } else {
+            CARD
+        }),
+        border: field_border(focused),
+        icon: TEXT_SECONDARY,
+        placeholder: hex(0x8A8A8A),
+        value: TEXT,
+        selection: Color { a: 0.3, ..ACCENT },
+    }
+}
+
+/// A text box of several lines, as text_field.
+pub fn text_area(_theme: &Theme, status: text_editor::Status) -> text_editor::Style {
+    let focused = matches!(status, text_editor::Status::Focused { .. });
+    text_editor::Style {
+        background: Background::Color(if status == text_editor::Status::Hovered {
+            hex(0xFDFDFD)
+        } else {
+            CARD
+        }),
+        border: field_border(focused),
+        placeholder: hex(0x8A8A8A),
+        value: TEXT,
+        selection: Color { a: 0.3, ..ACCENT },
+    }
+}
+
+/// A check box: white with a hairline, the accent with a white tick when ticked.
+pub fn check_box(_theme: &Theme, status: checkbox::Status) -> checkbox::Style {
+    let (checked, hovered) = match status {
+        checkbox::Status::Active { is_checked } | checkbox::Status::Disabled { is_checked } => (is_checked, false),
+        checkbox::Status::Hovered { is_checked } => (is_checked, true),
+    };
+    let face = match (checked, hovered) {
+        (true, false) => ACCENT,
+        (true, true) => ACCENT_HOVER,
+        (false, false) => CARD,
+        (false, true) => hex(0xF9F9F9),
+    };
+    checkbox::Style {
+        background: Background::Color(face),
+        icon_color: Color::WHITE,
+        border: Border {
+            color: if checked { face } else { FIELD_BORDER },
+            width: 1.0,
+            radius: Radius::from(CONTROL_RADIUS),
+        },
+        text_color: Some(TEXT),
+    }
+}
+
+/// A list to pick from, looking like a text box with its arrow.
+pub fn pick_field(_theme: &Theme, status: pick_list::Status) -> pick_list::Style {
+    pick_list::Style {
+        text_color: TEXT,
+        placeholder_color: hex(0x8A8A8A),
+        handle_color: TEXT_SECONDARY,
+        background: Background::Color(if status == pick_list::Status::Hovered {
+            hex(0xF9F9F9)
+        } else {
+            CARD
+        }),
+        border: field_border(matches!(status, pick_list::Status::Opened { .. })),
+    }
+}
+
+/// A list's open menu: a white card, the picked entry on the accent's tint.
+pub fn pick_menu(_theme: &Theme) -> menu::Style {
+    menu::Style {
+        background: Background::Color(CARD),
+        border: Border {
+            color: CARD_BORDER,
+            width: 1.0,
+            radius: Radius::from(CONTROL_RADIUS),
+        },
+        text_color: TEXT,
+        selected_text_color: TEXT,
+        selected_background: Background::Color(hex(0xE5EFF8)),
+        shadow: Shadow {
+            color: Color::from_rgba(0.0, 0.0, 0.0, 0.14),
+            offset: Vector::new(0.0, 4.0),
+            blur_radius: 12.0,
+        },
+    }
+}
+
+/// A progress bar: the accent on a grey track, rounded.
+pub fn progress(_theme: &Theme) -> iced::widget::progress_bar::Style {
+    iced::widget::progress_bar::Style {
+        background: Background::Color(DIVIDER),
+        bar: Background::Color(ACCENT),
+        border: Border {
+            radius: Radius::from(3.0),
+            ..Border::default()
+        },
+    }
+}
+
+/// A small label on the accent's tint, like "Suggested".
+pub fn badge(_theme: &Theme) -> container::Style {
+    container::Style {
+        background: Some(Background::Color(hex(0xE5EFF8))),
+        border: Border {
+            radius: Radius::from(10.0),
+            ..Border::default()
+        },
+        ..container::Style::default()
+    }
+}
+
+/// A small pill in a health's colours, like a post's "Failed" or a search's "Paused".
+pub fn chip(health: Health) -> impl Fn(&Theme) -> container::Style {
+    move |_theme| container::Style {
+        background: Some(Background::Color(health_colors(health).1)),
+        text_color: Some(health_colors(health).0),
+        border: Border {
+            radius: Radius::from(10.0),
+            ..Border::default()
+        },
+        ..container::Style::default()
     }
 }
 
