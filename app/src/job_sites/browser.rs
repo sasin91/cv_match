@@ -12,6 +12,7 @@ use std::sync::atomic::{AtomicU64, Ordering};
 use std::time::Duration;
 
 use crate::pdf_text::child;
+use crate::task_manager::running_work::{self, Stopped, WorkKind};
 
 /// The environment variable that names the browser's program, instead of looking for one.
 const BROWSER_VARIABLE: &str = "JOBFINDER_BROWSER";
@@ -128,7 +129,10 @@ fn arguments(url: &str, profile: &Path, pdf: &Path) -> Vec<String> {
 async fn print_pdf(browser: &Path, url: &str) -> Result<Vec<u8>, String> {
     let profile = fresh_profile();
     let pdf = profile.join(PDF_FILE);
-    let printed = run_printing(browser, url, &profile, &pdf).await;
+    let printing = run_printing(browser, url, &profile, &pdf);
+    let printed = running_work::part(WorkKind::Browser, format!("Printing {url}"), printing)
+        .await
+        .unwrap_or_else(|Stopped| Err(Stopped::SAID.to_string()));
     // The profile goes whatever happened; a browser still holding a file of it leaves it in the
     // temp folder, which Windows empties.
     let _ = tokio::fs::remove_dir_all(&profile).await;
@@ -147,7 +151,9 @@ async fn run_printing(browser: &Path, url: &str, profile: &Path, pdf: &Path) -> 
         .stderr(std::process::Stdio::null())
         .kill_on_drop(true);
     crate::no_window::in_background(&mut command);
-    let status = tokio::time::timeout(Duration::from_secs(BROWSER_SECONDS), command.status())
+    let mut child = command.spawn().map_err(|e| format!("it didn't start: {e}"))?;
+    running_work::set_process(child.id());
+    let status = tokio::time::timeout(Duration::from_secs(BROWSER_SECONDS), child.wait())
         .await
         .map_err(|_| format!("it took more than {BROWSER_SECONDS} seconds"))?
         .map_err(|e| format!("it didn't start: {e}"))?;

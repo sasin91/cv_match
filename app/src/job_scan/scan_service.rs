@@ -38,6 +38,7 @@ use crate::matches::page_reader::ReadWith;
 use crate::matches::{Profile, llm_key, match_model, page_reader};
 use crate::profile;
 use crate::service_error::{ErrorKind, ServiceError};
+use crate::task_manager::running_work::{self, Stopped, WorkKind};
 
 /// Search terms of a search read on each signed-in site (LinkedIn, Indeed) in one scan, at
 /// most: each is a page in JobFinder's signed-in browser, and those sites get few.
@@ -255,15 +256,45 @@ fn lock_failed(e: &std::io::Error) -> ServiceError {
     )
 }
 
+/// What a scan stopped in the task manager says.
+const STOPPED_SCAN: &str = "The scan was stopped in the task manager.";
+
 /// Scans every active search that isn't paused and wasn't scanned in the last
 /// MIN_SECONDS_BETWEEN_SCANS, and matches the new posts it finds. The one scan behind
-/// `jobfinder scan`, Scan now and a desktop window.
+/// `jobfinder scan`, Scan now and a desktop window. It is listed in the task manager while it
+/// runs, and stops when asked there (also from another JobFinder's window: scan_lock's stop
+/// file), after the post it is on is marked failed.
 pub async fn scan(context: Arc<Context>) -> Result<ScanReport, ServiceError> {
-    let db = context.db();
+    let list = Arc::clone(&context.running);
+    match list
+        .run(WorkKind::Scan, "Every active search", scan_holding_lock(context))
+        .await
+    {
+        Ok(scanned) => scanned,
+        Err(Stopped) => {
+            crate::log_line!("job_scan: {STOPPED_SCAN} It didn't finish in time, so it was cut off.");
+            Err(ServiceError::new(ErrorKind::Failed, STOPPED_SCAN))
+        }
+    }
+}
+
+async fn scan_holding_lock(context: Arc<Context>) -> Result<ScanReport, ServiceError> {
     let Some(_held) = scan_lock::hold(&context).await.map_err(|e| lock_failed(&e))? else {
         let running = running_scan(&context).await?;
         return Err(ServiceError::new(ErrorKind::TooMany, running_text(running.as_ref())));
     };
+    // Asked before this scan held the lock: meant for one that ended already.
+    scan_lock::forget_stop_request(&context);
+    tokio::select! {
+        scanned = scan_searches(&context) => scanned,
+        never = scan_lock::stop_when_asked(&context) => match never {},
+    }
+}
+
+/// The scan itself, holding the lock.
+async fn scan_searches(context: &Arc<Context>) -> Result<ScanReport, ServiceError> {
+    let context = Arc::clone(context);
+    let db = context.db();
     // Holding the lock, no other scan runs: one not finished was cut off.
     let stopped = model::stop_unfinished_runs(db, CUT_OFF, chrono::Utc::now().timestamp()).await?;
     if stopped > 0 {
@@ -290,6 +321,10 @@ pub async fn scan(context: Arc<Context>) -> Result<ScanReport, ServiceError> {
         return Ok(report);
     }
     for search_id in model::scannable(db).await? {
+        if running_work::stop_asked() {
+            report.stopped = Some(STOPPED_SCAN.to_string());
+            break;
+        }
         let now = chrono::Utc::now().timestamp();
         let Some(run_id) = model::start_run(db, search_id, now - MIN_SECONDS_BETWEEN_SCANS, now).await? else {
             report.skipped += 1;
@@ -346,12 +381,23 @@ impl Matching {
 
     /// Waits PAUSE_BETWEEN_POSTS after a post, then while the user is busy (user_busy), for at
     /// most BUSY_GIVE_UP. Err says why the scan stops.
+    /// Stops at once when the scan is asked to stop (the task manager).
     async fn make_way(&mut self) -> Result<(), String> {
+        let stopped = || Err(STOPPED_SCAN.to_string());
+        if running_work::stop_asked() {
+            return stopped();
+        }
         if self.started_one {
-            tokio::time::sleep(PAUSE_BETWEEN_POSTS).await;
+            tokio::select! {
+                () = tokio::time::sleep(PAUSE_BETWEEN_POSTS) => {}
+                () = running_work::until_stop_asked() => return stopped(),
+            }
         }
         self.started_one = true;
-        crate::user_busy::wait_until_free(BUSY_GIVE_UP).await
+        tokio::select! {
+            free = crate::user_busy::wait_until_free(BUSY_GIVE_UP) => free,
+            () = running_work::until_stop_asked() => stopped(),
+        }
     }
 }
 
@@ -860,6 +906,41 @@ async fn match_post_with(
     if !claim(context, post_id).await? {
         return Ok(false);
     }
+    let url = post.url.clone();
+    let list = Arc::clone(&context.running);
+    match list
+        .run(WorkKind::Matching, url, match_claimed(context, post_id, post, cv, sent))
+        .await
+    {
+        Ok(matched) => matched,
+        // Not finished in STOP_GRACE: dropped, so it is marked here.
+        Err(Stopped) => {
+            let now = chrono::Utc::now().timestamp();
+            let failed = format!("The match failed: {}", Stopped::SAID);
+            model::set_status(
+                context.db(),
+                post_id,
+                FAILED,
+                &failed,
+                None,
+                &FoundAbout::default(),
+                now,
+            )
+            .await?;
+            Ok(false)
+        }
+    }
+}
+
+/// match_post_with's work once the post is claimed for it.
+async fn match_claimed(
+    context: &Arc<Context>,
+    post_id: i64,
+    post: model::PostForMatching,
+    cv: &ProfileCv,
+    sent: Option<page_reader::Page>,
+) -> Result<bool, ServiceError> {
+    let db = context.db();
     // A post's steps are on the run that found it.
     let timeline = Timeline {
         db,
