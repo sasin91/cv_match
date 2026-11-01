@@ -1,6 +1,6 @@
 //! The dashboard at the top of the match page: what the app runs on and what is missing, each
 //! with a link to set it up, and a glance at the saved matches. It is the page the app opens on,
-//! like a security suite's home screen: the only thing a launch checks is whether an AI model is
+//! like a security suite's home screen (and the desktop window's Match screen): the only thing a launch checks is whether an AI model is
 //! set up, and that shows as an alert, not a redirect, since the free keyword match works
 //! without one.
 //!
@@ -55,11 +55,20 @@ pub struct Fix {
     pub label: &'static str,
 }
 
-/// A button a row does its work with: a form posted to action, coming back to the dashboard.
+/// A button a row does its work with: on the page a form posted to action, coming back to the
+/// dashboard; in the window, work.
 #[derive(Debug, Clone, PartialEq)]
 pub struct RowAction {
     pub action: &'static str,
     pub label: &'static str,
+    pub work: Work,
+}
+
+/// What a row's button does.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Work {
+    /// The job scan's Scan now (scan_service::scan_now).
+    ScanNow,
 }
 
 /// One thing the app runs on, and how it stands.
@@ -81,6 +90,7 @@ pub struct ListCount {
 }
 
 /// The dashboard's status, as the page prints it.
+#[derive(Debug, Clone)]
 pub struct Dashboard {
     /// No AI model is set up: the page's alert.
     pub ai_missing: bool,
@@ -92,6 +102,7 @@ pub struct Dashboard {
 
 /// The glance at the saved matches, which the page reads again with the saved matches' list
 /// (match/history_list), so it keeps up with matches saved, rejected or logged on the page.
+#[derive(Debug, Clone)]
 pub struct Findings {
     pub counts: Vec<ListCount>,
     /// The shortlist's best few.
@@ -297,6 +308,7 @@ fn scan_row(interval_hours: Option<u32>, error: Option<&str>, scan: &ScanStatus)
         action: can_scan.then_some(RowAction {
             action: "job_scan/submit_scan",
             label: "Scan now",
+            work: Work::ScanNow,
         }),
     }
 }

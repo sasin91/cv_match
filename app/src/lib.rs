@@ -7,6 +7,7 @@ pub mod cleanup;
 pub mod context;
 pub mod dashboard;
 pub mod db;
+pub mod desktop;
 pub mod dev_reload;
 pub mod extension;
 pub mod instance;

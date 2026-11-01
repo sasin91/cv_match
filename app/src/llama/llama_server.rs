@@ -166,6 +166,20 @@ impl LlamaServer {
         }
     }
 
+    /// The model file the server runs now, or None when it isn't running (or is starting or
+    /// stopping, which holds its lock).
+    pub fn running_model(&self) -> Option<String> {
+        let running = self.running.try_lock().ok()?;
+        let model = &running.as_ref()?.model;
+        Some(
+            model
+                .file_name()
+                .unwrap_or(model.as_os_str())
+                .to_string_lossy()
+                .into_owned(),
+        )
+    }
+
     /// The server running named (a file in the models folder, or "" for the one that fits best),
     /// started or restarted with it when needed. Err says what's missing or why it didn't start.
     pub async fn start(&self, named: &str) -> Result<Endpoint, String> {

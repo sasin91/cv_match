@@ -112,13 +112,15 @@ enum Priority {
 
 /// Writes line to stderr and, once open, to the log.
 pub fn error(line: &str) {
-    eprintln!("{line}");
+    // Written, not eprintln!: the desktop window has no console, and a write that fails must
+    // not end the app.
+    let _ = writeln!(std::io::stderr(), "{line}");
     to_log(line, Priority::Error);
 }
 
 /// Writes line to stdout and, once open, to the log.
 pub fn say(line: &str) {
-    println!("{line}");
+    let _ = writeln!(std::io::stdout(), "{line}");
     to_log(line, Priority::Info);
 }
 

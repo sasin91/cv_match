@@ -1180,3 +1180,20 @@ async fn dismissing_a_found_post_rejects_its_match_and_rejecting_the_match_dismi
         .unwrap();
     assert_eq!(status, "dismissed");
 }
+
+#[tokio::test]
+async fn a_second_start_brings_the_window_to_the_front_or_is_told_there_is_none() {
+    let front = || post_json("/instance/front", "");
+    // Started with --browser: no window, so the second start opens the page.
+    assert_eq!(send(front()).await.0, StatusCode::NOT_FOUND);
+
+    let db = seeded().await;
+    let user_id = server::local_user(&db).await.unwrap();
+    let context = Context::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory());
+    let mut state = AppState::new(Arc::new(context), PORT);
+    let (window, mut asked) = tokio::sync::mpsc::unbounded_channel();
+    state.front = Some(window);
+    let app = server::router(Arc::new(state));
+    assert_eq!(send_to(&app, front()).await.0, StatusCode::NO_CONTENT);
+    assert_eq!(asked.try_recv(), Ok(()));
+}

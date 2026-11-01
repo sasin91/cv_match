@@ -57,6 +57,8 @@ sha1 = "0.10"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 # Laya on ONNX Runtime, run in this process (ONNX Runtime linked in statically).
 laya-server = { path = "../laya-server" }
+# The desktop window (desktop/), pinned: its releases come about yearly and change the API.
+iced = "=0.14.0"
 
 # The memory and graphics card a llama.cpp model is weighed against (DXGI), the job object
 # that ends llama-server with the app, and whether the installer has its console to itself.

@@ -1,8 +1,11 @@
 //! recruiter: the desktop app's command line.
 //!
 //!   recruiter [--port 8765] [--database path\to\recruiter.sqlite] [--laya path\to\laya]
-//!             [--llama path\to\llama] [--no-browser] [--tailscale-name pc.tailnet.ts.net]
-//!       serves the app on 127.0.0.1 and opens it in the default browser, with Laya's model
+//!             [--llama path\to\llama] [--browser | --no-browser]
+//!             [--tailscale-name pc.tailnet.ts.net]
+//!       opens the app's window (desktop/) and serves the app on 127.0.0.1 beside it, for the
+//!       Jobnet extension and the pages the window doesn't have yet; with --browser it opens
+//!       the web page instead of the window, and with --no-browser neither; with Laya's model
 //!       from the laya folder next to the database unless --laya names another; with
 //!       the app's own llama.cpp model (llama-server and models\*.gguf) from the llama folder
 //!       next to the database unless --llama names another; with
@@ -42,10 +45,21 @@ use recruiter::llama::{self, hardware::Inventory, llama_server::LlamaServer};
 use recruiter::scan_schedule::{self, ScanSchedule};
 use recruiter::server::{self, AppState};
 use recruiter::taxonomy::Taxonomy;
-use recruiter::{cleanup, db, extension};
+use recruiter::{cleanup, db, desktop, extension};
+
+/// How a start shows the app.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum FrontEnd {
+    /// The desktop window, with the server beside it.
+    Window,
+    /// The web page, in the default browser (--browser).
+    Browser,
+    /// Only the server (--no-browser), for `cargo dev` and the phone.
+    Neither,
+}
 
 const USAGE: &str = "usage: recruiter [--port <port>] [--database <file>] [--laya <folder>] [--llama <folder>]
-                 [--no-browser] [--tailscale-name <name>] [--dev]
+                 [--browser | --no-browser] [--tailscale-name <name>] [--dev]
        recruiter scan [--database <file>]
        recruiter cleanup [--database <file>]
        recruiter read-pdf   (a PDF on stdin, its text on stdout; the app runs it)";
@@ -101,6 +115,27 @@ fn own_console() -> bool {
     false
 }
 
+/// Closes the console when this program has it to itself (double-clicked in Explorer), and
+/// points stdout and stderr nowhere, so nothing writes to a console that is gone.
+#[cfg(windows)]
+fn hide_own_console() {
+    use windows::Win32::Foundation::HANDLE;
+    use windows::Win32::System::Console::{FreeConsole, STD_ERROR_HANDLE, STD_OUTPUT_HANDLE, SetStdHandle};
+    if !own_console() {
+        return;
+    }
+    // SAFETY: plain calls with no pointers; a null handle is how Windows says "no stdout".
+    unsafe {
+        let _ = FreeConsole();
+        let _ = SetStdHandle(STD_OUTPUT_HANDLE, HANDLE::default());
+        let _ = SetStdHandle(STD_ERROR_HANDLE, HANDLE::default());
+    }
+}
+
+/// Only Windows opens a console for a double-clicked program.
+#[cfg(not(windows))]
+fn hide_own_console() {}
+
 /// `recruiter scan`: the job scan (job_scan::scan_service::scan), the same scan as the
 /// dashboard's Scan now. It fails (which Task Scheduler shows as the last run result) when it
 /// couldn't scan at all; a search or post that failed is said and kept with it.
@@ -120,8 +155,12 @@ fn run_scan(args: &[String]) -> ExitCode {
     let Some(runtime) = runtime() else {
         return ExitCode::FAILURE;
     };
-    let Some(context) = app_context(&runtime, &database, None, None) else {
-        return ExitCode::FAILURE;
+    let context = match app_context(&runtime, &database, None, None) {
+        Ok(context) => context,
+        Err(why) => {
+            recruiter::log_line!("{why}");
+            return ExitCode::FAILURE;
+        }
     };
     match runtime.block_on(scan_service::scan(Arc::new(context))) {
         Ok(report) => {
@@ -265,13 +304,17 @@ fn run_server(args: &[String]) -> ExitCode {
     let mut database = db::default_path();
     let mut laya_folder = None;
     let mut llama_folder = None;
-    let mut browser = true;
+    let mut front_end = FrontEnd::Window;
     let mut tailscale_name = None;
     let mut dev = false;
     let mut args = args.iter();
     while let Some(flag) = args.next() {
-        if flag == "--no-browser" {
-            browser = false;
+        if flag == "--browser" || flag == "--no-browser" {
+            front_end = if flag == "--browser" {
+                FrontEnd::Browser
+            } else {
+                FrontEnd::Neither
+            };
             continue;
         }
         if flag == "--dev" {
@@ -306,104 +349,174 @@ fn run_server(args: &[String]) -> ExitCode {
             }
         }
     }
+    if front_end == FrontEnd::Window {
+        // Double-clicked, the console would stand open behind the window; what the app says
+        // goes to the log instead. Started from a terminal, it keeps printing there.
+        hide_own_console();
+    }
     let data_folder = database.parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
     open_log(&data_folder);
     let Some(runtime) = runtime() else {
-        return ExitCode::FAILURE;
+        return failed(front_end, "The app's runtime couldn't start (see the log).".to_string());
     };
     // The home page opens the setup wizard on a new database, and the match page after that.
     let address = format!("http://127.0.0.1:{port}/");
     match runtime.block_on(instance::running_on(port, &shown_path(&database))) {
         Running::None => {}
         Running::Same => {
+            if front_end == FrontEnd::Window && runtime.block_on(instance::bring_to_front(port)) {
+                recruiter::say!("Recruiter is already running; its window is brought to the front.");
+                return ExitCode::SUCCESS;
+            }
             recruiter::say!("Recruiter is already running at {address}.");
-            if browser && webbrowser::open(&address).is_err() {
+            if front_end != FrontEnd::Neither && webbrowser::open(&address).is_err() {
                 recruiter::say!("Open {address} in your browser.");
             }
             return ExitCode::SUCCESS;
         }
         Running::Other { database: running } => {
-            recruiter::log_line!(
-                "Port {port} is taken by a Recruiter on another database ({running}). Close it, or start this one with --port and another number."
+            return failed(
+                front_end,
+                format!(
+                    "Port {port} is taken by a Recruiter on another database ({running}). Close it, or start this one with --port and another number."
+                ),
             );
-            return ended_by_hand(ExitCode::FAILURE);
         }
     }
     // Held while the app runs, so `recruiter cleanup` won't remove the database under it.
     let Ok(_held) = cleanup::hold(&database, cleanup::Hold::Running) else {
-        recruiter::log_line!(
-            "Recruiter's cleanup is running on {}. Let it finish, then start Recruiter again.",
-            database.display()
+        return failed(
+            front_end,
+            format!(
+                "Recruiter's cleanup is running on {}. Let it finish, then start Recruiter again.",
+                database.display()
+            ),
         );
-        return ended_by_hand(ExitCode::FAILURE);
     };
-    let Some(mut context) = app_context(&runtime, &database, laya_folder, llama_folder) else {
-        return ended_by_hand(ExitCode::FAILURE);
+    let mut context = match app_context(&runtime, &database, laya_folder, llama_folder) {
+        Ok(context) => context,
+        Err(why) => return failed(front_end, why),
     };
     let folder = data_folder.join(extension::FOLDER);
     context.extension_folder = extension::write(&folder).map_err(|e| {
         recruiter::log_line!("Couldn't write the Jobnet extension to {}: {e}", folder.display());
         format!("It couldn't be written to {}: {e}", folder.display())
     });
-    let mut state = AppState::new(Arc::new(context), port);
+    // Taken before the window opens, so a taken port is said now rather than behind it.
+    let listener = match runtime.block_on(server::bind(port)) {
+        Ok(listener) => listener,
+        Err(e) => {
+            return failed(
+                front_end,
+                format!("Couldn't serve on port {port}: {e}. Is Recruiter already running? Then open {address}."),
+            );
+        }
+    };
+    let context = Arc::new(context);
+    let mut state = AppState::new(Arc::clone(&context), port);
     let phone_address = tailscale_name.as_ref().map(|name| format!("https://{name}/match"));
     state.tailscale_name = tailscale_name;
     state.dev_reload = dev.then(DevReload::new);
+    let (front_sender, front) = tokio::sync::mpsc::unbounded_channel();
+    if front_end == FrontEnd::Window {
+        state.front = Some(front_sender);
+    }
     let state = Arc::new(state);
-    runtime.block_on(async {
-        tokio::spawn(preload_laya(Arc::clone(&state.context)));
-        let serving = tokio::spawn(server::serve(state));
-        recruiter::say!(
-            "Recruiter is running at {address} (data in {}). Close this window to stop it.",
-            database.display()
-        );
-        if let Some(phone_address) = &phone_address {
-            recruiter::say!("On your phone, with Tailscale on and `tailscale serve` set up: {phone_address}");
+    runtime.spawn(preload_laya(Arc::clone(&context)));
+    let serving = runtime.spawn(server::serve_on(listener, state));
+    recruiter::say!("Recruiter is serving at {address} (data in {}).", database.display());
+    if let Some(phone_address) = &phone_address {
+        recruiter::say!("On your phone, with Tailscale on and `tailscale serve` set up: {phone_address}");
+    }
+    if front_end == FrontEnd::Window {
+        return run_window(runtime, context, address, front, serving);
+    }
+    recruiter::say!("Close this window to stop it.");
+    if front_end == FrontEnd::Browser && webbrowser::open(&address).is_err() {
+        recruiter::say!("Open {address} in your browser.");
+    }
+    match runtime.block_on(serving) {
+        Ok(Ok(())) => ExitCode::SUCCESS,
+        Ok(Err(e)) => {
+            recruiter::log_line!("The server stopped: {e}");
+            ended_by_hand(ExitCode::FAILURE)
         }
-        if browser && webbrowser::open(&address).is_err() {
-            recruiter::say!("Open {address} in your browser.");
+        Err(e) => {
+            recruiter::log_line!("The server stopped: {e}");
+            ended_by_hand(ExitCode::FAILURE)
         }
+    }
+}
+
+/// How long closing the window waits for the app's work to end (a match being written, Laya
+/// loading) before the program ends anyway.
+const SHUTDOWN_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
+
+/// Runs the window on this (the main) thread until it is closed, with the server on runtime.
+fn run_window(
+    runtime: tokio::runtime::Runtime,
+    context: Arc<Context>,
+    address: String,
+    front: tokio::sync::mpsc::UnboundedReceiver<()>,
+    serving: tokio::task::JoinHandle<std::io::Result<()>>,
+) -> ExitCode {
+    // A server that stops while the window is open is logged; the window goes on without it.
+    runtime.spawn(async move {
         match serving.await {
-            Ok(Ok(())) => ExitCode::SUCCESS,
-            Ok(Err(e)) => {
-                recruiter::log_line!(
-                    "Couldn't serve on port {port}: {e}. Is Recruiter already running? Then open {address}."
-                );
-                ended_by_hand(ExitCode::FAILURE)
-            }
-            Err(e) => {
-                recruiter::log_line!("The server stopped: {e}");
-                ended_by_hand(ExitCode::FAILURE)
-            }
+            Ok(Ok(())) => {}
+            Ok(Err(e)) => recruiter::log_line!("The server stopped: {e}"),
+            Err(e) => recruiter::log_line!("The server stopped: {e}"),
         }
-    })
+    });
+    let launch = desktop::Launch {
+        context,
+        runtime: runtime.handle().clone(),
+        address,
+        front,
+    };
+    let shown = desktop::run(launch);
+    runtime.shutdown_timeout(SHUTDOWN_WAIT);
+    match shown {
+        Ok(()) => ExitCode::SUCCESS,
+        Err(e) => {
+            recruiter::log_line!(
+                "The window couldn't open: {e}. Start Recruiter with --browser to use it in the browser."
+            );
+            ExitCode::FAILURE
+        }
+    }
+}
+
+/// Says why the app couldn't start (and logs it): in a small window when it was to show its
+/// window, else on the console, which waits for Enter when it would close at once.
+fn failed(front_end: FrontEnd, why: String) -> ExitCode {
+    recruiter::log_line!("{why}");
+    if front_end == FrontEnd::Window {
+        if let Err(e) = desktop::show_failure(why) {
+            recruiter::log_line!("The window couldn't open to say so: {e}");
+        }
+        return ExitCode::FAILURE;
+    }
+    ended_by_hand(ExitCode::FAILURE)
 }
 
 /// What the app's work runs on, for the server and `recruiter scan`: the database (made when
 /// there is none), the local user, the key store, the job scan's schedule, Laya's model and the
-/// llama folder (next to the database unless laya_folder or llama_folder names another). None
-/// (said why) when the database can't be opened.
+/// llama folder (next to the database unless laya_folder or llama_folder names another). Err
+/// says why when the database can't be opened.
 fn app_context(
     runtime: &tokio::runtime::Runtime,
     database: &std::path::Path,
     laya_folder: Option<PathBuf>,
     llama_folder: Option<PathBuf>,
-) -> Option<Context> {
+) -> Result<Context, String> {
     let made_now = !database.exists();
-    let db = match runtime.block_on(db::open(database)) {
-        Ok(db) => db,
-        Err(e) => {
-            recruiter::log_line!("Couldn't open {}: {e}", database.display());
-            return None;
-        }
-    };
-    let user_id = match runtime.block_on(server::local_user(&db)) {
-        Ok(id) => id,
-        Err(e) => {
-            recruiter::log_line!("Couldn't read the local user: {e}");
-            return None;
-        }
-    };
+    let db = runtime
+        .block_on(db::open(database))
+        .map_err(|e| format!("Couldn't open {}: {e}", database.display()))?;
+    let user_id = runtime
+        .block_on(server::local_user(&db))
+        .map_err(|e| format!("Couldn't read the local user: {e}"))?;
     let mut context = Context::new(
         db,
         Arc::new(Taxonomy::load()),
@@ -432,7 +545,7 @@ fn app_context(
         llama_folder.display()
     );
     context.llama = Some(LlamaServer::new(&llama_folder, inventory));
-    Some(context)
+    Ok(context)
 }
 
 /// Loads Laya's model in the background, so the first match needn't wait for it, and says how

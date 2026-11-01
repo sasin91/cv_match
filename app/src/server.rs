@@ -60,6 +60,8 @@ pub struct AppState {
     pub tailscale_name: Option<String>,
     /// Reloads the browser's page when the app restarts, with `--dev` while developing.
     pub dev_reload: Option<DevReload>,
+    /// Tells the desktop window to come to the front (instance::front), when there is one.
+    pub front: Option<tokio::sync::mpsc::UnboundedSender<()>>,
 }
 
 impl AppState {
@@ -70,6 +72,7 @@ impl AppState {
             port,
             tailscale_name: None,
             dev_reload: None,
+            front: None,
         }
     }
 
@@ -104,6 +107,7 @@ pub fn router(state: Arc<AppState>) -> Router {
     let mut router = Router::new()
         .route("/", get(setup::home))
         .route(instance::PATH, get(instance::answer))
+        .route(instance::FRONT_PATH, post(instance::front))
         .route("/setup", get(setup::index))
         .route("/setup/submit_cv", post(setup::submit_cv))
         .route("/setup/submit_schedule", post(setup::submit_schedule))
@@ -180,8 +184,17 @@ pub fn router(state: Arc<AppState>) -> Router {
 
 /// Answers on 127.0.0.1:port until the process ends.
 pub async fn serve(state: Arc<AppState>) -> std::io::Result<()> {
-    let address = SocketAddr::from((Ipv4Addr::LOCALHOST, state.port));
-    let listener = tokio::net::TcpListener::bind(address).await?;
+    let listener = bind(state.port).await?;
+    serve_on(listener, state).await
+}
+
+/// The app's port on 127.0.0.1, taken before the window opens, so a taken port is said at start.
+pub async fn bind(port: u16) -> std::io::Result<tokio::net::TcpListener> {
+    tokio::net::TcpListener::bind(SocketAddr::from((Ipv4Addr::LOCALHOST, port))).await
+}
+
+/// Answers on listener (bind) until the process ends.
+pub async fn serve_on(listener: tokio::net::TcpListener, state: Arc<AppState>) -> std::io::Result<()> {
     axum::serve(listener, router(state)).await
 }
 
