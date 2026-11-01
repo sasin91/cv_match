@@ -30,7 +30,7 @@ const FORMER_LOGS: [(&str, &str); 2] = [
 ];
 
 /// The lock files a former Recruiter left; nothing holds them once it is closed.
-const FORMER_LOCKS: [&str; 3] = ["recruiter.log.lock", "recruiter.sqlite-lock", "recruiter-folder.lock"];
+const FORMER_LOCKS: [&str; 3] = ["recruiter.log.lock", "recruiter.sqlite-lock", FORMER_FOLDER_LOCK];
 
 /// What the data folder's move did.
 #[derive(Debug, PartialEq)]
@@ -82,34 +82,15 @@ pub fn move_data_folder(database: &Path) -> Result<Moved, String> {
 fn move_data_folder_from(former: &Path, database: &Path) -> Result<Moved, String> {
     let folder = folder_of(database);
     let former_folder = folder_of(former);
+    if former.exists() && database.exists() {
+        return Ok(Moved::BothThere {
+            former: former_folder.to_path_buf(),
+        });
+    }
     let mut moved = false;
-    if former.exists() {
-        if database.exists() {
-            return Ok(Moved::BothThere {
-                former: former_folder.to_path_buf(),
-            });
-        }
-        // A former Recruiter that runs on it holds its lock (cleanup::hold); held here until the
-        // files are moved, so no scheduled `recruiter scan` opens the database meanwhile.
-        let held = cleanup::hold(former, cleanup::Hold::Cleanup).map_err(|_| {
-            format!(
-                "Recruiter, this app's former name, is still running on {}. Close it, then start JobFinder again, which moves its data to {}.",
-                former.display(),
-                folder.display()
-            )
-        })?;
-        let lock_files = cleanup::lock_files(former);
-        let held_names: Vec<_> = lock_files.iter().filter_map(|file| file.file_name()).collect();
-        let moving = move_folder(former_folder, folder, &held_names);
-        drop(held);
-        for lock_file in &lock_files {
-            // A lock file is only a name to lock; one that stays does no harm.
-            let _ = std::fs::remove_file(lock_file);
-        }
-        // remove_dir only removes an empty folder; one with entries left stays.
-        let _ = std::fs::remove_dir(former_folder);
-        moving?;
-        moved = true;
+    // Also when a start before moved the database but not all of its SQLite files.
+    if any_database_file(former) {
+        moved = move_held(former, folder)?;
     }
     // Also when the folder moved at an earlier start whose renames below didn't all finish.
     moved |= rename_former_files(folder, database)?;
@@ -123,13 +104,75 @@ fn move_data_folder_from(former: &Path, database: &Path) -> Result<Moved, String
     })
 }
 
+/// Whether database or any of SQLite's files beside it is there.
+fn any_database_file(database: &Path) -> bool {
+    DATABASE_SUFFIXES.iter().any(|suffix| {
+        let mut name = database.as_os_str().to_owned();
+        name.push(suffix);
+        Path::new(&name).exists()
+    })
+}
+
+/// Moves former's folder to folder (move_folder) while holding the locks a running Recruiter
+/// holds: former's own (cleanup::hold) and its folder's FORMER_FOLDER_LOCK, which any Recruiter
+/// on a database in that folder holds. Held until the files are moved, so no scheduled
+/// `recruiter scan` opens the database meanwhile. Whether anything moved.
+fn move_held(former: &Path, folder: &Path) -> Result<bool, String> {
+    let still_running = || {
+        format!(
+            "Recruiter, this app's former name, is still running in {}. Close it, then start JobFinder again, which moves its data to {}.",
+            folder_of(former).display(),
+            folder.display()
+        )
+    };
+    let former_folder = folder_of(former);
+    let held = cleanup::hold(former, cleanup::Hold::Cleanup).map_err(|_| still_running())?;
+    let folder_lock_file = former_folder.join(FORMER_FOLDER_LOCK);
+    let folder_lock = lock_alone(&folder_lock_file).map_err(|_| still_running())?;
+    let mut lock_files = cleanup::lock_files(former).to_vec();
+    lock_files.push(folder_lock_file);
+    let held_names: Vec<_> = lock_files.iter().filter_map(|file| file.file_name()).collect();
+    let moving = move_folder(former_folder, folder, &held_names);
+    drop(held);
+    drop(folder_lock);
+    for lock_file in &lock_files {
+        // A lock file is only a name to lock; one that stays does no harm.
+        let _ = std::fs::remove_file(lock_file);
+    }
+    // remove_dir only removes an empty folder; one with entries left stays.
+    let _ = std::fs::remove_dir(former_folder);
+    moving
+}
+
+/// The folder lock's file name while the app was called Recruiter (cleanup::lock_files).
+const FORMER_FOLDER_LOCK: &str = "recruiter-folder.lock";
+
+/// Locks path alone (made when it isn't there), held until the file is dropped; Err(()) when
+/// another process holds it. A file that can't be made or locked at all doesn't stop it.
+fn lock_alone(path: &Path) -> Result<Option<std::fs::File>, ()> {
+    let Ok(file) = std::fs::OpenOptions::new()
+        .create(true)
+        .truncate(false)
+        .write(true)
+        .open(path)
+    else {
+        return Ok(None);
+    };
+    match file.try_lock() {
+        Ok(()) => Ok(Some(file)),
+        Err(std::fs::TryLockError::WouldBlock) => Err(()),
+        Err(std::fs::TryLockError::Error(_)) => Ok(None),
+    }
+}
+
 fn folder_of(file: &Path) -> &Path {
     file.parent().unwrap_or(Path::new("."))
 }
 
 /// Moves former_folder's entries to folder, made when it isn't there, except the lock files
-/// named held (open while this runs) and the entries folder already has, which stay.
-fn move_folder(former_folder: &Path, folder: &Path, held: &[&std::ffi::OsStr]) -> Result<(), String> {
+/// named held (open while this runs) and the entries folder already has, which stay. Whether
+/// any moved.
+fn move_folder(former_folder: &Path, folder: &Path, held: &[&std::ffi::OsStr]) -> Result<bool, String> {
     let couldnt = |e: std::io::Error| {
         format!(
             "Recruiter's data folder, {}, couldn't be moved to {}: {e}. Close Recruiter if it is open, then start JobFinder again.",
@@ -138,15 +181,17 @@ fn move_folder(former_folder: &Path, folder: &Path, held: &[&std::ffi::OsStr]) -
         )
     };
     std::fs::create_dir_all(folder).map_err(couldnt)?;
+    let mut moved = false;
     for entry in std::fs::read_dir(former_folder).map_err(couldnt)? {
         let entry = entry.map_err(couldnt)?;
         let name = entry.file_name();
         let target = folder.join(&name);
         if !held.contains(&name.as_os_str()) && !target.exists() {
             std::fs::rename(entry.path(), target).map_err(couldnt)?;
+            moved = true;
         }
     }
-    Ok(())
+    Ok(moved)
 }
 
 /// Renames the files in folder that have the former names (FORMER_FILE with its SQLite files,
@@ -295,6 +340,40 @@ mod tests {
         assert!(!database.exists());
         assert_eq!(read(&former), "database");
         drop(_running);
+        let _ = std::fs::remove_dir_all(&users);
+    }
+
+    #[test]
+    fn a_recruiter_on_another_database_in_the_folder_stops_the_move() {
+        let users = test_folder("folder-lock");
+        let former = former_path_in(&users);
+        write(&former, "database");
+        let former_folder_lock = lock_alone(&former.parent().unwrap().join(FORMER_FOLDER_LOCK))
+            .unwrap()
+            .unwrap();
+        let database = users.join(db::FOLDER).join(db::FILE);
+
+        let why = move_data_folder_from(&former, &database).unwrap_err();
+
+        assert!(why.contains("still running"), "{why}");
+        assert_eq!(read(&former), "database");
+        drop(former_folder_lock);
+        let _ = std::fs::remove_dir_all(&users);
+    }
+
+    #[test]
+    fn a_wal_left_by_an_interrupted_move_follows_its_database() {
+        let users = test_folder("stranded-wal");
+        let former = former_path_in(&users);
+        write(&former.parent().unwrap().join("recruiter.sqlite-wal"), "wal");
+        let folder = users.join(db::FOLDER);
+        write(&folder.join(FORMER_FILE), "database");
+        let database = folder.join(db::FILE);
+
+        move_data_folder_from(&former, &database).unwrap();
+
+        assert_eq!(read(&database), "database");
+        assert_eq!(read(&folder.join("jobfinder.sqlite-wal")), "wal");
         let _ = std::fs::remove_dir_all(&users);
     }
 
