@@ -589,6 +589,10 @@ fn said_move(moved: Result<Moved, String>) -> Result<(), String> {
 /// Moves what the app kept outside the database while it was called Recruiter: the API keys,
 /// and on the default database the job scan's schedule. What failed is logged; the app goes on.
 async fn take_over_from_recruiter(database: &std::path::Path, vault: &KeyVault, user_id: i64, schedule: &ScanSchedule) {
+    if from_recruiter::former_left_in_place(database) {
+        // Its keys and schedule stay with the former database (said at the move).
+        return;
+    }
     match vault.take_over_former_keys(&from_recruiter::former_key_database(database), user_id) {
         Ok(0) => {}
         Ok(moved) => {

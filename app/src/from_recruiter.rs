@@ -12,7 +12,7 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::{app_log, cleanup, db};
+use crate::{app_log, cleanup, db, extension, laya, llama};
 
 /// The data folder's name while the app was called Recruiter.
 pub const FORMER_FOLDER: &str = "Recruiter";
@@ -50,6 +50,12 @@ pub fn former_default_path() -> PathBuf {
 
 fn former_path_in(users_data_folder: &Path) -> PathBuf {
     users_data_folder.join(FORMER_FOLDER).join(FORMER_FILE)
+}
+
+/// Whether the former default database was left where it is (Moved::BothThere) while database
+/// is the default one: then what the former app kept for it (keys, schedule) stays with it.
+pub fn former_left_in_place(database: &Path) -> bool {
+    is_default(database) && former_default_path().exists()
 }
 
 /// Whether database is the default one, the only one whose folder had the former name.
@@ -113,7 +119,7 @@ fn any_database_file(database: &Path) -> bool {
     })
 }
 
-/// Moves former's folder to folder (move_folder) while holding the locks a running Recruiter
+/// Moves former's folder's app entries (app_entries) to folder while holding the locks a running Recruiter
 /// holds: former's own (cleanup::hold) and its folder's FORMER_FOLDER_LOCK, which any Recruiter
 /// on a database in that folder holds. Held until the files are moved, so no scheduled
 /// `recruiter scan` opens the database meanwhile. Whether anything moved.
@@ -131,11 +137,11 @@ fn move_held(former: &Path, folder: &Path) -> Result<bool, String> {
     let folder_lock = lock_alone(&folder_lock_file).map_err(|_| still_running())?;
     let mut lock_files = cleanup::lock_files(former).to_vec();
     lock_files.push(folder_lock_file);
-    let held_names: Vec<_> = lock_files.iter().filter_map(|file| file.file_name()).collect();
-    let moving = move_folder(former_folder, folder, &held_names);
+    let moving = move_folder(former_folder, folder, &app_entries());
     drop(held);
     drop(folder_lock);
-    for lock_file in &lock_files {
+    let former_locks = FORMER_LOCKS.iter().map(|name| former_folder.join(name));
+    for lock_file in lock_files.iter().cloned().chain(former_locks) {
         // A lock file is only a name to lock; one that stays does no harm.
         let _ = std::fs::remove_file(lock_file);
     }
@@ -169,10 +175,20 @@ fn folder_of(file: &Path) -> &Path {
     file.parent().unwrap_or(Path::new("."))
 }
 
-/// Moves former_folder's entries to folder, made when it isn't there, except the lock files
-/// named held (open while this runs) and the entries folder already has, which stay. Whether
-/// any moved.
-fn move_folder(former_folder: &Path, folder: &Path, held: &[&std::ffi::OsStr]) -> Result<bool, String> {
+/// The entries of the former data folder that are the default database's and the app's own:
+/// the database with SQLite's files, the logs, and the folders the app writes beside it. Other
+/// entries (a database that --database named there, say) stay where their schedule and keys
+/// still find them.
+fn app_entries() -> Vec<String> {
+    let databases = DATABASE_SUFFIXES.iter().map(|suffix| format!("{FORMER_FILE}{suffix}"));
+    let logs = FORMER_LOGS.iter().map(|(former, _)| former.to_string());
+    let folders = [extension::FOLDER, llama::FOLDER, laya::laya_client::FOLDER].map(String::from);
+    databases.chain(logs).chain(folders).collect()
+}
+
+/// Moves the entries named names from former_folder to folder, made when it isn't there; an
+/// entry folder already has stays. Whether any moved.
+fn move_folder(former_folder: &Path, folder: &Path, names: &[String]) -> Result<bool, String> {
     let couldnt = |e: std::io::Error| {
         format!(
             "Recruiter's data folder, {}, couldn't be moved to {}: {e}. Close Recruiter if it is open, then start JobFinder again.",
@@ -182,12 +198,10 @@ fn move_folder(former_folder: &Path, folder: &Path, held: &[&std::ffi::OsStr]) -
     };
     std::fs::create_dir_all(folder).map_err(couldnt)?;
     let mut moved = false;
-    for entry in std::fs::read_dir(former_folder).map_err(couldnt)? {
-        let entry = entry.map_err(couldnt)?;
-        let name = entry.file_name();
-        let target = folder.join(&name);
-        if !held.contains(&name.as_os_str()) && !target.exists() {
-            std::fs::rename(entry.path(), target).map_err(couldnt)?;
+    for name in names {
+        let (entry, target) = (former_folder.join(name), folder.join(name));
+        if entry.exists() && !target.exists() {
+            std::fs::rename(entry, target).map_err(couldnt)?;
             moved = true;
         }
     }
@@ -284,6 +298,22 @@ mod tests {
             Moved::Nothing,
             "a later start has nothing to move"
         );
+        let _ = std::fs::remove_dir_all(&users);
+    }
+
+    #[test]
+    fn another_database_in_the_former_folder_stays_there() {
+        let users = test_folder("custom");
+        let former = former_path_in(&users);
+        write(&former, "database");
+        let custom = former.parent().unwrap().join("custom.sqlite");
+        write(&custom, "custom");
+        let database = users.join(db::FOLDER).join(db::FILE);
+
+        move_data_folder_from(&former, &database).unwrap();
+
+        assert_eq!(read(&database), "database");
+        assert_eq!(read(&custom), "custom");
         let _ = std::fs::remove_dir_all(&users);
     }
 

@@ -39,8 +39,8 @@ job scan and the Jobnet extension, saying what is set up and linking to what is 
 are how many matches each list holds and the shortlist's best three, then the match form.
 
 The app was called Recruiter before. On the default database, the first start of JobFinder moves
-`%APPDATA%\Recruiter` to `%APPDATA%\JobFinder` (renaming `recruiter.sqlite` and `recruiter.log`
-to the new names), moves the API keys from Credential Manager's `Recruiter` entries to
+the app's files in `%APPDATA%\Recruiter` to `%APPDATA%\JobFinder` (renaming `recruiter.sqlite`
+and `recruiter.log` to the new names; any other database there stays), moves the API keys from Credential Manager's `Recruiter` entries to
 `JobFinder` ones, and replaces the `Recruiter\Job scan` task with `JobFinder\Job scan` at the
 same interval (on Linux, the `recruiter-scan` timer with `jobfinder-scan`). It won't start while
 Recruiter still runs on that folder; close it first. Delete the old `recruiter.exe` afterwards:
