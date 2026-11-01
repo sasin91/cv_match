@@ -69,9 +69,23 @@ pub fn former_key_database(database: &Path) -> String {
     if !is_default(database) {
         return db::full_path(database);
     }
-    // The former file is gone after the move, so its full path is made from its folder's.
+    former_default_full_path().display().to_string()
+}
+
+/// The former default database's full path as the former app resolved it (canonical, so through
+/// any symlink in the users' data folder). The file is gone after the move, so it is made from
+/// its folder's. On Windows it starts with \\?\, as std::fs::canonicalize gives it.
+fn former_default_full_path() -> PathBuf {
     let users_data_folder = std::fs::canonicalize(db::users_data_folder()).unwrap_or_else(|_| db::users_data_folder());
-    former_path_in(&users_data_folder).display().to_string()
+    former_path_in(&users_data_folder)
+}
+
+/// The former default database's path as the former app wrote it into its job scan schedule
+/// (db::shown_path).
+pub fn former_scheduled_database() -> PathBuf {
+    PathBuf::from(db::without_verbatim_prefix(
+        former_default_full_path().display().to_string(),
+    ))
 }
 
 /// Moves the former data folder to database's when database is the default one (see the
