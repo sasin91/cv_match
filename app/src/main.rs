@@ -41,6 +41,7 @@ use jobfinder::dev_reload::DevReload;
 use jobfinder::from_recruiter::{self, Moved};
 use jobfinder::instance::{self, Running};
 use jobfinder::job_scan::scan_service;
+use jobfinder::job_sites::signed_in::{self, SignedInBrowser};
 use jobfinder::laya::laya_client::{self, LayaClient};
 use jobfinder::llama::{self, hardware::Inventory, llama_server::LlamaServer};
 use jobfinder::scan_schedule::{self, ScanSchedule};
@@ -566,6 +567,7 @@ fn app_context(
         llama_folder.display()
     );
     context.llama = Some(LlamaServer::new(&llama_folder, inventory));
+    context.signed_in = Some(SignedInBrowser::new(data_folder.join(signed_in::FOLDER)));
     Ok(context)
 }
 

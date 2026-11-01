@@ -59,6 +59,16 @@ keeps its name as typed and the postcode is left empty.
 "Hvilken dato har du søgt jobbet?" (only asked at Søgt or Samtale) gets the day
 you set that status in JobFinder.
 
+### Send a job post to JobFinder
+
+On any job post's page (LinkedIn and Indeed too, signed in), press the
+extension's toolbar button: the popup names the page, lets you pick the job
+search to add it to (the last one picked comes first; with one search there is
+nothing to pick) and Send adds it, from the page's HTML as your browser shows it
+(`job_scan/submit_page`). JobFinder matches it like a post its scan found, and
+it shows on that search's page. The extension reads the page only when you
+press the button (activeTab), and puts nothing into the sites' pages.
+
 ## How it works
 
 - `content.js` runs on jobnet.dk. Jobnet's form is React, which ignores values

@@ -12,9 +12,11 @@ use std::sync::{Arc, Mutex};
 use sqlx::SqlitePool;
 
 use crate::account::key_vault::KeyVault;
+use crate::job_sites::signed_in::SignedInBrowser;
 use crate::laya::laya_client::LayaClient;
 use crate::llama::llama_server::LlamaServer;
 use crate::matches::match_service;
+use crate::matches::page_reader::Readers;
 use crate::scan_schedule::ScanSchedule;
 use crate::taxonomy::Taxonomy;
 
@@ -38,6 +40,9 @@ pub struct Context {
     /// The program whose `read-pdf` reads an uploaded PDF (pdf_text::child): this one, unless
     /// a test names the built jobfinder.
     pub pdf_reader: Option<PathBuf>,
+    /// JobFinder's signed-in browser, which reads LinkedIn and Indeed (None: not here, as in
+    /// tests).
+    pub signed_in: Option<SignedInBrowser>,
 }
 
 /// The database file the app runs on.
@@ -63,6 +68,15 @@ impl Context {
             database: DatabaseFile::default(),
             scan_schedule: ScanSchedule::in_memory(),
             pdf_reader: std::env::current_exe().ok(),
+            signed_in: None,
+        }
+    }
+
+    /// What job posts are read with besides fetching their page (page_reader::read).
+    pub fn readers(&self) -> Readers<'_> {
+        Readers {
+            pdf_reader: self.pdf_reader.as_deref(),
+            signed_in: self.signed_in.as_ref(),
         }
     }
 

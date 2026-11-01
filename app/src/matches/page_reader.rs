@@ -169,6 +169,10 @@ pub enum ReadWith {
     SiteApi,
     /// Its page in the computer's browser, after its JavaScript ran.
     Browser,
+    /// Its page in JobFinder's signed-in browser (LinkedIn, Indeed).
+    SignedIn,
+    /// Its page as the user's browser showed it, sent by the extension.
+    Sent,
 }
 
 /// A page's title and the text of its post.
@@ -191,19 +195,20 @@ pub struct Target {
 }
 
 /// The job post at url, or a message for the person who pasted it. A Jobnet post is read from
-/// Jobnet's own API (its page needs JavaScript); a page that comes back with next to no text is
-/// read again in the computer's own browser (job_sites::browser), which runs its JavaScript,
-/// with the app's PDF reader (pdf_reader, None where there is none).
-pub async fn read(url: &str, pdf_reader: Option<&Path>) -> Result<Page, String> {
-    match crate::job_sites::read_post(url).await {
+/// Jobnet's own API (its page needs JavaScript), a LinkedIn or Indeed post in JobFinder's
+/// signed-in browser (job_sites::signed_in) when there is one; a page that comes back with next
+/// to no text is read again in the computer's own browser (job_sites::browser), which runs its
+/// JavaScript, with the app's PDF reader (readers.pdf_reader, None where there is none).
+pub async fn read(url: &str, readers: Readers<'_>) -> Result<Page, String> {
+    match crate::job_sites::read_post(url, readers).await {
         Some(Ok(page)) => return Ok(page),
-        Some(Err(why)) => crate::log_line!("page_reader: {url}: the site's own API failed, reading the page: {why}"),
+        Some(Err(why)) => crate::log_line!("page_reader: {url}: the site's own reader failed, reading the page: {why}"),
         None => {}
     }
     let fetched = get(url, &PAGE).await?;
     let page = to_text(&fetched.body, &fetched.content_type, &fetched.url);
     if needs_javascript(&page)
-        && let Some(pdf_reader) = pdf_reader
+        && let Some(pdf_reader) = readers.pdf_reader
         && let Some(rendered) = crate::job_sites::browser::render(&fetched.url, pdf_reader).await
     {
         let rendered = Ok(PageText {
@@ -220,8 +225,32 @@ pub async fn read(url: &str, pdf_reader: Option<&Path>) -> Result<Page, String> 
     page.map(|text| Page::of(fetched.url, text))
 }
 
+/// What a post is read with besides fetching its page: the app's PDF reader, for the computer's
+/// browser, and JobFinder's signed-in browser. None where there is none (tests).
+#[derive(Clone, Copy, Default)]
+pub struct Readers<'a> {
+    pub pdf_reader: Option<&'a Path>,
+    pub signed_in: Option<&'a crate::job_sites::signed_in::SignedInBrowser>,
+}
+
+/// The text of the first element of html that selectors (CSS, tried in order) find with text in
+/// it, as the page's text is read (blocks on lines of their own), or None.
+pub fn element_text(html: &Html, selectors: &[&str]) -> Option<String> {
+    selectors.iter().find_map(|selector| {
+        let selector = scraper::Selector::parse(selector).ok()?;
+        html.select(&selector)
+            .map(|element| tidy(&text_of(*element)))
+            .find(|text| !text.is_empty())
+    })
+}
+
+/// The text of a part of a page, as the page's text is read.
+pub fn part_text(element: scraper::ElementRef<'_>) -> String {
+    tidy(&text_of(*element))
+}
+
 impl Page {
-    fn of(url: String, text: PageText) -> Self {
+    pub fn of(url: String, text: PageText) -> Self {
         Page {
             url,
             title: text.title,

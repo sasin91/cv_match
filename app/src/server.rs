@@ -35,6 +35,12 @@ use crate::setup;
 /// The port the app listens on unless told otherwise, fixed so the Jobnet extension can find it.
 pub const DEFAULT_PORT: u16 = 8765;
 
+/// Bytes of JSON around a sent page's HTML (its link, its search, the escaping), at most.
+const SENT_PAGE_JSON_ROOM: usize = 64 * 1024;
+
+/// Most bytes of a page the extension sends (job_scan/submit_page): its HTML, and its JSON.
+const SENT_PAGE_BYTES: usize = job_scan::scan_service::MAX_SENT_HTML + SENT_PAGE_JSON_ROOM;
+
 /// modules/cv_match's css/ and js/, served under match_module/ as Trongate serves them.
 #[derive(RustEmbed)]
 #[folder = "../assets/match/"]
@@ -153,6 +159,11 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/job_scan/submit_dismiss/{id}", post(job_scan::submit_dismiss))
         .route("/job_scan/submit_add/{id}", post(job_scan::submit_add))
         .route("/job_scan/submit_retry/{id}", post(job_scan::submit_retry))
+        .route("/job_scan/search_names", get(job_scan::search_names))
+        .route(
+            "/job_scan/submit_page",
+            post(job_scan::submit_page).layer(DefaultBodyLimit::max(SENT_PAGE_BYTES)),
+        )
         .route("/account", get(account::index))
         .route("/account/submit_key", post(account::submit_key))
         .route("/account/submit_uses", post(account::submit_uses))

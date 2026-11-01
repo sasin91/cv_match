@@ -22,6 +22,7 @@ use super::job_scan_model::{
 };
 use super::job_search_rules;
 use super::run_steps::{self, NewStep};
+use super::search_service;
 use crate::account::account_model::{APPLICATION, JOB_EVALUATION, RESUME};
 use crate::context::Context;
 use crate::job_sites::{JobSite, ListedPost};
@@ -32,6 +33,10 @@ use crate::matches::page_reader::ReadWith;
 use crate::matches::{Profile, llm_key, match_model, page_reader};
 use crate::profile;
 use crate::service_error::{ErrorKind, ServiceError};
+
+/// Search terms of a search read on each signed-in site (LinkedIn, Indeed) in one scan, at
+/// most: each is a page in JobFinder's signed-in browser, and those sites get few.
+const SIGNED_IN_TERMS: usize = 2;
 
 /// New posts one scan of a search adds (and matches), at most; the rest wait for the next.
 pub const POSTS_PER_SCAN: usize = 15;
@@ -243,7 +248,7 @@ async fn match_post_once_read(
         Some(cv) => cv,
         None => cv.insert(profile_cv(context).await?),
     };
-    match_post_with(context, post_id, cv).await
+    match_post_with(context, post_id, cv, None).await
 }
 
 /// The profile read once for a whole scan, rather than once per post.
@@ -353,7 +358,11 @@ pub fn skipped_sites_note(search: &model::JobSearch, web_search: bool) -> Option
     if skipped.is_empty() {
         return None;
     }
-    let readers: Vec<&str> = JobSite::ALL.iter().map(|site| site.domain()).collect();
+    let readers: Vec<&str> = JobSite::ALL
+        .iter()
+        .chain(&JobSite::SIGNED_IN)
+        .map(|site| site.domain())
+        .collect();
     Some(format!(
         "The scan skips {}: the app reads {} itself, and other sites only OpenAI's web search finds. Pick your OpenAI key for evaluating job posts to search them too.",
         skipped.join(", "),
@@ -396,7 +405,7 @@ async fn search_posts(
         crate::log_line!("job_scan: forgetting search {}'s old steps failed: {e}", search.id);
     }
     let sources = sources(search, web.is_some());
-    let mut listed = read_sites(&sources.read, search, timeline).await;
+    let mut listed = read_sites(context, &sources.read, search, timeline).await;
     if let (Some(llm), Some(domains)) = (web, &sources.web) {
         match web_posts(context, llm, search, domains, timeline).await {
             Ok(found) => {
@@ -477,21 +486,33 @@ fn run_error(problems: &[String], posts_found: i64, posts_new: usize) -> String 
 }
 
 /// The posts sites list for each of search's terms near its place, newest first, taking turns
-/// between the lists so each site and term gets its share of a scan's posts.
-async fn read_sites(sites: &[JobSite], search: &model::JobSearch, timeline: Timeline<'_>) -> Listed {
+/// between the lists so each site and term gets its share of a scan's posts. A signed-in site
+/// (LinkedIn, Indeed) is read for SIGNED_IN_TERMS terms at most, and not after a failure: that
+/// may be the site asking to sign in again.
+async fn read_sites(context: &Context, sites: &[JobSite], search: &model::JobSearch, timeline: Timeline<'_>) -> Listed {
     let place = search_place(search);
+    let signed_in = context.signed_in.as_ref();
     let mut lists = Vec::new();
     let mut problems = Vec::new();
     for site in sites {
         let mut failed = None;
-        for term in job_search_rules::search_terms(&search.keywords) {
+        let terms = job_search_rules::search_terms(&search.keywords);
+        let most = if site.is_signed_in() {
+            SIGNED_IN_TERMS
+        } else {
+            terms.len()
+        };
+        for term in terms.into_iter().take(most) {
             let started = timeline.start(run_steps::SITE);
-            let read = site.search(&term, place).await;
+            let read = site.search(&term, place, signed_in).await;
             let said = site_text(site.domain(), &term, place, &read);
             timeline.keep(started, &said, read.is_err(), &[]).await;
             match read {
                 Ok(posts) => lists.push(posts),
                 Err(why) => failed = Some(why),
+            }
+            if failed.is_some() && site.is_signed_in() {
+                break;
             }
         }
         if let Some(why) = failed {
@@ -703,14 +724,20 @@ fn skip_line(post: &RecentPost) -> String {
 /// is now. Ok(true) when it is matched and saved.
 pub async fn match_post(context: Arc<Context>, post_id: i64) -> Result<bool, ServiceError> {
     let cv = profile_cv(&context).await?;
-    match_post_with(&context, post_id, &cv).await
+    match_post_with(&context, post_id, &cv, None).await
 }
 
 /// Matches a found post with the profile and saves the match; from the search's
 /// tailor_from_score up, writes the tailored résumé and the application too (on the keys picked
 /// for them). The post's status says how it went (matched, not_a_job, failed with why). Ok(true)
-/// when it is matched.
-async fn match_post_with(context: &Arc<Context>, post_id: i64, cv: &ProfileCv) -> Result<bool, ServiceError> {
+/// when it is matched. sent is the post as the user's browser showed it, when the extension sent
+/// it: it isn't fetched again then.
+async fn match_post_with(
+    context: &Arc<Context>,
+    post_id: i64,
+    cv: &ProfileCv,
+    sent: Option<page_reader::Page>,
+) -> Result<bool, ServiceError> {
     let db = context.db();
     let Some(post) = model::for_matching(db, post_id).await? else {
         return Ok(false);
@@ -729,7 +756,10 @@ async fn match_post_with(context: &Arc<Context>, post_id: i64, cv: &ProfileCv) -
         model::set_status(db, post_id, status, &error, match_id, &found, now).await
     };
     let started = timeline.start(run_steps::READ);
-    let read = page_reader::read(&post.url, context.pdf_reader.as_deref()).await;
+    let read = match sent {
+        Some(page) => Ok(page),
+        None => page_reader::read(&post.url, context.readers()).await,
+    };
     timeline
         .keep(started, &read_text(&post.url, &read), read.is_err(), &[])
         .await;
@@ -897,6 +927,8 @@ fn read_text(url: &str, read: &Result<page_reader::Page, String>) -> String {
                 ReadWith::Page => "as a web page",
                 ReadWith::SiteApi => "from the site's own API",
                 ReadWith::Browser => "in the browser, after its JavaScript ran",
+                ReadWith::SignedIn => "in JobFinder's signed-in browser",
+                ReadWith::Sent => "as your browser showed it (sent from the extension)",
             };
             format!("Read {url} {how}: {} characters.", page.text.chars().count())
         }
@@ -1018,9 +1050,10 @@ pub async fn add_post(context: Arc<Context>, search_id: i64, url: &str) -> Resul
     if model::find(db, search_id).await?.is_none() {
         return Err(ServiceError::new(ErrorKind::NotFound, "That job search was not found."));
     }
+    let url = crate::job_sites::post_link(url);
     let now = chrono::Utc::now().timestamp();
     let post = NewPost {
-        url,
+        url: &url,
         ..NewPost::default()
     };
     let Some(post_id) = model::add_post(db, search_id, None, &post, now).await? else {
@@ -1031,6 +1064,63 @@ pub async fn add_post(context: Arc<Context>, search_id: i64, url: &str) -> Resul
     };
     match_in_background(context, post_id);
     Ok("The post is added. It is matched in a minute; reload to see it.")
+}
+
+/// Most bytes of a page's HTML the extension may send (LinkedIn's pages run to a few MB).
+pub const MAX_SENT_HTML: usize = 20_000_000;
+
+/// Adds the job post the user's browser shows (url, and its HTML as shown, sent by the
+/// extension) to a search, and matches it in the background like a post the scan found, from
+/// the HTML sent rather than fetched again. search_id is the search to add it to; None is the
+/// first active one. Ok is what to say.
+pub async fn add_page(
+    context: Arc<Context>,
+    search_id: Option<i64>,
+    url: &str,
+    html: &str,
+) -> Result<&'static str, ServiceError> {
+    let url = url.trim();
+    if !job_search_rules::is_http_link(url) || url.chars().count() > job_search_rules::MAX_URL {
+        return Err(ServiceError::new(
+            ErrorKind::Invalid,
+            "Only a web page (https://…) can be sent to JobFinder.",
+        ));
+    }
+    if html.len() > MAX_SENT_HTML {
+        return Err(ServiceError::new(ErrorKind::TooLarge, "The page is too large to read."));
+    }
+    let db = context.db();
+    let search_id = match search_id {
+        Some(id) => model::find(db, id).await?.map(|search| search.id),
+        None => search_service::first_active(&context).await?,
+    }
+    .ok_or_else(|| {
+        ServiceError::new(
+            ErrorKind::NotFound,
+            "JobFinder has no job search to add the post to. Make one in JobFinder first (Settings, Job searches).",
+        )
+    })?;
+    let url = crate::job_sites::post_link(url);
+    let page = crate::job_sites::sent_page(&url, html).map_err(|why| ServiceError::new(ErrorKind::Invalid, why))?;
+    let now = chrono::Utc::now().timestamp();
+    let post = NewPost {
+        url: &url,
+        title: &page.title,
+        ..NewPost::default()
+    };
+    let Some(post_id) = model::add_post(db, search_id, None, &post, now).await? else {
+        return Ok("JobFinder has this post already: it's on the search's page.");
+    };
+    tokio::spawn(async move {
+        let matched = match profile_cv(&context).await {
+            Ok(cv) => match_post_with(&context, post_id, &cv, Some(page)).await,
+            Err(e) => Err(e),
+        };
+        if let Err(e) = matched {
+            crate::log_line!("job_scan: matching the sent post {post_id} failed: {}", e.message);
+        }
+    });
+    Ok("Sent. JobFinder matches it in a minute or two; it shows on the search's page.")
 }
 
 /// Matches a post that failed (or wasn't a job post) again, in the background. Ok is the post's

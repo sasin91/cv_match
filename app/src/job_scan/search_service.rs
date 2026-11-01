@@ -10,6 +10,7 @@ use super::run_steps;
 use super::scan_service::{self, RUN_GIVE_UP_SECONDS};
 use super::scan_timeline::ScanTimeline;
 use crate::context::Context;
+use crate::job_sites::JobSite;
 use crate::matches::match_model;
 use crate::profile;
 use crate::service_error::{ErrorKind, ServiceError};
@@ -30,6 +31,8 @@ pub struct SearchList {
     pub searches: Vec<JobSearchCard>,
     /// Why nothing can be scanned now, when nothing can.
     pub problem: Option<String>,
+    /// Why the scan leaves a signed-in site (LinkedIn, Indeed) alone, for each it does.
+    pub paused_sites: Vec<String>,
 }
 
 pub async fn searches(context: &Context) -> Result<SearchList, ServiceError> {
@@ -41,7 +44,63 @@ pub async fn searches(context: &Context) -> Result<SearchList, ServiceError> {
     Ok(SearchList {
         searches,
         problem: scan_service::scan_problem(context).await?,
+        paused_sites: paused_sites(context),
     })
+}
+
+/// Why the scan leaves each signed-in site it does alone.
+fn paused_sites(context: &Context) -> Vec<String> {
+    let Some(browser) = &context.signed_in else {
+        return Vec::new();
+    };
+    JobSite::SIGNED_IN
+        .iter()
+        .filter_map(|site| browser.pause_of(site.domain()))
+        .collect()
+}
+
+/// Opens JobFinder's signed-in browser as a window on LinkedIn's and Indeed's sign-in pages; the
+/// scan reads them again from now on. Ok is what to say.
+pub fn open_sign_in(context: &Context) -> Result<&'static str, ServiceError> {
+    let browser = context
+        .signed_in
+        .as_ref()
+        .ok_or_else(|| ServiceError::new(ErrorKind::NotFound, "JobFinder has no browser of its own here."))?;
+    browser
+        .open_sign_in(&crate::job_sites::SIGN_IN_PAGES)
+        .map_err(|why| ServiceError::new(ErrorKind::Failed, why))?;
+    Ok(
+        "JobFinder's browser is open. Sign in to LinkedIn (and Indeed, if you use it), then close the window: the scan reads them from now on, for searches that name linkedin.com or dk.indeed.com in their sites.",
+    )
+}
+
+/// A search the extension can send a post to.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct SearchName {
+    pub id: i64,
+    pub name: String,
+    pub active: bool,
+}
+
+/// The searches the extension can send a post to: the active ones first, then newest first.
+pub async fn search_names(context: &Context) -> Result<Vec<SearchName>, ServiceError> {
+    let mut names: Vec<SearchName> = model::searches(context.db())
+        .await?
+        .into_iter()
+        .map(|search| SearchName {
+            id: search.id,
+            name: search.name,
+            active: search.active,
+        })
+        .collect();
+    // Stable: newest first within active and inactive.
+    names.sort_by_key(|search| !search.active);
+    Ok(names)
+}
+
+/// The search a post sent without one goes to: the newest active one, else the newest.
+pub async fn first_active(context: &Context) -> Result<Option<i64>, ServiceError> {
+    Ok(search_names(context).await?.first().map(|search| search.id))
 }
 
 /// One search by its id; ids below 1 are none.

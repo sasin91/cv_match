@@ -57,6 +57,9 @@ sha1 = "0.10"
 zip = { version = "9", default-features = false, features = ["deflate"] }
 # Laya on ONNX Runtime, run in this process (ONNX Runtime linked in statically).
 laya-server = { path = "../laya-server" }
+# JobFinder's signed-in browser (job_sites::cdp): its DevTools on 127.0.0.1, over a WebSocket.
+tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect"] }
+futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 # The desktop window (desktop/), pinned: its releases come about yearly and change the API.
 iced = "=0.14.0"
 
