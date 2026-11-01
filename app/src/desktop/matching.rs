@@ -260,6 +260,8 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                         Target::Job => {
                             state.job = content;
                             state.job_file = Some(name);
+                            // Another post: the last one's link would be saved with it.
+                            state.job_url.clear();
                         }
                     }
                     state.said = None;
