@@ -220,6 +220,7 @@ async fn openai_searches_the_web_through_the_responses_api() {
     .await;
     let llm = Llm {
         adapter: jobfinder::llm::Adapter::Openai(Openai::new(OPENAI_KEY, "gpt-5.4-mini", &address).unwrap()),
+        server_in_use: None,
     };
     let found = llm
         .web_search("Find jobs.", "PHP", &schema(), &["jobnet.dk"], "DK", Effort::Low)

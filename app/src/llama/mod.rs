@@ -17,6 +17,8 @@ pub mod hardware;
 pub mod llama_server;
 pub mod model_choice;
 
+use std::sync::Arc;
+
 use crate::account::account_model::KeyFor;
 use crate::llm::{LLAMA_CPP, LOCAL, Llm, LlmException};
 
@@ -30,6 +32,8 @@ pub async fn use_key(server: Option<&llama_server::LlamaServer>, key: &KeyFor) -
         return Llm::use_key(&key.provider, &key.api_key, &key.model, &key.base_url);
     }
     let server = server.ok_or_else(|| LlmException::new("The app was started without its llama folder."))?;
-    let endpoint = server.start(&key.model).await.map_err(LlmException::new)?;
-    Llm::use_key(LOCAL, "", &endpoint.model, &endpoint.base_url)
+    let in_use = server.start(&key.model).await.map_err(LlmException::new)?;
+    let mut llm = Llm::use_key(LOCAL, "", &in_use.endpoint.model, &in_use.endpoint.base_url)?;
+    llm.server_in_use = Some(Arc::new(in_use));
+    Ok(llm)
 }

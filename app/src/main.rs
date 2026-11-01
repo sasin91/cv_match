@@ -32,7 +32,6 @@
 use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
-use std::time::Instant;
 
 use jobfinder::account::key_vault::KeyVault;
 use jobfinder::app_log::{self, Opened};
@@ -438,7 +437,7 @@ fn run_server(args: &[String]) -> ExitCode {
         state.front = Some(front_sender);
     }
     let state = Arc::new(state);
-    runtime.spawn(preload_laya(Arc::clone(&context)));
+    runtime.spawn(jobfinder::idle::unload_when_idle(Arc::clone(&context)));
     let serving = runtime.spawn(server::serve_on(listener, state));
     jobfinder::say!("JobFinder is serving at {address} (data in {}).", database.display());
     if let Some(phone_address) = &phone_address {
@@ -615,23 +614,6 @@ async fn take_over_from_recruiter(database: &std::path::Path, vault: &KeyVault, 
             jobfinder::say!("The job scan's schedule (every {hours} hours) moved from Recruiter's name to JobFinder's.")
         }
         Err(why) => jobfinder::log_line!("Recruiter's job scan schedule couldn't be moved to JobFinder: {why}"),
-    }
-}
-
-/// Loads Laya's model in the background, so the first match needn't wait for it, and says how
-/// that went.
-async fn preload_laya(context: Arc<Context>) {
-    let Some(laya) = &context.laya else {
-        return;
-    };
-    let started = Instant::now();
-    match laya.load().await {
-        Ok(_) => jobfinder::say!(
-            "Laya is loaded from {} ({:.1} s).",
-            laya.folder().display(),
-            started.elapsed().as_secs_f64()
-        ),
-        Err(e) => jobfinder::log_line!("{e}"),
     }
 }
 

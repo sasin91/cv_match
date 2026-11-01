@@ -21,9 +21,6 @@ pub const DESKTOP_VRAM_BYTES: u64 = GIB;
 /// The share of the computer's memory a split model may take, in percent.
 pub const MEMORY_SHARE_PERCENT: u64 = 50;
 
-/// llama-server's -ngl for "every layer on the card".
-pub const ALL_LAYERS: u32 = 999;
-
 /// How a model fits this computer.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Fit {
@@ -38,15 +35,6 @@ pub enum Fit {
 }
 
 impl Fit {
-    /// llama-server's -ngl for this fit.
-    pub fn gpu_layers(self) -> u32 {
-        match self {
-            Fit::Gpu => ALL_LAYERS,
-            Fit::Split { gpu_layers } => gpu_layers,
-            Fit::Memory | Fit::TooBig => 0,
-        }
-    }
-
     /// What the API key page says of it.
     pub fn label(self) -> String {
         match self {
