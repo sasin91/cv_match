@@ -18,6 +18,7 @@ pub mod openai;
 pub mod transcript;
 
 use std::error::Error as _;
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::Value;
@@ -80,10 +81,12 @@ pub enum Adapter {
     Anthropic(Anthropic),
 }
 
-/// The model a key runs on: its provider's adapter.
+/// The model a key runs on: its provider's adapter, and for the app's own llama-server what keeps
+/// it from stopping for being idle while this (or a clone) is held.
 #[derive(Debug, Clone)]
 pub struct Llm {
     pub adapter: Adapter,
+    pub server_in_use: Option<Arc<crate::llama::llama_server::InUse>>,
 }
 
 impl Llm {
@@ -112,7 +115,10 @@ impl Llm {
             }
             _ => return Err(LlmException::new(format!("Unknown LLM provider \"{provider}\"."))),
         };
-        Ok(Llm { adapter })
+        Ok(Llm {
+            adapter,
+            server_in_use: None,
+        })
     }
 
     /// One JSON answer that follows `schema` (objects closed with additionalProperties: false,

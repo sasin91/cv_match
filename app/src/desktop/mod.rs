@@ -498,6 +498,7 @@ fn status_line(status: &[(Health, String)]) -> Element<'_, Message> {
 fn laya_status(context: &Context) -> (Health, String) {
     match context.laya.as_ref().map(|laya| laya.state()) {
         None => (Health::Neutral, "Laya: no model".to_string()),
+        Some(LayaState::Unloaded) => (Health::Ready, "Laya: ready, loads for a match".to_string()),
         Some(LayaState::Loading) => (Health::Neutral, "Laya: loading".to_string()),
         Some(LayaState::Loaded) => (Health::Ready, "Laya: ready".to_string()),
         Some(LayaState::Failed(_)) => (Health::Attention, "Laya: couldn't load (see the log)".to_string()),
