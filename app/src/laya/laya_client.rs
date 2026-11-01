@@ -59,6 +59,16 @@ pub struct LayaReading {
     pub laya_error: Option<String>,
 }
 
+/// Where loading Laya's model stands.
+#[derive(Debug, Clone, PartialEq)]
+pub enum LayaState {
+    /// Not loaded yet: loading in the background, or waiting for the first match.
+    Loading,
+    Loaded,
+    /// It couldn't be loaded, and why.
+    Failed(String),
+}
+
 /// The model in its folder, loaded once: in the background at start (load()), or by the first
 /// match that needs it, which then waits for it.
 pub struct LayaClient {
@@ -93,6 +103,15 @@ impl LayaClient {
             })
             .await
             .clone()
+    }
+
+    /// How far loading the model has come, for the window's status line.
+    pub fn state(&self) -> LayaState {
+        match self.loaded.get() {
+            None => LayaState::Loading,
+            Some(Ok(_)) => LayaState::Loaded,
+            Some(Err(why)) => LayaState::Failed(why.clone()),
+        }
     }
 
     /// Laya's answer for a state.

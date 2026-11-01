@@ -1,19 +1,23 @@
 //! One Recruiter per database: a second start on the same database opens the one that runs
 //! instead of failing on its port. The running app says which database it runs on at
-//! GET instance; a start asks that first (running_on). The iced window will ask the running one
-//! to come to the front the same way.
+//! GET instance; a start asks that first (running_on). A start on the same database then asks
+//! the running one's window to come to the front (bring_to_front, POST instance/front).
 
 use std::sync::Arc;
 use std::time::Duration;
 
 use axum::Json;
 use axum::extract::State;
+use axum::http::StatusCode;
 use serde::{Deserialize, Serialize};
 
 use crate::server::AppState;
 
 /// Where the running app answers which database it runs on.
 pub const PATH: &str = "/instance";
+
+/// Where a start asks the running app to bring its window to the front.
+pub const FRONT_PATH: &str = "/instance/front";
 
 /// What instance answers as app, so another program on the port isn't taken for Recruiter.
 const APP: &str = "recruiter";
@@ -47,6 +51,31 @@ pub async fn answer(State(state): State<Arc<AppState>>) -> Json<Instance> {
         app: APP.to_string(),
         database: state.context.database.path.clone(),
     })
+}
+
+/// POST instance/front: brings the window to the front; 404 when this app runs without one (in
+/// the browser), so the start opens the page instead.
+pub async fn front(State(state): State<Arc<AppState>>) -> StatusCode {
+    match &state.front {
+        Some(window) if window.send(()).is_ok() => StatusCode::NO_CONTENT,
+        _ => StatusCode::NOT_FOUND,
+    }
+}
+
+/// Asks the Recruiter on 127.0.0.1:port to bring its window to the front; false when it has no
+/// window or didn't answer.
+pub async fn bring_to_front(port: u16) -> bool {
+    let Ok(client) = reqwest::Client::builder().no_proxy().timeout(ASK_TIMEOUT).build() else {
+        return false;
+    };
+    let own_page = format!("http://127.0.0.1:{port}");
+    let sent = client
+        .post(format!("{own_page}{FRONT_PATH}"))
+        // The server takes changes only from its own pages (server::allowed).
+        .header(reqwest::header::ORIGIN, &own_page)
+        .send()
+        .await;
+    sent.is_ok_and(|response| response.status() == StatusCode::NO_CONTENT)
 }
 
 /// Whether a Recruiter answers on 127.0.0.1:port, and on which database; database is this

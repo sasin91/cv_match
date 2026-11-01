@@ -18,10 +18,6 @@ pub const UNREADABLE: u8 = 2;
 /// How long a PDF may take to read. A CV takes well under a second.
 pub const TIMEOUT: Duration = Duration::from_secs(30);
 
-/// Windows' CREATE_NO_WINDOW process flag: no console window flashes up for the child.
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
 /// Why the child gave no text.
 #[derive(Debug, PartialEq)]
 pub enum Failed {
@@ -60,9 +56,7 @@ pub async fn text_of(program: &Path, bytes: Vec<u8>) -> Result<String, Failed> {
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .kill_on_drop(true);
-    #[cfg(windows)]
-    command.creation_flags(CREATE_NO_WINDOW);
-    let mut child = command
+    let mut child = crate::no_window::hide(&mut command)
         .spawn()
         .map_err(|e| Failed::Stopped(format!("the PDF reader couldn't start: {e}")))?;
     let (Some(mut stdin), Some(mut stdout), Some(mut stderr)) =

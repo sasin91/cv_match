@@ -17,10 +17,6 @@ pub const FOLDER: &str = "jobnet-joblog";
 /// Edge's page of installed extensions, where "Load unpacked" is.
 pub const EDGE_EXTENSIONS_PAGE: &str = "edge://extensions/";
 
-/// Windows' CREATE_NO_WINDOW process flag: start cmd without a console window flashing up.
-#[cfg(windows)]
-const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-
 #[derive(RustEmbed)]
 #[folder = "../extension/jobnet-joblog/"]
 #[include = "manifest.json"]
@@ -49,10 +45,8 @@ pub fn write(folder: &Path) -> std::io::Result<PathBuf> {
 /// starts Edge with it, through `start`, which finds msedge where Windows registered it.
 #[cfg(windows)]
 pub fn open_extensions_page() -> std::io::Result<()> {
-    use std::os::windows::process::CommandExt;
-    let status = std::process::Command::new("cmd")
+    let status = crate::no_window::hide_std(&mut std::process::Command::new("cmd"))
         .args(["/C", "start", "", "msedge", EDGE_EXTENSIONS_PAGE])
-        .creation_flags(CREATE_NO_WINDOW)
         .status()?;
     if status.success() {
         Ok(())
