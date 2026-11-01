@@ -64,7 +64,7 @@ struct FormState {
     keywords: String,
     location: String,
     remote_ok: bool,
-    sites: text_editor::Content,
+    skipped_sites: text_editor::Content,
     tailor_from: String,
     active: bool,
     errors: Vec<String>,
@@ -81,7 +81,7 @@ impl FormState {
             keywords: form.keywords.clone(),
             location: form.location.clone(),
             remote_ok: form.remote_ok == TICKED,
-            sites: text_editor::Content::with_text(&form.sites),
+            skipped_sites: text_editor::Content::with_text(&form.skipped_sites),
             tailor_from: form.tailor_from_score.clone(),
             active: form.active == TICKED,
             errors: Vec::new(),
@@ -98,7 +98,7 @@ impl FormState {
             keywords: self.keywords.clone(),
             location: self.location.clone(),
             remote_ok: ticked(self.remote_ok),
-            sites: self.sites.text(),
+            skipped_sites: self.skipped_sites.text(),
             tailor_from_score: self.tailor_from.clone(),
             active: ticked(self.active),
         }
@@ -314,7 +314,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
         Msg::Keywords(keywords) => state.form.keywords = keywords,
         Msg::Location(location) => state.form.location = location,
         Msg::RemoteOk(on) => state.form.remote_ok = on,
-        Msg::Sites(action) => state.form.sites.perform(action),
+        Msg::Sites(action) => state.form.skipped_sites.perform(action),
         Msg::TailorFrom(score) => state.form.tailor_from = score,
         Msg::Active(on) => state.form.active = on,
         Msg::Save => {
@@ -611,7 +611,7 @@ fn list_view(state: &State) -> Element<'_, Msg> {
     let title = widgets::page_title(
         "Job searches",
         widgets::note(
-            "Save what you're looking for, and the job scan looks for new job posts for you. Every post it finds is matched with your profile and saved with your matches, and a good match gets a tailored résumé and application right away. It reads Jobnet and Jobindex itself and matches on the model you picked for evaluating job posts, which can be the one on this computer; other sites are searched with OpenAI's web search when your OpenAI key is picked.",
+            "Save what you're looking for, and the job scan looks for new job posts for you. Every post it finds is matched with your profile and saved with your matches, and a good match gets a tailored résumé and application right away. It reads Jobnet, Jobindex, LinkedIn and Indeed itself, and matches on the model you picked for evaluating job posts, which can be the one on this computer; the rest of the web is searched with OpenAI's web search when your OpenAI key is picked. A search can skip sites.",
         ),
     );
     let mut screen = Column::new().spacing(GAP * 1.5).push(title);
@@ -661,7 +661,7 @@ fn signed_in_section(list: &SearchList) -> Element<'_, Msg> {
     let mut section = Column::new()
         .spacing(GAP)
         .push(widgets::note(
-            "The scan reads LinkedIn and Indeed in a browser of JobFinder's own, signed in to your account, for searches that name linkedin.com or dk.indeed.com in their sites. It reads a few pages a scan, one at a time, and stops at once when a site asks to sign in again or to check you're a person. Both sites' terms forbid reading them with programs, so your account takes that risk.",
+            "The scan reads LinkedIn and Indeed in a browser of JobFinder's own, signed in to your account, for every search that doesn't skip them. It reads a few pages a scan, one at a time, and stops at once when a site asks to sign in again or to check you're a person. Both sites' terms forbid reading them with programs, so your account takes that risk.",
         ));
     for paused in &list.paused_sites {
         section = section.push(widgets::message_bar(Health::Attention, paused.as_str()));
@@ -1057,8 +1057,8 @@ fn form_view(state: &State, id: i64) -> Element<'_, Msg> {
                 .on_toggle(Msg::RemoteOk),
         )
         .push(widgets::field(
-            "Only these sites (optional)",
-            text_editor(&form.sites)
+            "Sites to skip (optional)",
+            text_editor(&form.skipped_sites)
                 .placeholder("jobnet.dk\njobindex.dk")
                 .on_action(Msg::Sites)
                 .size(style::BODY_SIZE)
@@ -1067,7 +1067,7 @@ fn form_view(state: &State, id: i64) -> Element<'_, Msg> {
                 .style(style::text_area)
                 .width(FIELD_WIDTH)
                 .into(),
-            Some("One site per line. Leave it empty to look on the usual Danish job sites and company career pages."),
+            Some("One site per line. Every other site is read: Jobnet, Jobindex, LinkedIn and Indeed (once you have signed in to them), and the rest of the web with OpenAI's web search when your OpenAI key is picked."),
         ));
     fields = fields.push(profile_note(form.has_profile));
     fields = fields

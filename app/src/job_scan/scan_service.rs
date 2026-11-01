@@ -383,53 +383,38 @@ impl Timeline<'_> {
 struct Sources {
     /// The sites the app reads itself.
     read: Vec<JobSite>,
-    /// The sites the model searches the web on ([] for any), when it can.
-    web: Option<Vec<String>>,
-    /// The search's sites that can't be searched: no reader, and no model that searches the web.
-    skipped: Vec<String>,
+    /// Whether the model searches the rest of the web too.
+    web: bool,
 }
 
-/// Where search is looked for: the sites the app reads (every one of them for a search without
-/// sites), and the rest on the web when web_search can (the key picked is OpenAI's).
+/// Where search is looked for: every site the app reads, but the ones the search skips, and the
+/// rest of the web when web_search can (the key picked is OpenAI's).
 fn sources(search: &model::JobSearch, web_search: bool) -> Sources {
-    if search.sites.is_empty() {
-        return Sources {
-            read: JobSite::ALL.to_vec(),
-            web: web_search.then(Vec::new),
-            skipped: Vec::new(),
-        };
-    }
-    let read = search.sites.iter().filter_map(|site| JobSite::of(site)).collect();
-    let rest: Vec<String> = search
-        .sites
-        .iter()
-        .filter(|site| JobSite::of(site).is_none())
-        .cloned()
+    let read = JobSite::ALL
+        .into_iter()
+        .chain(JobSite::SIGNED_IN)
+        .filter(|site| {
+            !search
+                .skipped_sites
+                .iter()
+                .any(|domain| JobSite::of(domain) == Some(*site))
+        })
         .collect();
-    let (web, skipped) = match (rest.is_empty(), web_search) {
-        (true, _) => (None, Vec::new()),
-        (false, true) => (Some(rest), Vec::new()),
-        (false, false) => (None, rest),
-    };
-    Sources { read, web, skipped }
+    Sources { read, web: web_search }
 }
 
-/// What the search's page says about its sites the scan skips, or None.
-pub fn skipped_sites_note(search: &model::JobSearch, web_search: bool) -> Option<String> {
-    let skipped = sources(search, web_search).skipped;
-    if skipped.is_empty() {
-        return None;
-    }
-    let readers: Vec<&str> = JobSite::ALL
+/// Whether url is on one of the sites skipped (a domain, or a part of one).
+fn on_skipped_site(url: &str, skipped: &[String]) -> bool {
+    let Some(host) = url::Url::parse(url)
+        .ok()
+        .and_then(|url| url.host_str().map(str::to_lowercase))
+    else {
+        return false;
+    };
+    let host = host.strip_prefix("www.").unwrap_or(&host);
+    skipped
         .iter()
-        .chain(&JobSite::SIGNED_IN)
-        .map(|site| site.domain())
-        .collect();
-    Some(format!(
-        "The scan skips {}: the app reads {} itself, and other sites only OpenAI's web search finds. Pick your OpenAI key for evaluating job posts to search them too.",
-        skipped.join(", "),
-        readers.join(" and ")
-    ))
+        .any(|domain| host == domain || host.ends_with(&format!(".{domain}")))
 }
 
 /// Whether the key picked for evaluating job posts searches the web (OpenAI's does).
@@ -468,8 +453,8 @@ async fn search_posts(
     }
     let sources = sources(search, web.is_some());
     let mut listed = read_sites(context, &sources.read, search, timeline).await;
-    if let (Some(llm), Some(domains)) = (web, &sources.web) {
-        match web_posts(context, llm, search, domains, timeline).await {
+    if let (Some(llm), true) = (web, sources.web) {
+        match web_posts(context, llm, search, &[], timeline).await {
             Ok(found) => {
                 listed.posts.extend(found.posts);
                 listed.input_tokens = found.input_tokens;
@@ -480,6 +465,9 @@ async fn search_posts(
     }
     let now = chrono::Utc::now().timestamp();
     let mut new_posts = Vec::new();
+    listed
+        .posts
+        .retain(|post| !on_skipped_site(&post.url, &search.skipped_sites));
     for post in &listed.posts {
         if new_posts.len() >= POSTS_PER_SCAN {
             break;
@@ -759,8 +747,12 @@ fn scan_prompt(search: &model::JobSearch, domains: &[String], recent: &[RecentPo
         ""
     };
     let sites = if domains.is_empty() {
-        let read: Vec<&str> = JobSite::ALL.iter().map(|site| site.domain()).collect();
-        format!("\nSkip {}: they are searched separately.", read.join(" and "))
+        let read: Vec<&str> = sources(search, true).read.iter().map(|site| site.domain()).collect();
+        let mut sites = format!("\nSkip {}: they are searched separately.", read.join(", "));
+        if !search.skipped_sites.is_empty() {
+            sites.push_str(&format!("\nLeave out posts on {}.", search.skipped_sites.join(", ")));
+        }
+        sites
     } else {
         format!("\nSearch only these sites: {}.", domains.join(", "))
     };
@@ -1227,7 +1219,7 @@ mod tests {
             remote_ok: true,
             tailor_from_score: 60,
             active: true,
-            sites: vec!["jobnet.dk".to_string()],
+            skipped_sites: vec!["jobindex.dk".to_string()],
             ..model::JobSearch::default()
         }
     }
@@ -1248,46 +1240,44 @@ mod tests {
         let anywhere = model::JobSearch {
             location: String::new(),
             remote_ok: false,
-            sites: Vec::new(),
+            skipped_sites: Vec::new(),
             ..search()
         };
         let (_, user) = scan_prompt(&anywhere, &[], &[]);
         assert_eq!(
             user,
-            "Looking for: PHP udvikler\nWhere: anywhere in Denmark\nSkip jobnet.dk and jobindex.dk: they are searched separately.\n\nFound already:\n- (none yet)"
+            "Looking for: PHP udvikler\nWhere: anywhere in Denmark\nSkip jobnet.dk, jobindex.dk, linkedin.com, dk.indeed.com: they are searched separately.\n\nFound already:\n- (none yet)"
         );
     }
 
     #[test]
-    fn the_sites_the_app_reads_need_no_web_search() {
-        let mixed = model::JobSearch {
-            sites: vec!["jobnet.dk".to_string(), "thehub.io".to_string()],
+    fn every_site_is_read_but_the_skipped_ones() {
+        let all = model::JobSearch {
+            skipped_sites: Vec::new(),
             ..search()
         };
         assert_eq!(
-            sources(&mixed, false),
+            sources(&all, false),
             Sources {
-                read: vec![JobSite::Jobnet],
-                web: None,
-                skipped: vec!["thehub.io".to_string()],
+                read: vec![JobSite::Jobnet, JobSite::Jobindex, JobSite::Linkedin, JobSite::Indeed],
+                web: false,
             }
         );
-        assert_eq!(sources(&mixed, true).web, Some(vec!["thehub.io".to_string()]));
-        assert_eq!(sources(&search(), true).web, None);
-        let anywhere = model::JobSearch {
-            sites: Vec::new(),
+        assert!(sources(&all, true).web);
+        let skipping = model::JobSearch {
+            skipped_sites: vec!["indeed.com".to_string(), "jobindex.dk".to_string()],
             ..search()
         };
-        assert_eq!(sources(&anywhere, false).read, JobSite::ALL.to_vec());
-        assert_eq!(sources(&anywhere, false).web, None);
-        assert_eq!(sources(&anywhere, true).web, Some(Vec::new()));
-        assert!(
-            skipped_sites_note(&mixed, false)
-                .unwrap()
-                .starts_with("The scan skips thehub.io:")
-        );
-        assert_eq!(skipped_sites_note(&mixed, true), None);
-        assert_eq!(skipped_sites_note(&anywhere, false), None);
+        assert_eq!(sources(&skipping, false).read, vec![JobSite::Jobnet, JobSite::Linkedin]);
+    }
+
+    #[test]
+    fn posts_on_skipped_sites_are_left_out() {
+        let skipped = ["stepstone.dk".to_string()];
+        assert!(on_skipped_site("https://www.stepstone.dk/job/1", &skipped));
+        assert!(on_skipped_site("https://jobs.stepstone.dk/job/1", &skipped));
+        assert!(!on_skipped_site("https://notstepstone.dk/job/1", &skipped));
+        assert!(!on_skipped_site("https://www.jobnet.dk/job/1", &skipped));
     }
 
     #[test]

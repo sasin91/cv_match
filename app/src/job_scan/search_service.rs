@@ -70,7 +70,7 @@ pub fn open_sign_in(context: &Context) -> Result<&'static str, ServiceError> {
         .open_sign_in(&crate::job_sites::SIGN_IN_PAGES)
         .map_err(|why| ServiceError::new(ErrorKind::Failed, why))?;
     Ok(
-        "JobFinder's browser is open. Sign in to LinkedIn (and Indeed, if you use it), then close the window: the scan reads them from now on, for searches that name linkedin.com or dk.indeed.com in their sites.",
+        "JobFinder's browser is open. Sign in to LinkedIn (and Indeed, if you use it), then close the window: every search reads them from now on, unless it skips them.",
     )
 }
 
@@ -147,10 +147,7 @@ pub async fn search_page(context: &Context, id: i64, dismissed: bool, after: &st
     };
     let batch = model::posts(db, search.id, dismissed, PER_PAGE, after).await?;
     let next = batch.next.as_ref().map(|cursor| next_query(dismissed, cursor));
-    let problem = match scan_service::scan_problem(context).await? {
-        Some(problem) => Some(problem),
-        None => scan_service::skipped_sites_note(&search, scan_service::searches_the_web(context).await?),
-    };
+    let problem = scan_service::scan_problem(context).await?;
     Ok(SearchPage {
         search,
         summary,
@@ -200,8 +197,8 @@ pub struct SearchForm {
     pub location: String,
     /// "1" when ticked.
     pub remote_ok: String,
-    /// One site per line.
-    pub sites: String,
+    /// The sites to skip, one per line.
+    pub skipped_sites: String,
     pub tailor_from_score: String,
     /// "1" when ticked.
     pub active: String,
@@ -226,7 +223,7 @@ impl SearchForm {
             keywords: search.keywords.clone(),
             location: search.location.clone(),
             remote_ok: ticked(search.remote_ok),
-            sites: search.sites.join("\n"),
+            skipped_sites: search.skipped_sites.join("\n"),
             tailor_from_score: search.tailor_from_score.to_string(),
             active: ticked(search.active),
         }
@@ -254,9 +251,9 @@ pub fn checked(form: &SearchForm) -> Result<SearchFields, Vec<String>> {
     if !tailor_from.is_some_and(|score| (0..=MAX_TAILOR_FROM).contains(&score)) {
         errors.push(format!("The score to tailor from is 0 to {MAX_TAILOR_FROM}."));
     }
-    if form.sites.chars().count() > MAX_SITES_TEXT {
-        errors.push("That's too much text for the sites.".to_string());
-    } else if let Some(problem) = job_search_rules::sites_problem(&form.sites) {
+    if form.skipped_sites.chars().count() > MAX_SITES_TEXT {
+        errors.push("That's too much text for the sites to skip.".to_string());
+    } else if let Some(problem) = job_search_rules::sites_problem(&form.skipped_sites) {
         errors.push(problem);
     }
     if !errors.is_empty() {
@@ -269,7 +266,7 @@ pub fn checked(form: &SearchForm) -> Result<SearchFields, Vec<String>> {
         remote_ok: form.remote_ok == "1",
         tailor_from_score: tailor_from.unwrap_or(DEFAULT_TAILOR_FROM),
         active: form.active == "1",
-        sites: job_search_rules::sites(&form.sites).0,
+        skipped_sites: job_search_rules::sites(&form.skipped_sites).0,
     })
 }
 
@@ -355,16 +352,16 @@ mod tests {
         let form = SearchForm {
             name: " Backend ".to_string(),
             keywords: "PHP".to_string(),
-            sites: "https://www.jobnet.dk/x\njobindex.dk".to_string(),
+            skipped_sites: "https://www.jobnet.dk/x\njobindex.dk".to_string(),
             ..SearchForm::new_search()
         };
         let fields = checked(&form).unwrap();
         assert_eq!(fields.name, "Backend");
-        assert_eq!(fields.sites, vec!["jobnet.dk", "jobindex.dk"]);
+        assert_eq!(fields.skipped_sites, vec!["jobnet.dk", "jobindex.dk"]);
         assert!(fields.remote_ok && fields.active);
         assert_eq!(fields.tailor_from_score, 60);
         let bad_site = SearchForm {
-            sites: "nope".to_string(),
+            skipped_sites: "nope".to_string(),
             ..form
         };
         assert!(checked(&bad_site).unwrap_err()[0].starts_with("These aren't sites"));

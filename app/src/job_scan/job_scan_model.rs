@@ -42,8 +42,8 @@ pub struct JobSearch {
     pub active: bool,
     pub paused_reason: String,
     pub last_scanned_at: Option<i64>,
-    /// The domains it is limited to; none for the usual job sites.
-    pub sites: Vec<String>,
+    /// The domains the scan leaves alone; none to read every site.
+    pub skipped_sites: Vec<String>,
 }
 
 /// What the search form saves.
@@ -55,7 +55,8 @@ pub struct SearchFields {
     pub remote_ok: bool,
     pub tailor_from_score: i64,
     pub active: bool,
-    pub sites: Vec<String>,
+    /// The domains the scan leaves alone.
+    pub skipped_sites: Vec<String>,
 }
 
 /// A found post as its search's list shows it, with its saved match's score.
@@ -180,11 +181,12 @@ pub async fn find(db: &SqlitePool, id: i64) -> sqlx::Result<Option<JobSearch>> {
         active: row.active != 0,
         paused_reason: row.paused_reason,
         last_scanned_at: row.last_scanned_at,
-        sites: sites(db, id).await?,
+        skipped_sites: skipped_sites(db, id).await?,
     }))
 }
 
-async fn sites(db: &SqlitePool, id: i64) -> sqlx::Result<Vec<String>> {
+/// The domains search id skips (job_search_sites).
+async fn skipped_sites(db: &SqlitePool, id: i64) -> sqlx::Result<Vec<String>> {
     sqlx::query_scalar!(
         r#"SELECT domain FROM job_search_sites WHERE job_search_id = ?1 ORDER BY domain"#,
         id
@@ -242,7 +244,7 @@ pub async fn save(db: &SqlitePool, id: i64, fields: &SearchFields, now: i64) -> 
     sqlx::query!(r#"DELETE FROM job_search_sites WHERE job_search_id = ?1"#, id)
         .execute(&mut *tx)
         .await?;
-    for domain in &fields.sites {
+    for domain in &fields.skipped_sites {
         sqlx::query!(
             r#"INSERT INTO job_search_sites (job_search_id, domain) VALUES (?1, ?2)"#,
             id,
@@ -769,7 +771,7 @@ mod tests {
             remote_ok: true,
             tailor_from_score: 60,
             active: true,
-            sites: vec!["jobnet.dk".to_string(), "jobindex.dk".to_string()],
+            skipped_sites: vec!["jobnet.dk".to_string(), "jobindex.dk".to_string()],
         }
     }
 
@@ -779,15 +781,15 @@ mod tests {
         let id = save(&db, 0, &fields("Backend"), 100).await.unwrap();
         let found = find(&db, id).await.unwrap().unwrap();
         assert_eq!(found.name, "Backend");
-        assert_eq!(found.sites, vec!["jobindex.dk", "jobnet.dk"]);
+        assert_eq!(found.skipped_sites, vec!["jobindex.dk", "jobnet.dk"]);
         pause(&db, id, "No key.", 200).await.unwrap();
         let edited = SearchFields {
-            sites: Vec::new(),
+            skipped_sites: Vec::new(),
             ..fields("Frontend")
         };
         assert_eq!(save(&db, id, &edited, 300).await.unwrap(), id);
         let found = find(&db, id).await.unwrap().unwrap();
-        assert_eq!((found.name.as_str(), found.sites.len()), ("Frontend", 0));
+        assert_eq!((found.name.as_str(), found.skipped_sites.len()), ("Frontend", 0));
         assert_eq!(found.paused_reason, "", "saving an active search lifts its pause");
         assert_eq!(searches(&db).await.unwrap().len(), 1);
         assert!(delete_search(&db, id).await.unwrap());

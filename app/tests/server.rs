@@ -1094,12 +1094,11 @@ async fn a_job_search_is_made_listed_and_scanned_on_any_model_with_a_profile() {
     assert!(form.contains("Say what to look for."), "{form}");
     assert!(form.contains(r#"value="Backend""#), "{form}");
 
-    let saved =
-        "name=Backend&keywords=PHP+udvikler&location=Odense&remote_ok=1&sites=jobnet.dk&tailor_from_score=60&active=1";
+    let saved = "name=Backend&keywords=PHP+udvikler&location=Odense&remote_ok=1&skipped_sites=jobnet.dk&tailor_from_score=60&active=1";
     let search = followed_to(&app, post_form("/job_scan/submit/0", saved)).await;
     assert!(search.contains("Your job search is saved."), "{search}");
     assert!(
-        search.contains("PHP udvikler · Odense · remote too · on jobnet.dk · tailors from 60"),
+        search.contains("PHP udvikler · Odense · remote too · skips jobnet.dk · tailors from 60"),
         "{search}"
     );
     assert!(search.contains("No job posts found yet."), "{search}");

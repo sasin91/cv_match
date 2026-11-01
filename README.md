@@ -59,14 +59,14 @@ The links go to the setup (http://127.0.0.1:8765/setup), whose steps are:
    `jobfinder.exe scan`, which scans every active job search (Job scan in the menu) for new
    posts and matches them with your profile. It reads Jobnet and Jobindex itself, so it runs on
    any model, the app's own too; with an OpenAI key it also searches the web for other sites. The dashboard's Scan now runs the same scan.
-   LinkedIn and Indeed are read too for a search whose sites name `linkedin.com` or
-   `dk.indeed.com` (list `jobnet.dk` and `jobindex.dk` there as well to keep them), in a browser
+   LinkedIn and Indeed are read too, in a browser
    of JobFinder's own (Edge, on its own profile in `%APPDATA%\JobFinder\signed-in-browser`):
    press **Sign in to job sites** under Job searches once, sign in, and close the window. A scan
    reads two search terms per site and the new posts, one page every 10 seconds or more, and stops
    reading a site the moment it asks to sign in again or for a check (the Job searches screen says
    so until you sign in again). Both sites' terms forbid reading them with programs: your account
-   takes that risk.
+   takes that risk. Every search reads every site; a search's "Sites to skip" leaves sites out
+   (`indeed.com`, say), the web search's posts on them too.
 
 Close its window to stop it. `jobfinder.exe --help` lists the options.
 
