@@ -2,7 +2,7 @@
 {% include "job_scan/header.html" %}
 <main class="narrow">
     <h1>Job scan</h1>
-    <p class="muted">Save what you're looking for, and the job scan looks for new job posts on the job sites for you. Every post it finds is matched with your profile and saved with your matches, and a good match gets a tailored résumé and a job application right away. It searches on your own OpenAI key.</p>
+    <p class="muted">Save what you're looking for, and the job scan looks for new job posts on the job sites for you. Every post it finds is matched with your profile and saved with your matches, and a good match gets a tailored résumé and a job application right away. It reads Jobnet and Jobindex itself and matches on the model you picked for evaluating job posts, which can be the one on this computer; other sites are searched with OpenAI's web search when your OpenAI key is picked.</p>
 
     {%- if let Some(flash) = flash %}
     <p class="notice">{{ flash }}</p>

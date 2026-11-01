@@ -4,11 +4,14 @@
 //! without its queue: a scan finds each search's new posts and matches them one by one before it
 //! ends.
 //!
-//! A scan asks the model, searching the web (OpenAI's Responses API), for new job posts that fit
-//! each active search. Each new post is fetched, read and matched with the profile like a post on
-//! the match page (match_service), saved as a match, and from the search's tailor_from_score up
-//! its tailored résumé and application are written right away, so both are ready in the match's
-//! Apply dialog.
+//! A scan reads the job sites the app knows (job_sites: Jobnet and Jobindex) itself for each
+//! active search, and asks the model, searching the web (OpenAI's Responses API), for the rest
+//! when the key picked for evaluating job posts is OpenAI's. So a scan needs no OpenAI key: on
+//! any other model (the one on this computer too) it reads the sites it knows only. Each new
+//! post is fetched, read and matched with the profile like a post on the match page
+//! (match_service), saved as a match, and from the search's tailor_from_score up its tailored
+//! résumé and application are written right away, so both are ready in the match's Apply
+//! dialog.
 
 use std::sync::Arc;
 
@@ -18,15 +21,20 @@ use super::job_scan_model::{
     self as model, DISMISSED, FAILED, FoundAbout, MATCHED, MATCHING, NOT_A_JOB, NewPost, RecentPost, RunEnd,
 };
 use super::job_search_rules;
+use super::run_steps::{self, NewStep};
+use super::scan_lock;
 use crate::account::account_model::{APPLICATION, JOB_EVALUATION, RESUME};
 use crate::context::Context;
+use crate::job_sites::{JobSite, ListedPost};
+use crate::llm::transcript::{self, Exchange};
 use crate::llm::{Effort, OPENAI};
 use crate::matches::match_service::{self, MatchRequest};
+use crate::matches::page_reader::ReadWith;
 use crate::matches::{Profile, llm_key, match_model, page_reader};
 use crate::profile;
 use crate::service_error::{ErrorKind, ServiceError};
 
-/// Posts one scan of a search asks the model for, at most.
+/// New posts one scan of a search adds (and matches), at most; the rest wait for the next.
 pub const POSTS_PER_SCAN: usize = 15;
 
 /// The found posts of a search the scan is told about, to skip them.
@@ -36,9 +44,12 @@ const RECENT_POSTS_SKIPPED: i64 = 40;
 /// after the schedule's scan, or two clicks, can't run up the bill.
 pub const MIN_SECONDS_BETWEEN_SCANS: i64 = 3600;
 
-/// A scan not finished after this many seconds stopped without saying so (the program was
-/// closed): it no longer counts as running (half an hour).
+/// A post claimed for matching this many seconds ago and not matched was left by a match that
+/// stopped without saying so (the program was closed): another may take it (half an hour).
 pub const RUN_GIVE_UP_SECONDS: i64 = 1800;
+
+/// What a scan cut off before it finished says (the program was closed while it ran).
+const CUT_OFF: &str = "The scan stopped before it finished: the app was closed while it ran.";
 
 /// The country the web search is made from.
 const SEARCH_COUNTRY: &str = "DK";
@@ -84,20 +95,14 @@ impl ScanReport {
     }
 }
 
-/// Why nothing can be scanned now, or None: the scan searches the web on the OpenAI key picked
-/// for evaluating job posts, and matches with the profile.
+/// Why nothing can be scanned now, or None: every post found is matched with the profile, on
+/// the model picked for evaluating job posts (any: the one on this computer too).
 pub async fn scan_problem(context: &Context) -> Result<Option<String>, ServiceError> {
-    let problem = match llm_key::llm_settings(context, JOB_EVALUATION).await? {
-        None => Some(
-            "The job scan searches the web on your OpenAI key. Pick it for evaluating job posts on the API key page.",
-        ),
-        Some(key) if key.provider != OPENAI => Some(
-            "The job scan searches the web, which only OpenAI's API does here. Pick your OpenAI key for evaluating job posts on the API key page.",
-        ),
-        Some(_) => None,
-    };
-    if problem.is_some() {
-        return Ok(problem.map(str::to_string));
+    if llm_key::llm_settings(context, JOB_EVALUATION).await?.is_none() {
+        return Ok(Some(
+            "The job scan matches every post it finds on the model picked for evaluating job posts, and none is. Pick one on the API key page."
+                .to_string(),
+        ));
     }
     if profile::text_for_user(context.db(), context.user_id).await?.is_none() {
         return Ok(Some(
@@ -136,33 +141,82 @@ const DAY_SECONDS: i64 = 86_400;
 pub async fn status(context: &Context) -> Result<ScanStatus, ServiceError> {
     let db = context.db();
     let now = chrono::Utc::now().timestamp();
-    let running_since = now - RUN_GIVE_UP_SECONDS;
+    let running = is_running(context)?;
     let problem = match scan_problem(context).await? {
         Some(problem) => Some(problem),
         None => model::first_pause(db).await?,
     };
     let last_scan = model::last_run(db, None).await?.map(|run| {
-        let failed =
-            super::job_search_summary::run_state(&run, running_since) == super::job_search_summary::RunState::Error;
+        let failed = super::job_search_summary::run_state(&run, running) == super::job_search_summary::RunState::Error;
         LatestScan {
             started_at: run.started_at,
-            text: super::job_search_summary::run_text(&run, running_since),
+            text: super::job_search_summary::run_text(&run, running),
             failed,
         }
     });
     Ok(ScanStatus {
         active_searches: model::active_count(db).await?,
         problem,
-        running: model::is_running(db, running_since).await?,
+        running,
         last_scan,
         new_last_day: model::new_posts_since(db, now - DAY_SECONDS).await?,
     })
 }
 
-/// Whether a scan is running now (here, or in the scheduled `jobfinder scan`).
-pub async fn is_running(context: &Context) -> Result<bool, ServiceError> {
-    let now = chrono::Utc::now().timestamp();
-    Ok(model::is_running(context.db(), now - RUN_GIVE_UP_SECONDS).await?)
+/// Whether a scan is running now (here, or in the scheduled `jobfinder scan`): one holds
+/// scan_lock.
+pub fn is_running(context: &Context) -> Result<bool, ServiceError> {
+    scan_lock::is_held(context).map_err(|e| lock_failed(&e))
+}
+
+/// The scan running now, as Scan now says it: its search and when it started it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RunningScan {
+    pub search_id: i64,
+    pub search_name: String,
+    pub started_at: i64,
+}
+
+/// The scan running now, if one is: the latest scan's search (a scan scans its searches one
+/// after the other).
+pub async fn running_scan(context: &Context) -> Result<Option<RunningScan>, ServiceError> {
+    if !is_running(context)? {
+        return Ok(None);
+    }
+    let db = context.db();
+    let Some(run) = model::last_run(db, None).await? else {
+        return Ok(None);
+    };
+    let search_name = model::find(db, run.job_search_id)
+        .await?
+        .map(|search| search.name)
+        .unwrap_or_default();
+    Ok(Some(RunningScan {
+        search_id: run.job_search_id,
+        search_name,
+        started_at: run.started_at,
+    }))
+}
+
+/// "A scan is running already: Backend, since 19:02. …", for Scan now.
+fn running_text(running: Option<&RunningScan>) -> String {
+    match running {
+        Some(scan) if !scan.search_name.is_empty() => format!(
+            "A scan is running already: {}, since {}. Its steps show on that search's screen as it goes.",
+            scan.search_name,
+            crate::matches::dates::clock(scan.started_at)
+        ),
+        _ => "A scan is running already. Its steps show on each search's screen as it goes.".to_string(),
+    }
+}
+
+/// The lock couldn't be looked at: its file can't be opened.
+fn lock_failed(e: &std::io::Error) -> ServiceError {
+    crate::log_line!("job_scan: the scan's lock file can't be used: {e}");
+    ServiceError::new(
+        ErrorKind::Internal,
+        format!("The job scan's lock file beside the database can't be used: {e}"),
+    )
 }
 
 /// Scans every active search that isn't paused and wasn't scanned in the last
@@ -170,11 +224,26 @@ pub async fn is_running(context: &Context) -> Result<bool, ServiceError> {
 /// `jobfinder scan`, Scan now and a desktop window.
 pub async fn scan(context: Arc<Context>) -> Result<ScanReport, ServiceError> {
     let db = context.db();
+    let Some(_held) = scan_lock::hold(&context).await.map_err(|e| lock_failed(&e))? else {
+        let running = running_scan(&context).await?;
+        return Err(ServiceError::new(ErrorKind::TooMany, running_text(running.as_ref())));
+    };
+    // Holding the lock, no other scan runs: one not finished was cut off.
+    let stopped = model::stop_unfinished_runs(db, CUT_OFF, chrono::Utc::now().timestamp()).await?;
+    if stopped > 0 {
+        crate::log_line!("job_scan: {stopped} earlier scan(s) were cut off before they finished.");
+    }
     model::resume_after_new_key(db).await?;
     if let Some(problem) = scan_problem(&context).await? {
         return Err(ServiceError::need_key(problem));
     }
-    let keyed = llm_key::llm(&context, JOB_EVALUATION).await?;
+    // The model only searches when it searches the web; every post is matched on it too
+    // (match_service), which asks for it there.
+    let web = if searches_the_web(&context).await? {
+        Some(llm_key::llm(&context, JOB_EVALUATION).await?.llm)
+    } else {
+        None
+    };
     // Read when the first post needs it: a scan that finds nothing to match costs no call for it.
     let mut cv: Option<ProfileCv> = None;
     let mut report = ScanReport::default();
@@ -197,7 +266,7 @@ pub async fn scan(context: Arc<Context>) -> Result<ScanReport, ServiceError> {
         let Some(search) = model::find(db, search_id).await? else {
             continue;
         };
-        let found = match search_posts(&context, &keyed.llm, &search, run_id).await {
+        let found = match search_posts(&context, web.as_ref(), &search, run_id).await {
             Ok(found) => found,
             Err(why) => {
                 report.problems.push(format!("{}: {why}", search.name));
@@ -206,6 +275,9 @@ pub async fn scan(context: Arc<Context>) -> Result<ScanReport, ServiceError> {
         };
         report.posts_found += found.posts_found;
         report.posts_new += found.new_posts.len() as i64;
+        if let Some(problem) = found.problem {
+            report.problems.push(format!("{}: {problem}", search.name));
+        }
         for post_id in found.new_posts {
             match match_post_once_read(&context, post_id, &mut cv).await {
                 Ok(true) => report.matched += 1,
@@ -252,70 +324,346 @@ struct SearchFound {
     posts_found: i64,
     /// The ones the search didn't have, added to it.
     new_posts: Vec<i64>,
+    /// What went wrong, though something was found.
+    problem: Option<String>,
 }
 
-/// Asks the model, searching the web, for new posts that fit search, and adds the ones the
-/// search doesn't have. The run keeps what it found and cost, or why it failed; a failure the
-/// model says won't pass by itself (a rejected key) pauses the search.
+/// Keeps a run's steps (run_steps), for the search's page. A step that can't be kept is logged,
+/// and the scan goes on.
+#[derive(Clone, Copy)]
+struct Timeline<'a> {
+    db: &'a sqlx::SqlitePool,
+    /// None for a post no scan found (added by its link): its steps aren't kept.
+    run_id: Option<i64>,
+    post_id: Option<i64>,
+}
+
+/// A step starting now.
+struct StepStart {
+    kind: &'static str,
+    started_at_ms: i64,
+}
+
+impl Timeline<'_> {
+    fn start(&self, kind: &'static str) -> StepStart {
+        StepStart {
+            kind,
+            started_at_ms: chrono::Utc::now().timestamp_millis(),
+        }
+    }
+
+    /// Keeps a step that started at started, as text, with the model's calls in it.
+    async fn keep(&self, started: StepStart, text: &str, failed: bool, calls: &[Exchange]) {
+        let Some(run_id) = self.run_id else {
+            return;
+        };
+        let step = NewStep {
+            run_id,
+            post_id: self.post_id,
+            kind: started.kind,
+            text,
+            failed,
+            started_at_ms: started.started_at_ms,
+            took_ms: chrono::Utc::now().timestamp_millis() - started.started_at_ms,
+            calls,
+        };
+        if let Err(e) = run_steps::add(self.db, &step).await {
+            crate::log_line!("job_scan: keeping a step of run {run_id} failed: {e}");
+        }
+    }
+}
+
+/// Where a scan looks for a search's posts.
+#[derive(Debug, Clone, PartialEq)]
+struct Sources {
+    /// The sites the app reads itself.
+    read: Vec<JobSite>,
+    /// The sites the model searches the web on ([] for any), when it can.
+    web: Option<Vec<String>>,
+    /// The search's sites that can't be searched: no reader, and no model that searches the web.
+    skipped: Vec<String>,
+}
+
+/// Where search is looked for: the sites the app reads (every one of them for a search without
+/// sites), and the rest on the web when web_search can (the key picked is OpenAI's).
+fn sources(search: &model::JobSearch, web_search: bool) -> Sources {
+    if search.sites.is_empty() {
+        return Sources {
+            read: JobSite::ALL.to_vec(),
+            web: web_search.then(Vec::new),
+            skipped: Vec::new(),
+        };
+    }
+    let read = search.sites.iter().filter_map(|site| JobSite::of(site)).collect();
+    let rest: Vec<String> = search
+        .sites
+        .iter()
+        .filter(|site| JobSite::of(site).is_none())
+        .cloned()
+        .collect();
+    let (web, skipped) = match (rest.is_empty(), web_search) {
+        (true, _) => (None, Vec::new()),
+        (false, true) => (Some(rest), Vec::new()),
+        (false, false) => (None, rest),
+    };
+    Sources { read, web, skipped }
+}
+
+/// What the search's page says about its sites the scan skips, or None.
+pub fn skipped_sites_note(search: &model::JobSearch, web_search: bool) -> Option<String> {
+    let skipped = sources(search, web_search).skipped;
+    if skipped.is_empty() {
+        return None;
+    }
+    let readers: Vec<&str> = JobSite::ALL.iter().map(|site| site.domain()).collect();
+    Some(format!(
+        "The scan skips {}: the app reads {} itself, and other sites only OpenAI's web search finds. Pick your OpenAI key for evaluating job posts to search them too.",
+        skipped.join(", "),
+        readers.join(" and ")
+    ))
+}
+
+/// Whether the key picked for evaluating job posts searches the web (OpenAI's does).
+pub async fn searches_the_web(context: &Context) -> Result<bool, ServiceError> {
+    Ok(llm_key::llm_settings(context, JOB_EVALUATION)
+        .await?
+        .is_some_and(|key| key.provider == OPENAI))
+}
+
+/// The posts sources list for search, and what went wrong on the way.
+#[derive(Debug, Default)]
+struct Listed {
+    posts: Vec<ListedPost>,
+    problems: Vec<String>,
+    input_tokens: i64,
+    output_tokens: i64,
+}
+
+/// Looks for new posts that fit search on its sources, and adds the ones the search doesn't
+/// have, at most POSTS_PER_SCAN. The run keeps what it found and cost, and what went wrong; it
+/// failed when nothing could be searched.
 async fn search_posts(
     context: &Context,
-    llm: &crate::llm::Llm,
+    web: Option<&crate::llm::Llm>,
     search: &model::JobSearch,
     run_id: i64,
 ) -> Result<SearchFound, String> {
     let db = context.db();
-    let recent = model::recent_posts(db, search.id, RECENT_POSTS_SKIPPED)
-        .await
-        .map_err(|e| e.to_string())?;
-    let (system, user) = scan_prompt(search, &recent);
-    let sites: Vec<&str> = search.sites.iter().map(String::as_str).collect();
-    let answer = llm
-        .web_search(&system, &user, &posts_schema(), &sites, SEARCH_COUNTRY, Effort::Low)
-        .await;
-    let now = chrono::Utc::now().timestamp();
-    let answer = match answer {
-        Ok(answer) => answer,
-        Err(e) => {
-            crate::log_line!("job_scan: scanning search {} failed: {}", search.id, e.details());
-            let error = format!("The scan failed: {}", e.message);
-            let end = RunEnd {
-                error: error.clone(),
-                ..RunEnd::default()
-            };
-            model::finish_run(db, run_id, &end, now)
-                .await
-                .map_err(|e| e.to_string())?;
-            if !e.retryable {
-                let reason = format!("{error} Fix it on the API key page, or save the search again.");
-                model::pause(db, search.id, &reason, now)
-                    .await
-                    .map_err(|e| e.to_string())?;
-            }
-            return Err(error);
-        }
+    let timeline = Timeline {
+        db,
+        run_id: Some(run_id),
+        post_id: None,
     };
-    let posts = found_posts(&answer.answer);
+    if let Err(e) = run_steps::forget_old(db, search.id).await {
+        crate::log_line!("job_scan: forgetting search {}'s old steps failed: {e}", search.id);
+    }
+    let sources = sources(search, web.is_some());
+    let mut listed = read_sites(&sources.read, search, timeline).await;
+    if let (Some(llm), Some(domains)) = (web, &sources.web) {
+        match web_posts(context, llm, search, domains, timeline).await {
+            Ok(found) => {
+                listed.posts.extend(found.posts);
+                listed.input_tokens = found.input_tokens;
+                listed.output_tokens = found.output_tokens;
+            }
+            Err(why) => listed.problems.push(why),
+        }
+    }
+    let now = chrono::Utc::now().timestamp();
     let mut new_posts = Vec::new();
-    for post in &posts {
-        let added = model::add_post(db, search.id, Some(run_id), post, now)
+    for post in &listed.posts {
+        if new_posts.len() >= POSTS_PER_SCAN {
+            break;
+        }
+        let post = NewPost {
+            url: &post.url,
+            title: &post.title,
+            company: &post.company,
+            location: &post.location,
+        };
+        let added = model::add_post(db, search.id, Some(run_id), &post, now)
             .await
             .map_err(|e| e.to_string())?;
         new_posts.extend(added);
     }
+    let posts_found = listed.posts.len() as i64;
+    let started = timeline.start(run_steps::POSTS);
+    timeline
+        .keep(started, &posts_text(posts_found, new_posts.len()), false, &[])
+        .await;
+    let error = run_error(&listed.problems, posts_found, new_posts.len());
     let end = RunEnd {
-        posts_found: posts.len() as i64,
+        posts_found,
         posts_new: new_posts.len() as i64,
-        input_tokens: answer.input_tokens,
-        output_tokens: answer.output_tokens,
-        error: String::new(),
+        input_tokens: listed.input_tokens,
+        output_tokens: listed.output_tokens,
+        error: error.clone(),
     };
     model::finish_run(db, run_id, &end, now)
         .await
         .map_err(|e| e.to_string())?;
+    if posts_found == 0 && !listed.problems.is_empty() {
+        return Err(error);
+    }
+    if !error.is_empty() {
+        crate::log_line!("job_scan: search {}: {error}", search.id);
+    }
     Ok(SearchFound {
-        posts_found: end.posts_found,
+        posts_found,
         new_posts,
+        problem: (!error.is_empty()).then_some(error),
     })
+}
+
+/// "26 posts listed, 6 new.", and that the rest wait when a scan's worth is new.
+fn posts_text(posts_found: i64, posts_new: usize) -> String {
+    let said = format!("{posts_found} posts listed, {posts_new} new.");
+    if posts_new >= POSTS_PER_SCAN {
+        format!("{said} That is a scan's worth: the rest are added next time.")
+    } else {
+        said
+    }
+}
+
+/// The run's error: none when nothing went wrong; what went wrong, after what was found anyway.
+fn run_error(problems: &[String], posts_found: i64, posts_new: usize) -> String {
+    if problems.is_empty() {
+        return String::new();
+    }
+    let problems = problems.join(" ");
+    if posts_found == 0 {
+        format!("The scan failed: {problems}")
+    } else {
+        format!("Found {posts_found}, {posts_new} new, but: {problems}")
+    }
+}
+
+/// The posts sites list for each of search's terms near its place, newest first, taking turns
+/// between the lists so each site and term gets its share of a scan's posts.
+async fn read_sites(sites: &[JobSite], search: &model::JobSearch, timeline: Timeline<'_>) -> Listed {
+    let place = search_place(search);
+    let mut lists = Vec::new();
+    let mut problems = Vec::new();
+    for site in sites {
+        let mut failed = None;
+        for term in job_search_rules::search_terms(&search.keywords) {
+            let started = timeline.start(run_steps::SITE);
+            let read = site.search(&term, place).await;
+            let said = site_text(site.domain(), &term, place, &read);
+            timeline.keep(started, &said, read.is_err(), &[]).await;
+            match read {
+                Ok(posts) => lists.push(posts),
+                Err(why) => failed = Some(why),
+            }
+        }
+        if let Some(why) = failed {
+            crate::log_line!(
+                "job_scan: search {}: reading {} failed: {why}",
+                search.id,
+                site.domain()
+            );
+            problems.push(format!("Reading {} failed: {why}", site.domain()));
+        }
+    }
+    Listed {
+        posts: taking_turns(lists),
+        problems,
+        ..Listed::default()
+    }
+}
+
+/// "jobnet.dk, “PHP udvikler” near Odense: 20 posts." or what went wrong.
+fn site_text(domain: &str, term: &str, place: &str, read: &Result<Vec<ListedPost>, String>) -> String {
+    let near = if place.is_empty() {
+        String::new()
+    } else {
+        format!(" near {place}")
+    };
+    match read {
+        Ok(posts) => format!("{domain}, “{term}”{near}: {} posts.", posts.len()),
+        Err(why) => format!("{domain}, “{term}”{near}: {why}"),
+    }
+}
+
+/// The place a search's sites are read near: its own, or anywhere for one that says only
+/// remote.
+fn search_place(search: &model::JobSearch) -> &str {
+    let place = search.location.trim();
+    if place.eq_ignore_ascii_case("remote") {
+        ""
+    } else {
+        place
+    }
+}
+
+/// The lists' posts, the first of each, then the second of each, and so on.
+fn taking_turns(lists: Vec<Vec<ListedPost>>) -> Vec<ListedPost> {
+    let mut iterators: Vec<_> = lists.into_iter().map(Vec::into_iter).collect();
+    let mut posts = Vec::new();
+    loop {
+        let before = posts.len();
+        posts.extend(iterators.iter_mut().filter_map(Iterator::next));
+        if posts.len() == before {
+            return posts;
+        }
+    }
+}
+
+/// Asks the model, searching the web (on domains, [] for any), for new posts that fit search.
+async fn web_posts(
+    context: &Context,
+    llm: &crate::llm::Llm,
+    search: &model::JobSearch,
+    domains: &[String],
+    timeline: Timeline<'_>,
+) -> Result<Listed, String> {
+    let recent = model::recent_posts(context.db(), search.id, RECENT_POSTS_SKIPPED)
+        .await
+        .map_err(|e| e.to_string())?;
+    let (system, user) = scan_prompt(search, domains, &recent);
+    let sites: Vec<&str> = domains.iter().map(String::as_str).collect();
+    let started = timeline.start(run_steps::WEB);
+    let (answer, calls) =
+        transcript::recording(llm.web_search(&system, &user, &posts_schema(), &sites, SEARCH_COUNTRY, Effort::Low))
+            .await;
+    let said = web_text(domains, answer.as_ref().map(|answer| found_posts(&answer.answer).len()));
+    timeline.keep(started, &said, answer.is_err(), &calls).await;
+    let answer = answer.map_err(|e| {
+        crate::log_line!(
+            "job_scan: searching the web for search {} failed: {}",
+            search.id,
+            e.details()
+        );
+        format!("Searching the web failed: {}", e.message)
+    })?;
+    let posts = found_posts(&answer.answer)
+        .iter()
+        .map(|post| ListedPost {
+            url: post.url.to_string(),
+            title: post.title.to_string(),
+            company: post.company.to_string(),
+            location: post.location.to_string(),
+        })
+        .collect();
+    Ok(Listed {
+        posts,
+        problems: Vec::new(),
+        input_tokens: answer.input_tokens,
+        output_tokens: answer.output_tokens,
+    })
+}
+
+/// "Web search on thehub.io: 4 posts." (or on any other site), or that it failed.
+fn web_text(domains: &[String], found: Result<usize, &crate::llm::LlmException>) -> String {
+    let on = if domains.is_empty() {
+        "any other site".to_string()
+    } else {
+        domains.join(", ")
+    };
+    match found {
+        Ok(found) => format!("Web search on {on}: {found} posts."),
+        Err(e) => format!("Web search on {on} failed: {}", e.message),
+    }
 }
 
 /// The posts of the model's answer with an http(s) link, at most POSTS_PER_SCAN.
@@ -366,9 +714,9 @@ fn posts_schema() -> Value {
     })
 }
 
-/// The scan's instructions and question for search: what to look for, where, and the posts it
-/// found lately (to skip).
-fn scan_prompt(search: &model::JobSearch, recent: &[RecentPost]) -> (String, String) {
+/// The web search's instructions and question for search: what to look for, where (on domains,
+/// [] for any site but the ones the app reads itself), and the posts it found lately (to skip).
+fn scan_prompt(search: &model::JobSearch, domains: &[String], recent: &[RecentPost]) -> (String, String) {
     let system = format!(
         "You find job posts on the web for a job seeker in Denmark. Search the job sites (Jobnet, Jobindex, LinkedIn Jobs, The Hub, Graduateland, Indeed and the like) and company career pages for open positions that fit what they are looking for, and list them.
 
@@ -389,10 +737,11 @@ fn scan_prompt(search: &model::JobSearch, recent: &[RecentPost]) -> (String, Str
     } else {
         ""
     };
-    let sites = if search.sites.is_empty() {
-        String::new()
+    let sites = if domains.is_empty() {
+        let read: Vec<&str> = JobSite::ALL.iter().map(|site| site.domain()).collect();
+        format!("\nSkip {}: they are searched separately.", read.join(" and "))
     } else {
-        format!("\nSearch only these sites: {}.", search.sites.join(", "))
+        format!("\nSearch only these sites: {}.", domains.join(", "))
     };
     let skip = if recent.is_empty() {
         "- (none yet)".to_string()
@@ -431,11 +780,22 @@ async fn match_post_with(context: &Arc<Context>, post_id: i64, cv: &ProfileCv) -
     if !claim(context, post_id).await? {
         return Ok(false);
     }
+    // A post's steps are on the run that found it.
+    let timeline = Timeline {
+        db,
+        run_id: post.job_search_run_id,
+        post_id: Some(post_id),
+    };
     let set = |status: &'static str, error: String, match_id: Option<i64>, found: FoundAbout| async move {
         let now = chrono::Utc::now().timestamp();
         model::set_status(db, post_id, status, &error, match_id, &found, now).await
     };
-    let page = match page_reader::read(&post.url).await {
+    let started = timeline.start(run_steps::READ);
+    let read = page_reader::read(&post.url, context.pdf_reader.as_deref()).await;
+    timeline
+        .keep(started, &read_text(&post.url, &read), read.is_err(), &[])
+        .await;
+    let page = match read {
         Ok(page) => page,
         Err(why) => {
             crate::log_line!("job_scan: post {post_id}: {}: {why}", post.url);
@@ -450,7 +810,7 @@ async fn match_post_with(context: &Arc<Context>, post_id: i64, cv: &ProfileCv) -
         }
     };
     let job_text = page_text(&page);
-    let matched = match matched_post(context, &page, &job_text, cv).await {
+    let matched = match matched_post(context, &page, &job_text, cv, timeline).await {
         Ok(matched) => matched,
         Err(e) => {
             set(
@@ -485,8 +845,8 @@ async fn match_post_with(context: &Arc<Context>, post_id: i64, cv: &ProfileCv) -
     }
     let mut errors = Vec::new();
     if tailors(saved.score, post.tailor_from_score) {
-        errors.extend(write_document(context, &saved, RESUME).await);
-        errors.extend(write_document(context, &saved, APPLICATION).await);
+        errors.extend(write_document(context, &saved, RESUME, timeline).await);
+        errors.extend(write_document(context, &saved, APPLICATION, timeline).await);
     }
     set(MATCHED, errors.join(" "), Some(match_id), found).await?;
     Ok(!dismissed_meanwhile(context, post_id, match_id).await?)
@@ -528,11 +888,29 @@ async fn matched_post(
     page: &page_reader::Page,
     job_text: &str,
     cv: &ProfileCv,
+    timeline: Timeline<'_>,
 ) -> Result<Matched, ServiceError> {
     if let Some(existing) = match_service::already_matched(context, &cv.text, job_text).await? {
+        let started = timeline.start(run_steps::MATCH);
+        timeline
+            .keep(
+                started,
+                "Matched before: the same post with the same profile.",
+                false,
+                &[],
+            )
+            .await;
         return Ok(Matched::Saved(existing, FoundAbout::default()));
     }
-    let job = match_service::extract_job(context, job_text).await?;
+    let started = timeline.start(run_steps::EXTRACT);
+    let (job, calls) = transcript::recording(match_service::extract_job(context, job_text)).await;
+    let read_as = job
+        .as_ref()
+        .map(extract_text)
+        .map_err(|e| format!("Reading the post failed: {}", e.message));
+    let said = read_as.clone().unwrap_or_else(|why| why);
+    timeline.keep(started, &said, read_as.is_err(), &calls).await;
+    let job = job?;
     if job.job_title.trim().is_empty() && job.requirements.is_empty() {
         return Ok(Matched::NotAJob(
             "This page has no job post the match could read. It may need JavaScript, or the post is gone.",
@@ -554,7 +932,14 @@ async fn matched_post(
         cv_name: PROFILE_CV_NAME.to_string(),
         cv_text: cv.text.clone(),
     };
-    let scored = match_service::ai_match(context, &request).await?;
+    let started = timeline.start(run_steps::MATCH);
+    let (scored, calls) = transcript::recording(match_service::ai_match(context, &request)).await;
+    let said = match &scored {
+        Ok(scored) => match_text(scored),
+        Err(e) => format!("The match failed: {}", e.message),
+    };
+    timeline.keep(started, &said, scored.is_err(), &calls).await;
+    let scored = scored?;
     match scored.saved_id {
         Some(id) => Ok(Matched::Saved(id, found)),
         None => Err(ServiceError::failed(
@@ -564,6 +949,45 @@ async fn matched_post(
                 .unwrap_or_else(|| "The match wasn't saved.".to_string()),
         )),
     }
+}
+
+/// "Read https://… from Jobnet's API." (or as a page, or in the browser), or why it couldn't be.
+fn read_text(url: &str, read: &Result<page_reader::Page, String>) -> String {
+    match read {
+        Ok(page) => {
+            let how = match page.read_with {
+                ReadWith::Page => "as a web page",
+                ReadWith::SiteApi => "from the site's own API",
+                ReadWith::Browser => "in the browser, after its JavaScript ran",
+            };
+            format!("Read {url} {how}: {} characters.", page.text.chars().count())
+        }
+        Err(why) => format!("Couldn't read {url}: {why}"),
+    }
+}
+
+/// "Read the post: PHP-udvikler at Acme A/S, 9 requirements."
+fn extract_text(job: &crate::matches::Job) -> String {
+    let title = if job.job_title.trim().is_empty() {
+        "no job title"
+    } else {
+        job.job_title.trim()
+    };
+    let at = if job.company.trim().is_empty() {
+        String::new()
+    } else {
+        format!(" at {}", job.company.trim())
+    };
+    format!("Read the post: {title}{at}, {} requirements.", job.requirements.len())
+}
+
+/// "Matched with your profile: 72 of 100, Good match."
+fn match_text(scored: &crate::matches::ai_match::AiMatch) -> String {
+    format!(
+        "Matched with your profile: {} of 100, {}.",
+        crate::matches::match_score::percent(scored.result.index),
+        crate::matches::match_score::tag_name(&scored.result.tag)
+    )
 }
 
 /// The post's text as the match reads it: its title, then its text.
@@ -582,7 +1006,12 @@ fn tailors(score: f64, tailor_from_score: i64) -> bool {
 
 /// Writes kind (RESUME or APPLICATION) of a saved match, unless it is written already or no key
 /// is picked for it (it can be written from the match then). Some(why) when it failed.
-async fn write_document(context: &Arc<Context>, saved: &match_model::SavedMatch, kind: &'static str) -> Option<String> {
+async fn write_document(
+    context: &Arc<Context>,
+    saved: &match_model::SavedMatch,
+    kind: &'static str,
+    timeline: Timeline<'_>,
+) -> Option<String> {
     let written = if kind == RESUME {
         saved.resume_written_at
     } else {
@@ -596,9 +1025,19 @@ async fn write_document(context: &Arc<Context>, saved: &match_model::SavedMatch,
         Ok(None) => return None,
         Err(e) => return Some(e.message),
     }
-    let e = match_service::write(Arc::clone(context), saved.id, "", kind)
-        .await
-        .err()?;
+    let started = timeline.start(run_steps::WRITE);
+    let (written, calls) = transcript::recording(match_service::write(Arc::clone(context), saved.id, "", kind)).await;
+    let what = if kind == RESUME {
+        "The tailored résumé"
+    } else {
+        "The application"
+    };
+    let said = match &written {
+        Ok(_) => format!("{what} is written."),
+        Err(e) => format!("{what} failed: {}", e.message),
+    };
+    timeline.keep(started, &said, written.is_err(), &calls).await;
+    let e = written.err()?;
     Some(if kind == RESUME {
         format!("The tailored résumé failed: {} Tailor it from the match.", e.message)
     } else {
@@ -607,16 +1046,13 @@ async fn write_document(context: &Arc<Context>, saved: &match_model::SavedMatch,
 }
 
 /// Starts a scan in the background (scan()), for Scan now; Ok is what to say. A scan that can't
-/// run (no OpenAI key, no profile) or one running already is said now rather than later.
+/// run (no model picked, no profile) or one running already is said now rather than later.
 pub async fn scan_now(context: Arc<Context>) -> Result<&'static str, ServiceError> {
     if let Some(problem) = scan_problem(&context).await? {
         return Err(ServiceError::need_key(problem));
     }
-    if is_running(&context).await? {
-        return Err(ServiceError::new(
-            ErrorKind::TooMany,
-            "A scan is running already. Its posts show up here as it finds them.",
-        ));
+    if let Some(running) = running_scan(&context).await? {
+        return Err(ServiceError::new(ErrorKind::TooMany, running_text(Some(&running))));
     }
     tokio::spawn(async move {
         match scan(context).await {
@@ -713,11 +1149,11 @@ mod tests {
             title: "PHP developer".to_string(),
             company: "Acme".to_string(),
         }];
-        let (system, user) = scan_prompt(&search(), &recent);
+        let (system, user) = scan_prompt(&search(), &["example.dk".to_string()], &recent);
         assert!(system.contains("At most 15 posts"), "{system}");
         assert_eq!(
             user,
-            "Looking for: PHP udvikler\nWhere: Odense\nRemote positions (from Denmark) fit too.\nSearch only these sites: jobnet.dk.\n\nFound already:\n- PHP developer Acme (https://jobnet.dk/1)"
+            "Looking for: PHP udvikler\nWhere: Odense\nRemote positions (from Denmark) fit too.\nSearch only these sites: example.dk.\n\nFound already:\n- PHP developer Acme (https://jobnet.dk/1)"
         );
         let anywhere = model::JobSearch {
             location: String::new(),
@@ -725,11 +1161,80 @@ mod tests {
             sites: Vec::new(),
             ..search()
         };
-        let (_, user) = scan_prompt(&anywhere, &[]);
+        let (_, user) = scan_prompt(&anywhere, &[], &[]);
         assert_eq!(
             user,
-            "Looking for: PHP udvikler\nWhere: anywhere in Denmark\n\nFound already:\n- (none yet)"
+            "Looking for: PHP udvikler\nWhere: anywhere in Denmark\nSkip jobnet.dk and jobindex.dk: they are searched separately.\n\nFound already:\n- (none yet)"
         );
+    }
+
+    #[test]
+    fn the_sites_the_app_reads_need_no_web_search() {
+        let mixed = model::JobSearch {
+            sites: vec!["jobnet.dk".to_string(), "thehub.io".to_string()],
+            ..search()
+        };
+        assert_eq!(
+            sources(&mixed, false),
+            Sources {
+                read: vec![JobSite::Jobnet],
+                web: None,
+                skipped: vec!["thehub.io".to_string()],
+            }
+        );
+        assert_eq!(sources(&mixed, true).web, Some(vec!["thehub.io".to_string()]));
+        assert_eq!(sources(&search(), true).web, None);
+        let anywhere = model::JobSearch {
+            sites: Vec::new(),
+            ..search()
+        };
+        assert_eq!(sources(&anywhere, false).read, JobSite::ALL.to_vec());
+        assert_eq!(sources(&anywhere, false).web, None);
+        assert_eq!(sources(&anywhere, true).web, Some(Vec::new()));
+        assert!(
+            skipped_sites_note(&mixed, false)
+                .unwrap()
+                .starts_with("The scan skips thehub.io:")
+        );
+        assert_eq!(skipped_sites_note(&mixed, true), None);
+        assert_eq!(skipped_sites_note(&anywhere, false), None);
+    }
+
+    #[test]
+    fn the_sites_lists_take_turns() {
+        let post = |url: &str| ListedPost {
+            url: url.to_string(),
+            ..ListedPost::default()
+        };
+        let urls: Vec<String> = taking_turns(vec![vec![post("a1"), post("a2"), post("a3")], vec![], vec![post("b1")]])
+            .into_iter()
+            .map(|post| post.url)
+            .collect();
+        assert_eq!(urls, vec!["a1", "b1", "a2", "a3"]);
+    }
+
+    #[test]
+    fn a_run_says_what_went_wrong_after_what_it_found() {
+        assert_eq!(run_error(&[], 3, 1), "");
+        let problems = ["Reading jobindex.dk failed: no.".to_string()];
+        assert_eq!(
+            run_error(&problems, 0, 0),
+            "The scan failed: Reading jobindex.dk failed: no."
+        );
+        assert_eq!(
+            run_error(&problems, 12, 3),
+            "Found 12, 3 new, but: Reading jobindex.dk failed: no."
+        );
+    }
+
+    #[test]
+    fn a_remote_only_search_reads_the_sites_anywhere() {
+        let remote = model::JobSearch {
+            location: " Remote ".to_string(),
+            ..search()
+        };
+        assert_eq!(search_place(&remote), "");
+        assert_eq!(search_place(&search()), "Odense");
     }
 
     #[test]

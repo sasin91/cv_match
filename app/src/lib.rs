@@ -13,6 +13,7 @@ pub mod extension;
 pub mod from_recruiter;
 pub mod instance;
 pub mod job_scan;
+pub mod job_sites;
 pub mod laya;
 pub mod llama;
 pub mod llm;

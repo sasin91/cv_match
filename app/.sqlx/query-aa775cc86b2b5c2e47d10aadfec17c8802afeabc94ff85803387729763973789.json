@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT asked, answered FROM job_search_run_steps WHERE id = ?1",
+  "describe": {
+    "columns": [
+      {
+        "name": "asked",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "job_search_run_steps",
+            "name": "asked"
+          }
+        }
+      },
+      {
+        "name": "answered",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "job_search_run_steps",
+            "name": "answered"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "aa775cc86b2b5c2e47d10aadfec17c8802afeabc94ff85803387729763973789"
+}

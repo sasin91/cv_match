@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO job_search_run_steps\n          (job_search_run_id, scanned_job_post_id, kind, text, failed, started_at_ms, took_ms, asked, answered)\n        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 9
+    },
+    "nullable": []
+  },
+  "hash": "289e2d0d3008dbeec7d293b96dc76876a6b80f3514aa3d5717d162abf3e40c97"
+}

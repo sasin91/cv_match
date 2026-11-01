@@ -16,6 +16,7 @@
 //! the visible text of <main>, <article> or <body>.
 
 use std::net::{IpAddr, Ipv4Addr, Ipv6Addr, SocketAddr, ToSocketAddrs};
+use std::path::Path;
 use std::sync::LazyLock;
 use std::time::Duration;
 
@@ -40,6 +41,9 @@ const CONNECT_SECONDS: u64 = 5;
 const MIN_DESCRIPTION: usize = 200;
 /// The shortest text a <main> or <article> has when it holds the post, in characters.
 const MIN_MAIN_TEXT: usize = 500;
+/// The least text a page read without its JavaScript has when it holds a job post, in
+/// characters; with less, it is read again in the browser.
+const MIN_PAGE_TEXT: usize = 300;
 /// How far into a page its <meta charset> is looked for, in bytes.
 const CHARSET_SCAN_BYTES: usize = 4000;
 /// How far into a body the HTML markers are looked for, in bytes, when the server didn't say
@@ -50,10 +54,11 @@ const USER_AGENT: &str = "Mozilla/5.0 (compatible; JobFinder desktop app)";
 const ACCEPT: &str = "text/html,application/xhtml+xml,text/plain;q=0.9";
 const ACCEPT_LANGUAGE: &str = "da,en;q=0.8";
 
-/// Elements whose content is never part of the post.
+/// Elements whose content is never part of the post. Not <form>: ASP.NET pages (Signatur's job
+/// portal, many employers' own) put the whole page in one, post and all.
 const DROP: [&str; 16] = [
     "script", "style", "noscript", "template", "svg", "iframe", "object", "embed", "canvas", "head", "nav", "footer",
-    "form", "button", "select", "dialog",
+    "textarea", "button", "select", "dialog",
 ];
 
 /// Elements that start a new line.
@@ -117,6 +122,8 @@ const BLOCKED_V6: [(Ipv6Addr, u8); 3] = [
 ];
 
 const NOT_PUBLIC: &str = "That address is not a public web page.";
+/// A page without text, which most likely shows its post with JavaScript.
+const NO_TEXT: &str = "The page has no text. It may need JavaScript to show the job post: copy the text from your browser and paste it instead.";
 
 static DOMAIN: LazyLock<Regex> = LazyLock::new(|| {
     Regex::new(r"^[a-z0-9_]([a-z0-9_-]*[a-z0-9_])?(\.[a-z0-9_]([a-z0-9_-]*[a-z0-9_])?)+$").expect("domain")
@@ -147,6 +154,21 @@ pub struct Page {
     pub url: String,
     pub title: String,
     pub text: String,
+    /// How it was read, for the job scan's timeline.
+    #[serde(skip)]
+    pub read_with: ReadWith,
+}
+
+/// How a job post was read.
+#[derive(Debug, Clone, Copy, Default, PartialEq)]
+pub enum ReadWith {
+    /// Its page, fetched as it is.
+    #[default]
+    Page,
+    /// Its site's own API (Jobnet).
+    SiteApi,
+    /// Its page in the computer's browser, after its JavaScript ran.
+    Browser,
 }
 
 /// A page's title and the text of its post.
@@ -168,22 +190,99 @@ pub struct Target {
     pub literal: bool,
 }
 
-/// The job post at url, or a message for the person who pasted it.
-pub async fn read(url: &str) -> Result<Page, String> {
+/// The job post at url, or a message for the person who pasted it. A Jobnet post is read from
+/// Jobnet's own API (its page needs JavaScript); a page that comes back with next to no text is
+/// read again in the computer's own browser (job_sites::browser), which runs its JavaScript,
+/// with the app's PDF reader (pdf_reader, None where there is none).
+pub async fn read(url: &str, pdf_reader: Option<&Path>) -> Result<Page, String> {
+    match crate::job_sites::read_post(url).await {
+        Some(Ok(page)) => return Ok(page),
+        Some(Err(why)) => crate::log_line!("page_reader: {url}: the site's own API failed, reading the page: {why}"),
+        None => {}
+    }
+    let fetched = get(url, &PAGE).await?;
+    let page = to_text(&fetched.body, &fetched.content_type, &fetched.url);
+    if needs_javascript(&page)
+        && let Some(pdf_reader) = pdf_reader
+        && let Some(rendered) = crate::job_sites::browser::render(&fetched.url, pdf_reader).await
+    {
+        let rendered = Ok(PageText {
+            title: page.as_ref().map(|page| page.title.clone()).unwrap_or_default(),
+            text: tidy(&rendered),
+        });
+        if !needs_javascript(&rendered) {
+            return rendered.map(|text| Page {
+                read_with: ReadWith::Browser,
+                ..Page::of(fetched.url, text)
+            });
+        }
+    }
+    page.map(|text| Page::of(fetched.url, text))
+}
+
+impl Page {
+    fn of(url: String, text: PageText) -> Self {
+        Page {
+            url,
+            title: text.title,
+            text: text.text,
+            read_with: ReadWith::Page,
+        }
+    }
+}
+
+/// Whether a page read without running its JavaScript has too little text to be its post.
+fn needs_javascript(page: &Result<PageText, String>) -> bool {
+    match page {
+        Ok(page) => page.text.chars().count() < MIN_PAGE_TEXT,
+        Err(why) => why == NO_TEXT,
+    }
+}
+
+/// What a fetch asks a server for, and takes from it.
+pub struct Wanted {
+    /// The Accept header.
+    pub accept: &'static str,
+    /// Whether a Content-Type is one to read.
+    pub takes: fn(&str) -> bool,
+    /// More headers to send, as (name, value).
+    pub headers: &'static [(&'static str, &'static str)],
+}
+
+/// A job post page: HTML or plain text.
+pub const PAGE: Wanted = Wanted {
+    accept: ACCEPT,
+    takes: is_page_type,
+    headers: &[],
+};
+
+fn is_page_type(content_type: &str) -> bool {
+    PAGE_TYPE.is_match(content_type)
+}
+
+/// A server's answer: where the last redirect landed, its body and its Content-Type.
+pub struct Fetched {
+    pub url: String,
+    pub body: Vec<u8>,
+    pub content_type: String,
+}
+
+/// Fetches url under the fetching rules (only public addresses, every redirect checked), taking
+/// only what wanted takes.
+pub async fn get(url: &str, wanted: &Wanted) -> Result<Fetched, String> {
     let mut url = url.trim().to_string();
     for _ in 0..=MAX_REDIRECTS {
         let checking = url.clone();
         let target = tokio::task::spawn_blocking(move || check_url(&checking, resolve))
             .await
             .map_err(|e| format!("Couldn't check the address: {e}"))??;
-        match fetch(&target).await? {
-            Fetched::Redirect(to) => url = to,
-            Fetched::Body { body, content_type } => {
-                let page = to_text(&body, &content_type, &target.url)?;
-                return Ok(Page {
+        match fetch(&target, wanted).await? {
+            Answer::Redirect(to) => url = to,
+            Answer::Body { body, content_type } => {
+                return Ok(Fetched {
                     url: target.url,
-                    title: page.title,
-                    text: page.text,
+                    body,
+                    content_type,
                 });
             }
         }
@@ -279,13 +378,13 @@ fn resolve(host: &str) -> Vec<IpAddr> {
 }
 
 /// A page's answer: the address it redirects to, or its body.
-enum Fetched {
+enum Answer {
     Redirect(String),
     Body { body: Vec<u8>, content_type: String },
 }
 
 /// Fetches a checked link from its checked address, without following redirects.
-async fn fetch(target: &Target) -> Result<Fetched, String> {
+async fn fetch(target: &Target, wanted: &Wanted) -> Result<Answer, String> {
     let mut builder = reqwest::Client::builder()
         .no_proxy()
         .redirect(reqwest::redirect::Policy::none())
@@ -297,13 +396,14 @@ async fn fetch(target: &Target) -> Result<Fetched, String> {
         builder = builder.resolve(&target.host, SocketAddr::new(target.ip, target.port));
     }
     let client = builder.build().map_err(|e| fetch_failed(&e))?;
-    let mut response = client
+    let mut request = client
         .get(&target.url)
-        .header(reqwest::header::ACCEPT, ACCEPT)
-        .header(reqwest::header::ACCEPT_LANGUAGE, ACCEPT_LANGUAGE)
-        .send()
-        .await
-        .map_err(|e| fetch_failed(&e))?;
+        .header(reqwest::header::ACCEPT, wanted.accept)
+        .header(reqwest::header::ACCEPT_LANGUAGE, ACCEPT_LANGUAGE);
+    for (name, value) in wanted.headers {
+        request = request.header(*name, *value);
+    }
+    let mut response = request.send().await.map_err(|e| fetch_failed(&e))?;
     // Belt and braces: never use an answer from an address that wasn't checked.
     if response.remote_addr().is_some_and(|peer| peer.ip() != target.ip) {
         return Err(NOT_PUBLIC.to_string());
@@ -316,7 +416,7 @@ async fn fetch(target: &Target) -> Result<Fetched, String> {
         let to = Url::parse(&target.url)
             .and_then(|base| base.join(&location))
             .map_err(|_| "The page redirects to an address that can't be read.".to_string())?;
-        return Ok(Fetched::Redirect(to.to_string()));
+        return Ok(Answer::Redirect(to.to_string()));
     }
     if status.as_u16() >= 400 {
         return Err(format!(
@@ -329,7 +429,7 @@ async fn fetch(target: &Target) -> Result<Fetched, String> {
         .get(reqwest::header::CONTENT_TYPE)
         .map(|value| String::from_utf8_lossy(value.as_bytes()).into_owned())
         .unwrap_or_default();
-    if !PAGE_TYPE.is_match(&content_type) {
+    if !(wanted.takes)(&content_type) {
         let shown = if content_type.is_empty() {
             String::new()
         } else {
@@ -352,7 +452,7 @@ async fn fetch(target: &Target) -> Result<Fetched, String> {
         }
         body.extend_from_slice(&chunk);
     }
-    Ok(Fetched::Body { body, content_type })
+    Ok(Answer::Body { body, content_type })
 }
 
 fn fetch_failed(error: &reqwest::Error) -> String {
@@ -382,7 +482,7 @@ pub fn to_text(body: &[u8], content_type: &str, url: &str) -> Result<PageText, S
     }
     let text = visible_text(&html);
     if text.text.is_empty() {
-        return Err("The page has no text. It may need JavaScript to show the job post: copy the text from your browser and paste it instead.".to_string());
+        return Err(NO_TEXT.to_string());
     }
     Ok(text)
 }
@@ -672,6 +772,21 @@ mod tests {
         assert_eq!(
             page.text,
             "Backend-udvikler\n\nVi søger en udvikler med erfaring i PHP.\n\n- Laravel\n- MariaDB"
+        );
+    }
+
+    #[test]
+    fn a_page_inside_one_form_keeps_its_post() {
+        let html = format!(
+            "<html><body><form id=\"aspnetForm\"><input type=\"hidden\" value=\"x\"><h1>Lagermedarbejder</h1><p>{}</p><button>Søg</button></form></body></html>",
+            "Vi søger en lagermedarbejder. ".repeat(10)
+        );
+        let page = text(&html);
+        assert!(page.text.starts_with("Lagermedarbejder\n\nVi søger"), "{}", page.text);
+        assert!(
+            !page.text.contains("Søg\n") && !page.text.ends_with("Søg"),
+            "{}",
+            page.text
         );
     }
 

@@ -2,6 +2,7 @@
 //! a search with the posts it found, and the form that makes or edits one, all through
 //! search_service and scan_service, the functions the web pages use.
 
+use std::collections::BTreeMap;
 use std::sync::Arc;
 use std::time::Duration;
 
@@ -18,7 +19,8 @@ use crate::job_scan::job_search_card::JobSearchCard;
 use crate::job_scan::job_search_rules::{MAX_FIELD, MAX_KEYWORDS, MAX_NAME};
 use crate::job_scan::job_search_summary::RunState;
 use crate::job_scan::scan_service;
-use crate::job_scan::search_service::{self, SaveError, SearchForm, SearchList, SearchPage};
+use crate::job_scan::scan_timeline::{ScanTimeline, TimelineStep};
+use crate::job_scan::search_service::{self, SaveError, SearchForm, SearchList, SearchPage, StepExchange};
 
 /// How often a search's page looks again while its scan runs or its posts are matched, so they
 /// show as found and matched.
@@ -32,6 +34,15 @@ const FIELD_WIDTH: f32 = 460.0;
 const SCORE_WIDTH: f32 = 100.0;
 /// The sites box's height.
 const SITES_HEIGHT: f32 = 76.0;
+/// Most characters of what the model was asked or answered shown in an opened step; the rest
+/// is cut, as a whole résumé would make the screen hard to read.
+const MAX_EXCHANGE_SHOWN: usize = 12_000;
+/// How far a post's steps are indented under it.
+const STEP_INDENT: f32 = 20.0;
+/// The width of a step's time and of how long it took.
+const STEP_TIME_WIDTH: f32 = 64.0;
+/// The width kept for a step's "Show the conversation", so every step's text lines up.
+const STEP_BUTTON_WIDTH: f32 = 170.0;
 /// A form's text, its "1" for a ticked box.
 const TICKED: &str = "1";
 
@@ -122,6 +133,9 @@ pub struct State {
     busy: bool,
     /// What the last click came to.
     said: Option<(Health, String)>,
+    /// The timeline's steps opened to show what the model was asked and answered: None while
+    /// it is read.
+    opened: BTreeMap<i64, Option<Result<Arc<StepExchange>, String>>>,
 }
 
 impl State {
@@ -193,6 +207,12 @@ pub enum Msg {
     },
     /// The next look at a running scan.
     Poll,
+    /// Opens or closes a timeline step's conversation with the model.
+    ToggleStep(i64),
+    StepLoaded {
+        step: i64,
+        exchange: Result<Arc<StepExchange>, String>,
+    },
 }
 
 pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
@@ -210,6 +230,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             state.page = page;
             state.confirm_delete = false;
             state.said = None;
+            state.opened.clear();
             if let Page::Search(_) = page {
                 state.dismissed = false;
             }
@@ -226,7 +247,12 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                     state.posts.extend(page.posts.iter().cloned());
                     state.batches += 1;
                 } else {
-                    state.quiet_polls = if state.posts == page.posts {
+                    let same_timeline = state
+                        .search
+                        .as_ref()
+                        .and_then(|old| old.as_ref().ok())
+                        .is_some_and(|old| old.timeline == page.timeline);
+                    state.quiet_polls = if state.posts == page.posts && same_timeline {
                         state.quiet_polls + 1
                     } else {
                         0
@@ -334,9 +360,25 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
         Msg::ScanNow => {
             state.busy = true;
             let page = state.page;
+            // A scan running already is shown: its search's screen has its steps.
             return runner.run(
-                |context| async move { scan_service::scan_now(context).await.map(str::to_string) },
-                said(page),
+                |context| async move {
+                    let running = scan_service::running_scan(&context).await.ok().flatten();
+                    (scan_service::scan_now(context).await.map(str::to_string), running)
+                },
+                move |answer| match answer {
+                    Ok((said, running)) => Msg::Said {
+                        then: match (&said, running) {
+                            (Err(_), Some(running)) => Page::Search(running.search_id),
+                            _ => page,
+                        },
+                        said: said.map_err(|e| e.message),
+                    },
+                    Err(why) => Msg::Said {
+                        said: Err(why),
+                        then: page,
+                    },
+                },
             );
         }
         Msg::AddUrl(url) => state.add_url = url,
@@ -385,6 +427,24 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
         }
         // The shell opens it.
         Msg::OpenPage(_) => {}
+        Msg::ToggleStep(step) => {
+            if state.opened.remove(&step).is_none() {
+                state.opened.insert(step, None);
+                return runner.run(
+                    move |context| async move { search_service::step_exchange(&context, step).await.map(Arc::new) },
+                    move |read| Msg::StepLoaded {
+                        step,
+                        exchange: read.and_then(|exchange| exchange.map_err(|e| e.message)),
+                    },
+                );
+            }
+        }
+        Msg::StepLoaded { step, exchange } => {
+            // Closed again before it was read: it stays closed.
+            if let Some(opened) = state.opened.get_mut(&step) {
+                *opened = Some(exchange);
+            }
+        }
         Msg::Said { said, then } => {
             if said.is_ok() {
                 state.add_url.clear();
@@ -543,7 +603,7 @@ fn list_view(state: &State) -> Element<'_, Msg> {
     let title = widgets::page_title(
         "Job searches",
         widgets::note(
-            "Save what you're looking for, and the job scan looks for new job posts for you. Every post it finds is matched with your profile and saved with your matches, and a good match gets a tailored résumé and application right away. It searches on your own OpenAI key.",
+            "Save what you're looking for, and the job scan looks for new job posts for you. Every post it finds is matched with your profile and saved with your matches, and a good match gets a tailored résumé and application right away. It reads Jobnet and Jobindex itself and matches on the model you picked for evaluating job posts, which can be the one on this computer; other sites are searched with OpenAI's web search when your OpenAI key is picked.",
         ),
     );
     let mut screen = Column::new().spacing(GAP * 1.5).push(title);
@@ -686,6 +746,12 @@ fn search_view(state: &State) -> Element<'_, Msg> {
             .on_toggle(Msg::ShowDismissed),
     );
     screen = screen.push(actions);
+    if !page.timeline.is_empty() {
+        screen = screen.push(widgets::section(
+            "The last scan, step by step",
+            timeline_card(state, &page.timeline),
+        ));
+    }
     screen = screen.push(widgets::section("Add a job post", add_post_card(state, search.id)));
 
     let posts: Element<'_, Msg> = if state.posts.is_empty() {
@@ -705,6 +771,105 @@ fn search_view(state: &State) -> Element<'_, Msg> {
         );
     }
     screen.into()
+}
+
+/// The last scan's steps, each post's under it; a step the model took part in opens to show
+/// what it was asked and answered.
+fn timeline_card<'a>(state: &'a State, timeline: &'a ScanTimeline) -> Element<'a, Msg> {
+    let mut steps = Column::new().spacing(6);
+    for step in &timeline.steps {
+        steps = steps.push(step_row(state, step));
+    }
+    for post in &timeline.posts {
+        let mut under = Column::new().spacing(6);
+        for step in &post.steps {
+            under = under.push(step_row(state, step));
+        }
+        steps = steps.push(
+            column![
+                text(post.heading.as_str())
+                    .font(style::semibold())
+                    .size(style::BODY_SIZE),
+                container(under).padding(iced::Padding::default().left(STEP_INDENT)),
+            ]
+            .spacing(6),
+        );
+    }
+    container(steps).padding(CARD_PADDING).width(Fill).into()
+}
+
+/// A step: when, what, how long, and its conversation with the model when opened.
+fn step_row<'a>(state: &'a State, step: &'a TimelineStep) -> Element<'a, Msg> {
+    let health = if step.failed { Health::Attention } else { Health::Ready };
+    let mut said = text(step.text.as_str()).size(style::BODY_SIZE).width(Fill);
+    if step.failed {
+        said = said.style(style::health_text(Health::Attention));
+    }
+    let mut line = row![
+        container(widgets::caption(step.at.as_str())).width(STEP_TIME_WIDTH),
+        style::dot(health),
+        said,
+        container(widgets::caption(step.took.as_str())).width(STEP_TIME_WIDTH),
+    ]
+    .spacing(8)
+    .align_y(Center);
+    let opened = state.opened.get(&step.id);
+    let toggle: Element<'a, Msg> = if step.asked_model {
+        let label = if opened.is_some() {
+            "Hide the conversation"
+        } else {
+            "Show the conversation"
+        };
+        button(text(label).size(style::CAPTION_SIZE))
+            .padding([4.0, 10.0])
+            .style(style::standard_button)
+            .on_press(Msg::ToggleStep(step.id))
+            .into()
+    } else {
+        text("").into()
+    };
+    line = line.push(container(toggle).width(STEP_BUTTON_WIDTH).align_x(iced::Right));
+    let Some(opened) = opened else {
+        return line.into();
+    };
+    let conversation: Element<'a, Msg> = match opened {
+        None => widgets::caption("Reading the conversation…"),
+        Some(Err(why)) => widgets::message_bar(Health::Attention, why.as_str()),
+        Some(Ok(exchange)) => column![
+            widgets::caption("Asked"),
+            exchange_text(&exchange.asked),
+            widgets::caption("Answered"),
+            exchange_text(&exchange.answered),
+        ]
+        .spacing(4)
+        .into(),
+    };
+    column![
+        line,
+        container(conversation).padding(iced::Padding::default().left(STEP_TIME_WIDTH + 16.0))
+    ]
+    .spacing(6)
+    .into()
+}
+
+/// What the model was asked or answered, in a fixed-width font, cut at MAX_EXCHANGE_SHOWN.
+fn exchange_text(said: &str) -> Element<'_, Msg> {
+    let shown = cut_for_screen(said);
+    container(text(shown).font(iced::Font::MONOSPACE).size(style::CAPTION_SIZE))
+        .padding(10)
+        .width(Fill)
+        .style(style::card)
+        .into()
+}
+
+/// said, or its first MAX_EXCHANGE_SHOWN characters and how much more there is.
+fn cut_for_screen(said: &str) -> String {
+    let length = said.chars().count();
+    if length <= MAX_EXCHANGE_SHOWN {
+        return said.to_string();
+    }
+    let shown: String = said.chars().take(MAX_EXCHANGE_SHOWN).collect();
+    format!("{shown}\n… and {} characters more.", length - MAX_EXCHANGE_SHOWN)
 }
 
 /// Add a job post by its link, and match it.
@@ -1007,6 +1172,13 @@ mod tests {
         assert!(is_stale(3, &posts(2)));
         assert!(is_stale(3, &list(2)));
         assert!(!is_stale(3, &Msg::Load));
+    }
+
+    #[test]
+    fn a_long_answer_is_cut_for_the_screen() {
+        assert_eq!(cut_for_screen("short"), "short");
+        let long = "x".repeat(MAX_EXCHANGE_SHOWN + 5);
+        assert!(cut_for_screen(&long).ends_with("\n… and 5 characters more."));
     }
 
     #[test]

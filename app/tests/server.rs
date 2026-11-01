@@ -1077,7 +1077,7 @@ async fn followed_to(app: &axum::Router, request: Request<Body>) -> String {
 }
 
 #[tokio::test]
-async fn a_job_search_is_made_listed_and_scanned_only_on_an_openai_key() {
+async fn a_job_search_is_made_listed_and_scanned_on_any_model_with_a_profile() {
     let (app, db) = new_app(KeyVault::in_memory()).await;
     // Nothing to scan yet: the dashboard says so and offers no Scan now.
     let (_, page) = send_to(&app, get("/match")).await;
@@ -1107,19 +1107,24 @@ async fn a_job_search_is_made_listed_and_scanned_only_on_an_openai_key() {
     assert!(list.contains("Backend"), "{list}");
     assert!(list.contains("0 found, 0 matched · not scanned yet"), "{list}");
 
-    // A local model can't search the web: Scan now says so, and nothing is scanned.
+    // Without a model picked for evaluating job posts, nothing is scanned.
+    let back = followed_to(&app, post_form("/job_scan/submit_scan", "back=job_scan")).await;
+    assert!(back.contains("Pick one on the API key page."), "{back}");
+
+    // A local model scans too (the app reads Jobnet and Jobindex itself), once there is a
+    // profile to match with: Scan now says so, and nothing is scanned.
     let (base_url, _) = stand_in_model().await;
     let key = format!("provider=local&model=stand-in&api_key=&base_url={base_url}");
     send_to(&app, post_form("/account/submit_key", &key)).await;
     let back = followed_to(&app, post_form("/job_scan/submit_scan", "back=job_scan")).await;
-    assert!(back.contains("which only OpenAI"), "{back}");
+    assert!(back.contains("Read your CV in setup first."), "{back}");
     let runs: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM job_search_runs")
         .fetch_one(&db)
         .await
         .unwrap();
     assert_eq!(runs, 0);
     let (_, page) = send_to(&app, get("/match")).await;
-    assert!(page.contains("only OpenAI"), "{page}");
+    assert!(page.contains("Read your CV in setup first."), "{page}");
     assert!(!page.contains("job_scan/submit_scan"), "{page}");
 
     // Unknown searches are the not-found page; Scan now never goes back off the app.

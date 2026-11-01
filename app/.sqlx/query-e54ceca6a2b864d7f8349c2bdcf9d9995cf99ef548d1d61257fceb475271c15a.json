@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        DELETE FROM job_search_run_steps\n        WHERE job_search_run_id IN (\n          SELECT id FROM job_search_runs\n          WHERE job_search_id = ?1\n          ORDER BY started_at DESC, id DESC\n          LIMIT -1 OFFSET ?2\n        )\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "e54ceca6a2b864d7f8349c2bdcf9d9995cf99ef548d1d61257fceb475271c15a"
+}

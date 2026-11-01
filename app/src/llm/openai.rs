@@ -175,11 +175,11 @@ impl Openai {
     fn not_answered(&self, error: &reqwest::Error) -> LlmException {
         if self.name == LOCAL_NAME && !error.is_timeout() {
             let name = format!("{LOCAL_NAME} at {}", self.base_url);
-            let mut exception = super::not_answered(&name, error);
+            let mut exception = super::not_answered(&name, &self.base_url, error);
             exception.message.push_str(". Is it running?");
             return exception;
         }
-        super::not_answered(self.name, error)
+        super::not_answered(self.name, &self.base_url, error)
     }
 
     /// A 429 in the provider's own words: a used-up quota (billing) can't be waited out; a rate

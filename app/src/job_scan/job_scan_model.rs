@@ -660,19 +660,18 @@ pub async fn last_run(db: &SqlitePool, search_id: Option<i64>) -> sqlx::Result<O
     }))
 }
 
-/// Whether a scan started since started_after hasn't finished: one is running.
-pub async fn is_running(db: &SqlitePool, started_after: i64) -> sqlx::Result<bool> {
-    let running = sqlx::query_scalar!(
-        r#"
-        SELECT EXISTS (
-          SELECT 1 FROM job_search_runs WHERE finished_at IS NULL AND started_at > ?1
-        ) AS "running!: bool"
-        "#,
-        started_after
+/// Ends the scans that never finished, with error, at now: a scan cut off while it listed its
+/// posts (the program was closed). Only the scan holding scan_lock calls it, so none of them
+/// still runs.
+pub async fn stop_unfinished_runs(db: &SqlitePool, error: &str, now: i64) -> sqlx::Result<u64> {
+    let stopped = sqlx::query!(
+        r#"UPDATE job_search_runs SET finished_at = ?2, error = ?1 WHERE finished_at IS NULL"#,
+        error,
+        now
     )
-    .fetch_one(db)
+    .execute(db)
     .await?;
-    Ok(running)
+    Ok(stopped.rows_affected())
 }
 
 /// New posts the scans found since since, of every search.
@@ -853,16 +852,19 @@ mod tests {
         let run = start_run(&db, id, 1000 - 3600, 1000).await.unwrap();
         assert!(run.is_some());
         assert_eq!(start_run(&db, id, 1001 - 3600, 1001).await.unwrap(), None);
-        assert!(is_running(&db, 0).await.unwrap());
         let end = RunEnd {
             posts_found: 3,
             posts_new: 2,
             ..RunEnd::default()
         };
         finish_run(&db, run.unwrap(), &end, 1100).await.unwrap();
-        assert!(!is_running(&db, 0).await.unwrap());
         let last = last_run(&db, None).await.unwrap().unwrap();
         assert_eq!((last.posts_found, last.posts_new), (3, 2));
-        assert!(start_run(&db, id, 4600 - 3600, 4600).await.unwrap().is_some());
+        let cut_off = start_run(&db, id, 4600 - 3600, 4600).await.unwrap();
+        assert!(cut_off.is_some());
+        assert_eq!(stop_unfinished_runs(&db, "Stopped.", 4700).await.unwrap(), 1);
+        let last = last_run(&db, None).await.unwrap().unwrap();
+        assert_eq!((last.finished_at, last.error.as_str()), (Some(4700), "Stopped."));
+        assert_eq!(stop_unfinished_runs(&db, "Stopped.", 4800).await.unwrap(), 0);
     }
 }

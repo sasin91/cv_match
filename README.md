@@ -57,7 +57,8 @@ The links go to the setup (http://127.0.0.1:8765/setup), whose steps are:
 3. your CV, read by that model into your profile, which the match page matches with;
 4. how often the job scan runs by itself: a Task Scheduler task, `JobFinder\Job scan`, running
    `jobfinder.exe scan`, which scans every active job search (Job scan in the menu) for new
-   posts and matches them with your profile. The dashboard's Scan now runs the same scan.
+   posts and matches them with your profile. It reads Jobnet and Jobindex itself, so it runs on
+   any model, the app's own too; with an OpenAI key it also searches the web for other sites. The dashboard's Scan now runs the same scan.
 
 Close its window to stop it. `jobfinder.exe --help` lists the options.
 
@@ -219,6 +220,13 @@ With a real key saved on the API key page, check these by hand after a change:
       for new jobs, and `JobFinder\Job scan` shows in Task Scheduler (run it once: no console
       window opens). Go to the dashboard: the alert is gone, the rows say which model and whose profile, and
       the match form has the CV filled in.
+- [ ] **The job scan on the local model:** with the app's own model (or any key but OpenAI's)
+      picked for evaluating job posts, make a job search without sites under Job scan, and press
+      Scan now. The search's page lists posts from jobnet.dk and jobindex.dk, matched. Add
+      thehub.io to its sites: the page says the scan skips it.
+- [ ] **A page that needs JavaScript:** paste a link to a post whose page shows nothing without
+      JavaScript. Edge (or Chrome) reads it headless in the background, and the post is matched;
+      `jobfinder.log` says so if no browser was found.
 - [ ] **The job scan:** with your OpenAI key picked for evaluating job posts, make a job search
       under Job scan, then press Scan now on the dashboard. The Job scan row says "Scanning now",
       and after a few minutes (reload) the last scan's result; the search's page lists the posts it
