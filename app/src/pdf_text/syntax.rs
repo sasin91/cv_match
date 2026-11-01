@@ -99,14 +99,31 @@ fn hex(b: u8) -> Option<u8> {
     }
 }
 
+/// How deep arrays and dictionaries may nest in one object. Real PDFs nest a few levels; a
+/// file nesting thousands would overflow the stack, so it reads as broken instead.
+const MAX_NESTING: usize = 64;
+
 pub struct Lexer<'a> {
     pub data: &'a [u8],
     pub pos: usize,
+    /// The arrays and dictionaries the object being read is inside.
+    depth: usize,
 }
 
 impl<'a> Lexer<'a> {
     pub fn new(data: &'a [u8], pos: usize) -> Self {
-        Self { data, pos }
+        Self { data, pos, depth: 0 }
+    }
+
+    /// An array's or dictionary's items, read one level deeper; None past MAX_NESTING.
+    fn nested<T>(&mut self, read: impl FnOnce(&mut Self) -> Option<T>) -> Option<T> {
+        if self.depth >= MAX_NESTING {
+            return None;
+        }
+        self.depth += 1;
+        let read = read(self);
+        self.depth -= 1;
+        read
     }
 
     pub(crate) fn peek(&self) -> Option<u8> {
@@ -198,26 +215,28 @@ impl<'a> Lexer<'a> {
             b'(' => Some(Object::String(self.literal())),
             b'<' if self.data.get(self.pos + 1) == Some(&b'<') => {
                 self.pos += 2;
-                let mut dict = Dict::new();
-                loop {
-                    self.skip_white();
-                    if self.data[self.pos..].starts_with(b">>") {
-                        self.pos += 2;
-                        break;
-                    }
-                    match self.object(refs)? {
-                        Object::Name(key) => {
-                            let value = self.object(refs)?;
-                            if value.is_keyword(">>") {
-                                break;
-                            }
-                            dict.insert(key, value);
+                self.nested(|lex| {
+                    let mut dict = Dict::new();
+                    loop {
+                        lex.skip_white();
+                        if lex.data[lex.pos..].starts_with(b">>") {
+                            lex.pos += 2;
+                            break;
                         }
-                        // Garbage between entries: skip it.
-                        _ => continue,
+                        match lex.object(refs)? {
+                            Object::Name(key) => {
+                                let value = lex.object(refs)?;
+                                if value.is_keyword(">>") {
+                                    break;
+                                }
+                                dict.insert(key, value);
+                            }
+                            // Garbage between entries: skip it.
+                            _ => continue,
+                        }
                     }
-                }
-                Some(Object::Dict(dict))
+                    Some(Object::Dict(dict))
+                })
             }
             b'<' => {
                 self.pos += 1;
@@ -243,19 +262,21 @@ impl<'a> Lexer<'a> {
             }
             b'[' => {
                 self.pos += 1;
-                let mut items = Vec::new();
-                loop {
-                    self.skip_white();
-                    match self.peek() {
-                        None => break,
-                        Some(b']') => {
-                            self.pos += 1;
-                            break;
+                self.nested(|lex| {
+                    let mut items = Vec::new();
+                    loop {
+                        lex.skip_white();
+                        match lex.peek() {
+                            None => break,
+                            Some(b']') => {
+                                lex.pos += 1;
+                                break;
+                            }
+                            _ => items.push(lex.object(refs)?),
                         }
-                        _ => items.push(self.object(refs)?),
                     }
-                }
-                Some(Object::Array(items))
+                    Some(Object::Array(items))
+                })
             }
             b'>' if self.data.get(self.pos + 1) == Some(&b'>') => {
                 self.pos += 2;

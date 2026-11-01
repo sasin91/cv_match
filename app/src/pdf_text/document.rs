@@ -1,7 +1,7 @@
 //! A PDF file: its cross reference, objects, stream filters and pages.
 
 use std::cell::RefCell;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
 use super::syntax::{Dict, Lexer, Object, Stream};
@@ -20,6 +20,9 @@ pub struct Document {
     xref: HashMap<u32, Entry>,
     trailer: Dict,
     objects: RefCell<HashMap<u32, Object>>,
+    /// The objects being read now: one met again while it is read (a stream whose /Length is
+    /// itself, an object stream inside itself) reads as null instead of recursing forever.
+    loading: RefCell<HashSet<u32>>,
     pub pages: Vec<PageRef>,
 }
 
@@ -51,6 +54,7 @@ impl Document {
             xref: HashMap::new(),
             trailer: Dict::new(),
             objects: RefCell::new(HashMap::new()),
+            loading: RefCell::new(HashSet::new()),
             pages: vec![],
         };
         if doc.read_xref().is_err() || !doc.trailer.contains_key("Root") {
@@ -281,12 +285,16 @@ impl Document {
         if let Some(o) = self.objects.borrow().get(&id) {
             return o.clone();
         }
+        if !self.loading.borrow_mut().insert(id) {
+            return Object::Null;
+        }
         let object = match self.xref.get(&id) {
             Some(Entry::At(at)) => self.parse_at(*at).filter(|(n, _)| *n == id).map(|(_, o)| o),
             Some(&Entry::InStream(stream, index)) => self.in_object_stream(stream, index),
             None => None,
         }
         .unwrap_or(Object::Null);
+        self.loading.borrow_mut().remove(&id);
         self.objects.borrow_mut().insert(id, object.clone());
         object
     }

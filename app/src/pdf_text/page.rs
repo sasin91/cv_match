@@ -154,7 +154,6 @@ struct State {
     h_scale: f64,
     leading: f64,
     rise: f64,
-    render_mode: i64,
 }
 
 impl Default for State {
@@ -168,7 +167,6 @@ impl Default for State {
             h_scale: 1.0,
             leading: 0.0,
             rise: 0.0,
-            render_mode: 0,
         }
     }
 }
@@ -308,7 +306,6 @@ impl Interpreter<'_> {
                 "Tz" => self.state.h_scale = n(0) / 100.0,
                 "TL" => self.state.leading = n(0),
                 "Ts" => self.state.rise = n(0),
-                "Tr" => self.state.render_mode = n(0) as i64,
                 "Td" => self.next_line(n(0), n(1)),
                 "TD" => {
                     self.state.leading = -n(1);
@@ -381,9 +378,6 @@ impl Interpreter<'_> {
         };
         let s = self.state.clone();
         let size = s.font_size;
-        // Invisible text, as OCR layers over scans use, and clipping only
-        // modes draw nothing.
-        let visible = !matches!(s.render_mode, 3 | 7);
         for code in font.codes(bytes) {
             let advance =
                 (font.advance(code) * size + s.char_spacing + if font.is_space(code) { s.word_spacing } else { 0.0 })
@@ -395,13 +389,13 @@ impl Interpreter<'_> {
             let upright = m[1].abs() < 1e-3 * m[0].abs().max(1e-9) && m[0] > 0.0 && m[3] < 0.0;
             let Some(text) = font.text(code) else {
                 // Text the PDF does not give is left out, not guessed.
-                if visible {
-                    self.end_run();
-                }
+                self.end_run();
                 self.shift(advance);
                 continue;
             };
-            if visible && upright && device_size > 0.5 {
+            // Text is read whether it is painted or not (any render mode): a scan's OCR
+            // layer is invisible text, and it is the scan's only text.
+            if upright && device_size > 0.5 {
                 let end = apply(&mul(&[1.0, 0.0, 0.0, 1.0, advance, 0.0], &m), 0.0, 0.0).0 as f32;
                 let (x, y) = (x as f32, y as f32);
                 match combining(&text) {
