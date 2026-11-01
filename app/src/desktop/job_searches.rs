@@ -199,6 +199,11 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
     if is_stale(state.request, &msg) {
         return Task::none();
     }
+    // A visit or a click can start new work (a scan, a match), so the page may look again for
+    // it however long the last wait was.
+    if restarts_looking(&msg) {
+        state.quiet_polls = 0;
+    }
     match msg {
         Msg::Load => return load(state, runner),
         Msg::Go(page) => {
@@ -484,6 +489,15 @@ fn still_working(page: &SearchPage) -> bool {
             .posts
             .iter()
             .any(|post| [NEW, MATCHING].contains(&post.status.as_str()))
+}
+
+/// A visit or a click whose answer reloads the page: Go, the dismissed filter, Dismiss, and
+/// Said (Scan now, Add, Try again, a save).
+fn restarts_looking(msg: &Msg) -> bool {
+    matches!(
+        msg,
+        Msg::Go(_) | Msg::ShowDismissed(_) | Msg::Dismiss { .. } | Msg::Said { .. }
+    )
 }
 
 /// A Poll after SCAN_POLL_EVERY.
@@ -993,5 +1007,16 @@ mod tests {
         assert!(is_stale(3, &posts(2)));
         assert!(is_stale(3, &list(2)));
         assert!(!is_stale(3, &Msg::Load));
+    }
+
+    #[test]
+    fn a_visit_or_a_click_looks_again_after_a_long_wait() {
+        assert!(restarts_looking(&Msg::Go(Page::Search(1))));
+        assert!(restarts_looking(&Msg::Said {
+            said: Ok(String::new()),
+            then: Page::Search(1),
+        }));
+        assert!(!restarts_looking(&Msg::Poll));
+        assert!(!restarts_looking(&Msg::Load));
     }
 }
