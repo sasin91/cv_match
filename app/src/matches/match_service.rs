@@ -28,6 +28,7 @@ use crate::laya::laya_client;
 use crate::pdf_text::child;
 use crate::profile;
 use crate::service_error::{ErrorKind, ServiceError};
+use crate::task_manager::running_work::{self, Stopped, WorkKind};
 
 /// Longest CV or job post the free match reads, and longest text made into a PDF, in characters.
 pub const MAX_TEXT: usize = 40_000;
@@ -686,6 +687,26 @@ pub async fn match_job(context: &Context, ask: MatchAsk<'_>, say: Say<'_>) -> Re
     })
 }
 
+/// What the task manager calls a document being written for saved: "The application for
+/// Backend developer, Acme".
+fn writing_label(kind: &str, saved: &SavedMatch) -> String {
+    let document = if kind == RESUME {
+        "The tailored résumé"
+    } else {
+        "The application"
+    };
+    let job = [saved.job_title.trim(), saved.company.trim()]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(", ");
+    if job.is_empty() {
+        format!("{document} for match {}", saved.id)
+    } else {
+        format!("{document} for {job}")
+    }
+}
+
 /// Writes kind (document_box::APPLICATION or RESUME) for a saved match from its CV and post, with
 /// the candidate's notes, keeps it as the match's newest version, and answers its box. The
 /// writing runs as its own task, so it finishes and is saved even when the one who asked stops
@@ -702,19 +723,27 @@ pub async fn write(
     let task_context = context.clone();
     let task_found = found.clone();
     let recording = crate::llm::transcript::is_recording();
-    let writing = tokio::spawn(crate::llm::transcript::carried(recording, async move {
-        let db = task_context.db();
-        let now = chrono::Utc::now().timestamp();
-        if kind == RESUME {
-            document_writer::tailor_resume(db, &task_found, &keyed, &notes, now)
-                .await
-                .map(|tailored| (tailored.keywords, tailored.left_out))
-        } else {
-            document_writer::write_application(db, &task_found, &keyed, &notes, now)
-                .await
-                .map(|_| (Vec::new(), Vec::new()))
-        }
-    }));
+    let listed = running_work::carried(async move {
+        let list = Arc::clone(&task_context.running);
+        let what = writing_label(kind, &task_found);
+        let writing = async {
+            let db = task_context.db();
+            let now = chrono::Utc::now().timestamp();
+            if kind == RESUME {
+                document_writer::tailor_resume(db, &task_found, &keyed, &notes, now)
+                    .await
+                    .map(|tailored| (tailored.keywords, tailored.left_out))
+            } else {
+                document_writer::write_application(db, &task_found, &keyed, &notes, now)
+                    .await
+                    .map(|_| (Vec::new(), Vec::new()))
+            }
+        };
+        list.run(WorkKind::Writing, what, writing)
+            .await
+            .unwrap_or_else(|Stopped| Err(WriteError::Empty(Stopped::SAID)))
+    });
+    let writing = tokio::spawn(crate::llm::transcript::carried(recording, listed));
     let work = if kind == RESUME {
         "match/tailor_resume"
     } else {

@@ -225,13 +225,14 @@ fn own_origins(port: u16, tailscale_name: Option<&str>) -> Vec<String> {
 }
 
 /// Lets a request through only when it is for this server and, unless it is a GET, from its own
-/// page.
+/// page. What it runs is in the task manager's list (its model calls, say).
 async fn only_this_page(State(state): State<Arc<AppState>>, request: Request, next: Next) -> Response {
     let tailscale_name = state.tailscale_name.as_deref();
     if let Err(why) = allowed(request.method(), request.headers(), state.port, tailscale_name) {
         return (StatusCode::FORBIDDEN, why).into_response();
     }
-    next.run(request).await
+    let running = Arc::clone(&state.context.running);
+    running.within(next.run(request)).await
 }
 
 fn allowed(method: &Method, headers: &HeaderMap, port: u16, tailscale_name: Option<&str>) -> Result<(), &'static str> {

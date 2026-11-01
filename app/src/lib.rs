@@ -27,5 +27,6 @@ pub mod scan_schedule;
 pub mod server;
 pub mod service_error;
 pub mod setup;
+pub mod task_manager;
 pub mod taxonomy;
 pub mod user_busy;

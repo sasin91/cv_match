@@ -16,6 +16,7 @@ use std::time::{Duration, Instant};
 
 use super::browser;
 use super::cdp::{self, DevTools};
+use crate::task_manager::running_work::{self, Stopped, WorkKind};
 
 /// The folder under the data folder that holds the browser's profile and the paused sites.
 pub const FOLDER: &str = "signed-in-browser";
@@ -147,9 +148,12 @@ impl SignedInBrowser {
             let pause = Duration::from_secs(PAUSE_BETWEEN_PAGES);
             tokio::time::sleep(pause.saturating_sub(at.elapsed())).await;
         }
-        let seen = tokio::time::timeout(Duration::from_secs(PAGE_SECONDS), self.look(url, &judge)).await;
+        let looking = tokio::time::timeout(Duration::from_secs(PAGE_SECONDS), self.look(url, &judge));
+        let seen = running_work::part(WorkKind::Browser, format!("Signed in, reading {url}"), looking).await;
         *last_page = Some(Instant::now());
-        let seen = seen.map_err(|_| format!("JobFinder's browser took more than {PAGE_SECONDS} seconds on {url}."))?;
+        let seen = seen
+            .map_err(|Stopped| Stopped::SAID.to_string())?
+            .map_err(|_| format!("JobFinder's browser took more than {PAGE_SECONDS} seconds on {url}."))?;
         match seen? {
             Seen::Shown(read) => Ok(read),
             Seen::NotYet => Err(format!(
@@ -183,6 +187,7 @@ impl SignedInBrowser {
         let mut child = command
             .spawn()
             .map_err(|e| format!("{} didn't start: {e}", program.display()))?;
+        running_work::set_process(child.id());
         let looked = match devtools_address(&port_file).await {
             Some(address) => look_at(&address, url, judge).await,
             None => Err(format!(
