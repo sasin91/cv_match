@@ -324,9 +324,35 @@ pub struct ToUnicode {
     pub map: HashMap<u32, String>,
 }
 
+/// The most text a ToUnicode map may hold, in bytes. A font's map is a few KB; a range mapping
+/// 65,536 codes each to a long string could otherwise take gigabytes.
+const MAX_TO_UNICODE_BYTES: usize = 16 * 1024 * 1024;
+
+/// A code to text map that stops taking more past MAX_TO_UNICODE_BYTES.
+#[derive(Default)]
+struct Budgeted {
+    map: HashMap<u32, String>,
+    bytes: usize,
+}
+
+impl Budgeted {
+    /// Whether text `bytes` long would no longer fit.
+    fn is_full(&self, bytes: usize) -> bool {
+        self.bytes + bytes > MAX_TO_UNICODE_BYTES
+    }
+
+    fn insert(&mut self, code: u32, text: String) {
+        if self.is_full(text.len()) {
+            return;
+        }
+        self.bytes += text.len();
+        self.map.insert(code, text);
+    }
+}
+
 impl ToUnicode {
     pub fn parse(data: &[u8]) -> ToUnicode {
-        let mut map = HashMap::new();
+        let mut map = Budgeted::default();
         let mut lex = Lexer::new(data, 0);
         let mut stack: Vec<Object> = Vec::new();
         let code = |o: &Object| o.as_bytes().map(|b| b.iter().fold(0u32, |n, &x| n << 8 | x as u32));
@@ -355,6 +381,9 @@ impl ToUnicode {
                                     .map(|p| u16::from_be_bytes([p[0], *p.get(1).unwrap_or(&0)]))
                                     .collect();
                                 for (i, c) in (lo..=hi).enumerate() {
+                                    if map.is_full(dst.len()) {
+                                        break;
+                                    }
                                     // The last unit counts up.
                                     let mut units = base.clone();
                                     if let Some(last) = units.last_mut() {
@@ -380,7 +409,7 @@ impl ToUnicode {
                 other => stack.push(other),
             }
         }
-        ToUnicode { map }
+        ToUnicode { map: map.map }
     }
 }
 

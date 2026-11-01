@@ -137,4 +137,30 @@ mod tests {
         let bytes = pdf_with_resources(content, &content.len().to_string(), HELVETICA, "3 0 R", "", resources);
         assert_eq!(text_of(bytes).unwrap(), "Software engineer");
     }
+
+    #[test]
+    fn text_a_trillion_points_out_is_read_without_trying_every_point() {
+        let runs: String = (0..8)
+            .map(|i| {
+                format!(
+                    "1 0 0 1 {} {} Tm (Run{i}) Tj ",
+                    if i == 7 { 1e12 } else { 72.0 + 40.0 * i as f64 },
+                    700 - 20 * i
+                )
+            })
+            .collect();
+        let content = format!("BT /F1 12 Tf {runs}ET");
+        let text = text_of(pdf(&content, &content.len().to_string(), "")).unwrap();
+        assert!(text.contains("Run0"), "{text}");
+    }
+
+    #[test]
+    fn a_to_unicode_range_to_long_text_stops_at_the_budget() {
+        let long = "0041".repeat(32_768);
+        let to_unicode = format!("begincmap 1 beginbfrange <0000> <FFFF> <{long}> endbfrange endcmap");
+        let map = super::encoding::ToUnicode::parse(to_unicode.as_bytes());
+        let bytes: usize = map.map.values().map(String::len).sum();
+        assert!(bytes <= 16 * 1024 * 1024, "{bytes}");
+        assert!(!map.map.is_empty());
+    }
 }

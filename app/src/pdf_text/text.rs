@@ -12,6 +12,10 @@ use super::page::{Page, TextRun};
 const SAME_LINE: f32 = 0.45;
 /// A gap wider than this share of the size reads as a space.
 const SPACE_GAP: f32 = 0.15;
+/// The most x positions the gutter search tries. It tries every point across the middle of the
+/// page, but a broken file's text can sit a trillion points out; past this many it tries evenly
+/// spread ones instead, so the work stays bounded.
+const MAX_GUTTER_SAMPLES: f32 = 2000.0;
 
 /// The page's text in reading order, with spaces where runs on a line stand apart and lines
 /// joined with `\n`.
@@ -104,16 +108,18 @@ fn gutter(texts: &[TextRun]) -> Option<f32> {
     let left = texts.iter().map(|t| t.x).fold(f32::MAX, f32::min);
     let right = texts.iter().map(|t| t.x + t.width).fold(f32::MIN, f32::max);
     let width = right - left;
-    if width < 100.0 {
+    if !width.is_finite() || width < 100.0 {
         return None;
     }
     let (from, to) = (left + 0.3 * width, left + 0.7 * width);
-    let steps = (to - from).ceil() as usize;
+    // Points between the x positions tried: one, unless that would be too many.
+    let step = ((to - from) / MAX_GUTTER_SAMPLES).max(1.0);
+    let steps = ((to - from) / step).ceil() as usize;
     // At each x: how many runs cross it, if there is text down both
     // sides of it.
     let counts: Vec<Option<usize>> = (0..=steps)
         .map(|s| {
-            let g = from + s as f32;
+            let g = from + s as f32 * step;
             let lefts = texts.iter().filter(|t| t.x + t.width <= g).count();
             let rights = texts.iter().filter(|t| t.x >= g).count();
             (lefts * 7 >= n && rights * 7 >= n).then(|| texts.iter().filter(|t| crosses(t, g)).count())
@@ -137,8 +143,8 @@ fn gutter(texts: &[TextRun]) -> Option<f32> {
             _ => {}
         }
     }
-    let band = (best.1 - best.0) as f32;
-    let g = from + (best.0 + best.1 - 1) as f32 / 2.0;
+    let band = (best.1 - best.0) as f32 * step;
+    let g = from + (best.0 + best.1 - 1) as f32 / 2.0 * step;
     // At most half the runs across: most lines of a single column would
     // cross.
     (band >= 4.0 && fewest * 2 <= n).then_some(g)
