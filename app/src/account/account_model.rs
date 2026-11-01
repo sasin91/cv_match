@@ -217,7 +217,7 @@ pub async fn save(
     let hint = key_hint(api_key);
     let now = chrono::Utc::now().timestamp();
     let _together = vault.lock().await;
-    let mut tx = db.begin().await?;
+    let mut tx = crate::db::write_transaction(db).await?;
     sqlx::query_file!(
         "queries/account_model/save.sql",
         user_id,

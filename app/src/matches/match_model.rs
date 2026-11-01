@@ -252,7 +252,7 @@ pub async fn save(
     let job_url = (!new.job_url.is_empty()).then(|| cut(new.job_url, lengths::JOB_URL));
     let cv_name = cut(new.cv_name, lengths::NAME);
     let index = match_score::round_to(score.index, SCORE_DECIMALS);
-    let mut tx = db.begin().await?;
+    let mut tx = crate::db::write_transaction(db).await?;
     let id = sqlx::query_file!(
         "queries/match_model/save.sql",
         user_id,
@@ -640,7 +640,7 @@ pub async fn save_resume_fields(
     notes: &str,
     now: i64,
 ) -> sqlx::Result<Document> {
-    let mut tx = db.begin().await?;
+    let mut tx = crate::db::write_transaction(db).await?;
     let document = save_document(&mut tx, id, RESUME, text, written_by, notes, now).await?;
     save_resume_head(&mut tx, document.id, resume).await?;
     let sections = [
@@ -828,7 +828,7 @@ pub async fn save_integration(
 
 /// Rejects one of the user's matches (not interested), with why; false when it isn't theirs.
 pub async fn reject(db: &SqlitePool, id: i64, user_id: i64, rows: &[Rejection], now: i64) -> sqlx::Result<bool> {
-    let mut tx = db.begin().await?;
+    let mut tx = crate::db::write_transaction(db).await?;
     if !mark_rejected(&mut tx, id, user_id, Some(now)).await? {
         return Ok(false);
     }
@@ -855,7 +855,7 @@ pub async fn reject(db: &SqlitePool, id: i64, user_id: i64, rows: &[Rejection], 
 
 /// Brings back one of the user's rejected matches; false when it isn't theirs.
 pub async fn bring_back(db: &SqlitePool, id: i64, user_id: i64) -> sqlx::Result<bool> {
-    let mut tx = db.begin().await?;
+    let mut tx = crate::db::write_transaction(db).await?;
     if !mark_rejected(&mut tx, id, user_id, None).await? {
         return Ok(false);
     }
@@ -867,10 +867,8 @@ pub async fn bring_back(db: &SqlitePool, id: i64, user_id: i64) -> sqlx::Result<
 }
 
 /// Sets when one of the user's matches was rejected (None: not rejected); false when it isn't
-/// theirs. It is the first statement of the reject and bring-back transactions, so each takes
-/// the database's write lock before it reads anything: a transaction that read first could find,
-/// once another one wrote, that SQLite won't let it write any more (SQLITE_BUSY), whatever the
-/// busy timeout.
+/// theirs. The reject and bring-back transactions hold the write lock from their start
+/// (db::write_transaction), so overlapping ones wait for each other.
 async fn mark_rejected(db: &mut SqliteConnection, id: i64, user_id: i64, at: Option<i64>) -> sqlx::Result<bool> {
     let updated = sqlx::query!(
         r#"UPDATE matches SET rejected_at = ?1 WHERE id = ?2 AND trongate_user_id IS ?3"#,

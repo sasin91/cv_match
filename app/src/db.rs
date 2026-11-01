@@ -11,7 +11,7 @@ use std::path::{Path, PathBuf};
 use std::time::Duration;
 
 use sqlx::sqlite::{SqliteConnectOptions, SqliteJournalMode, SqlitePoolOptions};
-use sqlx::{Acquire, Executor, SqliteConnection, SqlitePool};
+use sqlx::{Acquire, Executor, Sqlite, SqliteConnection, SqlitePool, Transaction};
 
 /// Every migration, in the order they run. A new one goes at the end, never in between.
 const MIGRATIONS: &[(&str, &str)] = &[
@@ -77,6 +77,15 @@ pub async fn open_in_memory() -> sqlx::Result<SqlitePool> {
         .await?;
     migrate(&db).await?;
     Ok(db)
+}
+
+/// A transaction that writes, holding the database's write lock from its start (BEGIN
+/// IMMEDIATE), so it waits its turn behind another writer for up to BUSY_TIMEOUT_MS. A plain
+/// (deferred) transaction takes the lock only at its first write, and then SQLite can answer
+/// "database is locked" at once instead of waiting, as overlapping rejects once did on Windows
+/// CI.
+pub async fn write_transaction(db: &SqlitePool) -> sqlx::Result<Transaction<'static, Sqlite>> {
+    db.begin_with("BEGIN IMMEDIATE").await
 }
 
 /// Applies the migrations schema_migrations doesn't list yet, each in its own transaction, after
