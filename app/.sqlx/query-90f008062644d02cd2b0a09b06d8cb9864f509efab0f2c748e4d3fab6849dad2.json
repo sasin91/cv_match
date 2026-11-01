@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT id FROM job_searches\n        WHERE active = 1 AND paused_reason = ''\n        ORDER BY last_scanned_at IS NOT NULL, last_scanned_at, id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "90f008062644d02cd2b0a09b06d8cb9864f509efab0f2c748e4d3fab6849dad2"
+}

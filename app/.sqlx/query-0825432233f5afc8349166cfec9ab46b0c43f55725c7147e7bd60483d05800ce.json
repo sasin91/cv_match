@@ -1,0 +1,122 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT id, name, keywords, location, remote_ok, tailor_from_score, active, paused_reason,\n               last_scanned_at\n        FROM job_searches\n        WHERE id = ?1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "keywords",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "keywords"
+          }
+        }
+      },
+      {
+        "name": "location",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "location"
+          }
+        }
+      },
+      {
+        "name": "remote_ok",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "remote_ok"
+          }
+        }
+      },
+      {
+        "name": "tailor_from_score",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "tailor_from_score"
+          }
+        }
+      },
+      {
+        "name": "active",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "active"
+          }
+        }
+      },
+      {
+        "name": "paused_reason",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "paused_reason"
+          }
+        }
+      },
+      {
+        "name": "last_scanned_at",
+        "ordinal": 8,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "last_scanned_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true
+    ]
+  },
+  "hash": "0825432233f5afc8349166cfec9ab46b0c43f55725c7147e7bd60483d05800ce"
+}

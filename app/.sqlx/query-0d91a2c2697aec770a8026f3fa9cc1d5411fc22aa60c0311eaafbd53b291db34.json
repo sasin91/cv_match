@@ -1,0 +1,98 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT id, job_search_id, started_at, finished_at, posts_found, posts_new, error\n        FROM job_search_runs\n        WHERE ?1 IS NULL OR job_search_id = ?1\n        ORDER BY started_at DESC, id DESC\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_search_runs",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "job_search_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_search_runs",
+            "name": "job_search_id"
+          }
+        }
+      },
+      {
+        "name": "started_at",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_search_runs",
+            "name": "started_at"
+          }
+        }
+      },
+      {
+        "name": "finished_at",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_search_runs",
+            "name": "finished_at"
+          }
+        }
+      },
+      {
+        "name": "posts_found",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_search_runs",
+            "name": "posts_found"
+          }
+        }
+      },
+      {
+        "name": "posts_new",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_search_runs",
+            "name": "posts_new"
+          }
+        }
+      },
+      {
+        "name": "error",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "job_search_runs",
+            "name": "error"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0d91a2c2697aec770a8026f3fa9cc1d5411fc22aa60c0311eaafbd53b291db34"
+}

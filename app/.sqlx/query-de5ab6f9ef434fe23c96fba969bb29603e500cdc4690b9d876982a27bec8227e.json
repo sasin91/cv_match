@@ -1,0 +1,184 @@
+{
+  "db_name": "SQLite",
+  "query": "-- A batch of a search's found posts, best first: the saved match's highest score, then newest;\n-- posts not matched yet come after the matched ones (score_cursor::NO_SCORE).\n-- ?1 the search, ?2 1 to list the dismissed posts too, ?3 what an unmatched post sorts as,\n-- ?4 ?5 ?6 the score, found_at and id of the post the batch comes after (all NULL for the first),\n-- ?7 how many.\nSELECT\n  p.id AS \"id!\",\n  p.url,\n  p.title,\n  p.company,\n  p.location,\n  p.status,\n  p.error,\n  p.found_at,\n  p.match_id,\n  m.score AS \"score?: f64\",\n  m.tag AS \"tag?\",\n  m.rejected_at,\n  EXISTS (\n    SELECT 1 FROM documents d WHERE d.match_id = p.match_id AND d.kind = 'application'\n  ) AS \"has_application!: bool\",\n  EXISTS (\n    SELECT 1 FROM documents d WHERE d.match_id = p.match_id AND d.kind = 'resume'\n  ) AS \"has_resume!: bool\",\n  (\n    SELECT i.text\n    FROM match_items i\n    WHERE i.match_id = m.id AND i.criterion = 'location' AND i.verdict = 'missing'\n    ORDER BY i.sort_order\n    LIMIT 1\n  ) AS \"location_missed?: String\"\nFROM scanned_job_posts p\nLEFT JOIN matches m ON m.id = p.match_id\nWHERE p.job_search_id = ?1\n  AND (?2 = 1 OR p.status <> 'dismissed')\n  AND (?4 IS NULL OR (COALESCE(m.score, ?3), p.found_at, p.id) < (?4, ?5, ?6))\nORDER BY COALESCE(m.score, ?3) DESC, p.found_at DESC, p.id DESC\nLIMIT ?7\n",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "url",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "url"
+          }
+        }
+      },
+      {
+        "name": "title",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "name": "company",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "company"
+          }
+        }
+      },
+      {
+        "name": "location",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "location"
+          }
+        }
+      },
+      {
+        "name": "status",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "name": "error",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "error"
+          }
+        }
+      },
+      {
+        "name": "found_at",
+        "ordinal": 7,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "found_at"
+          }
+        }
+      },
+      {
+        "name": "match_id",
+        "ordinal": 8,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "match_id"
+          }
+        }
+      },
+      {
+        "name": "score?: f64",
+        "ordinal": 9,
+        "type_info": "Float",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "score"
+          }
+        }
+      },
+      {
+        "name": "tag?",
+        "ordinal": 10,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "tag"
+          }
+        }
+      },
+      {
+        "name": "rejected_at",
+        "ordinal": 11,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "rejected_at"
+          }
+        }
+      },
+      {
+        "name": "has_application!: bool",
+        "ordinal": 12,
+        "type_info": "Null",
+        "origin": "Expression"
+      },
+      {
+        "name": "has_resume!: bool",
+        "ordinal": 13,
+        "type_info": "Null",
+        "origin": "Expression"
+      },
+      {
+        "name": "location_missed?: String",
+        "ordinal": 14,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "match_items",
+            "name": "text"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": [
+      null,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false,
+      true,
+      null,
+      null,
+      false
+    ]
+  },
+  "hash": "de5ab6f9ef434fe23c96fba969bb29603e500cdc4690b9d876982a27bec8227e"
+}

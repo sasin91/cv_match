@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE job_searches\n        SET paused_reason = ''\n        WHERE active = 1\n          AND paused_reason <> ''\n          AND updated_at <= (SELECT COALESCE(MAX(updated_at), 0) FROM user_llm_keys)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "c54b80a504582c7377bdf183300dd57df699636d517b45d9c8093e22836ec982"
+}

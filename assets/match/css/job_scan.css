@@ -1,0 +1,31 @@
+/* The job scan pages, on top of match.css and account.css: recruiter's
+   modules/job_scan/css/job_scan.css without the ChatGPT token box. */
+.searches { list-style: none; padding: 0; display: grid; gap: 10px; }
+.search-card, .post-card { background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 14px 16px; }
+.posts { display: grid; gap: 10px; }
+.post-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; }
+.post-head strong { overflow-wrap: anywhere; }
+.post-card .actions-bar { margin-top: 10px; }
+.actions-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.chip.warn, .chip.status-failed, .chip.status-not_a_job { border-color: var(--missing); color: var(--missing); }
+.chip.status-matching, .chip.status-new { border-color: var(--partial); color: var(--partial); }
+.score-chip { font-weight: 600; white-space: nowrap; }
+.score-chip.top, .score-chip.good { color: var(--met); }
+.score-chip.medium { color: var(--partial); }
+.score-chip.poor { color: var(--missing); }
+.disqualifier-text { color: var(--missing); margin: 8px 0 0; }
+.error-text { color: var(--missing); margin: 8px 0 0; }
+label.check { display: flex; gap: 8px; align-items: center; }
+.button.more { display: block; text-align: center; }
+
+.stack input[type=number] {
+  font: inherit; padding: 10px 12px; border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); color: var(--text);
+}
+.stack textarea { resize: vertical; }
+.stack label.check { font-weight: 400; }
+main.form { max-width: 640px; }
+.add-post { margin: 16px 0; }
+.add-post label { display: block; font-weight: 600; margin-bottom: 6px; }
+.add-row { display: flex; gap: 8px; }
+.add-row input[type=url] { flex: 1; min-width: 0; font: inherit; padding: 8px 12px; border: 1px solid var(--line); border-radius: 8px; background: var(--panel); color: var(--text); }

@@ -13,7 +13,7 @@
 <body>
 <header class="site-header">
     <a class="brand" href="match">Recruiter</a>
-    <nav><a href="setup">Setup</a> <a href="joblog_extension">Jobnet extension</a> <a href="account">API key</a></nav>
+    <nav><a href="job_scan">Job scan</a> <a href="setup">Setup</a> <a href="joblog_extension">Jobnet extension</a> <a href="account">API key</a></nav>
 </header>
 {% include "match/dialogs.html" %}
 <main>
@@ -35,9 +35,14 @@
                     <span class="visually-hidden">{{ row.health.label() }}:</span>
                     <strong class="status-name">{{ row.name }}</strong>
                     <span class="status-text">{{ row.text }}</span>
-                    {%- if let Some(fix) = row.fix %}
-                    <a class="status-fix" href="{{ fix.href }}">{{ fix.label }}</a>
-                    {%- endif %}
+                    <span class="status-fix">
+                        {%- if let Some(action) = row.action %}
+                        <form class="status-action" method="post" action="{{ action.action }}"><input type="hidden" name="back" value="match"><button type="submit">{{ action.label }}</button></form>
+                        {%- endif %}
+                        {%- if let Some(fix) = row.fix %}
+                        <a href="{{ fix.href }}">{{ fix.label }}</a>
+                        {%- endif %}
+                    </span>
                 </li>
                 {%- endfor %}
             </ul>

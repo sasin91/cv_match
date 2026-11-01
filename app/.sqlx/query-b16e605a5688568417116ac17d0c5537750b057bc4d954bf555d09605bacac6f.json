@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO scanned_job_posts\n          (job_search_id, job_search_run_id, url, url_hash, title, company, location, status, found_at)\n        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, 'new', ?8)\n        ON CONFLICT (job_search_id, url_hash) DO NOTHING\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "b16e605a5688568417116ac17d0c5537750b057bc4d954bf555d09605bacac6f"
+}

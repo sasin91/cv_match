@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO job_search_runs (job_search_id, started_at) VALUES (?1, ?2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "1a657a7cf9895f33a07f00b08f8acb9314dd91881f7c73d4dfe79e6f1f57f350"
+}

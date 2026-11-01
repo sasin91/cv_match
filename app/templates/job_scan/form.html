@@ -1,0 +1,53 @@
+{#- The form for a new job search (id 0) or one saved (job_scan::form). -#}
+{% include "job_scan/header.html" %}
+<main class="form">
+    <p><a href="{% if id != 0 %}job_scan/search/{{ id }}{% else %}job_scan{% endif %}">&larr; Back</a></p>
+    <h1>{{ title }}</h1>
+
+    {%- if !errors.is_empty() %}
+    <ul class="validation-errors">
+        {%- for error in errors %}
+        <li>{{ error }}</li>
+        {%- endfor %}
+    </ul>
+    {%- endif %}
+
+    <form class="stack" method="post" action="job_scan/submit/{{ id }}">
+        <label for="name">Name</label>
+        <input type="text" name="name" id="name" value="{{ search.name }}" required maxlength="{{ max_name }}" placeholder="Backend jobs in Odense">
+
+        <label for="keywords">What to look for</label>
+        <input type="text" name="keywords" id="keywords" value="{{ search.keywords }}" required maxlength="{{ max_keywords }}" placeholder="PHP udvikler, backend developer">
+        <span class="muted small">Job titles or keywords, separated by commas.</span>
+
+        <label for="location">Where</label>
+        <input type="text" name="location" id="location" value="{{ search.location }}" maxlength="{{ max_field }}" placeholder="Odense, or a postcode">
+
+        <label class="check"><input type="checkbox" name="remote_ok" value="1"{% if search.remote_ok %} checked{% endif %}> Remote jobs too</label>
+
+        <label for="sites">Only these sites (optional)</label>
+        <textarea name="sites" id="sites" rows="3" placeholder="jobnet.dk&#10;jobindex.dk">{{ sites_text }}</textarea>
+        <span class="muted small">One site per line. Leave it empty to look on the usual Danish job sites and company career pages.</span>
+
+        <p class="notice">Every post is matched with your profile as it is when the post is found.{% if !has_profile %} You have none yet: <a href="setup#cv">read your CV in setup</a> first.{% endif %}</p>
+
+        <label for="tailor_from_score">Tailor a résumé and application from this score</label>
+        <input type="number" name="tailor_from_score" id="tailor_from_score" value="{{ search.tailor_from_score }}" min="0" max="{{ max_tailor_from }}">
+        <span class="muted small">0 to 100. Matches scoring at least this get a tailored résumé and a job application right away; 60 is a medium match, 80 a good one, 0 tailors every match.</span>
+
+        <label class="check"><input type="checkbox" name="active" value="1"{% if search.active %} checked{% endif %}> Scan this search</label>
+        <span class="muted small">Searches are scanned on the job scan's schedule (<a href="setup#schedule">change it in setup</a>), or now with Scan now.</span>
+
+        <button type="submit" class="primary">Save job search</button>
+    </form>
+
+    {%- if id != 0 %}
+    <h2>Delete it</h2>
+    <p class="muted">The posts it found go too. Their saved matches stay in your match lists.</p>
+    <form method="post" action="job_scan/submit_delete/{{ id }}">
+        <button type="submit">Delete job search</button>
+    </form>
+    {%- endif %}
+</main>
+</body>
+</html>

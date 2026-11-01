@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE job_search_runs\n        SET finished_at = ?2, posts_found = ?3, posts_new = ?4, input_tokens = ?5,\n            output_tokens = ?6, error = ?7\n        WHERE id = ?1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "21e040e915c80a8834a8f4c331f3b6051dacba0028c63ea218c842348caeccdd"
+}

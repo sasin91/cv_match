@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT p.id AS \"id!\"\n        FROM scanned_job_posts p\n        JOIN job_searches s ON s.id = p.job_search_id\n        WHERE s.active = 1\n          AND (\n            (p.status = 'new' AND p.found_at < ?1)\n            OR (p.status = 'matching' AND (p.matching_since IS NULL OR p.matching_since < ?1))\n          )\n        ORDER BY p.found_at, p.id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "6b0e44c4fcf8340cc3d9cf41f20dce2aa64cf03d6715c663bd263e54fb91e753"
+}

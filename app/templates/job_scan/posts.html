@@ -1,0 +1,37 @@
+{#- A batch of a search's found posts (found_post_card), with "Show more" to the next batch. -#}
+{%- for p in posts %}
+<article class="post-card" id="post-{{ p.id }}">
+    <div class="post-head">
+        <div>
+            <strong>{{ p.heading }}</strong><br>
+            <span class="muted small">{{ p.meta }} · <a href="{{ p.url }}" target="_blank" rel="noopener noreferrer">open the post</a></span>
+        </div>
+        {%- if let Some(score) = p.score %}
+        <span class="score-chip {{ score.tag }}">{{ score.percent }}<span class="visually-hidden"> of 100</span> · {{ score.tag_name }}</span>
+        {%- else %}
+        <span class="chip status-{{ p.status }}">{{ p.status_name }}</span>
+        {%- endif %}
+    </div>
+    {%- if !p.disqualifier.is_empty() %}
+    <p class="small disqualifier-text">{{ p.disqualifier }}</p>
+    {%- endif %}
+    {%- if !p.error.is_empty() %}
+    <p class="small error-text">{{ p.error }}</p>
+    {%- endif %}
+    <div class="actions-bar">
+        {%- if let Some(link) = p.match_link %}
+        <a class="button primary" href="{{ link.url }}">{{ link.label }}</a>
+        {%- endif %}
+        {%- if p.can_retry %}
+        <form class="inline" method="post" action="job_scan/submit_retry/{{ p.id }}"><button type="submit">Try again</button></form>
+        {%- endif %}
+        <form class="inline" method="post" action="job_scan/submit_dismiss/{{ p.id }}">
+            {%- if !p.dismiss_undo.is_empty() %}<input type="hidden" name="undo" value="{{ p.dismiss_undo }}">{% endif %}
+            <button type="submit">{{ p.dismiss_label }}</button>
+        </form>
+    </div>
+</article>
+{%- endfor %}
+{%- if let Some(next) = next %}
+<a class="button more" href="job_scan/search/{{ search_id }}?{{ next }}">Show more</a>
+{%- endif %}

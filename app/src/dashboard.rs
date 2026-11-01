@@ -8,9 +8,10 @@
 //! native UI later) can't disagree.
 
 use crate::context::Context;
-use crate::matches::llm_key;
+use crate::job_scan::scan_service::{self, ScanStatus};
 use crate::matches::match_model::{self, LISTS, SHORTLIST};
 use crate::matches::saved_match_row::SavedMatchRow;
+use crate::matches::{dates, llm_key};
 use crate::setup::setup_steps;
 
 /// How many of the shortlist's best matches the dashboard shows.
@@ -54,6 +55,13 @@ pub struct Fix {
     pub label: &'static str,
 }
 
+/// A button a row does its work with: a form posted to action, coming back to the dashboard.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RowAction {
+    pub action: &'static str,
+    pub label: &'static str,
+}
+
 /// One thing the app runs on, and how it stands.
 #[derive(Debug, Clone, PartialEq)]
 pub struct StatusRow {
@@ -61,6 +69,7 @@ pub struct StatusRow {
     pub health: Health,
     pub text: String,
     pub fix: Option<Fix>,
+    pub action: Option<RowAction>,
 }
 
 /// A list of saved matches, and how many it holds.
@@ -99,11 +108,12 @@ pub async fn dashboard(context: &Context) -> Result<Dashboard, String> {
     let uses = llm_key::ai_uses(context).await.map_err(|e| e.message)?;
     let cv = setup_steps::cv(context).await?;
     let schedule = setup_steps::schedule(context).await;
+    let scan = scan_service::status(context).await.map_err(|e| e.message)?;
     let rows = vec![
         ai_row(&ai.saved, uses.any()),
         cv_row(cv.filled.as_ref()),
         laya_row(context),
-        scan_row(schedule.interval_hours, schedule.error.as_deref()),
+        scan_row(schedule.interval_hours, schedule.error.as_deref(), &scan),
         extension_row(&context.extension_folder),
     ];
     let attention = rows.iter().filter(|row| row.health == Health::Attention).count();
@@ -187,6 +197,7 @@ fn ai_row(saved: &[String], in_use: bool) -> StatusRow {
         health,
         text,
         fix,
+        action: None,
     }
 }
 
@@ -197,6 +208,7 @@ fn cv_row(filled: Option<&crate::profile::profile_model::FilledFrom>) -> StatusR
             health: Health::Ready,
             text: setup_steps::filled_line(filled),
             fix: None,
+            action: None,
         },
         None => StatusRow {
             name: "Your profile",
@@ -206,6 +218,7 @@ fn cv_row(filled: Option<&crate::profile::profile_model::FilledFrom>) -> StatusR
                 href: "setup#cv",
                 label: "Read your CV",
             }),
+            action: None,
         },
     }
 }
@@ -217,42 +230,88 @@ fn laya_row(context: &Context) -> StatusRow {
             health: Health::Ready,
             text: format!("Its model is in {}.", laya.folder().display()),
             fix: None,
+            action: None,
         },
         None => StatusRow {
             name: "Laya",
             health: Health::Neutral,
             text: "No model found, so matches go on without Laya's line.".to_string(),
             fix: None,
+            action: None,
         },
     }
 }
 
-fn scan_row(interval_hours: Option<u32>, error: Option<&str>) -> StatusRow {
-    let fix = Some(Fix {
-        href: "setup#schedule",
-        label: "Change it",
-    });
-    let (health, text) = match (interval_hours, error) {
-        (_, Some(why)) => (Health::Attention, format!("Task Scheduler couldn't be read: {why}")),
-        (Some(hours), None) => (
-            Health::Attention,
-            format!(
-                "Scheduled {}, but the scan itself isn't in the app yet, so each run finds nothing.",
-                setup_steps::interval_label(hours).to_lowercase()
-            ),
-        ),
-        (None, None) => (
-            Health::Neutral,
-            "Not scheduled. The scan itself isn't in the app yet.".to_string(),
-        ),
+/// The job scan: whether it is scheduled, and how its last scan went, with Scan now, which runs
+/// the scan the schedule runs.
+fn scan_row(interval_hours: Option<u32>, error: Option<&str>, scan: &ScanStatus) -> StatusRow {
+    let schedule = match interval_hours {
+        Some(hours) => format!("Scheduled {}.", setup_steps::interval_label(hours).to_lowercase()),
+        None => "Not scheduled, so it scans only with Scan now.".to_string(),
     };
+    let last = match &scan.last_scan {
+        Some(last) if scan.running => format!(" Scanning now (started {}).", dates::short_moment(last.started_at)),
+        Some(last) => format!(
+            " Last scan {}: {} {} new posts in the last day.",
+            dates::short_moment(last.started_at),
+            last.text,
+            scan.new_last_day
+        ),
+        None => " Not scanned yet.".to_string(),
+    };
+    let failed = scan.last_scan.as_ref().is_some_and(|last| last.failed && !scan.running);
+    let (health, text, fix) = if let Some(why) = error {
+        (
+            Health::Attention,
+            format!("Task Scheduler couldn't be read: {why}"),
+            Some(SCHEDULE_FIX),
+        )
+    } else if scan.active_searches == 0 {
+        (
+            if interval_hours.is_some() {
+                Health::Attention
+            } else {
+                Health::Neutral
+            },
+            format!("{schedule} There is no job search to scan yet."),
+            Some(Fix {
+                href: "job_scan/create",
+                label: "Make a job search",
+            }),
+        )
+    } else if let Some(problem) = &scan.problem {
+        (Health::Attention, format!("{schedule} {problem}"), Some(SEARCHES_FIX))
+    } else if failed {
+        (Health::Attention, format!("{schedule}{last}"), Some(SEARCHES_FIX))
+    } else if interval_hours.is_none() {
+        (Health::Neutral, format!("{schedule}{last}"), Some(SCHEDULE_FIX))
+    } else {
+        (Health::Ready, format!("{schedule}{last}"), Some(SEARCHES_FIX))
+    };
+    let can_scan = scan.active_searches > 0 && scan.problem.is_none() && !scan.running;
     StatusRow {
         name: "Job scan",
         health,
         text,
         fix,
+        action: can_scan.then_some(RowAction {
+            action: "job_scan/submit_scan",
+            label: "Scan now",
+        }),
     }
 }
+
+/// The link to the job scan's schedule.
+const SCHEDULE_FIX: Fix = Fix {
+    href: "setup#schedule",
+    label: "Change the schedule",
+};
+
+/// The link to the job searches.
+const SEARCHES_FIX: Fix = Fix {
+    href: "job_scan",
+    label: "Your job searches",
+};
 
 fn extension_row(folder: &Result<std::path::PathBuf, String>) -> StatusRow {
     match folder {
@@ -265,6 +324,7 @@ fn extension_row(folder: &Result<std::path::PathBuf, String>) -> StatusRow {
                 href: "joblog_extension",
                 label: "How to load it",
             }),
+            action: None,
         },
         Err(why) => StatusRow {
             name: "Jobnet extension",
@@ -274,6 +334,7 @@ fn extension_row(folder: &Result<std::path::PathBuf, String>) -> StatusRow {
                 href: "joblog_extension",
                 label: "See why",
             }),
+            action: None,
         },
     }
 }
@@ -301,15 +362,57 @@ mod tests {
         );
     }
 
+    fn scanned(active_searches: i64) -> ScanStatus {
+        ScanStatus {
+            active_searches,
+            last_scan: Some(scan_service::LatestScan {
+                started_at: 0,
+                text: "found 12, 3 new.".to_string(),
+                failed: false,
+            }),
+            new_last_day: 3,
+            ..ScanStatus::default()
+        }
+    }
+
     #[test]
-    fn a_scheduled_scan_says_it_isnt_built_yet() {
-        let scheduled = scan_row(Some(4), None);
-        assert_eq!(scheduled.health, Health::Attention);
+    fn a_scheduled_scan_says_how_its_last_scan_went() {
+        let row = scan_row(Some(4), None, &scanned(1));
+        assert_eq!(row.health, Health::Ready);
         assert!(
-            scheduled.text.starts_with("Scheduled every 4 hours, but"),
+            row.text.starts_with("Scheduled every 4 hours. Last scan "),
             "{}",
-            scheduled.text
+            row.text
         );
-        assert_eq!(scan_row(None, None).health, Health::Neutral);
+        assert!(
+            row.text.ends_with(": found 12, 3 new. 3 new posts in the last day."),
+            "{}",
+            row.text
+        );
+        assert_eq!(row.action.map(|action| action.label), Some("Scan now"));
+    }
+
+    #[test]
+    fn scan_now_waits_for_a_search_a_key_and_the_running_scan() {
+        let none = scan_row(Some(4), None, &scanned(0));
+        assert_eq!(none.health, Health::Attention);
+        assert_eq!(none.fix.map(|fix| fix.href), Some("job_scan/create"));
+        assert_eq!(none.action, None);
+        let problem = ScanStatus {
+            problem: Some("Pick your OpenAI key.".to_string()),
+            ..scanned(1)
+        };
+        let row = scan_row(Some(4), None, &problem);
+        assert_eq!(row.health, Health::Attention);
+        assert!(row.text.ends_with("Pick your OpenAI key."), "{}", row.text);
+        assert_eq!(row.action, None);
+        let running = ScanStatus {
+            running: true,
+            ..scanned(1)
+        };
+        let row = scan_row(Some(4), None, &running);
+        assert!(row.text.contains("Scanning now"), "{}", row.text);
+        assert_eq!(row.action, None);
+        assert_eq!(scan_row(None, None, &scanned(1)).health, Health::Neutral);
     }
 }
