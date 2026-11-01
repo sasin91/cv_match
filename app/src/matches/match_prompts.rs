@@ -117,7 +117,7 @@ pub async fn judge(
 /// The model's answer as T, or an error saying it wasn't the shape asked for.
 fn shaped<T: for<'de> Deserialize<'de>>(answer: Value, what: &str) -> Result<T, LlmException> {
     serde_json::from_value(answer).map_err(|e| {
-        eprintln!("match: the model's {what} didn't have the shape asked for: {e}");
+        crate::log_line!("match: the model's {what} didn't have the shape asked for: {e}");
         LlmException::retryable(format!(
             "The model's reading of the {what} didn't have the shape asked for ({e}). Try again."
         ))

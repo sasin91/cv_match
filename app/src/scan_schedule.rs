@@ -351,7 +351,9 @@ mod system {
         if gone {
             match register(command, hours).await {
                 Ok(()) => println!("The job scan's task now runs {}.", command.exe.display()),
-                Err(why) => eprintln!("scan_schedule: the job scan's task couldn't be moved to this program: {why}"),
+                Err(why) => {
+                    crate::log_line!("scan_schedule: the job scan's task couldn't be moved to this program: {why}")
+                }
             }
         }
         Ok(Some(hours))
@@ -382,7 +384,7 @@ mod system {
             .output()
             .await
             .map_err(|e| {
-                eprintln!("scan_schedule: schtasks.exe couldn't run: {e}");
+                crate::log_line!("scan_schedule: schtasks.exe couldn't run: {e}");
                 format!("Task Scheduler (schtasks.exe) couldn't run: {e}")
             })?;
         if output.status.success() {
@@ -390,7 +392,7 @@ mod system {
         }
         let why = String::from_utf8_lossy(&output.stderr).trim().to_string();
         if args.first() != Some(&"/Query") {
-            eprintln!("scan_schedule: schtasks {}: {why}", args.join(" "));
+            crate::log_line!("scan_schedule: schtasks {}: {why}", args.join(" "));
         }
         Ok(Err(format!("Task Scheduler said: {why}")))
     }
@@ -432,7 +434,9 @@ mod system {
             };
             match repointed {
                 Ok(()) => println!("The job scan's timer now runs {}.", command.exec_start()),
-                Err(why) => eprintln!("scan_schedule: the job scan's service couldn't be moved to this program: {why}"),
+                Err(why) => {
+                    crate::log_line!("scan_schedule: the job scan's service couldn't be moved to this program: {why}")
+                }
             }
         }
         Ok(Some(systemd_interval_in(&timer).unwrap_or(DEFAULT_INTERVAL_HOURS)))
@@ -465,7 +469,7 @@ mod system {
     pub async fn remove() -> Result<(), String> {
         // A timer that isn't loaded (no systemd here, say) is still removed by its files.
         if let Err(why) = systemctl(&["disable", "--now", &format!("{SYSTEMD_UNIT}.timer")]).await {
-            eprintln!("scan_schedule: {why}");
+            crate::log_line!("scan_schedule: {why}");
         }
         for kind in ["timer", "service"] {
             match tokio::fs::remove_file(unit(kind)?).await {
@@ -475,7 +479,7 @@ mod system {
             }
         }
         if let Err(why) = systemctl(&["daemon-reload"]).await {
-            eprintln!("scan_schedule: {why}");
+            crate::log_line!("scan_schedule: {why}");
         }
         Ok(())
     }
@@ -494,7 +498,7 @@ mod system {
             return Ok(());
         }
         let why = String::from_utf8_lossy(&output.stderr).trim().to_string();
-        eprintln!("scan_schedule: systemctl --user {}: {why}", args.join(" "));
+        crate::log_line!("scan_schedule: systemctl --user {}: {why}", args.join(" "));
         Err(format!("systemd said: {why}"))
     }
 }

@@ -293,7 +293,7 @@ fn page(template: impl Template) -> Response {
     match template.render() {
         Ok(html) => Html(html).into_response(),
         Err(e) => {
-            eprintln!("job_scan: the page couldn't be printed: {e}");
+            crate::log_line!("job_scan: the page couldn't be printed: {e}");
             (
                 StatusCode::INTERNAL_SERVER_ERROR,
                 format!("The page couldn't be printed: {e}"),

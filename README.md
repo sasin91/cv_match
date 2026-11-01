@@ -148,6 +148,14 @@ itself. Move the AppImage and the next start points the timer at its new place. 
 `--appimage-extract-and-run`. `cleanup` removes the timer, as it does the task on Windows. macOS
 isn't covered yet.
 
+### Logs
+
+What the app says in its console is kept too. On Windows it goes to `recruiter.log` next to the
+database (`%APPDATA%\Recruiter\recruiter.log`), which moves to `recruiter.old.log` once it passes
+5 MB. On Linux it goes to the systemd journal: `journalctl --user -t recruiter` (add `-f` to
+follow it). The job scan's timer logs there too, under `recruiter-scan.service`. Starting the app
+again on the same database opens the one that runs.
+
 ### Starting it at login
 
 In Task Scheduler, create a task that runs at log on, with the action

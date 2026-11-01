@@ -212,7 +212,7 @@ impl LlamaServer {
             .spawn()
             .map_err(|e| format!("{} didn't start: {e}", server.display()))?;
         let job = job::KillOnClose::assign(&child).map_err(|e| {
-            eprintln!("llama: llama-server won't stop with the app: {e}");
+            crate::log_line!("llama: llama-server won't stop with the app: {e}");
             format!("llama-server couldn't be tied to the app: {e}")
         })?;
         let base = format!("http://127.0.0.1:{port}");
@@ -314,7 +314,7 @@ async fn wait_until_healthy(base: &str, child: &mut Child) -> Result<(), String>
 /// Stops a server and waits for it to end.
 async fn stop(running: &mut Running) {
     if let Err(e) = running.child.kill().await {
-        eprintln!("llama: the previous llama-server couldn't be stopped: {e}");
+        crate::log_line!("llama: the previous llama-server couldn't be stopped: {e}");
     }
 }
 
@@ -376,7 +376,7 @@ mod job {
         fn drop(&mut self) {
             // SAFETY: the handle is open and closed only here.
             if let Err(e) = unsafe { CloseHandle(self.0) } {
-                eprintln!("llama: the job object couldn't be closed: {e}");
+                crate::log_line!("llama: the job object couldn't be closed: {e}");
             }
         }
     }

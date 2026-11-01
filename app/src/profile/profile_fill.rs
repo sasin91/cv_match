@@ -66,14 +66,14 @@ pub async fn fill_from_cv(context: &Context, cv_text: &str, cv_name: &str) -> Re
     }
     let keyed = llm_key::llm(context, RESUME).await?;
     let answer = read_cv(&keyed.llm, cv_text.trim()).await.map_err(|e| {
-        eprintln!("profile (fill_from_cv): {}", e.details());
+        crate::log_line!("profile (fill_from_cv): {}", e.details());
         ServiceError::new(
             ErrorKind::Llm { retryable: e.retryable },
             format!("The CV could not be read into your profile: {e}"),
         )
     })?;
     let profile = profile_fields::from_cv(&answer).ok_or_else(|| {
-        eprintln!("profile (fill_from_cv): no entries in the answer: {answer}");
+        crate::log_line!("profile (fill_from_cv): no entries in the answer: {answer}");
         ServiceError::new(
             ErrorKind::Failed,
             "No jobs, projects or education were found in that CV. Check that the whole CV was pasted and try again.",

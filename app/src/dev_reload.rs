@@ -110,7 +110,7 @@ pub async fn add_script(State(state): State<Arc<AppState>>, request: Request, ne
     let bytes = match to_bytes(body, MAX_PAGE_BYTES).await {
         Ok(bytes) => bytes,
         Err(e) => {
-            eprintln!("Couldn't read a page to add the reload script: {e}");
+            crate::log_line!("Couldn't read a page to add the reload script: {e}");
             return (parts.status, "The page couldn't be read.").into_response();
         }
     };

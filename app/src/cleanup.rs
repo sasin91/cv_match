@@ -7,7 +7,8 @@
 //! - the API keys in Credential Manager (or the keyring);
 //! - what the app wrote or downloaded next to the database: the Jobnet extension's files,
 //!   llama.cpp and its models, Laya's model;
-//! - and only when asked again, the database itself, with its -wal and -shm files.
+//! - and only when asked again, the database itself, with its -wal and -shm files and the app's
+//!   log (app_log) beside it.
 //!
 //! The data folder itself goes too when it is the default one (%APPDATA%\Recruiter) and nothing
 //! else is left in it; a folder that --database names is never removed, only the app's own
@@ -17,7 +18,7 @@ use std::path::{Path, PathBuf};
 
 use crate::account::key_vault::KeyVault;
 use crate::scan_schedule::ScanSchedule;
-use crate::{extension, laya, llama};
+use crate::{app_log, extension, laya, llama};
 
 /// What the cleanup found.
 pub struct Found {
@@ -119,8 +120,8 @@ pub fn hold(database: &Path, how: Hold) -> Result<Held, InUse> {
     Ok(Held { _files: files })
 }
 
-/// The database's own files: the file, and SQLite's -wal, -shm and -journal beside it (the lock
-/// file goes after the cleanup lets go of it).
+/// The database's own files: the file, SQLite's -wal, -shm and -journal beside it, and the app's
+/// log in its folder (the lock file goes after the cleanup lets go of it).
 pub fn database_files(database: &Path) -> Vec<PathBuf> {
     let mut files = vec![database.to_path_buf()];
     for suffix in ["-wal", "-shm", "-journal"] {
@@ -128,6 +129,8 @@ pub fn database_files(database: &Path) -> Vec<PathBuf> {
         name.push(suffix);
         files.push(PathBuf::from(name));
     }
+    let data_folder = database.parent().unwrap_or(Path::new("."));
+    files.extend([app_log::FILE, app_log::OLD_FILE, app_log::LOCK_FILE].map(|name| data_folder.join(name)));
     files
 }
 
@@ -227,7 +230,7 @@ mod tests {
     use super::*;
 
     #[test]
-    fn the_database_files_are_the_file_and_sqlites_own_beside_it() {
+    fn the_database_files_are_the_file_sqlites_own_and_the_log_beside_it() {
         let files = database_files(Path::new("/data/recruiter.sqlite"));
         assert_eq!(
             files,
@@ -235,7 +238,10 @@ mod tests {
                 "/data/recruiter.sqlite",
                 "/data/recruiter.sqlite-wal",
                 "/data/recruiter.sqlite-shm",
-                "/data/recruiter.sqlite-journal"
+                "/data/recruiter.sqlite-journal",
+                "/data/recruiter.log",
+                "/data/recruiter.old.log",
+                "/data/recruiter.log.lock"
             ]
             .map(PathBuf::from)
         );

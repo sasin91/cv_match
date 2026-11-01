@@ -49,9 +49,10 @@ async fn missing_key_message(context: &Context, use_: &str) -> Result<String, Se
     let saved = account_model::saved(context.db(), context.user_id).await?;
     let message = match account_model::picked_for(&saved, use_) {
         Some(picked) => {
-            eprintln!(
+            crate::log_line!(
                 "match: user {}'s saved {} key isn't in Windows Credential Manager",
-                context.user_id, picked.provider
+                context.user_id,
+                picked.provider
             );
             format!(
                 "Your saved {} key isn't in Windows Credential Manager anymore. Save it again on the API key page.",
@@ -85,7 +86,7 @@ async fn key_for(context: &Context, use_: &str) -> Result<Option<KeyFor>, Servic
     account_model::key_for(context.db(), &context.key_vault, context.user_id, use_)
         .await
         .map_err(|e| {
-            eprintln!("match: the API key couldn't be read: {e}");
+            crate::log_line!("match: the API key couldn't be read: {e}");
             ServiceError::new(ErrorKind::Internal, format!("Your API key couldn't be read: {e}"))
         })
 }

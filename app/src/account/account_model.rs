@@ -233,7 +233,7 @@ pub async fn save(
     keep(vault, user_id, provider, api_key)?;
     if let Err(e) = tx.commit().await {
         if let Err(restore) = keep(vault, user_id, provider, previous.as_deref().unwrap_or("")) {
-            eprintln!("account: the previous key couldn't be put back after a failed save: {restore}");
+            crate::log_line!("account: the previous key couldn't be put back after a failed save: {restore}");
         }
         return Err(e.into());
     }

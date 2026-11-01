@@ -101,7 +101,7 @@ fn whole_split_model(first: &Path, count: u32, paths: &[PathBuf]) -> Option<Gguf
         let shard = shard_path(first, index, count);
         let size = paths.contains(&shard).then(|| std::fs::metadata(&shard).ok()).flatten();
         let Some(size) = size else {
-            eprintln!(
+            crate::log_line!(
                 "llama: {} is missing {}, so it isn't listed.",
                 model.name,
                 shard.display()
@@ -127,7 +127,7 @@ pub fn read(path: &Path) -> io::Result<GgufFile> {
     let layers = File::open(path)
         .and_then(|file| layer_count(&mut BufReader::new(file)))
         .unwrap_or_else(|e| {
-            eprintln!("llama: {} has no readable GGUF header: {e}", path.display());
+            crate::log_line!("llama: {} has no readable GGUF header: {e}", path.display());
             None
         });
     Ok(GgufFile {

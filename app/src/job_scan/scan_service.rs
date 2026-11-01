@@ -276,7 +276,7 @@ async fn search_posts(
     let answer = match answer {
         Ok(answer) => answer,
         Err(e) => {
-            eprintln!("job_scan: scanning search {} failed: {}", search.id, e.details());
+            crate::log_line!("job_scan: scanning search {} failed: {}", search.id, e.details());
             let error = format!("The scan failed: {}", e.message);
             let end = RunEnd {
                 error: error.clone(),
@@ -438,7 +438,7 @@ async fn match_post_with(context: &Arc<Context>, post_id: i64, cv: &ProfileCv) -
     let page = match page_reader::read(&post.url).await {
         Ok(page) => page,
         Err(why) => {
-            eprintln!("job_scan: post {post_id}: {}: {why}", post.url);
+            crate::log_line!("job_scan: post {post_id}: {}: {why}", post.url);
             // A link a scan found that doesn't open is most likely gone, or one the model got
             // wrong: not a job post to try again.
             let (status, said) = match post.job_search_run_id {
@@ -620,8 +620,8 @@ pub async fn scan_now(context: Arc<Context>) -> Result<&'static str, ServiceErro
     }
     tokio::spawn(async move {
         match scan(context).await {
-            Ok(report) => println!("job_scan: {}", report.summary()),
-            Err(e) => eprintln!("job_scan: the scan failed: {}", e.message),
+            Ok(report) => crate::say!("job_scan: {}", report.summary()),
+            Err(e) => crate::log_line!("job_scan: the scan failed: {}", e.message),
         }
     });
     Ok("The scan has started. It takes a few minutes; reload to see what it finds.")
@@ -683,7 +683,7 @@ pub async fn retry(context: Arc<Context>, post_id: i64) -> Result<(i64, &'static
 fn match_in_background(context: Arc<Context>, post_id: i64) {
     tokio::spawn(async move {
         if let Err(e) = match_post(context, post_id).await {
-            eprintln!("job_scan: matching post {post_id} failed: {}", e.message);
+            crate::log_line!("job_scan: matching post {post_id} failed: {}", e.message);
         }
     });
 }

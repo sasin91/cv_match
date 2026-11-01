@@ -169,7 +169,7 @@ async fn page(state: &AppState, typed: Option<&KeyForm>, errors: Vec<String>) ->
     match page.render() {
         Ok(html) => Html(html).into_response(),
         Err(e) => {
-            eprintln!("account: the page couldn't be printed: {e}");
+            crate::log_line!("account: the page couldn't be printed: {e}");
             failure_page(format!("The page couldn't be printed: {e}"))
         }
     }

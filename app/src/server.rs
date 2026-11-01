@@ -27,6 +27,7 @@ use crate::account;
 use crate::context::Context;
 use crate::dev_reload::{self, DevReload};
 use crate::extension;
+use crate::instance;
 use crate::job_scan;
 use crate::matches::pages;
 use crate::setup;
@@ -104,6 +105,7 @@ pub async fn local_user(db: &SqlitePool) -> sqlx::Result<i64> {
 pub fn router(state: Arc<AppState>) -> Router {
     let mut router = Router::new()
         .route("/", get(setup::home))
+        .route(instance::PATH, get(instance::answer))
         .route("/setup", get(setup::index))
         .route("/setup/submit_cv", post(setup::submit_cv))
         .route("/setup/submit_schedule", post(setup::submit_schedule))

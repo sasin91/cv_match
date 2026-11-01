@@ -97,7 +97,7 @@ mod platform {
         match unsafe { GlobalMemoryStatusEx(&mut status) } {
             Ok(()) => status.ullTotalPhys,
             Err(e) => {
-                eprintln!("llama: this computer's memory couldn't be read: {e}");
+                crate::log_line!("llama: this computer's memory couldn't be read: {e}");
                 0
             }
         }
@@ -109,7 +109,7 @@ mod platform {
         let factory: IDXGIFactory1 = match unsafe { CreateDXGIFactory1() } {
             Ok(factory) => factory,
             Err(e) => {
-                eprintln!("llama: the graphics cards couldn't be listed: {e}");
+                crate::log_line!("llama: the graphics cards couldn't be listed: {e}");
                 return None;
             }
         };
