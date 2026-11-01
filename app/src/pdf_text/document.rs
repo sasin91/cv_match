@@ -510,8 +510,17 @@ fn predict(data: Vec<u8>, parms: Option<&Dict>) -> Vec<u8> {
         int("BitsPerComponent", 8).max(1) as usize,
         int("Columns", 1).max(1) as usize,
     );
+    // A row longer than the data is a broken file's dimensions; working buffers that size could
+    // ask for terabytes, so the data stays as it is.
+    let Some(row) = colors
+        .checked_mul(bits)
+        .and_then(|n| n.checked_mul(columns))
+        .map(|n| n.div_ceil(8))
+        .filter(|&row| row <= data.len())
+    else {
+        return data;
+    };
     let bpp = (colors * bits).div_ceil(8);
-    let row = (colors * bits * columns).div_ceil(8);
     if predictor == 2 {
         // TIFF: each byte is a difference from the pixel to its left
         // (8 bits per component only).
@@ -713,5 +722,22 @@ mod tests {
         ]
         .into();
         assert_eq!(predict(data, Some(&parms)), vec![1, 2, 3, 2, 3, 4]);
+    }
+
+    #[test]
+    fn predictor_dimensions_longer_than_the_data_leave_it_as_it_is() {
+        let parms: Dict = [
+            ("Predictor".to_string(), Object::Int(12)),
+            ("Columns".into(), Object::Int(1_000_000_000_000)),
+        ]
+        .into();
+        assert_eq!(predict(vec![0, 1], Some(&parms)), vec![0, 1]);
+        let overflowing: Dict = [
+            ("Predictor".to_string(), Object::Int(12)),
+            ("Colors".into(), Object::Int(i64::MAX)),
+            ("Columns".into(), Object::Int(i64::MAX)),
+        ]
+        .into();
+        assert_eq!(predict(vec![0, 1], Some(&overflowing)), vec![0, 1]);
     }
 }

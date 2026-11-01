@@ -348,6 +348,22 @@ impl Interpreter<'_> {
                         }
                     }
                 }
+                // A graphics state can select the font too: /Font [font size].
+                "gs" => {
+                    let states = doc.lookup(resources, "ExtGState");
+                    let state = operands
+                        .first()
+                        .and_then(Object::as_name)
+                        .and_then(|name| states.as_dict()?.get(name).cloned())
+                        .map(|state| doc.resolve(&state));
+                    if let Some(Object::Dict(state)) = state
+                        && let Object::Array(font) = doc.lookup(&state, "Font")
+                        && let [font, size, ..] = font.as_slice()
+                    {
+                        self.state.font = Some(self.pdf.font(font));
+                        self.state.font_size = doc.resolve(size).as_f64().unwrap_or(0.0);
+                    }
+                }
                 "Do" => {
                     if let Some(name) = operands.first().and_then(Object::as_name) {
                         let xobjects = doc.lookup(resources, "XObject");

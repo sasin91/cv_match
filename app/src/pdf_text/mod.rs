@@ -41,12 +41,26 @@ mod tests {
     /// `extra` as more objects. No cross reference table: the reader rebuilds it, as for any
     /// broken file.
     fn pdf_with(content: &str, length: &str, font: &str, kids: &str, extra: &str) -> Vec<u8> {
+        pdf_with_resources(content, length, font, kids, extra, FONT_RESOURCES)
+    }
+
+    /// The page's resources: font F1.
+    const FONT_RESOURCES: &str = "<< /Font << /F1 5 0 R >> >>";
+
+    fn pdf_with_resources(
+        content: &str,
+        length: &str,
+        font: &str,
+        kids: &str,
+        extra: &str,
+        resources: &str,
+    ) -> Vec<u8> {
         format!(
             "%PDF-1.4\n\
              1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
              2 0 obj << /Type /Pages /Kids [{kids}] /Count 1 >> endobj\n\
              3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] \
-             /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >> endobj\n\
+             /Resources {resources} /Contents 4 0 R >> endobj\n\
              4 0 obj << /Length {length} >>\nstream\n{content}\nendstream\nendobj\n\
              5 0 obj {font} endobj\n\
              {extra}\n\
@@ -114,5 +128,13 @@ mod tests {
         let content = "BT /F1 12 Tf 72 700 Td (ABC) Tj ET";
         let bytes = pdf_with(content, &content.len().to_string(), font, "3 0 R", &extra);
         assert_eq!(text_of(bytes).unwrap(), "ABC");
+    }
+
+    #[test]
+    fn a_font_selected_by_a_graphics_state_reads() {
+        let resources = "<< /ExtGState << /GS1 << /Font [5 0 R 12] >> >> >>";
+        let content = "BT /GS1 gs 72 700 Td (Software engineer) Tj ET";
+        let bytes = pdf_with_resources(content, &content.len().to_string(), HELVETICA, "3 0 R", "", resources);
+        assert_eq!(text_of(bytes).unwrap(), "Software engineer");
     }
 }
