@@ -20,6 +20,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0002_llm_key_per_provider",
         include_str!("../migrations/0002_llm_key_per_provider.sql"),
     ),
+    ("0003_job_scan", include_str!("../migrations/0003_job_scan.sql")),
 ];
 
 /// How long a write waits for another connection's write to finish, in milliseconds.

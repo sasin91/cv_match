@@ -1,0 +1,86 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT p.id, p.job_search_id, p.job_search_run_id, p.url, p.status, s.tailor_from_score\n        FROM scanned_job_posts p\n        JOIN job_searches s ON s.id = p.job_search_id\n        WHERE p.id = ?1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "job_search_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "job_search_id"
+          }
+        }
+      },
+      {
+        "name": "job_search_run_id",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "job_search_run_id"
+          }
+        }
+      },
+      {
+        "name": "url",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "url"
+          }
+        }
+      },
+      {
+        "name": "status",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "name": "tailor_from_score",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "tailor_from_score"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "dcfb08950b56991a71a2829d0f0ec4c3ae136cb2b36491ef04bd59f2d9741da0"
+}

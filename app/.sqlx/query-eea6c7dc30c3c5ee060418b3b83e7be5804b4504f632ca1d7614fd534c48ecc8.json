@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT paused_reason FROM job_searches\n        WHERE active = 1 AND paused_reason <> ''\n        ORDER BY updated_at DESC\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "paused_reason",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "paused_reason"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "eea6c7dc30c3c5ee060418b3b83e7be5804b4504f632ca1d7614fd534c48ecc8"
+}

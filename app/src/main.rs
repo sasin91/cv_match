@@ -10,8 +10,9 @@
 //!       (docs/phone.md)
 //!
 //!   recruiter scan [--database path\to\recruiter.sqlite]
-//!       the job scan, which the setup wizard's Task Scheduler task runs (scan_schedule); it
-//!       isn't in the desktop app yet, so for now it only says so
+//!       the job scan, which the setup wizard's Task Scheduler task runs (scan_schedule): every
+//!       active job search is searched for new posts, which are matched with the profile
+//!       (job_scan::scan_service, the same scan as the dashboard's Scan now)
 //!
 //!   recruiter cleanup [--database path\to\recruiter.sqlite]
 //!       removes what the app keeps outside its own file, after saying what it found and asking:
@@ -35,6 +36,7 @@ use recruiter::app_log::{self, Opened};
 use recruiter::context::{Context, DatabaseFile};
 use recruiter::dev_reload::DevReload;
 use recruiter::instance::{self, Running};
+use recruiter::job_scan::scan_service;
 use recruiter::laya::laya_client::{self, LayaClient};
 use recruiter::llama::{self, hardware::Inventory, llama_server::LlamaServer};
 use recruiter::scan_schedule::{self, ScanSchedule};
@@ -97,22 +99,38 @@ fn own_console() -> bool {
     false
 }
 
-/// `recruiter scan`: the job scan. Until it is ported it opens the database, so a wrong
-/// --database shows in Task Scheduler's last run result, and says it isn't here yet.
+/// `recruiter scan`: the job scan (job_scan::scan_service::scan), the same scan as the
+/// dashboard's Scan now. It fails (which Task Scheduler shows as the last run result) when it
+/// couldn't scan at all; a search or post that failed is said and kept with it.
 fn run_scan(args: &[String]) -> ExitCode {
     let Some(database) = database_arg(args) else {
         return ExitCode::FAILURE;
     };
     open_log(database.parent().unwrap_or(std::path::Path::new(".")));
+    // Held while it runs, so `recruiter cleanup` won't remove the database under it.
+    let Ok(_held) = cleanup::hold(&database, cleanup::Hold::Running) else {
+        recruiter::log_line!(
+            "Recruiter's cleanup is running on {}, so nothing was scanned.",
+            database.display()
+        );
+        return ExitCode::FAILURE;
+    };
     let Some(runtime) = runtime() else {
         return ExitCode::FAILURE;
     };
-    if let Err(e) = runtime.block_on(db::open(&database)) {
-        recruiter::log_line!("Couldn't open {}: {e}", database.display());
+    let Some(context) = app_context(&runtime, &database, None, None) else {
         return ExitCode::FAILURE;
+    };
+    match runtime.block_on(scan_service::scan(Arc::new(context))) {
+        Ok(report) => {
+            recruiter::say!("{}", report.summary());
+            ExitCode::SUCCESS
+        }
+        Err(e) => {
+            recruiter::log_line!("The job scan couldn't run: {}", e.message);
+            ExitCode::FAILURE
+        }
     }
-    recruiter::log_line!("The job scan isn't in the desktop app yet, so nothing was scanned.");
-    ExitCode::FAILURE
 }
 
 /// `recruiter cleanup`: says what the app left outside its file, and removes it once the user
@@ -317,48 +335,9 @@ fn run_server(args: &[String]) -> ExitCode {
         );
         return ended_by_hand(ExitCode::FAILURE);
     };
-    let made_now = !database.exists();
-    let db = match runtime.block_on(db::open(&database)) {
-        Ok(db) => db,
-        Err(e) => {
-            recruiter::log_line!("Couldn't open {}: {e}", database.display());
-            return ended_by_hand(ExitCode::FAILURE);
-        }
+    let Some(mut context) = app_context(&runtime, &database, laya_folder, llama_folder) else {
+        return ended_by_hand(ExitCode::FAILURE);
     };
-    let user_id = match runtime.block_on(server::local_user(&db)) {
-        Ok(id) => id,
-        Err(e) => {
-            recruiter::log_line!("Couldn't read the local user: {e}");
-            return ended_by_hand(ExitCode::FAILURE);
-        }
-    };
-    let mut context = Context::new(
-        db,
-        Arc::new(Taxonomy::load()),
-        user_id,
-        KeyVault::credential_manager(full_path(&database)),
-    );
-    context.database = DatabaseFile {
-        path: shown_path(&database),
-        made_now,
-    };
-    context.scan_schedule = scan_schedule(&database);
-    let laya_folder = laya_folder.unwrap_or_else(|| data_folder.join(laya_client::FOLDER));
-    context.laya = LayaClient::from_folder(&laya_folder);
-    if context.laya.is_none() {
-        recruiter::say!(
-            "No Laya model in {} (no {}), so matches go on without Laya.",
-            laya_folder.display(),
-            laya_client::ONNX_FILE
-        );
-    }
-    let llama_folder = llama_folder.unwrap_or_else(|| data_folder.join(llama::FOLDER));
-    let inventory = Inventory::detect();
-    recruiter::say!(
-        "This computer, for the app's own model: {inventory}. Its llama folder is {}.",
-        llama_folder.display()
-    );
-    context.llama = Some(LlamaServer::new(&llama_folder, inventory));
     let folder = data_folder.join(extension::FOLDER);
     context.extension_folder = extension::write(&folder).map_err(|e| {
         recruiter::log_line!("Couldn't write the Jobnet extension to {}: {e}", folder.display());
@@ -396,6 +375,62 @@ fn run_server(args: &[String]) -> ExitCode {
             }
         }
     })
+}
+
+/// What the app's work runs on, for the server and `recruiter scan`: the database (made when
+/// there is none), the local user, the key store, the job scan's schedule, Laya's model and the
+/// llama folder (next to the database unless laya_folder or llama_folder names another). None
+/// (said why) when the database can't be opened.
+fn app_context(
+    runtime: &tokio::runtime::Runtime,
+    database: &std::path::Path,
+    laya_folder: Option<PathBuf>,
+    llama_folder: Option<PathBuf>,
+) -> Option<Context> {
+    let made_now = !database.exists();
+    let db = match runtime.block_on(db::open(database)) {
+        Ok(db) => db,
+        Err(e) => {
+            recruiter::log_line!("Couldn't open {}: {e}", database.display());
+            return None;
+        }
+    };
+    let user_id = match runtime.block_on(server::local_user(&db)) {
+        Ok(id) => id,
+        Err(e) => {
+            recruiter::log_line!("Couldn't read the local user: {e}");
+            return None;
+        }
+    };
+    let mut context = Context::new(
+        db,
+        Arc::new(Taxonomy::load()),
+        user_id,
+        KeyVault::credential_manager(full_path(database)),
+    );
+    context.database = DatabaseFile {
+        path: shown_path(database),
+        made_now,
+    };
+    context.scan_schedule = scan_schedule(database);
+    let data_folder = database.parent().unwrap_or(std::path::Path::new("."));
+    let laya_folder = laya_folder.unwrap_or_else(|| data_folder.join(laya_client::FOLDER));
+    context.laya = LayaClient::from_folder(&laya_folder);
+    if context.laya.is_none() {
+        recruiter::say!(
+            "No Laya model in {} (no {}), so matches go on without Laya.",
+            laya_folder.display(),
+            laya_client::ONNX_FILE
+        );
+    }
+    let llama_folder = llama_folder.unwrap_or_else(|| data_folder.join(llama::FOLDER));
+    let inventory = Inventory::detect();
+    recruiter::say!(
+        "This computer, for the app's own model: {inventory}. Its llama folder is {}.",
+        llama_folder.display()
+    );
+    context.llama = Some(LlamaServer::new(&llama_folder, inventory));
+    Some(context)
 }
 
 /// Loads Laya's model in the background, so the first match needn't wait for it, and says how

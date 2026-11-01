@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO job_search_sites (job_search_id, domain) VALUES (?1, ?2)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "f66159d696dc7bcac37afaf45ac2dedce9c279edd496ce980afc45af670d05e0"
+}

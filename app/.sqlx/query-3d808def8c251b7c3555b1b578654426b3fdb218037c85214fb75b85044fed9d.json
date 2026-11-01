@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE scanned_job_posts\n        SET status = CASE WHEN status = 'dismissed' THEN status ELSE ?2 END,\n            matching_since = NULL,\n            error = ?3,\n            match_id = COALESCE(?4, match_id),\n            matched_at = CASE WHEN ?4 IS NULL THEN matched_at ELSE ?5 END,\n            title = CASE WHEN ?6 = '' THEN title ELSE ?6 END,\n            company = CASE WHEN ?7 = '' THEN company ELSE ?7 END\n        WHERE id = ?1\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 7
+    },
+    "nullable": []
+  },
+  "hash": "3d808def8c251b7c3555b1b578654426b3fdb218037c85214fb75b85044fed9d"
+}

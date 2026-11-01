@@ -1,0 +1,112 @@
+{
+  "db_name": "SQLite",
+  "query": "-- The job searches, newest first, each with how many posts it found (not counting dismissed\n-- ones) and how many of those are matched.\nSELECT\n  s.id,\n  s.name,\n  s.keywords,\n  s.location,\n  s.active,\n  s.paused_reason,\n  s.last_scanned_at,\n  COUNT(p.id) AS \"posts!: i64\",\n  COALESCE(SUM(p.status = 'matched'), 0) AS \"matched!: i64\"\nFROM job_searches s\nLEFT JOIN scanned_job_posts p ON p.job_search_id = s.id AND p.status <> 'dismissed'\nGROUP BY s.id\nORDER BY s.created_at DESC, s.id DESC\n",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "name",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "name"
+          }
+        }
+      },
+      {
+        "name": "keywords",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "keywords"
+          }
+        }
+      },
+      {
+        "name": "location",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "location"
+          }
+        }
+      },
+      {
+        "name": "active",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "active"
+          }
+        }
+      },
+      {
+        "name": "paused_reason",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "paused_reason"
+          }
+        }
+      },
+      {
+        "name": "last_scanned_at",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "job_searches",
+            "name": "last_scanned_at"
+          }
+        }
+      },
+      {
+        "name": "posts!: i64",
+        "ordinal": 7,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "matched!: i64",
+        "ordinal": 8,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      false,
+      false
+    ]
+  },
+  "hash": "18839b761efaaf36c760c16ab8452eb62f33cec6ff3428d4a07fd5663c471bdf"
+}

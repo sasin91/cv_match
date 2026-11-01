@@ -686,7 +686,8 @@ body.working #history a.busy { opacity: 1; cursor: wait; padding-left: 42px; }
 .status-row.attention .status-dot { background: var(--missing); }
 .status-row.attention .status-name { color: var(--missing); }
 .status-text { color: var(--muted); overflow-wrap: anywhere; }
-.status-fix { white-space: nowrap; }
+.status-fix { white-space: nowrap; display: flex; gap: 12px; align-items: baseline; }
+.status-action button { padding: 4px 12px; min-height: 0; }
 .list-counts { display: flex; flex-wrap: wrap; gap: 8px; }
 .list-counts a {
   display: flex;

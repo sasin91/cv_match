@@ -206,6 +206,10 @@ pub async fn reject(
         )
         .await?
     };
+    if done {
+        // Its found post, if the job scan found it, says the same.
+        crate::job_scan::job_scan_model::follow_match(context.db(), id, undo).await?;
+    }
     let message = match (done, undo) {
         (false, _) => None,
         (true, true) => Some("The match is back in your lists."),
@@ -509,10 +513,10 @@ pub async fn write(
     let found = saved_match(&context, id).await?;
     let keyed = llm_key::llm(&context, kind).await?;
     let notes = document_writer::notes(notes);
-    let task_core = context.clone();
+    let task_context = context.clone();
     let task_found = found.clone();
     let writing = tokio::spawn(async move {
-        let db = task_core.db();
+        let db = task_context.db();
         let now = chrono::Utc::now().timestamp();
         if kind == RESUME {
             document_writer::tailor_resume(db, &task_found, &keyed, &notes, now)

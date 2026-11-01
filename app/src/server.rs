@@ -28,6 +28,7 @@ use crate::context::Context;
 use crate::dev_reload::{self, DevReload};
 use crate::extension;
 use crate::instance;
+use crate::job_scan;
 use crate::matches::pages;
 use crate::setup;
 
@@ -136,6 +137,16 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/match/application_delivery/{id}", get(pages::application_delivery))
         .route("/joblog_extension", get(pages::joblog_extension))
         .route("/joblog_extension/open_edge", post(pages::open_edge))
+        .route("/job_scan", get(job_scan::index))
+        .route("/job_scan/create", get(job_scan::create))
+        .route("/job_scan/edit/{id}", get(job_scan::edit))
+        .route("/job_scan/submit/{id}", post(job_scan::submit))
+        .route("/job_scan/submit_delete/{id}", post(job_scan::submit_delete))
+        .route("/job_scan/search/{id}", get(job_scan::search))
+        .route("/job_scan/submit_scan", post(job_scan::submit_scan))
+        .route("/job_scan/submit_dismiss/{id}", post(job_scan::submit_dismiss))
+        .route("/job_scan/submit_add/{id}", post(job_scan::submit_add))
+        .route("/job_scan/submit_retry/{id}", post(job_scan::submit_retry))
         .route("/account", get(account::index))
         .route("/account/submit_key", post(account::submit_key))
         .route("/account/submit_uses", post(account::submit_uses))

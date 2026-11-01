@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT url, title, company\n        FROM scanned_job_posts\n        WHERE job_search_id = ?1\n        ORDER BY found_at DESC, id DESC\n        LIMIT ?2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "url",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "url"
+          }
+        }
+      },
+      {
+        "name": "title",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "title"
+          }
+        }
+      },
+      {
+        "name": "company",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "company"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "fd9cd8ef2d275a8bae7301c6d4b40df04691f3046ae32de747cb43f13f419ad3"
+}

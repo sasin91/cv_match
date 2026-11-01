@@ -1,0 +1,35 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT COUNT(*) AS \"scans!: i64\",\n               COALESCE(SUM(input_tokens), 0) AS \"input_tokens!: i64\",\n               COALESCE(SUM(output_tokens), 0) AS \"output_tokens!: i64\"\n        FROM job_search_runs\n        WHERE job_search_id = ?1 AND started_at >= ?2\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "scans!: i64",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "input_tokens!: i64",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "output_tokens!: i64",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ddb3445c33d8ce4d20ae615f0c7ce1c846d2808cd43e01912dcde4bd2824a92f"
+}

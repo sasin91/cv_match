@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT job_search_id, status FROM scanned_job_posts WHERE id = ?1",
+  "describe": {
+    "columns": [
+      {
+        "name": "job_search_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "job_search_id"
+          }
+        }
+      },
+      {
+        "name": "status",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "scanned_job_posts",
+            "name": "status"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "1b45a28b1fb9f82649813161a0516c95d2060f2b95e5911eaf67620069cd9b1a"
+}
