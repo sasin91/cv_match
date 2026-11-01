@@ -43,7 +43,8 @@ the app's files in `%APPDATA%\Recruiter` to `%APPDATA%\JobFinder` (renaming `rec
 and `recruiter.log` to the new names; any other database there stays), moves the API keys from Credential Manager's `Recruiter` entries to
 `JobFinder` ones, and replaces the `Recruiter\Job scan` task with `JobFinder\Job scan` at the
 same interval (on Linux, the `recruiter-scan` timer with `jobfinder-scan`). It won't start while
-Recruiter still runs on that folder; close it first. Delete the old `recruiter.exe` afterwards:
+Recruiter still runs on that folder; close it first. If you loaded the Jobnet extension, remove it
+in Edge and load it again from `%APPDATA%\JobFinder\jobnet-joblog` (its ID stays the same). Delete the old `recruiter.exe` afterwards:
 started again, it would make a new empty database in the old folder.
 
 The links go to the setup (http://127.0.0.1:8765/setup), whose steps are:

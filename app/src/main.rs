@@ -574,9 +574,10 @@ fn said_move(moved: Result<Moved, String>) -> Result<(), String> {
     match moved? {
         Moved::Nothing => {}
         Moved::Moved { from, to } => jobfinder::say!(
-            "Recruiter is now called JobFinder: its data moved from {} to {}.",
+            "Recruiter is now called JobFinder: its data moved from {} to {}. If you loaded the Jobnet extension in Edge, remove it there and load it again (Load unpacked) from {}: Edge still looks for it in the former folder.",
             from.display(),
-            to.display()
+            to.display(),
+            to.join(extension::FOLDER).display()
         ),
         Moved::BothThere { former } => jobfinder::say!(
             "Recruiter's former data folder, {}, is left as it is: JobFinder already has its own database. Delete the former folder once you don't need it.",
