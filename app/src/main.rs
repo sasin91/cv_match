@@ -31,7 +31,7 @@ use std::sync::Arc;
 use std::time::Instant;
 
 use recruiter::account::key_vault::KeyVault;
-use recruiter::app_log;
+use recruiter::app_log::{self, Opened};
 use recruiter::context::{Context, DatabaseFile};
 use recruiter::dev_reload::DevReload;
 use recruiter::instance::{self, Running};
@@ -453,13 +453,16 @@ fn full_path(database: &std::path::Path) -> String {
         .to_string()
 }
 
-/// Opens the log next to the database (app_log), or says why it can't be.
+/// Opens the log (app_log) and says where it goes, or why it couldn't be opened.
 fn open_log(folder: &std::path::Path) {
-    if let Err(e) = app_log::open(folder) {
-        recruiter::log_line!(
+    match app_log::open(folder) {
+        Ok(Opened::File(path)) => recruiter::say!("Logging to {}.", path.display()),
+        Ok(Opened::Journal) => recruiter::say!("Logging to the systemd journal: journalctl --user -t recruiter"),
+        Ok(Opened::Console) => recruiter::say!("Logging to the systemd journal, as this program's output."),
+        Err(e) => recruiter::log_line!(
             "The log file couldn't be opened in {}: {e}. What the app says goes only to this window.",
             folder.display()
-        );
+        ),
     }
 }
 
