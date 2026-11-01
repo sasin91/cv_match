@@ -360,9 +360,25 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
         Msg::ScanNow => {
             state.busy = true;
             let page = state.page;
+            // A scan running already is shown: its search's screen has its steps.
             return runner.run(
-                |context| async move { scan_service::scan_now(context).await.map(str::to_string) },
-                said(page),
+                |context| async move {
+                    let running = scan_service::running_scan(&context).await.ok().flatten();
+                    (scan_service::scan_now(context).await.map(str::to_string), running)
+                },
+                move |answer| match answer {
+                    Ok((said, running)) => Msg::Said {
+                        then: match (&said, running) {
+                            (Err(_), Some(running)) => Page::Search(running.search_id),
+                            _ => page,
+                        },
+                        said: said.map_err(|e| e.message),
+                    },
+                    Err(why) => Msg::Said {
+                        said: Err(why),
+                        then: page,
+                    },
+                },
             );
         }
         Msg::AddUrl(url) => state.add_url = url,

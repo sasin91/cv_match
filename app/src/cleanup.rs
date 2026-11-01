@@ -124,7 +124,7 @@ pub fn hold(database: &Path, how: Hold) -> Result<Held, InUse> {
 /// log in its folder (the lock file goes after the cleanup lets go of it).
 pub fn database_files(database: &Path) -> Vec<PathBuf> {
     let mut files = vec![database.to_path_buf()];
-    for suffix in ["-wal", "-shm", "-journal"] {
+    for suffix in ["-wal", "-shm", "-journal", crate::job_scan::scan_lock::LOCK_SUFFIX] {
         let mut name = database.as_os_str().to_owned();
         name.push(suffix);
         files.push(PathBuf::from(name));
@@ -239,6 +239,7 @@ mod tests {
                 "/data/jobfinder.sqlite-wal",
                 "/data/jobfinder.sqlite-shm",
                 "/data/jobfinder.sqlite-journal",
+                "/data/jobfinder.sqlite.scan.lock",
                 "/data/jobfinder.log",
                 "/data/jobfinder.old.log",
                 "/data/jobfinder.log.lock"

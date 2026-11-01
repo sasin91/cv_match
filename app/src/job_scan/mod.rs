@@ -13,6 +13,7 @@ pub mod job_search_card;
 pub mod job_search_rules;
 pub mod job_search_summary;
 pub mod run_steps;
+pub mod scan_lock;
 pub mod scan_service;
 pub mod scan_timeline;
 pub mod search_service;

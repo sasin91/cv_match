@@ -7,6 +7,7 @@
 //! (matches::match_service) without a web server's parts.
 
 use std::path::PathBuf;
+use std::sync::atomic::AtomicBool;
 use std::sync::{Arc, Mutex};
 
 use sqlx::SqlitePool;
@@ -38,6 +39,9 @@ pub struct Context {
     /// The program whose `read-pdf` reads an uploaded PDF (pdf_text::child): this one, unless
     /// a test names the built jobfinder.
     pub pdf_reader: Option<PathBuf>,
+    /// A job scan runs, on an in-memory database (job_scan::scan_lock; a database file is
+    /// locked by a file beside it instead).
+    pub scan_in_memory: AtomicBool,
 }
 
 /// The database file the app runs on.
@@ -63,6 +67,7 @@ impl Context {
             database: DatabaseFile::default(),
             scan_schedule: ScanSchedule::in_memory(),
             pdf_reader: std::env::current_exe().ok(),
+            scan_in_memory: AtomicBool::new(false),
         }
     }
 

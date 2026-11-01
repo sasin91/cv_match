@@ -17,6 +17,13 @@ pub fn day(at: i64) -> String {
         .unwrap_or_default()
 }
 
+/// "08:12" in this computer's time zone.
+pub fn clock(at: i64) -> String {
+    DateTime::<Utc>::from_timestamp(at, 0)
+        .map(|at| at.with_timezone(&Local).format("%H:%M").to_string())
+        .unwrap_or_default()
+}
+
 /// "21 Oct 08:12" in this computer's time zone.
 pub fn short_moment(at: i64) -> String {
     DateTime::<Utc>::from_timestamp(at, 0)

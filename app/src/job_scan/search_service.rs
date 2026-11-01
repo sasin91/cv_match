@@ -7,7 +7,7 @@ use super::job_search_card::JobSearchCard;
 use super::job_search_rules::{self, MAX_FIELD, MAX_KEYWORDS, MAX_NAME, MAX_SITES_TEXT, MAX_TAILOR_FROM};
 use super::job_search_summary::JobSearchSummary;
 use super::run_steps;
-use super::scan_service::{self, RUN_GIVE_UP_SECONDS};
+use super::scan_service;
 use super::scan_timeline::ScanTimeline;
 use crate::context::Context;
 use crate::matches::match_model;
@@ -80,7 +80,8 @@ pub async fn search_page(context: &Context, id: i64, dismissed: bool, after: &st
     let now = chrono::Utc::now().timestamp();
     let last_run = model::last_run(db, Some(search.id)).await?;
     let tokens = model::token_use(db, search.id, now - USAGE_DAYS * DAY_SECONDS).await?;
-    let summary = JobSearchSummary::from(&search, last_run.as_ref(), tokens, now - RUN_GIVE_UP_SECONDS);
+    let scan_running = scan_service::is_running(context)?;
+    let summary = JobSearchSummary::from(&search, last_run.as_ref(), tokens, scan_running);
     let steps = match &last_run {
         Some(run) => run_steps::of_run(db, run.id).await?,
         None => Vec::new(),
@@ -95,7 +96,7 @@ pub async fn search_page(context: &Context, id: i64, dismissed: bool, after: &st
         search,
         summary,
         problem,
-        scan_running: scan_service::is_running(context).await?,
+        scan_running,
         posts: batch.rows.iter().map(FoundPostCard::from).collect(),
         next,
         next_after: batch.next,

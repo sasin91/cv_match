@@ -22,6 +22,7 @@ use super::job_scan_model::{
 };
 use super::job_search_rules;
 use super::run_steps::{self, NewStep};
+use super::scan_lock;
 use crate::account::account_model::{APPLICATION, JOB_EVALUATION, RESUME};
 use crate::context::Context;
 use crate::job_sites::{JobSite, ListedPost};
@@ -43,9 +44,12 @@ const RECENT_POSTS_SKIPPED: i64 = 40;
 /// after the schedule's scan, or two clicks, can't run up the bill.
 pub const MIN_SECONDS_BETWEEN_SCANS: i64 = 3600;
 
-/// A scan not finished after this many seconds stopped without saying so (the program was
-/// closed): it no longer counts as running (half an hour).
+/// A post claimed for matching this many seconds ago and not matched was left by a match that
+/// stopped without saying so (the program was closed): another may take it (half an hour).
 pub const RUN_GIVE_UP_SECONDS: i64 = 1800;
+
+/// What a scan cut off before it finished says (the program was closed while it ran).
+const CUT_OFF: &str = "The scan stopped before it finished: the app was closed while it ran.";
 
 /// The country the web search is made from.
 const SEARCH_COUNTRY: &str = "DK";
@@ -137,33 +141,82 @@ const DAY_SECONDS: i64 = 86_400;
 pub async fn status(context: &Context) -> Result<ScanStatus, ServiceError> {
     let db = context.db();
     let now = chrono::Utc::now().timestamp();
-    let running_since = now - RUN_GIVE_UP_SECONDS;
+    let running = is_running(context)?;
     let problem = match scan_problem(context).await? {
         Some(problem) => Some(problem),
         None => model::first_pause(db).await?,
     };
     let last_scan = model::last_run(db, None).await?.map(|run| {
-        let failed =
-            super::job_search_summary::run_state(&run, running_since) == super::job_search_summary::RunState::Error;
+        let failed = super::job_search_summary::run_state(&run, running) == super::job_search_summary::RunState::Error;
         LatestScan {
             started_at: run.started_at,
-            text: super::job_search_summary::run_text(&run, running_since),
+            text: super::job_search_summary::run_text(&run, running),
             failed,
         }
     });
     Ok(ScanStatus {
         active_searches: model::active_count(db).await?,
         problem,
-        running: model::is_running(db, running_since).await?,
+        running,
         last_scan,
         new_last_day: model::new_posts_since(db, now - DAY_SECONDS).await?,
     })
 }
 
-/// Whether a scan is running now (here, or in the scheduled `jobfinder scan`).
-pub async fn is_running(context: &Context) -> Result<bool, ServiceError> {
-    let now = chrono::Utc::now().timestamp();
-    Ok(model::is_running(context.db(), now - RUN_GIVE_UP_SECONDS).await?)
+/// Whether a scan is running now (here, or in the scheduled `jobfinder scan`): one holds
+/// scan_lock.
+pub fn is_running(context: &Context) -> Result<bool, ServiceError> {
+    scan_lock::is_held(context).map_err(|e| lock_failed(&e))
+}
+
+/// The scan running now, as Scan now says it: its search and when it started it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct RunningScan {
+    pub search_id: i64,
+    pub search_name: String,
+    pub started_at: i64,
+}
+
+/// The scan running now, if one is: the latest scan's search (a scan scans its searches one
+/// after the other).
+pub async fn running_scan(context: &Context) -> Result<Option<RunningScan>, ServiceError> {
+    if !is_running(context)? {
+        return Ok(None);
+    }
+    let db = context.db();
+    let Some(run) = model::last_run(db, None).await? else {
+        return Ok(None);
+    };
+    let search_name = model::find(db, run.job_search_id)
+        .await?
+        .map(|search| search.name)
+        .unwrap_or_default();
+    Ok(Some(RunningScan {
+        search_id: run.job_search_id,
+        search_name,
+        started_at: run.started_at,
+    }))
+}
+
+/// "A scan is running already: Backend, since 19:02. …", for Scan now.
+fn running_text(running: Option<&RunningScan>) -> String {
+    match running {
+        Some(scan) if !scan.search_name.is_empty() => format!(
+            "A scan is running already: {}, since {}. Its steps show on that search's screen as it goes.",
+            scan.search_name,
+            crate::matches::dates::clock(scan.started_at)
+        ),
+        _ => "A scan is running already. Its steps show on each search's screen as it goes.".to_string(),
+    }
+}
+
+/// The lock couldn't be looked at: its file can't be opened.
+fn lock_failed(e: &std::io::Error) -> ServiceError {
+    crate::log_line!("job_scan: the scan's lock file can't be used: {e}");
+    ServiceError::new(
+        ErrorKind::Internal,
+        format!("The job scan's lock file beside the database can't be used: {e}"),
+    )
 }
 
 /// Scans every active search that isn't paused and wasn't scanned in the last
@@ -171,6 +224,15 @@ pub async fn is_running(context: &Context) -> Result<bool, ServiceError> {
 /// `jobfinder scan`, Scan now and a desktop window.
 pub async fn scan(context: Arc<Context>) -> Result<ScanReport, ServiceError> {
     let db = context.db();
+    let Some(_held) = scan_lock::hold(&context).await.map_err(|e| lock_failed(&e))? else {
+        let running = running_scan(&context).await?;
+        return Err(ServiceError::new(ErrorKind::TooMany, running_text(running.as_ref())));
+    };
+    // Holding the lock, no other scan runs: one not finished was cut off.
+    let stopped = model::stop_unfinished_runs(db, CUT_OFF, chrono::Utc::now().timestamp()).await?;
+    if stopped > 0 {
+        crate::log_line!("job_scan: {stopped} earlier scan(s) were cut off before they finished.");
+    }
     model::resume_after_new_key(db).await?;
     if let Some(problem) = scan_problem(&context).await? {
         return Err(ServiceError::need_key(problem));
@@ -989,11 +1051,8 @@ pub async fn scan_now(context: Arc<Context>) -> Result<&'static str, ServiceErro
     if let Some(problem) = scan_problem(&context).await? {
         return Err(ServiceError::need_key(problem));
     }
-    if is_running(&context).await? {
-        return Err(ServiceError::new(
-            ErrorKind::TooMany,
-            "A scan is running already. Its posts show up here as it finds them.",
-        ));
+    if let Some(running) = running_scan(&context).await? {
+        return Err(ServiceError::new(ErrorKind::TooMany, running_text(Some(&running))));
     }
     tokio::spawn(async move {
         match scan(context).await {
