@@ -62,6 +62,8 @@ tokio-tungstenite = { version = "0.30", default-features = false, features = ["c
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
 # The desktop window (desktop/), pinned: its releases come about yearly and change the API.
 iced = "=0.14.0"
+# The window's Open file dialog: Windows' own, and the desktop portal on Linux (no GTK to build).
+rfd = "0.17"
 
 # The memory and graphics card a llama.cpp model is weighed against (DXGI), the job object
 # that ends llama-server with the app, and whether the installer has its console to itself.
@@ -74,6 +76,7 @@ windows = { version = "0.62", features = [
     "Win32_System_JobObjects",
     "Win32_System_SystemInformation",
     "Win32_System_Threading",
+    "Win32_UI_Shell",
 ] }
 
 [profile.release]

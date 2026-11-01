@@ -1,5 +1,5 @@
 //! The desktop window (iced): Match, the settings screens (Language models, Local model, Job
-//! searches) and Settings, with a status line for Laya and the app's own
+//! searches), the Task manager and Settings, with a status line for Laya and the app's own
 //! model under them. Its screens print what the service layer gives the web pages (dashboard,
 //! setup_steps), so the two can't disagree; what the window can't do yet opens the web page for
 //! it in the browser, from the server that still runs beside it (for the Jobnet extension too).
@@ -11,8 +11,10 @@ mod job_searches;
 mod language_models;
 mod local_model;
 mod match_screen;
+mod matching;
 mod settings_screen;
 mod style;
+mod task_manager;
 mod widgets;
 
 use std::future::Future;
@@ -65,6 +67,7 @@ pub enum Screen {
     LanguageModels,
     LocalModel,
     JobSearches,
+    TaskManager,
     Settings,
 }
 
@@ -98,6 +101,8 @@ pub struct Shell {
     language_models: language_models::State,
     local_model: local_model::State,
     job_searches: job_searches::State,
+    matching: matching::State,
+    task_manager: task_manager::State,
 }
 
 /// Clone, as iced's buttons need; a reload's answer is shared rather than copied.
@@ -115,6 +120,8 @@ pub enum Message {
     LanguageModels(language_models::Msg),
     LocalModel(local_model::Msg),
     JobSearches(job_searches::Msg),
+    Matching(matching::Msg),
+    TaskManager(task_manager::Msg),
 }
 
 /// Opens the window and runs until it is closed.
@@ -199,6 +206,8 @@ fn boot(launch: &Mutex<Option<Launch>>) -> (Shell, Task<Message>) {
         language_models: language_models::State::default(),
         local_model: local_model::State::default(),
         job_searches: job_searches::State::default(),
+        matching: matching::State::default(),
+        task_manager: task_manager::State::default(),
     };
     let tasks = Task::batch([
         Task::done(Message::Reload),
@@ -284,7 +293,50 @@ impl Runner {
     }
 }
 
-/// Calls work(context) on the runtime and runs what it gives there.
+/// A step of work run with Runner::run_saying: a line it says as it goes, or its answer.
+pub enum Step<T> {
+    Said(String),
+    Done(Result<T, String>),
+}
+
+/// What work run with Runner::run_saying says its steps with.
+pub type Sayer = Arc<dyn Fn(&str) + Send + Sync>;
+
+impl Runner {
+    /// As run, for work that says what it is doing as it goes: each line it says comes as
+    /// Step::Said, then its answer as Step::Done.
+    pub fn run_saying<T, F, M>(
+        &self,
+        work: impl FnOnce(Arc<Context>, Sayer) -> F + Send + 'static,
+        step: impl Fn(Step<T>) -> M + Send + 'static,
+    ) -> Task<M>
+    where
+        F: Future<Output = T> + Send + 'static,
+        T: Send + 'static,
+        M: Send + 'static,
+    {
+        let (sender, receiver) = unbounded_channel();
+        let says = sender.clone();
+        let sayer: Sayer = Arc::new(move |line: &str| {
+            // The window was closed: nobody to say it to.
+            let _ = says.send(Step::Said(line.to_string()));
+        });
+        let job = spawn_work(&self.runtime, Arc::clone(&self.context), move |context| {
+            work(context, sayer)
+        });
+        self.runtime.spawn(async move {
+            let done = job.await.map_err(|e| {
+                crate::log_line!("The window's work stopped: {e}");
+                format!("That stopped with an error: {e}")
+            });
+            let _ = sender.send(Step::Done(done));
+        });
+        Task::run(received(receiver), step)
+    }
+}
+
+/// Calls work(context) on the runtime and runs what it gives there, in the task manager's list
+/// (its model calls, say).
 fn spawn_work<T, F>(
     runtime: &Handle,
     context: Arc<Context>,
@@ -294,7 +346,10 @@ where
     F: Future<Output = T> + Send + 'static,
     T: Send + 'static,
 {
-    runtime.spawn(async move { work(context).await })
+    runtime.spawn(async move {
+        let running = Arc::clone(&context.running);
+        running.within(work(context)).await
+    })
 }
 
 /// The Match screen's status and saved matches, and the status line.
@@ -316,6 +371,7 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
         Message::Show(screen) => {
             shell.screen = screen;
             shell.said = None;
+            shell.task_manager.hide();
             // Each visit reads the screen's data again, so it shows what the browser changed.
             match screen {
                 Screen::LanguageModels => return Task::done(Message::LanguageModels(language_models::Msg::Load)),
@@ -324,8 +380,27 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
                     shell.job_searches.show_list();
                     return Task::done(Message::JobSearches(job_searches::Msg::Load));
                 }
-                Screen::Match | Screen::Settings => {}
+                // The sidebar's Match is the overview, read again.
+                Screen::Match => {
+                    shell.matching.page = matching::Page::Overview;
+                    return Task::done(Message::Reload);
+                }
+                Screen::TaskManager => {
+                    shell.task_manager.show();
+                    return Task::done(Message::TaskManager(task_manager::Msg::Load));
+                }
+                Screen::Settings => {}
             }
+        }
+        Message::TaskManager(msg) => {
+            let runner = shell.runner();
+            return task_manager::update(&mut shell.task_manager, msg, &runner).map(Message::TaskManager);
+        }
+        Message::Matching(matching::Msg::OpenPage(path)) => return Task::done(Message::OpenPage(path)),
+        Message::Matching(matching::Msg::Changed) => return Task::done(Message::Reload),
+        Message::Matching(msg) => {
+            let runner = shell.runner();
+            return matching::update(&mut shell.matching, msg, &runner).map(Message::Matching);
         }
         Message::LanguageModels(language_models::Msg::ShowLocalModel) => {
             return Task::done(Message::Show(Screen::LocalModel));
@@ -398,10 +473,12 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
 
 fn view(shell: &Shell) -> Element<'_, Message> {
     let screen = match shell.screen {
-        Screen::Match => match_screen::view(shell.overview.as_ref()),
+        Screen::Match if shell.matching.page == matching::Page::Overview => match_screen::view(shell.overview.as_ref()),
+        Screen::Match => matching::view(&shell.matching).map(Message::Matching),
         Screen::LanguageModels => language_models::view(&shell.language_models).map(Message::LanguageModels),
         Screen::LocalModel => local_model::view(&shell.local_model).map(Message::LocalModel),
         Screen::JobSearches => job_searches::view(&shell.job_searches).map(Message::JobSearches),
+        Screen::TaskManager => task_manager::view(&shell.task_manager).map(Message::TaskManager),
         Screen::Settings => settings_screen::view(&shell.context),
     };
     let mut page = Column::new().spacing(GAP).max_width(PAGE_MAX_WIDTH);
@@ -449,6 +526,7 @@ fn sidebar(current: Screen) -> Element<'static, Message> {
         nav_item("Language models", Screen::LanguageModels, current),
         nav_item("Local model", Screen::LocalModel, current),
         nav_item("Job searches", Screen::JobSearches, current),
+        nav_item("Task manager", Screen::TaskManager, current),
         nav_item("Settings", Screen::Settings, current),
     ]
     .spacing(4)
@@ -498,6 +576,7 @@ fn status_line(status: &[(Health, String)]) -> Element<'_, Message> {
 fn laya_status(context: &Context) -> (Health, String) {
     match context.laya.as_ref().map(|laya| laya.state()) {
         None => (Health::Neutral, "Laya: no model".to_string()),
+        Some(LayaState::Unloaded) => (Health::Ready, "Laya: ready, loads for a match".to_string()),
         Some(LayaState::Loading) => (Health::Neutral, "Laya: loading".to_string()),
         Some(LayaState::Loaded) => (Health::Ready, "Laya: ready".to_string()),
         Some(LayaState::Failed(_)) => (Health::Attention, "Laya: couldn't load (see the log)".to_string()),

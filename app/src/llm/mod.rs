@@ -18,6 +18,8 @@ pub mod openai;
 pub mod transcript;
 
 use std::error::Error as _;
+use std::future::Future;
+use std::sync::Arc;
 use std::time::Duration;
 
 use serde_json::Value;
@@ -26,6 +28,7 @@ pub use self::anthropic::Anthropic;
 pub use self::llm_exception::LlmException;
 pub use self::llm_response::LlmResponse;
 pub use self::openai::{Openai, WebSearchAnswer};
+use crate::task_manager::running_work::{self, Stopped, WorkKind};
 
 /// The provider name of OpenAI's API.
 pub const OPENAI: &str = "openai";
@@ -80,10 +83,12 @@ pub enum Adapter {
     Anthropic(Anthropic),
 }
 
-/// The model a key runs on: its provider's adapter.
+/// The model a key runs on: its provider's adapter, and for the app's own llama-server what keeps
+/// it from stopping for being idle while this (or a clone) is held.
 #[derive(Debug, Clone)]
 pub struct Llm {
     pub adapter: Adapter,
+    pub server_in_use: Option<Arc<crate::llama::llama_server::InUse>>,
 }
 
 impl Llm {
@@ -112,7 +117,10 @@ impl Llm {
             }
             _ => return Err(LlmException::new(format!("Unknown LLM provider \"{provider}\"."))),
         };
-        Ok(Llm { adapter })
+        Ok(Llm {
+            adapter,
+            server_in_use: None,
+        })
     }
 
     /// One JSON answer that follows `schema` (objects closed with additionalProperties: false,
@@ -125,10 +133,13 @@ impl Llm {
         effort: Effort,
     ) -> Result<Value, LlmException> {
         let call = transcript::call(system, user);
-        let answer = match &self.adapter {
-            Adapter::Openai(openai) => openai.structured(system, user, schema, effort).await,
-            Adapter::Anthropic(anthropic) => anthropic.structured(system, user, schema, effort).await,
+        let asking = async {
+            match &self.adapter {
+                Adapter::Openai(openai) => openai.structured(system, user, schema, effort).await,
+                Adapter::Anthropic(anthropic) => anthropic.structured(system, user, schema, effort).await,
+            }
         };
+        let answer = self.listed(asking).await;
         call.answered(|| answer_text(answer.as_ref()));
         answer
     }
@@ -146,14 +157,25 @@ impl Llm {
         effort: Effort,
     ) -> Result<WebSearchAnswer, LlmException> {
         let call = transcript::call(system, user);
-        let answer = match &self.adapter {
-            Adapter::Openai(openai) => openai.web_search(system, user, schema, domains, country, effort).await,
-            Adapter::Anthropic(_) => Err(LlmException::new(
-                "Searching the web needs an OpenAI key; this key is for another provider.",
-            )),
+        let asking = async {
+            match &self.adapter {
+                Adapter::Openai(openai) => openai.web_search(system, user, schema, domains, country, effort).await,
+                Adapter::Anthropic(_) => Err(LlmException::new(
+                    "Searching the web needs an OpenAI key; this key is for another provider.",
+                )),
+            }
         };
+        let answer = self.listed(asking).await;
         call.answered(|| answer_text(answer.as_ref().map(|found| &found.answer)));
         answer
+    }
+
+    /// A call, listed in the task manager while it waits for its answer; stopped there, it fails
+    /// saying so.
+    async fn listed<T>(&self, asking: impl Future<Output = Result<T, LlmException>>) -> Result<T, LlmException> {
+        running_work::part(WorkKind::ModelCall, self.model(), asking)
+            .await
+            .unwrap_or_else(|Stopped| Err(LlmException::new(Stopped::SAID)))
     }
 
     /// The model the calls run on.

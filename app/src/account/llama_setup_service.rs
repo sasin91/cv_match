@@ -15,6 +15,7 @@ use crate::llama::model_choice::{self, Fit};
 use crate::llm::LLAMA_CPP;
 use crate::service_error::{ErrorKind, ServiceError};
 use crate::setup;
+use crate::task_manager::running_work::{Stopped, WorkKind};
 
 /// What the download of llama.cpp is called while it runs.
 const SERVER_DOWNLOAD: &str = "llama.cpp";
@@ -180,8 +181,13 @@ where
         .begin(what)
         .map_err(|why| ServiceError::new(ErrorKind::TooMany, why))?;
     let context = Arc::clone(context);
+    let what = what.to_string();
     tokio::spawn(async move {
-        let outcome = work(Arc::clone(&context)).await;
+        let list = Arc::clone(&context.running);
+        let outcome = list
+            .run(WorkKind::Download, what, work(Arc::clone(&context)))
+            .await
+            .unwrap_or_else(|Stopped| Err(Stopped::SAID.to_string()));
         if let Some(server) = &context.llama {
             server.downloads.end(outcome);
         }

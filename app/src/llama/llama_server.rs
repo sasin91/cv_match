@@ -1,6 +1,15 @@
 //! llama-server, run by the app for the "llama_cpp" provider: started on the first call with the
-//! model model_choice picks, on a free port on 127.0.0.1, and kept running for the next calls.
-//! Its OpenAI-compatible API is called through the openai adapter as any local server's is.
+//! model model_choice picks, on a free port on 127.0.0.1, and kept running for the next calls
+//! until it has sat unused for a while (stop_if_idle, which crate::idle calls), so a window left
+//! open holds no model in the graphics card's memory. Its OpenAI-compatible API is called through
+//! the openai adapter as any local server's is.
+//!
+//! It runs light, as work in the background should: at below-normal priority, on half the
+//! processor's cores, one request at a time, and with as many layers on the card as fit in the
+//! card's memory that is free when it starts, which llama.cpp itself works out. Forcing every
+//! layer onto a card that Windows' desktop or another program already uses spills the model
+//! into shared system memory, where it answers several times slower and keeps the card at full
+//! load for that much longer.
 //!
 //! It stops with the app: on Windows it runs in a job object that closes, and so ends it, when
 //! the app ends, however the app ends (closing its window included). Its output goes to
@@ -9,6 +18,7 @@
 use std::fs::File;
 use std::path::{Path, PathBuf};
 use std::process::Stdio;
+use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use tokio::process::{Child, Command};
@@ -49,6 +59,14 @@ const HEALTH_POLL_MILLISECONDS: u64 = 250;
 /// How long one health check may take, in seconds.
 const HEALTH_CHECK_SECONDS: u64 = 2;
 
+/// Requests the server answers at once: one, as the app asks one thing at a time. llama-server's
+/// default of four keeps room on the card for four.
+const PARALLEL_REQUESTS: u32 = 1;
+
+/// The share of the processor's cores the server computes on (one in this many), so the
+/// computer stays responsive while a model runs on the CPU.
+const CORES_SHARE: usize = 2;
+
 /// The log lines shown when the server fails to start.
 const LOG_TAIL_LINES: usize = 12;
 
@@ -75,6 +93,43 @@ struct Running {
     _job: job::KillOnClose,
     model: PathBuf,
     endpoint: Endpoint,
+    /// When it was started, in unix seconds.
+    started_at: i64,
+}
+
+/// Calls on the server: how many are under way, and when the last one ended.
+#[derive(Debug, Default)]
+struct Calls {
+    under_way: usize,
+    last_ended: Option<Instant>,
+}
+
+impl Calls {
+    /// Whether no call is under way and none ended in the last idle_for.
+    fn idle_for(&self, idle_for: Duration) -> bool {
+        self.under_way == 0 && self.last_ended.is_none_or(|ended| ended.elapsed() >= idle_for)
+    }
+}
+
+/// The running server, kept from stopping for being idle until this is dropped: what start()
+/// gives each caller, held for as long as its calls go on (crate::llm::Llm keeps it).
+pub struct InUse {
+    pub endpoint: Endpoint,
+    calls: Arc<std::sync::Mutex<Calls>>,
+}
+
+impl std::fmt::Debug for InUse {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.debug_struct("InUse").field("endpoint", &self.endpoint).finish()
+    }
+}
+
+impl Drop for InUse {
+    fn drop(&mut self) {
+        let mut calls = self.calls.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        calls.under_way = calls.under_way.saturating_sub(1);
+        calls.last_ended = Some(Instant::now());
+    }
 }
 
 /// What the API key page shows of the llama folder: the program, the computer, and each model
@@ -97,6 +152,8 @@ pub struct LlamaServer {
     folder: PathBuf,
     inventory: Inventory,
     running: Mutex<Option<Running>>,
+    /// The calls on the running server, which stop_if_idle reads.
+    calls: Arc<std::sync::Mutex<Calls>>,
     /// The setup wizard's download.
     pub downloads: Downloads,
 }
@@ -109,6 +166,7 @@ impl LlamaServer {
             folder: std::path::absolute(folder).unwrap_or_else(|_| folder.to_path_buf()),
             inventory,
             running: Mutex::new(None),
+            calls: Arc::default(),
             downloads: Downloads::default(),
         }
     }
@@ -175,19 +233,32 @@ impl LlamaServer {
     /// stopping, which holds its lock).
     pub fn running_model(&self) -> Option<String> {
         let running = self.running.try_lock().ok()?;
-        let model = &running.as_ref()?.model;
-        Some(
-            model
-                .file_name()
-                .unwrap_or(model.as_os_str())
-                .to_string_lossy()
-                .into_owned(),
-        )
+        Some(file_name_of(&running.as_ref()?.model))
+    }
+
+    /// The server process running now, for the task manager; None as running_model says.
+    pub fn running_process(&self) -> Option<ServerProcess> {
+        let running = self.running.try_lock().ok()?;
+        let running = running.as_ref()?;
+        Some(ServerProcess {
+            model: file_name_of(&running.model),
+            process_id: running.child.id(),
+            started_at: running.started_at,
+        })
+    }
+
+    /// Stops the server now, calls under way or not (they fail, and the next call starts it
+    /// again), and says the model it ran; None when it isn't running. Waits for a start under way.
+    pub async fn stop_now(&self) -> Option<String> {
+        let mut stopped = self.running.lock().await.take()?;
+        stop(&mut stopped).await;
+        Some(stopped.endpoint.model)
     }
 
     /// The server running named (a file in the models folder, or "" for the one that fits best),
-    /// started or restarted with it when needed. Err says what's missing or why it didn't start.
-    pub async fn start(&self, named: &str) -> Result<Endpoint, String> {
+    /// started or restarted with it when needed, and kept running while the answer is held. Err
+    /// says what's missing or why it didn't start.
+    pub async fn start(&self, named: &str) -> Result<InUse, String> {
         let Some(server) = self.server_path() else {
             return Err(format!(
                 "There's no {SERVER_FILE} in {}. Download it on the API key page's \"Set it up\" (/llama_setup).",
@@ -202,7 +273,7 @@ impl LlamaServer {
             && current.model == model.path
             && matches!(current.child.try_wait(), Ok(None))
         {
-            return Ok(current.endpoint.clone());
+            return Ok(self.in_use(current.endpoint.clone()));
         }
         if let Some(mut previous) = running.take() {
             stop(&mut previous).await;
@@ -210,7 +281,36 @@ impl LlamaServer {
         let started = self.spawn(&server, model, fit).await?;
         let endpoint = started.endpoint.clone();
         *running = Some(started);
-        Ok(endpoint)
+        Ok(self.in_use(endpoint))
+    }
+
+    /// One more call under way on endpoint. Called with the server's lock held, so stop_if_idle
+    /// (which holds it too) sees the call.
+    fn in_use(&self, endpoint: Endpoint) -> InUse {
+        let mut calls = self.calls.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        calls.under_way += 1;
+        InUse {
+            endpoint,
+            calls: Arc::clone(&self.calls),
+        }
+    }
+
+    /// Stops the server when it runs, no call is under way and none ended in the last idle_for,
+    /// and says the model it ran; None when it was left as it is. A server starting or stopping
+    /// (which holds its lock) is left alone; the next check sees it.
+    pub async fn stop_if_idle(&self, idle_for: Duration) -> Option<String> {
+        let mut running = self.running.try_lock().ok()?;
+        let idle = self
+            .calls
+            .lock()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .idle_for(idle_for);
+        if !idle {
+            return None;
+        }
+        let mut stopped = running.take()?;
+        stop(&mut stopped).await;
+        Some(stopped.endpoint.model)
     }
 
     async fn spawn(&self, server: &Path, model: &GgufFile, fit: Fit) -> Result<Running, String> {
@@ -221,9 +321,9 @@ impl LlamaServer {
             .try_clone()
             .map_err(|e| format!("Couldn't write {}: {e}", log_path.display()))?;
         let alias = model_alias(model);
-        let mut child = crate::no_window::hide(&mut Command::new(server))
+        let mut child = crate::no_window::in_background(&mut Command::new(server))
             .current_dir(&self.folder)
-            .args(server_arguments(model, &alias, port, fit))
+            .args(server_arguments(model, &alias, port, fit, background_threads()))
             .stdin(Stdio::null())
             .stdout(log)
             .stderr(log_too)
@@ -255,6 +355,7 @@ impl LlamaServer {
         Ok(Running {
             child,
             _job: job,
+            started_at: chrono::Utc::now().timestamp(),
             model: model.path.clone(),
             endpoint: Endpoint {
                 base_url: format!("{base}/v1"),
@@ -273,11 +374,26 @@ fn model_alias(model: &GgufFile) -> String {
         .unwrap_or_else(|| model.name.clone())
 }
 
-/// llama-server's command line: the model, on 127.0.0.1 only, its context, its layers on the card,
-/// no thinking before answering (--reasoning-budget 0), and the model's own chat template
-/// (--jinja).
-fn server_arguments(model: &GgufFile, alias: &str, port: u16, fit: Fit) -> Vec<String> {
-    vec![
+/// The threads the server computes on: CORES_SHARE of the processor's, at least one.
+fn background_threads() -> usize {
+    let cores = std::thread::available_parallelism().map_or(1, |cores| cores.get());
+    (cores / CORES_SHARE).max(1)
+}
+
+/// llama-server's --n-gpu-layers for fit: none on the card for a model run in memory, else not
+/// given, so llama.cpp fits the layers to the card's memory that is free when it starts.
+fn gpu_layers_argument(fit: Fit) -> Option<u32> {
+    match fit {
+        Fit::Memory | Fit::TooBig => Some(0),
+        Fit::Gpu | Fit::Split { .. } => None,
+    }
+}
+
+/// llama-server's command line: the model, on 127.0.0.1 only, its context, one request at a time
+/// on threads threads, its layers on the card (gpu_layers_argument), no thinking before answering
+/// (--reasoning-budget 0), and the model's own chat template (--jinja).
+fn server_arguments(model: &GgufFile, alias: &str, port: u16, fit: Fit, threads: usize) -> Vec<String> {
+    let mut arguments = vec![
         "--model".to_string(),
         model.path.display().to_string(),
         "--alias".to_string(),
@@ -288,12 +404,18 @@ fn server_arguments(model: &GgufFile, alias: &str, port: u16, fit: Fit) -> Vec<S
         port.to_string(),
         "--ctx-size".to_string(),
         CONTEXT_TOKENS.to_string(),
-        "--n-gpu-layers".to_string(),
-        fit.gpu_layers().to_string(),
+        "--parallel".to_string(),
+        PARALLEL_REQUESTS.to_string(),
+        "--threads".to_string(),
+        threads.to_string(),
         "--reasoning-budget".to_string(),
         THINKING_TOKENS.to_string(),
-        "--jinja".to_string(),
-    ]
+    ];
+    if let Some(layers) = gpu_layers_argument(fit) {
+        arguments.extend(["--n-gpu-layers".to_string(), layers.to_string()]);
+    }
+    arguments.push("--jinja".to_string());
+    arguments
 }
 
 /// A port nothing listens on now. Another program could take it before llama-server does; then
@@ -331,6 +453,25 @@ async fn wait_until_healthy(base: &str, child: &mut Child) -> Result<(), String>
         }
         tokio::time::sleep(Duration::from_millis(HEALTH_POLL_MILLISECONDS)).await;
     }
+}
+
+/// The file name of a model's path, as the window shows it.
+fn file_name_of(model: &Path) -> String {
+    model
+        .file_name()
+        .unwrap_or(model.as_os_str())
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// The running llama-server, as the task manager lists it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ServerProcess {
+    /// The model file it runs.
+    pub model: String,
+    pub process_id: Option<u32>,
+    /// When it was started, in unix seconds.
+    pub started_at: i64,
 }
 
 /// Stops a server and waits for it to end.
@@ -432,21 +573,68 @@ mod tests {
         }
     }
 
-    #[test]
-    fn the_server_listens_on_this_computer_only_with_the_chosen_layers_on_the_card() {
-        let arguments = server_arguments(&model(), "Qwen3-8B-Q4_K_M", 50123, Fit::Split { gpu_layers: 20 });
-        let pairs: Vec<(&str, &str)> = arguments
+    fn pairs(arguments: &[String]) -> Vec<(&str, &str)> {
+        arguments
             .chunks(2)
             .filter(|pair| pair.len() == 2)
             .map(|pair| (pair[0].as_str(), pair[1].as_str()))
-            .collect();
+            .collect()
+    }
+
+    #[test]
+    fn the_server_listens_on_this_computer_only_and_runs_light() {
+        let arguments = server_arguments(&model(), "Qwen3-8B-Q4_K_M", 50123, Fit::Gpu, 4);
+        let pairs = pairs(&arguments);
         assert!(pairs.contains(&("--host", "127.0.0.1")));
         assert!(pairs.contains(&("--port", "50123")));
-        assert!(pairs.contains(&("--n-gpu-layers", "20")));
         assert!(pairs.contains(&("--alias", "Qwen3-8B-Q4_K_M")));
         assert!(pairs.contains(&("--reasoning-budget", "0")));
+        assert!(pairs.contains(&("--parallel", "1")));
+        assert!(pairs.contains(&("--threads", "4")));
         assert_eq!(arguments.last().map(String::as_str), Some("--jinja"));
         assert_eq!(model_alias(&model()), "Qwen3-8B-Q4_K_M");
+    }
+
+    #[test]
+    fn llama_cpp_fits_the_layers_to_the_free_memory_on_the_card() {
+        for fit in [Fit::Gpu, Fit::Split { gpu_layers: 20 }] {
+            let arguments = server_arguments(&model(), "m", 50123, fit, 4);
+            assert!(
+                !arguments.contains(&"--n-gpu-layers".to_string()),
+                "{fit:?}: {arguments:?}"
+            );
+        }
+        let in_memory = server_arguments(&model(), "m", 50123, Fit::Memory, 4);
+        assert!(pairs(&in_memory).contains(&("--n-gpu-layers", "0")));
+        assert!(background_threads() >= 1);
+    }
+
+    #[test]
+    fn the_server_is_idle_only_with_no_call_under_way_for_long_enough() {
+        let calls = Arc::new(std::sync::Mutex::new(Calls::default()));
+        let idle = Duration::from_secs(300);
+        assert!(calls.lock().unwrap().idle_for(idle));
+        let held = InUse {
+            endpoint: Endpoint {
+                base_url: "http://127.0.0.1:1/v1".to_string(),
+                model: "m".to_string(),
+            },
+            calls: Arc::clone(&calls),
+        };
+        calls.lock().unwrap().under_way += 1;
+        assert!(!calls.lock().unwrap().idle_for(Duration::ZERO));
+        drop(held);
+        assert!(calls.lock().unwrap().idle_for(Duration::ZERO));
+        assert!(!calls.lock().unwrap().idle_for(idle), "a call just ended");
+    }
+
+    #[tokio::test]
+    async fn a_server_that_isnt_running_isnt_stopped() {
+        let server = LlamaServer::new(
+            &std::env::temp_dir().join("jobfinder-llama-test-idle"),
+            Inventory::default(),
+        );
+        assert_eq!(server.stop_if_idle(Duration::ZERO).await, None);
     }
 
     #[tokio::test]

@@ -7,6 +7,10 @@
 //! ends, however it ends. A scan cut off by the app being closed so never blocks the next one,
 //! and never shows as running. An in-memory database (tests) is only ever seen by its own
 //! program, so a flag in its Context does.
+//!
+//! A scan another JobFinder runs (the schedule's) is stopped from this one's task manager by a
+//! file beside the database ("jobfinder.sqlite.scan.stop"): the scan looks for it every
+//! STOP_LOOK_EVERY and stops as the task manager stops one of its own.
 
 use std::fs::{File, OpenOptions, TryLockError};
 use std::path::PathBuf;
@@ -17,6 +21,12 @@ use crate::context::Context;
 
 /// What is added to the database file's name for the lock's file.
 pub const LOCK_SUFFIX: &str = ".scan.lock";
+
+/// What is added to the database file's name for the file that asks its scan to stop.
+pub const STOP_SUFFIX: &str = ".scan.stop";
+
+/// How often a scan looks for the stop file (every two seconds).
+const STOP_LOOK_EVERY: Duration = Duration::from_secs(2);
 
 /// How many times a scan tries to take the lock: is_held() takes it for a moment to look, so a
 /// scan that starts in that moment tries again.
@@ -91,6 +101,44 @@ pub async fn hold(context: &Context) -> std::io::Result<Option<HeldScan<'_>>> {
 /// Whether a scan holds the lock now.
 pub fn is_held(context: &Context) -> std::io::Result<bool> {
     Ok(try_hold(context)?.is_none())
+}
+
+/// The stop file, for a database file.
+fn stop_file(database: &str) -> Option<PathBuf> {
+    (!database.is_empty()).then(|| PathBuf::from(format!("{database}{STOP_SUFFIX}")))
+}
+
+/// Asks the scan that holds the lock, in whichever program, to stop. False on an in-memory
+/// database, which has no file to ask with.
+pub fn ask_to_stop(context: &Context) -> std::io::Result<bool> {
+    let Some(path) = stop_file(&context.database.path) else {
+        return Ok(false);
+    };
+    std::fs::write(path, b"")?;
+    Ok(true)
+}
+
+/// Forgets a stop asked of a scan that ended before it saw it.
+pub fn forget_stop_request(context: &Context) {
+    if let Some(path) = stop_file(&context.database.path) {
+        let _ = std::fs::remove_file(path);
+    }
+}
+
+/// Forever, for the scan holding the lock: when the stop file shows up, takes it away and asks
+/// this scan to stop (running_work).
+pub async fn stop_when_asked(context: &Context) -> std::convert::Infallible {
+    let path = stop_file(&context.database.path);
+    loop {
+        tokio::time::sleep(STOP_LOOK_EVERY).await;
+        if let Some(path) = &path
+            && path.is_file()
+        {
+            let _ = std::fs::remove_file(path);
+            crate::log_line!("job_scan: another JobFinder's task manager asked this scan to stop.");
+            crate::task_manager::running_work::stop_this();
+        }
+    }
 }
 
 #[cfg(test)]
