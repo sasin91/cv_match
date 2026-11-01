@@ -9,15 +9,20 @@ const FIRST_GUESS: usize = 4;
 /// The smallest output buffer, in bytes.
 const MIN_OUTPUT: usize = 64;
 
-/// Inflates zlib data. A stream cut short or damaged near its end, common in PDFs, keeps what
-/// was inflated before the damage.
-pub fn inflate_zlib(data: &[u8]) -> Option<Vec<u8>> {
+/// Inflates zlib data into at most `limit` bytes; None past it, or when nothing inflates. A
+/// stream cut short or damaged near its end, common in PDFs, keeps what was inflated before the
+/// damage.
+pub fn inflate_zlib(data: &[u8], limit: usize) -> Option<Vec<u8>> {
     let mut state = InflateState::new_boxed(DataFormat::Zlib);
-    let mut out = vec![0; data.len() * FIRST_GUESS + MIN_OUTPUT];
+    let first = (data.len() * FIRST_GUESS + MIN_OUTPUT).min(limit.max(1));
+    let mut out = vec![0; first];
     let (mut input, mut written) = (data, 0);
     loop {
         if written == out.len() {
-            out.resize(out.len() * 2, 0);
+            if out.len() >= limit {
+                return None;
+            }
+            out.resize((out.len() * 2).min(limit), 0);
         }
         let step = inflate(&mut state, input, &mut out[written..], MZFlush::None);
         written += step.bytes_written;
@@ -45,13 +50,21 @@ mod tests {
     fn inflates() {
         // zlib.compress(b"hello hello hello")
         let packed = [120, 156, 203, 72, 205, 201, 201, 87, 200, 64, 144, 0, 58, 46, 6, 125];
-        assert_eq!(super::inflate_zlib(&packed).unwrap(), b"hello hello hello");
+        assert_eq!(super::inflate_zlib(&packed, usize::MAX).unwrap(), b"hello hello hello");
     }
 
     #[test]
     fn a_stream_cut_short_keeps_what_came_before() {
         let packed = [120, 156, 203, 72, 205, 201, 201, 87, 200, 64, 144, 0, 58, 46, 6, 125];
-        let cut = super::inflate_zlib(&packed[..packed.len() - 4]).unwrap();
+        let cut = super::inflate_zlib(&packed[..packed.len() - 4], usize::MAX).unwrap();
         assert!(b"hello hello hello".starts_with(&cut), "{cut:?}");
+    }
+
+    #[test]
+    fn a_stream_inflating_past_the_limit_is_refused() {
+        let zeros = vec![0u8; 1024 * 1024];
+        let packed = miniz_oxide::deflate::compress_to_vec_zlib(&zeros, 6);
+        assert!(super::inflate_zlib(&packed, 64 * 1024).is_none());
+        assert_eq!(super::inflate_zlib(&packed, zeros.len()).unwrap().len(), zeros.len());
     }
 }

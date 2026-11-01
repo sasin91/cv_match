@@ -34,21 +34,29 @@ pub fn text_of(bytes: Vec<u8>) -> Result<String, String> {
 mod tests {
     use super::text_of;
 
-    /// A one-page PDF with this content stream, its /Length as given and `extra` as more
-    /// objects. No cross reference table: the reader rebuilds it, as for any broken file.
-    fn pdf(content: &str, length: &str, extra: &str) -> Vec<u8> {
+    /// Helvetica, as a simple font with a standard encoding.
+    const HELVETICA: &str = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
+
+    /// A one-page PDF with this content stream, its /Length as given, font F1 (object 5) and
+    /// `extra` as more objects. No cross reference table: the reader rebuilds it, as for any
+    /// broken file.
+    fn pdf_with(content: &str, length: &str, font: &str, kids: &str, extra: &str) -> Vec<u8> {
         format!(
             "%PDF-1.4\n\
              1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
-             2 0 obj << /Type /Pages /Kids [3 0 R] /Count 1 >> endobj\n\
+             2 0 obj << /Type /Pages /Kids [{kids}] /Count 1 >> endobj\n\
              3 0 obj << /Type /Page /Parent 2 0 R /MediaBox [0 0 612 792] \
              /Resources << /Font << /F1 5 0 R >> >> /Contents 4 0 R >> endobj\n\
              4 0 obj << /Length {length} >>\nstream\n{content}\nendstream\nendobj\n\
-             5 0 obj << /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >> endobj\n\
+             5 0 obj {font} endobj\n\
              {extra}\n\
              trailer << /Root 1 0 R >>\n%%EOF\n"
         )
         .into_bytes()
+    }
+
+    fn pdf(content: &str, length: &str, extra: &str) -> Vec<u8> {
+        pdf_with(content, length, HELVETICA, "3 0 R", extra)
     }
 
     fn shown(render_mode: u8) -> String {
@@ -81,5 +89,30 @@ mod tests {
         );
         let text = text_of(pdf(&content, &content.len().to_string(), "")).unwrap();
         assert_eq!(text, "Software engineer");
+    }
+
+    #[test]
+    fn a_page_tree_pointing_back_at_itself_is_walked_once() {
+        let content = "BT /F1 12 Tf 72 700 Td (Software engineer) Tj ET";
+        let bytes = pdf_with(content, &content.len().to_string(), HELVETICA, "2 0 R 2 0 R 3 0 R", "");
+        assert_eq!(text_of(bytes).unwrap(), "Software engineer");
+    }
+
+    #[test]
+    fn a_type0_font_with_one_byte_codes_reads_each_byte() {
+        let cmap = "begincmap 1 begincodespacerange <00> <FF> endcodespacerange endcmap";
+        let to_unicode = "begincmap 3 beginbfchar <41> <0041> <42> <0042> <43> <0043> endbfchar endcmap";
+        let extra = format!(
+            "6 0 obj << /Length {} >>\nstream\n{cmap}\nendstream\nendobj\n\
+             7 0 obj << /Length {} >>\nstream\n{to_unicode}\nendstream\nendobj\n\
+             8 0 obj << /Type /Font /Subtype /CIDFontType2 /BaseFont /Cv /DW 500 >> endobj",
+            cmap.len(),
+            to_unicode.len()
+        );
+        let font = "<< /Type /Font /Subtype /Type0 /BaseFont /Cv /Encoding 6 0 R /ToUnicode 7 0 R \
+                    /DescendantFonts [8 0 R] >>";
+        let content = "BT /F1 12 Tf 72 700 Td (ABC) Tj ET";
+        let bytes = pdf_with(content, &content.len().to_string(), font, "3 0 R", &extra);
+        assert_eq!(text_of(bytes).unwrap(), "ABC");
     }
 }

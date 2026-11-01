@@ -5,13 +5,15 @@
 use std::collections::HashMap;
 
 use super::document::Document;
-use super::encoding::{self, Encoding, ToUnicode};
+use super::encoding::{self, CodeRange, Encoding, ToUnicode};
 use super::syntax::{Dict, Object};
 use super::truetype;
 
 pub struct Font {
-    /// Type 0 fonts take two byte codes; simple fonts one.
+    /// Type 0 fonts take codes of one to four bytes, as their encoding CMap's code space ranges
+    /// say (two bytes without ranges, as Identity-H); simple fonts one.
     two_byte: bool,
+    code_ranges: Vec<CodeRange>,
     encoding: Encoding,
     to_unicode: Option<ToUnicode>,
     /// For symbolic TrueType fonts, the text the font program itself gives
@@ -229,8 +231,18 @@ impl Font {
             .then(|| descriptor.get("FontFile2").and_then(|f| doc.stream_data(f)))
             .flatten()
             .map(|program| truetype::code_text(&program));
+        // A Type 0 font's embedded encoding CMap says how long its codes are; a named one
+        // (Identity-H) takes two bytes.
+        let code_ranges = match doc.lookup(dict, "Encoding") {
+            Object::Stream(s) if two_byte => doc
+                .stream_data(&Object::Stream(s))
+                .map(|cmap| encoding::code_ranges(&cmap))
+                .unwrap_or_default(),
+            _ => vec![],
+        };
         Font {
             two_byte,
+            code_ranges,
             encoding,
             to_unicode,
             program_text,
@@ -244,11 +256,34 @@ impl Font {
     }
 
     /// Splits a string into codes.
-    pub fn codes<'a>(&self, bytes: &'a [u8]) -> impl Iterator<Item = u32> + 'a {
-        let step = if self.two_byte { 2 } else { 1 };
-        bytes
-            .chunks(step)
-            .map(|c| c.iter().fold(0u32, |n, &b| n << 8 | b as u32))
+    pub fn codes(&self, bytes: &[u8]) -> Vec<u32> {
+        if !self.two_byte {
+            return bytes.iter().map(|&b| b as u32).collect();
+        }
+        if self.code_ranges.is_empty() {
+            return bytes.chunks(2).map(encoding::code_of).collect();
+        }
+        let mut codes = Vec::new();
+        let mut at = 0;
+        while at < bytes.len() {
+            let length = self.code_length(&bytes[at..]);
+            codes.push(encoding::code_of(&bytes[at..at + length]));
+            at += length;
+        }
+        codes
+    }
+
+    /// How many bytes the code starting `bytes` takes: the shortest a code space range holds,
+    /// else two (as without ranges), or what is left.
+    fn code_length(&self, bytes: &[u8]) -> usize {
+        (1..=encoding::MAX_CODE_BYTES.min(bytes.len()))
+            .find(|&n| {
+                let code = encoding::code_of(&bytes[..n]);
+                self.code_ranges
+                    .iter()
+                    .any(|r| r.bytes == n && (r.low..=r.high).contains(&code))
+            })
+            .unwrap_or(2.min(bytes.len()))
     }
 
     /// Advance in text space units of one point of font size.

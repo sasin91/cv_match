@@ -1,6 +1,6 @@
 //! A PDF file: its cross reference, objects, stream filters and pages.
 
-use std::cell::RefCell;
+use std::cell::{Cell, RefCell};
 use std::collections::{HashMap, HashSet};
 use std::rc::Rc;
 
@@ -15,6 +15,10 @@ enum Entry {
     InStream(u32, u32),
 }
 
+/// The most a document's streams may decode to, together, in bytes. A CV's are a few MB; this
+/// leaves room for a long one with embedded fonts.
+const MAX_DECODED_BYTES: usize = 256 * 1024 * 1024;
+
 pub struct Document {
     data: Vec<u8>,
     xref: HashMap<u32, Entry>,
@@ -23,6 +27,11 @@ pub struct Document {
     /// The objects being read now: one met again while it is read (a stream whose /Length is
     /// itself, an object stream inside itself) reads as null instead of recursing forever.
     loading: RefCell<HashSet<u32>>,
+    /// How many more bytes streams may decode to (MAX_DECODED_BYTES at the start): a small
+    /// compressed stream can inflate to gigabytes, which would take the app down with it.
+    decoded_left: Cell<usize>,
+    /// Object streams decoded once, rather than once per object read from them.
+    object_streams: RefCell<HashMap<u32, Rc<Vec<u8>>>>,
     pub pages: Vec<PageRef>,
 }
 
@@ -55,6 +64,8 @@ impl Document {
             trailer: Dict::new(),
             objects: RefCell::new(HashMap::new()),
             loading: RefCell::new(HashSet::new()),
+            decoded_left: Cell::new(MAX_DECODED_BYTES),
+            object_streams: RefCell::new(HashMap::new()),
             pages: vec![],
         };
         if doc.read_xref().is_err() || !doc.trailer.contains_key("Root") {
@@ -71,7 +82,7 @@ impl Document {
             .cloned()
             .ok_or("The PDF has no pages")?;
         let mut out = vec![];
-        doc.walk_pages(&pages, &Inherited::default(), &mut out, 0);
+        doc.walk_pages(&pages, &Inherited::default(), &mut out, 0, &mut HashSet::new());
         if out.is_empty() {
             return Err("The PDF has no pages".into());
         }
@@ -303,7 +314,15 @@ impl Document {
         let Object::Stream(s) = self.get(stream) else {
             return None;
         };
-        let data = self.decode(&s)?.data;
+        let kept = self.object_streams.borrow().get(&stream).cloned();
+        let data = match kept {
+            Some(data) => data,
+            None => {
+                let data = Rc::new(self.decode(&s)?.data);
+                self.object_streams.borrow_mut().insert(stream, Rc::clone(&data));
+                data
+            }
+        };
         let first = s.dict.get("First")?.as_i64()? as usize;
         let mut header = Lexer::new(&data, 0);
         let mut offset = None;
@@ -349,14 +368,15 @@ impl Document {
             p => vec![p],
         };
         let mut data = stream.data.clone();
+        let left = self.decoded_left.get();
         for (i, filter) in filters.iter().enumerate() {
             let parms = parms.get(i).and_then(Object::as_dict);
             data = match filter.as_str() {
-                "FlateDecode" | "Fl" => predict(zlib::inflate_zlib(&data)?, parms),
-                "LZWDecode" | "LZW" => predict(lzw(&data, parms), parms),
+                "FlateDecode" | "Fl" => predict(zlib::inflate_zlib(&data, left)?, parms),
+                "LZWDecode" | "LZW" => predict(lzw(&data, parms, left)?, parms),
                 "ASCIIHexDecode" | "AHx" => ascii_hex(&data),
                 "ASCII85Decode" | "A85" => ascii85(&data),
-                "RunLengthDecode" | "RL" => run_length(&data),
+                "RunLengthDecode" | "RL" => run_length(&data, left)?,
                 // Image codecs: the caller hands these to an image decoder.
                 "DCTDecode" | "DCT" | "JPXDecode" | "JBIG2Decode" | "CCITTFaxDecode" | "CCF" => {
                     return Some(Decoded {
@@ -367,6 +387,10 @@ impl Document {
                 _ => return None,
             };
         }
+        if data.len() > left {
+            return None;
+        }
+        self.decoded_left.set(left - data.len());
         Some(Decoded {
             data,
             image_filter: None,
@@ -381,8 +405,22 @@ impl Document {
         }
     }
 
-    fn walk_pages(&self, node: &Object, inherited: &Inherited, out: &mut Vec<PageRef>, depth: usize) {
+    /// Walks the page tree from node; `seen` holds the nodes walked so far, so a tree whose
+    /// kids point back up (or at a node twice) is walked once, not round and round.
+    fn walk_pages(
+        &self,
+        node: &Object,
+        inherited: &Inherited,
+        out: &mut Vec<PageRef>,
+        depth: usize,
+        seen: &mut HashSet<u32>,
+    ) {
         if depth > 64 {
+            return;
+        }
+        if let Object::Ref(id, _) = node
+            && !seen.insert(*id)
+        {
             return;
         }
         let Object::Dict(dict) = self.resolve(node) else {
@@ -404,7 +442,7 @@ impl Document {
         match self.lookup(&dict, "Kids") {
             Object::Array(kids) => {
                 for kid in &kids {
-                    self.walk_pages(kid, &here, out, depth + 1);
+                    self.walk_pages(kid, &here, out, depth + 1, seen);
                 }
             }
             _ => {
@@ -564,10 +602,14 @@ fn ascii85(data: &[u8]) -> Vec<u8> {
     out
 }
 
-fn run_length(data: &[u8]) -> Vec<u8> {
+/// RunLengthDecode into at most `limit` bytes; None past it.
+fn run_length(data: &[u8], limit: usize) -> Option<Vec<u8>> {
     let mut out = Vec::new();
     let mut i = 0;
     while i < data.len() {
+        if out.len() > limit {
+            return None;
+        }
         let n = data[i] as usize;
         i += 1;
         match n {
@@ -584,10 +626,11 @@ fn run_length(data: &[u8]) -> Vec<u8> {
             }
         }
     }
-    out
+    (out.len() <= limit).then_some(out)
 }
 
-fn lzw(data: &[u8], parms: Option<&Dict>) -> Vec<u8> {
+/// LZWDecode into at most `limit` bytes; None past it.
+fn lzw(data: &[u8], parms: Option<&Dict>, limit: usize) -> Option<Vec<u8>> {
     let early = parms
         .and_then(|p| p.get("EarlyChange"))
         .and_then(Object::as_i64)
@@ -609,7 +652,7 @@ fn lzw(data: &[u8], parms: Option<&Dict>) -> Vec<u8> {
                     width = 9;
                     previous = None;
                 }
-                257 => return out,
+                257 => return Some(out),
                 _ => {
                     let entry = if code < table.len() {
                         table[code].clone()
@@ -618,9 +661,12 @@ fn lzw(data: &[u8], parms: Option<&Dict>) -> Vec<u8> {
                         e.push(p[0]);
                         e
                     } else {
-                        return out;
+                        return Some(out);
                     };
                     out.extend_from_slice(&entry);
+                    if out.len() > limit {
+                        return None;
+                    }
                     if let Some(mut p) = previous.take() {
                         p.push(entry[0]);
                         table.push(p);
@@ -640,7 +686,7 @@ fn lzw(data: &[u8], parms: Option<&Dict>) -> Vec<u8> {
             }
         }
     }
-    out
+    Some(out)
 }
 
 #[cfg(test)]
@@ -651,7 +697,10 @@ mod tests {
     fn decodes_ascii_filters() {
         assert_eq!(ascii_hex(b"48 65 6c 6c 6f>"), b"Hello");
         assert_eq!(ascii85(b"87cURD]i,\"Ebo80~>"), b"Hello World!");
-        assert_eq!(run_length(&[2, b'a', b'b', b'c', 254, b'x', 128]), b"abcxxx");
+        assert_eq!(
+            run_length(&[2, b'a', b'b', b'c', 254, b'x', 128], usize::MAX).unwrap(),
+            b"abcxxx"
+        );
     }
 
     #[test]

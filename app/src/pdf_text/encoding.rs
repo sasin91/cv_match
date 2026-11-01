@@ -384,6 +384,54 @@ impl ToUnicode {
     }
 }
 
+/// A code space range of a Type 0 font's encoding CMap: codes `bytes` long from low to high.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub struct CodeRange {
+    pub bytes: usize,
+    pub low: u32,
+    pub high: u32,
+}
+
+/// The code space ranges of an encoding CMap (`begincodespacerange <00> <FF> endcodespacerange`),
+/// which say how many bytes each character code takes.
+pub fn code_ranges(data: &[u8]) -> Vec<CodeRange> {
+    let mut ranges = Vec::new();
+    let mut lex = Lexer::new(data, 0);
+    let mut stack: Vec<Object> = Vec::new();
+    while let Some(o) = lex.object(false) {
+        match o {
+            Object::Keyword(k) if k == "endcodespacerange" => {
+                for pair in stack.as_chunks::<2>().0 {
+                    let (Some(low), Some(high)) = (pair[0].as_bytes(), pair[1].as_bytes()) else {
+                        continue;
+                    };
+                    if low.is_empty() || low.len() != high.len() || low.len() > MAX_CODE_BYTES {
+                        continue;
+                    }
+                    ranges.push(CodeRange {
+                        bytes: low.len(),
+                        low: code_of(low),
+                        high: code_of(high),
+                    });
+                }
+                stack.clear();
+            }
+            Object::Keyword(k) if k.starts_with("begin") => stack.clear(),
+            Object::Keyword(_) => {}
+            other => stack.push(other),
+        }
+    }
+    ranges
+}
+
+/// The longest character code a CMap may have, in bytes.
+pub const MAX_CODE_BYTES: usize = 4;
+
+/// Bytes as one big-endian character code.
+pub fn code_of(bytes: &[u8]) -> u32 {
+    bytes.iter().fold(0u32, |n, &b| n << 8 | b as u32)
+}
+
 fn utf16(bytes: &[u8]) -> String {
     let units: Vec<u16> = bytes
         .chunks(2)
