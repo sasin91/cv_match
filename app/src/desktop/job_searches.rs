@@ -13,15 +13,19 @@ use super::widgets::{self, CARD_PADDING, ROW_PADDING};
 use super::{GAP, Runner};
 use crate::dashboard::Health;
 use crate::job_scan::found_post_card::FoundPostCard;
-use crate::job_scan::job_scan_model::FAILED;
+use crate::job_scan::job_scan_model::{FAILED, MATCHING, NEW};
 use crate::job_scan::job_search_card::JobSearchCard;
 use crate::job_scan::job_search_rules::{MAX_FIELD, MAX_KEYWORDS, MAX_NAME};
 use crate::job_scan::job_search_summary::RunState;
 use crate::job_scan::scan_service;
 use crate::job_scan::search_service::{self, SaveError, SearchForm, SearchList, SearchPage};
 
-/// How often a search's page looks again while its scan runs, so its posts show as found.
+/// How often a search's page looks again while its scan runs or its posts are matched, so they
+/// show as found and matched.
 const SCAN_POLL_EVERY: Duration = Duration::from_secs(5);
+/// Looks in a row that changed nothing before the page stops looking (5 minutes): a post left
+/// waiting (no profile, say) would otherwise keep it looking for as long as it is open.
+const MAX_QUIET_POLLS: u32 = 60;
 /// A form field's width.
 const FIELD_WIDTH: f32 = 460.0;
 /// The score field's width.
@@ -110,6 +114,10 @@ pub struct State {
     confirm_delete: bool,
     /// A reload is on its way while a scan runs, so it isn't asked for twice.
     polling: bool,
+    /// Reloads in a row that found the posts as they were.
+    quiet_polls: u32,
+    /// The last read asked for; an answer to an older one is dropped (is_stale).
+    request: u64,
     /// Work is running, so the buttons wait.
     busy: bool,
     /// What the last click came to.
@@ -136,16 +144,19 @@ pub enum Saved {
 pub enum Msg {
     /// Reads the page showing again.
     Load,
-    ListLoaded(Result<Arc<SearchList>, String>),
+    ListLoaded {
+        request: u64,
+        list: Result<Arc<SearchList>, String>,
+    },
     /// A batch of a search's page: the first one, or one more when more.
     SearchLoaded {
-        id: i64,
+        request: u64,
         page: Result<Arc<SearchPage>, String>,
         more: bool,
     },
     /// The form of search id (0 for a new one), with whether there is a profile.
     FormLoaded {
-        id: i64,
+        request: u64,
         form: Result<(SearchForm, bool), String>,
     },
     Go(Page),
@@ -185,7 +196,7 @@ pub enum Msg {
 }
 
 pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
-    if is_stale(state.page, &msg) {
+    if is_stale(state.request, &msg) {
         return Task::none();
     }
     match msg {
@@ -199,7 +210,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             }
             return load(state, runner);
         }
-        Msg::ListLoaded(list) => {
+        Msg::ListLoaded { list, .. } => {
             state.list = Some(list);
             state.busy = false;
         }
@@ -210,13 +221,19 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                     state.posts.extend(page.posts.iter().cloned());
                     state.batches += 1;
                 } else {
+                    state.quiet_polls = if state.posts == page.posts {
+                        state.quiet_polls + 1
+                    } else {
+                        0
+                    };
                     state.posts = page.posts.clone();
                     state.batches = 1;
                 }
             }
-            let running = page.as_ref().is_ok_and(|page| scan_running(page));
+            let working = page.as_ref().is_ok_and(|page| still_working(page));
             state.search = Some(page);
-            if running && !state.polling && state.batches == 1 {
+            let keep_looking = working && state.quiet_polls < MAX_QUIET_POLLS;
+            if keep_looking && !state.polling && state.batches == 1 {
                 state.polling = true;
                 return runner.run(|_| tokio::time::sleep(SCAN_POLL_EVERY), |_| Msg::Poll);
             }
@@ -250,7 +267,8 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                 return Task::none();
             };
             state.busy = true;
-            return search_batch(runner, id, state.dismissed, after);
+            state.request += 1;
+            return search_batch(runner, state.request, id, state.dismissed, after);
         }
         Msg::Name(name) => state.form.name = name,
         Msg::Keywords(keywords) => state.form.keywords = keywords,
@@ -370,12 +388,14 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
     Task::none()
 }
 
-/// A page's answer that came after the page was left (for another search, or another page):
-/// showing it would put one search's form or posts under another.
-fn is_stale(page: Page, msg: &Msg) -> bool {
+/// An answer to a read older than the last one asked for (another page, another search, the
+/// other dismissed filter): showing it would put one search's form or posts under another, or
+/// posts under the wrong filter.
+fn is_stale(request: u64, msg: &Msg) -> bool {
     match msg {
-        Msg::SearchLoaded { id, .. } => page != Page::Search(*id),
-        Msg::FormLoaded { id, .. } => page != Page::Form(*id),
+        Msg::ListLoaded { request: asked, .. }
+        | Msg::SearchLoaded { request: asked, .. }
+        | Msg::FormLoaded { request: asked, .. } => *asked != request,
         _ => false,
     }
 }
@@ -393,12 +413,17 @@ fn said(
 /// Reads the page showing.
 fn load(state: &mut State, runner: &Runner) -> Task<Msg> {
     state.busy = true;
+    state.request += 1;
+    let request = state.request;
     match state.page {
         Page::List => runner.run(
             |context| async move { search_service::searches(&context).await.map(Arc::new) },
-            |read| Msg::ListLoaded(read.and_then(|list| list.map_err(|e| e.message))),
+            move |read| Msg::ListLoaded {
+                request,
+                list: read.and_then(|list| list.map_err(|e| e.message)),
+            },
         ),
-        Page::Search(id) => search_batch(runner, id, state.dismissed, String::new()),
+        Page::Search(id) => search_batch(runner, request, id, state.dismissed, String::new()),
         Page::Form(id) => {
             state.form = FormState::default();
             runner.run(
@@ -412,7 +437,7 @@ fn load(state: &mut State, runner: &Runner) -> Task<Msg> {
                 },
                 move |read: Result<Result<(SearchForm, bool), crate::service_error::ServiceError>, String>| {
                     Msg::FormLoaded {
-                        id,
+                        request,
                         form: read.and_then(|form| form.map_err(|e| e.message)),
                     }
                 },
@@ -422,7 +447,7 @@ fn load(state: &mut State, runner: &Runner) -> Task<Msg> {
 }
 
 /// A batch of search id's posts, after the cursor after ("" for the first).
-fn search_batch(runner: &Runner, id: i64, dismissed: bool, after: String) -> Task<Msg> {
+fn search_batch(runner: &Runner, request: u64, id: i64, dismissed: bool, after: String) -> Task<Msg> {
     let more = !after.is_empty();
     runner.run(
         move |context| async move {
@@ -431,19 +456,26 @@ fn search_batch(runner: &Runner, id: i64, dismissed: bool, after: String) -> Tas
                 .map(Arc::new)
         },
         move |read| Msg::SearchLoaded {
-            id,
+            request,
             page: read.and_then(|page| page.map_err(|e| e.message)),
             more,
         },
     )
 }
 
-/// The search's last scan is still running.
-fn scan_running(page: &SearchPage) -> bool {
-    page.summary
+/// The search's last scan is still running, or a post on the page is still to be matched (a
+/// scan, Add or Try again matches in the background).
+fn still_working(page: &SearchPage) -> bool {
+    let scanning = page
+        .summary
         .last_scan
         .as_ref()
-        .is_some_and(|scan| scan.state == RunState::Running)
+        .is_some_and(|scan| scan.state == RunState::Running);
+    scanning
+        || page
+            .posts
+            .iter()
+            .any(|post| [NEW, MATCHING].contains(&post.status.as_str()))
 }
 
 pub fn view(state: &State) -> Element<'_, Msg> {
@@ -928,22 +960,25 @@ mod tests {
     use super::*;
 
     #[test]
-    fn an_answer_for_a_page_left_is_dropped() {
-        let form = |id| Msg::FormLoaded {
-            id,
+    fn an_answer_to_an_older_read_is_dropped() {
+        let form = |request| Msg::FormLoaded {
+            request,
             form: Err(String::new()),
         };
-        let posts = |id| Msg::SearchLoaded {
-            id,
+        let posts = |request| Msg::SearchLoaded {
+            request,
             page: Err(String::new()),
             more: false,
         };
-        assert!(!is_stale(Page::Form(2), &form(2)));
-        assert!(is_stale(Page::Form(3), &form(2)));
-        assert!(is_stale(Page::List, &form(2)));
-        assert!(!is_stale(Page::Search(2), &posts(2)));
-        assert!(is_stale(Page::Search(3), &posts(2)));
-        assert!(is_stale(Page::Form(2), &posts(2)));
-        assert!(!is_stale(Page::List, &Msg::Load));
+        let list = |request| Msg::ListLoaded {
+            request,
+            list: Err(String::new()),
+        };
+        assert!(!is_stale(2, &form(2)));
+        assert!(is_stale(3, &form(2)));
+        assert!(!is_stale(2, &posts(2)));
+        assert!(is_stale(3, &posts(2)));
+        assert!(is_stale(3, &list(2)));
+        assert!(!is_stale(3, &Msg::Load));
     }
 }
