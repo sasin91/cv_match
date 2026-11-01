@@ -208,6 +208,8 @@ pub enum Msg {
     Reject,
     BringBack,
     Rejected {
+        /// The saved match rejected or brought back.
+        id: i64,
         undo: bool,
         rejections: Arc<Vec<Rejection>>,
         outcome: Result<RejectOutcome, String>,
@@ -225,13 +227,10 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
     match msg {
         Msg::Go(page) => return go(state, page, runner),
         Msg::ProfileRead(read) => match read {
-            Ok(profile) => {
-                state.cv.own = state.cv.own || profile.is_none();
-                state.cv.profile = Some(profile);
-            }
+            // Another CV chosen stays chosen; the profile is there to go back to.
+            Ok(profile) => state.cv.profile = Some(profile),
             Err(why) => {
                 state.cv.profile = Some(None);
-                state.cv.own = true;
                 state.said = Some((Health::Attention, format!("Your profile couldn't be read: {why}")));
             }
         },
@@ -352,28 +351,35 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
         Msg::Reject => return reject(state, false, runner),
         Msg::BringBack => return reject(state, true, runner),
         Msg::Rejected {
+            id,
             undo,
             rejections,
             outcome,
         } => {
             state.busy = false;
-            let Some(shown) = shown_mut(state) else {
-                return Task::none();
-            };
             match outcome {
                 Ok(RejectOutcome::Done(said)) => {
-                    let id = shown.result.saved_id;
-                    shown.result.reject = RejectButton::from(id, (!undo).then_some(rejections.as_slice()));
-                    shown.rejecting = false;
-                    shown.ticked.clear();
-                    shown.notes.clear();
-                    shown.problem = None;
+                    // Every result of this match shows it, whichever page is open now.
+                    for shown in results_of(state, id) {
+                        shown.result.reject = RejectButton::from(Some(id), (!undo).then_some(rejections.as_slice()));
+                        shown.rejecting = false;
+                        shown.ticked.clear();
+                        shown.notes.clear();
+                        shown.problem = None;
+                    }
                     state.said = said.map(|said| (Health::Ready, said.to_string()));
-                    // The list shown behind it has changed.
+                    // The lists have changed.
+                    if let Page::List(list) = state.page {
+                        return Task::batch([go(state, Page::List(list), runner), Task::done(Msg::Changed)]);
+                    }
                     state.list.read = None;
                     return Task::done(Msg::Changed);
                 }
-                Ok(RejectOutcome::Unfinished(problem)) => shown.problem = Some(problem),
+                Ok(RejectOutcome::Unfinished(problem)) => {
+                    for shown in results_of(state, id) {
+                        shown.problem = Some(problem.clone());
+                    }
+                }
                 Err(why) => state.said = Some((Health::Attention, why)),
             }
         }
@@ -401,17 +407,20 @@ fn go(state: &mut State, page: Page, runner: &Runner) -> Task<Msg> {
     state.page = page;
     match page {
         Page::Overview => Task::none(),
-        Page::New if state.cv.profile.is_none() => runner.run(
+        // Read on every visit, so a CV read again in setup is the one matched.
+        Page::New => runner.run(
             |context| async move { profile::text_for_user(context.db(), context.user_id).await },
             |read| Msg::ProfileRead(read.and_then(|read| read.map_err(|e| e.to_string()))),
         ),
-        Page::New => Task::none(),
         Page::List(list) => {
             state.list.empty = LISTS
                 .iter()
                 .find(|(name, ..)| *name == list)
                 .map_or("", |(.., empty)| *empty);
+            // Another list: nothing of the last one stays, its cursor least of all.
             state.list.read = None;
+            state.list.rows.clear();
+            state.list.next_after = None;
             load_list(state, list, String::new(), runner)
         }
         Page::Saved(id) => {
@@ -527,6 +536,17 @@ fn shown_mut(state: &mut State) -> Option<&mut Shown> {
     }
 }
 
+/// The results on screen of saved match id: the last match's, and the one open on its page.
+fn results_of(state: &mut State, id: i64) -> impl Iterator<Item = &mut Shown> {
+    let saved = state.saved.as_mut().and_then(|saved| saved.as_mut().ok());
+    state
+        .fresh
+        .as_mut()
+        .into_iter()
+        .chain(saved)
+        .filter(move |shown| shown.result.saved_id == Some(id))
+}
+
 fn reject(state: &mut State, undo: bool, runner: &Runner) -> Task<Msg> {
     let Some(shown) = shown_mut(state) else {
         return Task::none();
@@ -553,6 +573,7 @@ fn reject(state: &mut State, undo: bool, runner: &Runner) -> Task<Msg> {
     runner.run(
         move |context| async move { match_service::reject(&context, id, &reasons, &notes, undo).await },
         move |outcome| Msg::Rejected {
+            id,
             undo,
             rejections: Arc::clone(&rejections),
             outcome: outcome.and_then(|outcome| outcome.map_err(|e| e.message)),
@@ -810,7 +831,7 @@ fn list_view<'a>(state: &'a State, current: &'static str) -> Element<'a, Msg> {
         Some(Ok(())) => widgets::card(widgets::rows(state.list.rows.iter().map(saved_row))),
     };
     page = page.push(body);
-    if state.list.next_after.is_some() {
+    if state.list.next_after.is_some() && matches!(state.list.read, Some(Ok(()))) {
         page = page.push(
             button(text("Show more").size(style::BODY_SIZE))
                 .style(style::standard_button)
