@@ -235,14 +235,21 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             let keep_looking = working && state.quiet_polls < MAX_QUIET_POLLS;
             if keep_looking && !state.polling && state.batches == 1 {
                 state.polling = true;
-                return runner.run(|_| tokio::time::sleep(SCAN_POLL_EVERY), |_| Msg::Poll);
+                return poll_later(runner);
             }
         }
         Msg::Poll => {
             state.polling = false;
-            if matches!(state.page, Page::Search(_)) && state.batches == 1 {
-                return load(state, runner);
+            if !matches!(state.page, Page::Search(_)) || state.batches != 1 {
+                return Task::none();
             }
+            // A read the user asked for (Show more, a dismiss) is on its way: a reload now
+            // would make it stale and drop it, so the look waits a turn.
+            if state.busy {
+                state.polling = true;
+                return poll_later(runner);
+            }
+            return load(state, runner);
         }
         Msg::FormLoaded {
             form: Ok((form, has_profile)),
@@ -463,19 +470,25 @@ fn search_batch(runner: &Runner, request: u64, id: i64, dismissed: bool, after: 
     )
 }
 
-/// The search's last scan is still running, or a post on the page is still to be matched (a
-/// scan, Add or Try again matches in the background).
+/// A scan is running (this search's, or one that will reach it), or a post on the page is
+/// still to be matched (a scan, Add or Try again matches in the background).
 fn still_working(page: &SearchPage) -> bool {
-    let scanning = page
-        .summary
-        .last_scan
-        .as_ref()
-        .is_some_and(|scan| scan.state == RunState::Running);
+    let scanning = page.scan_running
+        || page
+            .summary
+            .last_scan
+            .as_ref()
+            .is_some_and(|scan| scan.state == RunState::Running);
     scanning
         || page
             .posts
             .iter()
             .any(|post| [NEW, MATCHING].contains(&post.status.as_str()))
+}
+
+/// A Poll after SCAN_POLL_EVERY.
+fn poll_later(runner: &Runner) -> Task<Msg> {
+    runner.run(|_| tokio::time::sleep(SCAN_POLL_EVERY), |_| Msg::Poll)
 }
 
 pub fn view(state: &State) -> Element<'_, Msg> {

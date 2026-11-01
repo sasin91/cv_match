@@ -56,6 +56,8 @@ pub struct SearchPage {
     pub search: JobSearch,
     pub summary: JobSearchSummary,
     pub problem: Option<String>,
+    /// A scan is running, of any search: one that hasn't reached this search yet will.
+    pub scan_running: bool,
     pub posts: Vec<FoundPostCard>,
     /// The query of the next batch's page ("dismissed=1&after=…"), when there is one.
     pub next: Option<String>,
@@ -81,6 +83,7 @@ pub async fn search_page(context: &Context, id: i64, dismissed: bool, after: &st
         search,
         summary,
         problem: scan_service::scan_problem(context).await?,
+        scan_running: scan_service::is_running(context).await?,
         posts: batch.rows.iter().map(FoundPostCard::from).collect(),
         next,
         next_after: batch.next,
