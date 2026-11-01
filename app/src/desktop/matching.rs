@@ -221,7 +221,7 @@ pub enum Msg {
 }
 
 pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
-    if is_stale(state.request, &msg) {
+    if is_stale(state.request, &msg) || (state.busy && starts_work(&msg)) {
         return Task::none();
     }
     match msg {
@@ -387,6 +387,15 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
         Msg::OpenPage(_) | Msg::Changed => {}
     }
     Task::none()
+}
+
+/// A click that starts work, which waits while other work runs (a disabled button can't send
+/// it, but Enter in the link field can), so two answers can't land on the form in either order.
+fn starts_work(msg: &Msg) -> bool {
+    matches!(
+        msg,
+        Msg::Fetch | Msg::Match | Msg::ChooseFile(_) | Msg::Reject | Msg::BringBack
+    )
 }
 
 /// An answer to a read older than the newest.
@@ -1228,6 +1237,14 @@ mod tests {
         assert!(is_stale(2, &old));
         assert!(!is_stale(1, &old));
         assert!(!is_stale(2, &Msg::Match));
+    }
+
+    #[test]
+    fn work_waits_for_the_work_running() {
+        assert!(starts_work(&Msg::Fetch));
+        assert!(starts_work(&Msg::Match));
+        assert!(!starts_work(&Msg::JobUrl(String::new())));
+        assert!(!starts_work(&Msg::Matching(String::new())));
     }
 
     #[test]
