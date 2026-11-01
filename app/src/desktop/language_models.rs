@@ -85,6 +85,8 @@ pub enum Msg {
 pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
     match msg {
         Msg::Load => {
+            // The forms go while the read runs, so nothing typed now is overwritten by it.
+            state.view = None;
             return runner.run(
                 |context| async move { account_service::account_view(&context, None).await.map(Arc::new) },
                 |read| Msg::Loaded(read.and_then(|view| view.map_err(|e| e.message))),
@@ -196,8 +198,10 @@ fn said(
 }
 
 /// The forms as the page fills them: the provider to add with its saved model and address, and
-/// each use's picked key.
+/// each use's picked key; the API key field starts empty.
 fn fill_forms(state: &mut State, view: &AccountView) {
+    // A key belongs to the provider it was typed for; the provider is picked again here.
+    state.api_key.clear();
     state.provider = view
         .providers
         .iter()
