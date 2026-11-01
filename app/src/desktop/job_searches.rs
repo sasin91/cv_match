@@ -543,7 +543,7 @@ fn list_view(state: &State) -> Element<'_, Msg> {
     let title = widgets::page_title(
         "Job searches",
         widgets::note(
-            "Save what you're looking for, and the job scan looks for new job posts for you. Every post it finds is matched with your profile and saved with your matches, and a good match gets a tailored résumé and application right away. It searches on your own OpenAI key.",
+            "Save what you're looking for, and the job scan looks for new job posts for you. Every post it finds is matched with your profile and saved with your matches, and a good match gets a tailored résumé and application right away. It reads Jobnet and Jobindex itself and matches on the model you picked for evaluating job posts, which can be the one on this computer; other sites are searched with OpenAI's web search when your OpenAI key is picked.",
         ),
     );
     let mut screen = Column::new().spacing(GAP * 1.5).push(title);

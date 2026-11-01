@@ -79,10 +79,14 @@ pub async fn search_page(context: &Context, id: i64, dismissed: bool, after: &st
     let summary = JobSearchSummary::from(&search, last_run.as_ref(), tokens, now - RUN_GIVE_UP_SECONDS);
     let batch = model::posts(db, search.id, dismissed, PER_PAGE, after).await?;
     let next = batch.next.as_ref().map(|cursor| next_query(dismissed, cursor));
+    let problem = match scan_service::scan_problem(context).await? {
+        Some(problem) => Some(problem),
+        None => scan_service::skipped_sites_note(&search, scan_service::searches_the_web(context).await?),
+    };
     Ok(SearchPage {
         search,
         summary,
-        problem: scan_service::scan_problem(context).await?,
+        problem,
         scan_running: scan_service::is_running(context).await?,
         posts: batch.rows.iter().map(FoundPostCard::from).collect(),
         next,

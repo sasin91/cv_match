@@ -24,6 +24,13 @@ pub const MAX_ERROR: usize = 500;
 /// The highest score a search can tailor from (a percent).
 pub const MAX_TAILOR_FROM: i64 = 100;
 
+/// Search terms a search's "what to look for" is read as, at most: each one is a search of
+/// its own on each site.
+pub const MAX_SEARCH_TERMS: usize = 5;
+
+/// One term of "what to look for": separated by commas, semicolons or lines.
+static TERM_SEPARATORS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[,;\n]+").expect("term separators"));
+
 /// One entry of the sites box: separated by spaces, commas or semicolons.
 static SITE_SEPARATORS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[\s,;]+").expect("site separators"));
 /// A domain: labels of letters, digits and inner hyphens, ending in a top-level domain.
@@ -126,6 +133,22 @@ pub fn is_http_link(text: &str) -> bool {
         && url::Url::parse(text).is_ok_and(|link| link.host_str().is_some())
 }
 
+/// "PHP udvikler, Laravel; backend" as the terms the sites are searched for, each once, at most
+/// MAX_SEARCH_TERMS.
+pub fn search_terms(keywords: &str) -> Vec<String> {
+    let mut terms: Vec<String> = Vec::new();
+    for term in TERM_SEPARATORS
+        .split(keywords)
+        .map(str::trim)
+        .filter(|term| !term.is_empty())
+    {
+        if !terms.iter().any(|known| known.eq_ignore_ascii_case(term)) && terms.len() < MAX_SEARCH_TERMS {
+            terms.push(term.to_string());
+        }
+    }
+    terms
+}
+
 /// The first max characters of text, trimmed.
 pub fn cut(text: &str, max: usize) -> String {
     text.trim().chars().take(max).collect::<String>().trim().to_string()
@@ -159,6 +182,16 @@ mod tests {
             url_hash("https://jobnet.dk/job/123?utm_medium=mail")
         );
         assert_eq!(url_hash("https://jobnet.dk/job/123").len(), 40);
+    }
+
+    #[test]
+    fn what_to_look_for_reads_as_search_terms() {
+        assert_eq!(
+            search_terms(" PHP udvikler, Laravel;\nbackend,php udvikler ,, "),
+            vec!["PHP udvikler", "Laravel", "backend"]
+        );
+        assert_eq!(search_terms("a,b,c,d,e,f,g").len(), MAX_SEARCH_TERMS);
+        assert!(search_terms(" , ").is_empty());
     }
 
     #[test]

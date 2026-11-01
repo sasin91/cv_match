@@ -323,6 +323,27 @@ static TOWN_OF: LazyLock<HashMap<&'static str, &'static str>> = LazyLock::new(||
         .collect()
 });
 
+/// A town's postcode ("Odense" or "odense c" is 5000), or a postcode as written ("5000"): the
+/// first of the town's postcodes, or of the first town named "{town} …" (Odense C for Odense).
+pub fn postcode_of(place: &str) -> Option<&'static str> {
+    let place = place.trim();
+    if let Some((code, _)) = POSTCODES.iter().find(|(code, _)| code == place) {
+        return Some(code.as_str());
+    }
+    let lower = place.to_lowercase();
+    if lower.is_empty() {
+        return None;
+    }
+    let district = format!("{lower} ");
+    let named = |town: &str| town.to_lowercase() == lower;
+    let in_district = |town: &str| town.to_lowercase().starts_with(&district);
+    POSTCODES
+        .iter()
+        .find(|(_, town)| named(town))
+        .or_else(|| POSTCODES.iter().find(|(_, town)| in_district(town)))
+        .map(|(code, _)| code.as_str())
+}
+
 /// The joblog entry: Jobnet's sections in order, each with its fields, then the three PDFs it
 /// keeps, and when the candidate entered it in their joblog.
 #[derive(Debug, Clone, PartialEq, Serialize)]
@@ -947,6 +968,11 @@ mod tests {
     fn the_postcode_list_is_read_in_full() {
         assert_eq!(POSTCODES.len(), 1111);
         assert_eq!(TOWN_OF.get("1000"), Some(&"København K"));
+        assert_eq!(postcode_of("Odense"), Some("5000"));
+        assert_eq!(postcode_of(" aarhus c "), Some("8000"));
+        assert_eq!(postcode_of("5230"), Some("5230"));
+        assert_eq!(postcode_of("Atlantis"), None);
+        assert_eq!(postcode_of(""), None);
         assert_eq!(TOWN_OF.get("4200"), Some(&"Slagelse"));
     }
 
