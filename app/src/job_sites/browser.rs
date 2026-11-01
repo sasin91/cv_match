@@ -51,22 +51,32 @@ const PATH_BROWSERS: [&str; 5] = [
 ];
 
 /// The text of the page at url as the browser shows it after its JavaScript ran, or None when
-/// there is no browser or it failed (logged). The browser prints the page to a PDF, which the
-/// app's PDF reader (pdf_reader, `jobfinder read-pdf`) reads: Edge on Windows prints nothing
-/// for --dump-dom, but --print-to-pdf works everywhere.
-pub async fn render(url: &str, pdf_reader: &Path) -> Option<String> {
+/// there is no browser or it failed (logged); Err when it was stopped in the task manager, where
+/// it is listed while it reads. The browser prints the page to a PDF, which the app's PDF reader
+/// (pdf_reader, `jobfinder read-pdf`) reads: Edge on Windows prints nothing for --dump-dom, but
+/// --print-to-pdf works everywhere.
+pub async fn render(url: &str, pdf_reader: &Path) -> Result<Option<String>, Stopped> {
     let Some(browser) = find() else {
         crate::log_line!("browser: no Edge, Chrome or Chromium found to read {url}");
-        return None;
+        return Ok(None);
     };
-    let read = match print_pdf(&browser, url).await {
-        Ok(pdf) => child::text_of(pdf_reader, pdf)
+    let reading = async {
+        let pdf = print_pdf(&browser, url).await?;
+        // The browser has ended; the PDF reader is listed under this row with its own process.
+        running_work::set_process(None);
+        child::text_of(pdf_reader, pdf)
             .await
-            .map_err(|e| format!("its PDF couldn't be read: {}", failure(&e))),
-        Err(why) => Err(why),
+            .map_err(|e| format!("its PDF couldn't be read: {}", failure(&e)))
     };
-    read.map_err(|why| crate::log_line!("browser: {} couldn't read {url}: {why}", browser.display()))
-        .ok()
+    match running_work::part(WorkKind::Browser, format!("Reading {url}"), reading).await? {
+        Ok(text) => Ok(Some(text)),
+        // Its PDF reader was stopped.
+        Err(why) if why.contains(Stopped::SAID) => Err(Stopped),
+        Err(why) => {
+            crate::log_line!("browser: {} couldn't read {url}: {why}", browser.display());
+            Ok(None)
+        }
+    }
 }
 
 /// Why the PDF reader gave no text, in words.
@@ -129,10 +139,7 @@ fn arguments(url: &str, profile: &Path, pdf: &Path) -> Vec<String> {
 async fn print_pdf(browser: &Path, url: &str) -> Result<Vec<u8>, String> {
     let profile = fresh_profile();
     let pdf = profile.join(PDF_FILE);
-    let printing = run_printing(browser, url, &profile, &pdf);
-    let printed = running_work::part(WorkKind::Browser, format!("Printing {url}"), printing)
-        .await
-        .unwrap_or_else(|Stopped| Err(Stopped::SAID.to_string()));
+    let printed = run_printing(browser, url, &profile, &pdf).await;
     // The profile goes whatever happened; a browser still holding a file of it leaves it in the
     // temp folder, which Windows empties.
     let _ = tokio::fs::remove_dir_all(&profile).await;
