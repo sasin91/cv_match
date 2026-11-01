@@ -79,6 +79,10 @@ impl JobSite {
     }
 }
 
+/// The content type of HTML the browser has decoded already (the extension's), so a <meta
+/// charset> left in it isn't applied a second time.
+const DECODED_HTML: &str = "text/html; charset=utf-8";
+
 /// The pages JobFinder's signed-in browser opens on to sign in to the signed-in sites.
 pub const SIGN_IN_PAGES: [&str; 2] = [linkedin::SIGN_IN_PAGE, indeed::SITE];
 
@@ -113,6 +117,13 @@ pub async fn read_post(url: &str, readers: Readers<'_>) -> Option<Result<Page, S
     }))
 }
 
+/// Whether url is a post of a site read in the signed-in browser (LinkedIn, Indeed): when that
+/// read fails, it is not fetched some other way, since the site may have asked the browser to
+/// sign in or for a check, and the scan leaves it alone then.
+pub fn is_signed_in_post(url: &str) -> bool {
+    linkedin::post_link(url).is_some() || indeed::post_link(url).is_some()
+}
+
 /// A post's link as its site always writes it (LinkedIn's and Indeed's, however they were
 /// found), so the same post found twice is one post; other links as they are.
 pub fn post_link(url: &str) -> String {
@@ -134,7 +145,7 @@ pub fn sent_page(url: &str, html: &str) -> Result<Page, String> {
     };
     let text = match by_site {
         Seen::Shown(text) => text,
-        _ => page_reader::to_text(html.as_bytes(), "text/html", url)?,
+        _ => page_reader::to_text(html.as_bytes(), DECODED_HTML, url)?,
     };
     Ok(Page {
         read_with: ReadWith::Sent,
@@ -150,4 +161,25 @@ fn text<'a>(value: &'a serde_json::Value, key: &str) -> &'a str {
 /// The first of texts that isn't empty, or "".
 fn first_of<'a>(texts: &[&'a str]) -> &'a str {
     texts.iter().copied().find(|text| !text.is_empty()).unwrap_or("")
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn a_sent_page_is_read_as_the_browser_decoded_it() {
+        let html = "<html><head><meta charset=\"iso-8859-1\"><title>Udvikler i Århus</title></head><body><main><p>Vi søger en udvikler til vores kontor i Århus. Du får gode kolleger, frokostordning og fleksible arbejdstider, og du arbejder med PHP, Rust og SQLite hver dag i et lille team.</p></main></body></html>";
+        let page = sent_page("https://example.com/job/1", html).unwrap();
+        assert_eq!(page.title, "Udvikler i Århus");
+        assert!(page.text.contains("Vi søger"), "{}", page.text);
+        assert_eq!(page.read_with, ReadWith::Sent);
+    }
+
+    #[test]
+    fn signed_in_posts_are_known_by_their_links() {
+        assert!(is_signed_in_post("https://www.linkedin.com/jobs/view/4012345678/"));
+        assert!(is_signed_in_post("https://dk.indeed.com/viewjob?jk=0123456789abcdef"));
+        assert!(!is_signed_in_post("https://www.jobindex.dk/vis-job/h1"));
+    }
 }

@@ -202,6 +202,10 @@ pub struct Target {
 pub async fn read(url: &str, readers: Readers<'_>) -> Result<Page, String> {
     match crate::job_sites::read_post(url, readers).await {
         Some(Ok(page)) => return Ok(page),
+        Some(Err(why)) if crate::job_sites::is_signed_in_post(url) => {
+            crate::log_line!("page_reader: {url}: JobFinder's signed-in browser couldn't read it: {why}");
+            return Err(why);
+        }
         Some(Err(why)) => crate::log_line!("page_reader: {url}: the site's own reader failed, reading the page: {why}"),
         None => {}
     }
