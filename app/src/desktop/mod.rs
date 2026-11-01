@@ -262,10 +262,11 @@ pub struct Runner {
 
 impl Runner {
     /// Runs work(context) on the runtime and gives its answer to done: Err when the work
-    /// panicked (logged).
+    /// panicked (logged). work is called on the runtime too, not on the window's thread, which
+    /// has no runtime: a timer or a client made there would panic.
     pub fn run<T, F, M>(
         &self,
-        work: impl FnOnce(Arc<Context>) -> F,
+        work: impl FnOnce(Arc<Context>) -> F + Send + 'static,
         done: impl Fn(Result<T, String>) -> M + Send + 'static,
     ) -> Task<M>
     where
@@ -273,7 +274,7 @@ impl Runner {
         T: Send + 'static,
         M: Send + 'static,
     {
-        let job = self.runtime.spawn(work(Arc::clone(&self.context)));
+        let job = spawn_work(&self.runtime, Arc::clone(&self.context), work);
         Task::perform(job, move |answer| {
             done(answer.map_err(|e| {
                 crate::log_line!("The window's work stopped: {e}");
@@ -281,6 +282,19 @@ impl Runner {
             }))
         })
     }
+}
+
+/// Calls work(context) on the runtime and runs what it gives there.
+fn spawn_work<T, F>(
+    runtime: &Handle,
+    context: Arc<Context>,
+    work: impl FnOnce(Arc<Context>) -> F + Send + 'static,
+) -> tokio::task::JoinHandle<T>
+where
+    F: Future<Output = T> + Send + 'static,
+    T: Send + 'static,
+{
+    runtime.spawn(async move { work(context).await })
 }
 
 /// The Match screen's status and saved matches, and the status line.
@@ -488,5 +502,29 @@ fn local_model_status(context: &Context) -> (Health, String) {
     match llama.overview().chosen {
         Ok(model) => (Health::Ready, format!("Local model: {model}, starts when used")),
         Err(_) => (Health::Attention, "Local model: no model fits".to_string()),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::account::key_vault::KeyVault;
+
+    #[test]
+    fn a_screens_work_may_make_a_timer_from_a_thread_without_the_runtime() {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let context = runtime.block_on(async {
+            let db = crate::db::open_in_memory().await.unwrap();
+            let user_id = crate::server::local_user(&db).await.unwrap();
+            let taxonomy = Arc::new(crate::taxonomy::Taxonomy::load());
+            Arc::new(Context::new(db, taxonomy, user_id, KeyVault::in_memory()))
+        });
+        let handle = runtime.handle().clone();
+        // The window's thread: no runtime entered, as in run_window.
+        let job =
+            std::thread::spawn(move || spawn_work(&handle, context, |_| tokio::time::sleep(Duration::from_millis(1))))
+                .join()
+                .unwrap();
+        runtime.block_on(job).unwrap();
     }
 }

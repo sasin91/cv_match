@@ -207,11 +207,17 @@ fn computer(view: &LlamaSetupView) -> Element<'_, Msg> {
         .into()
     };
     rows.push(server);
-    if let Some(problem) = &view.card_problem {
+    // llama-server is here but can't use the graphics card: the right build replaces it.
+    if let (true, Some(problem)) = (view.server_found, &view.card_problem) {
         rows.push(
             row![
                 style::mark(Health::Attention),
-                text(problem.as_str()).size(style::CAPTION_SIZE).width(Fill),
+                text(format!("{problem} Download it again to get {}.", view.build_label))
+                    .size(style::CAPTION_SIZE)
+                    .width(Fill),
+                button(text("Download llama.cpp again").size(style::BODY_SIZE))
+                    .style(style::standard_button)
+                    .on_press_maybe((!view.busy).then_some(Msg::DownloadServer)),
             ]
             .spacing(14)
             .align_y(Center)

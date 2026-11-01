@@ -139,10 +139,15 @@ pub enum Msg {
     ListLoaded(Result<Arc<SearchList>, String>),
     /// A batch of a search's page: the first one, or one more when more.
     SearchLoaded {
+        id: i64,
         page: Result<Arc<SearchPage>, String>,
         more: bool,
     },
-    FormLoaded(Result<(SearchForm, bool), String>),
+    /// The form of search id (0 for a new one), with whether there is a profile.
+    FormLoaded {
+        id: i64,
+        form: Result<(SearchForm, bool), String>,
+    },
     Go(Page),
     ShowDismissed(bool),
     ShowMore,
@@ -180,6 +185,9 @@ pub enum Msg {
 }
 
 pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
+    if is_stale(state.page, &msg) {
+        return Task::none();
+    }
     match msg {
         Msg::Load => return load(state, runner),
         Msg::Go(page) => {
@@ -195,7 +203,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             state.list = Some(list);
             state.busy = false;
         }
-        Msg::SearchLoaded { page, more } => {
+        Msg::SearchLoaded { page, more, .. } => {
             state.busy = false;
             if let Ok(page) = &page {
                 if more {
@@ -219,11 +227,14 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                 return load(state, runner);
             }
         }
-        Msg::FormLoaded(Ok((form, has_profile))) => {
+        Msg::FormLoaded {
+            form: Ok((form, has_profile)),
+            ..
+        } => {
             state.form = FormState::of(&form, has_profile);
             state.busy = false;
         }
-        Msg::FormLoaded(Err(why)) => {
+        Msg::FormLoaded { form: Err(why), .. } => {
             state.said = Some((Health::Attention, why));
             state.busy = false;
         }
@@ -359,6 +370,16 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
     Task::none()
 }
 
+/// A page's answer that came after the page was left (for another search, or another page):
+/// showing it would put one search's form or posts under another.
+fn is_stale(page: Page, msg: &Msg) -> bool {
+    match msg {
+        Msg::SearchLoaded { id, .. } => page != Page::Search(*id),
+        Msg::FormLoaded { id, .. } => page != Page::Form(*id),
+        _ => false,
+    }
+}
+
 /// A service's answer as Msg::Said, going on to then.
 fn said(
     then: Page,
@@ -389,8 +410,11 @@ fn load(state: &mut State, runner: &Runner) -> Task<Msg> {
                     };
                     Ok((form, search_service::has_profile(&context).await?))
                 },
-                |read: Result<Result<(SearchForm, bool), crate::service_error::ServiceError>, String>| {
-                    Msg::FormLoaded(read.and_then(|form| form.map_err(|e| e.message)))
+                move |read: Result<Result<(SearchForm, bool), crate::service_error::ServiceError>, String>| {
+                    Msg::FormLoaded {
+                        id,
+                        form: read.and_then(|form| form.map_err(|e| e.message)),
+                    }
                 },
             )
         }
@@ -407,6 +431,7 @@ fn search_batch(runner: &Runner, id: i64, dismissed: bool, after: String) -> Tas
                 .map(Arc::new)
         },
         move |read| Msg::SearchLoaded {
+            id,
             page: read.and_then(|page| page.map_err(|e| e.message)),
             more,
         },
@@ -896,4 +921,29 @@ fn delete_card(state: &State, id: i64) -> Element<'_, Msg> {
     .align_y(Center)
     .padding(ROW_PADDING)
     .into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn an_answer_for_a_page_left_is_dropped() {
+        let form = |id| Msg::FormLoaded {
+            id,
+            form: Err(String::new()),
+        };
+        let posts = |id| Msg::SearchLoaded {
+            id,
+            page: Err(String::new()),
+            more: false,
+        };
+        assert!(!is_stale(Page::Form(2), &form(2)));
+        assert!(is_stale(Page::Form(3), &form(2)));
+        assert!(is_stale(Page::List, &form(2)));
+        assert!(!is_stale(Page::Search(2), &posts(2)));
+        assert!(is_stale(Page::Search(3), &posts(2)));
+        assert!(is_stale(Page::Form(2), &posts(2)));
+        assert!(!is_stale(Page::List, &Msg::Load));
+    }
 }
