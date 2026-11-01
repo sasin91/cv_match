@@ -37,12 +37,12 @@ pub struct JobSearchSummary {
 }
 
 impl JobSearchSummary {
-    /// running_since: a run started after it and not finished is still running; an older one
-    /// stopped without saying so.
-    pub fn from(search: &JobSearch, last_run: Option<&Run>, tokens: TokenUse, running_since: i64) -> Self {
+    /// scan_running: a scan runs now (scan_service::is_running), so an unfinished run is running;
+    /// otherwise it stopped without saying so.
+    pub fn from(search: &JobSearch, last_run: Option<&Run>, tokens: TokenUse, scan_running: bool) -> Self {
         JobSearchSummary {
             line: line(search),
-            last_scan: last_run.map(|run| last_scan(run, tokens, running_since)),
+            last_scan: last_run.map(|run| last_scan(run, tokens, scan_running)),
         }
     }
 }
@@ -75,10 +75,10 @@ fn line(search: &JobSearch) -> String {
     .join(" · ")
 }
 
-/// A run's state: running while unfinished and recent, an error when it failed or stopped.
-pub fn run_state(run: &Run, running_since: i64) -> RunState {
+/// A run's state: running while unfinished and a scan runs, an error when it failed or stopped.
+pub fn run_state(run: &Run, scan_running: bool) -> RunState {
     match run.finished_at {
-        None if run.started_at > running_since => RunState::Running,
+        None if scan_running => RunState::Running,
         None => RunState::Error,
         Some(_) if !run.error.is_empty() => RunState::Error,
         Some(_) => RunState::Done,
@@ -86,8 +86,8 @@ pub fn run_state(run: &Run, running_since: i64) -> RunState {
 }
 
 /// "running…", the run's error, or "found 12, 3 new."
-pub fn run_text(run: &Run, running_since: i64) -> String {
-    match run_state(run, running_since) {
+pub fn run_text(run: &Run, scan_running: bool) -> String {
+    match run_state(run, scan_running) {
         RunState::Running => "running…".to_string(),
         RunState::Error if run.finished_at.is_none() => "it stopped before it finished.".to_string(),
         RunState::Error => run.error.clone(),
@@ -95,11 +95,11 @@ pub fn run_text(run: &Run, running_since: i64) -> String {
     }
 }
 
-fn last_scan(run: &Run, tokens: TokenUse, running_since: i64) -> LastScan {
+fn last_scan(run: &Run, tokens: TokenUse, scan_running: bool) -> LastScan {
     LastScan {
         when: dates::short_moment(run.started_at),
-        state: run_state(run, running_since),
-        text: run_text(run, running_since),
+        state: run_state(run, scan_running),
+        text: run_text(run, scan_running),
         usage: format!(
             "Scans in the last 30 days: {}, {} tokens.",
             tokens.scans,
@@ -139,14 +139,14 @@ mod tests {
 
     #[test]
     fn a_run_says_how_it_went() {
-        assert_eq!(run_text(&run(Some(1100), ""), 0), "found 12, 3 new.");
+        assert_eq!(run_text(&run(Some(1100), ""), false), "found 12, 3 new.");
         assert_eq!(
-            run_text(&run(Some(1100), "The scan failed: no."), 0),
+            run_text(&run(Some(1100), "The scan failed: no."), false),
             "The scan failed: no."
         );
-        assert_eq!(run_text(&run(None, ""), 500), "running…");
-        assert_eq!(run_state(&run(None, ""), 2000), RunState::Error);
-        assert_eq!(run_text(&run(None, ""), 2000), "it stopped before it finished.");
+        assert_eq!(run_text(&run(None, ""), true), "running…");
+        assert_eq!(run_state(&run(None, ""), false), RunState::Error);
+        assert_eq!(run_text(&run(None, ""), false), "it stopped before it finished.");
     }
 
     #[test]
