@@ -8,7 +8,8 @@
 
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::Mutex;
+use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde::Deserialize;
@@ -158,6 +159,26 @@ pub enum Progress {
 #[derive(Debug, Default)]
 pub struct Downloads {
     progress: Mutex<Progress>,
+    /// Unzips running on their own thread. One goes on when its download is stopped in the task
+    /// manager (a blocking thread can't be stopped), so no download starts until it is done:
+    /// the next would clear the staging folder it writes into.
+    unzipping: Arc<AtomicUsize>,
+}
+
+/// Counts an unzip as running until it is dropped, at its thread's end.
+struct Unzipping(Arc<AtomicUsize>);
+
+impl Unzipping {
+    fn start(count: &Arc<AtomicUsize>) -> Self {
+        count.fetch_add(1, Ordering::AcqRel);
+        Unzipping(Arc::clone(count))
+    }
+}
+
+impl Drop for Unzipping {
+    fn drop(&mut self) {
+        self.0.fetch_sub(1, Ordering::AcqRel);
+    }
 }
 
 impl Downloads {
@@ -174,6 +195,9 @@ impl Downloads {
         let mut progress = self.lock();
         if let Progress::Running { what, .. } = &*progress {
             return Err(format!("{what} is still downloading. Wait for it to finish."));
+        }
+        if self.unzipping.load(Ordering::Acquire) > 0 {
+            return Err("The stopped llama.cpp download is still being unzipped. Try again in a minute.".to_string());
         }
         *progress = Progress::Running {
             what: what.to_string(),
@@ -237,10 +261,14 @@ pub async fn download_server(folder: &Path, inventory: &Inventory, downloads: &D
         let zip_path = folder.join(&asset.name);
         download_file(&client, &asset.browser_download_url, &zip_path, downloads).await?;
         let (zip, into) = (zip_path.clone(), staging.clone());
-        tokio::task::spawn_blocking(move || unzip(&zip, &into))
-            .await
-            .map_err(|e| format!("Unzipping {} stopped: {e}", asset.name))?
-            .map_err(|e| format!("Couldn't unzip {}: {e}", asset.name))?;
+        let unzipping = Unzipping::start(&downloads.unzipping);
+        tokio::task::spawn_blocking(move || {
+            let _unzipping = unzipping;
+            unzip(&zip, &into)
+        })
+        .await
+        .map_err(|e| format!("Unzipping {} stopped: {e}", asset.name))?
+        .map_err(|e| format!("Couldn't unzip {}: {e}", asset.name))?;
         if let Err(e) = std::fs::remove_file(&zip_path) {
             crate::log_line!("llama: {} couldn't be deleted after unzipping: {e}", zip_path.display());
         }
@@ -412,6 +440,15 @@ mod tests {
     use std::io::Write;
 
     use super::*;
+
+    #[test]
+    fn no_download_starts_while_a_stopped_ones_unzip_runs() {
+        let downloads = Downloads::default();
+        let unzipping = Unzipping::start(&downloads.unzipping);
+        assert!(downloads.begin("llama.cpp").is_err());
+        drop(unzipping);
+        assert!(downloads.begin("llama.cpp").is_ok());
+    }
     use crate::llama::hardware::{GIB, Gpu};
 
     fn asset(name: &str) -> Asset {

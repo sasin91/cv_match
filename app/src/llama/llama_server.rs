@@ -93,6 +93,8 @@ struct Running {
     _job: job::KillOnClose,
     model: PathBuf,
     endpoint: Endpoint,
+    /// When it was started, in unix seconds.
+    started_at: i64,
 }
 
 /// Calls on the server: how many are under way, and when the last one ended.
@@ -231,14 +233,26 @@ impl LlamaServer {
     /// stopping, which holds its lock).
     pub fn running_model(&self) -> Option<String> {
         let running = self.running.try_lock().ok()?;
-        let model = &running.as_ref()?.model;
-        Some(
-            model
-                .file_name()
-                .unwrap_or(model.as_os_str())
-                .to_string_lossy()
-                .into_owned(),
-        )
+        Some(file_name_of(&running.as_ref()?.model))
+    }
+
+    /// The server process running now, for the task manager; None as running_model says.
+    pub fn running_process(&self) -> Option<ServerProcess> {
+        let running = self.running.try_lock().ok()?;
+        let running = running.as_ref()?;
+        Some(ServerProcess {
+            model: file_name_of(&running.model),
+            process_id: running.child.id(),
+            started_at: running.started_at,
+        })
+    }
+
+    /// Stops the server now, calls under way or not (they fail, and the next call starts it
+    /// again), and says the model it ran; None when it isn't running. Waits for a start under way.
+    pub async fn stop_now(&self) -> Option<String> {
+        let mut stopped = self.running.lock().await.take()?;
+        stop(&mut stopped).await;
+        Some(stopped.endpoint.model)
     }
 
     /// The server running named (a file in the models folder, or "" for the one that fits best),
@@ -341,6 +355,7 @@ impl LlamaServer {
         Ok(Running {
             child,
             _job: job,
+            started_at: chrono::Utc::now().timestamp(),
             model: model.path.clone(),
             endpoint: Endpoint {
                 base_url: format!("{base}/v1"),
@@ -438,6 +453,25 @@ async fn wait_until_healthy(base: &str, child: &mut Child) -> Result<(), String>
         }
         tokio::time::sleep(Duration::from_millis(HEALTH_POLL_MILLISECONDS)).await;
     }
+}
+
+/// The file name of a model's path, as the window shows it.
+fn file_name_of(model: &Path) -> String {
+    model
+        .file_name()
+        .unwrap_or(model.as_os_str())
+        .to_string_lossy()
+        .into_owned()
+}
+
+/// The running llama-server, as the task manager lists it.
+#[derive(Debug, Clone, PartialEq)]
+pub struct ServerProcess {
+    /// The model file it runs.
+    pub model: String,
+    pub process_id: Option<u32>,
+    /// When it was started, in unix seconds.
+    pub started_at: i64,
 }
 
 /// Stops a server and waits for it to end.

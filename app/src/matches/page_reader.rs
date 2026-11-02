@@ -213,7 +213,9 @@ pub async fn read(url: &str, readers: Readers<'_>) -> Result<Page, String> {
     let page = to_text(&fetched.body, &fetched.content_type, &fetched.url);
     if needs_javascript(&page)
         && let Some(pdf_reader) = readers.pdf_reader
-        && let Some(rendered) = crate::job_sites::browser::render(&fetched.url, pdf_reader).await
+        && let Some(rendered) = crate::job_sites::browser::render(&fetched.url, pdf_reader)
+            .await
+            .map_err(|stopped| stopped.to_string())?
     {
         let rendered = Ok(PageText {
             title: page.as_ref().map(|page| page.title.clone()).unwrap_or_default(),
