@@ -1,23 +1,24 @@
 # JobFinder (desktop)
 
-JobFinder: Recruiter's CV match as a standalone desktop app in Rust: one program with SQLite, Laya built in
-and one local user, in its own window (iced), with the match page served beside it. Its matching core is checked
-against a fixed snapshot of expected answers (tests/parity.rs).
+JobFinder: Recruiter's CV match as a standalone desktop app in Rust: one program with SQLite, Laya
+built in and one local user, in its own window (iced). Its matching core is checked against a
+fixed snapshot of expected answers (tests/parity.rs).
 
 ## What is where
 
 | Rust | What |
 | --- | --- |
+| `src/desktop/` | the window: its screens, which print what the services give them |
+| `src/matches/match_service.rs`, `src/job_scan/search_service.rs`, `scan_service.rs`, `src/account/account_service.rs`, `llama_setup_service.rs`, `src/setup/setup_steps.rs`, `src/dashboard.rs` | the work the screens call |
 | `src/taxonomy.rs` | the lexical taxonomy lookup (match ranks without an embedding model) |
 | `src/matches/free_reader.rs` | the free reading of a post and a CV, with the words it ignores and the soft skills |
 | `src/matches/matcher.rs` | matching a post against a CV, and the legacy ranking |
-| `src/matches/match_score.rs` | a match score as the pages show it |
+| `src/matches/match_score.rs` | a match score as the screens show it |
 | `src/db.rs`, `migrations/`, `queries/` | the SQLite tables and the longer queries |
-| `src/server.rs`, `src/matches/pages.rs` | the server, the match page and its endpoints |
+| `src/server.rs`, `src/extension_api.rs` | the server on 127.0.0.1 and what the Jobnet extension asks it |
 | `src/matches/match_model.rs` | saved matches in the database |
-| `src/matches/match_result.rs`, `saved_match_row.rs`, `batch_row.rs`, `verdict_row.rs`, `location_notice.rs`, `apply_notice.rs`, `reject_button.rs`, `reject_reason.rs`, `match_documents.rs`, `document_box.rs`, `score_cursor.rs` | the view models the templates print |
+| `src/matches/match_result.rs`, `saved_match_row.rs`, `batch_row.rs`, `verdict_row.rs`, `disqualifier_notice.rs`, `apply_notice.rs`, `reject_button.rs`, `reject_reason.rs`, `match_documents.rs`, `document_box.rs`, `score_cursor.rs` | the view models the screens print |
 | `src/matches/apply_instructions.rs` | how a post asks to be applied to |
-| `templates/` | the pages and fragments, which only print |
 | `src/profile.rs` | the profile as text |
 | `src/matches/joblog.rs`, `joblog_panel.rs` | the Jobnet joblog entry (with `assets/danish_postcodes.json`) and its panel |
 | `src/extension.rs` | ships `extension/jobnet-joblog` and writes it out for the browser |
@@ -25,12 +26,12 @@ against a fixed snapshot of expected answers (tests/parity.rs).
 | `src/matches/match_prompts.rs` | extract_job, extract_cv and the judging |
 | `src/matches/ai_match.rs`, `document_writer.rs`, `llm_key.rs` | the AI match, the writing, and which key and model a task runs on |
 | `src/matches/page_reader.rs` | fetch_job: a post read from a pasted link |
-| `src/matches/application_delivery.rs`, `cv_links.rs`, `resume_comparison.rs` | the Apply dialog and the résumé's comparison |
+| `src/matches/application_delivery.rs`, `cv_links.rs`, `resume_comparison.rs` | Apply and the résumé's comparison |
 | `src/laya/laya_client.rs` | Laya, on `laya-server`'s model in this process |
 | `src/pdf/` | lays the page out on A4 as dompdf 3.1 did and writes the PDF |
 
-What the app builds in is in `../assets` (the page's CSS and JS, Trongate MX, the taxonomy
-index and the Danish postcodes); the Jobnet extension lives in `../extension/jobnet-joblog`.
+What the app builds in is in `../assets` (the taxonomy index, the Danish postcodes and the
+fonts); the Jobnet extension lives in `../extension/jobnet-joblog`.
 
 ## Running it
 
@@ -39,38 +40,37 @@ index and the Danish postcodes); the Jobnet extension lives in `../extension/job
 opens the app's window (`src/desktop/`): Match, with the dashboard's status rows and your
 best matches, the Task manager (what JobFinder runs now and for how long: scans, matches, model
 calls, browsers, PDF readers, downloads, llama-server and Laya; right-click a row to stop it),
-and Settings, with a status line for Laya and the local model under both. The
-app is also served on http://127.0.0.1:8765/match, for the Jobnet extension and for what the
-window can't do yet, which its buttons open in your default browser. Starting it again on the
-same database brings the window to the front.
-(`--port`, `--database file`, `--laya folder`, `--browser` for the page instead of the window,
-`--no-browser` for neither, and `--tailscale-name` for your phone:
-see [../docs/phone.md](../docs/phone.md)). The served page is the match page,
-with its CSS and JS (`assets/match/css`, `js`, and Trongate MX from `assets/js`, built into the exe), for
-one local user who is always signed in:
+and Settings (Language models, Local model, Job searches, Setup, Jobnet extension, Learned
+terms), with a status line for Laya and the local model under them. Starting it again on the
+same database brings the window to the front. Its options are `--port`, `--database file`,
+`--laya folder` and `--llama folder`. For one local user, always signed in, the window has:
 
 - the saved matches by list (Shortlist, All, Applied not on Jobnet yet, On Jobnet, Rejected),
   best first, with Show more and the 30-second refresh;
 - a saved match's result, with its notices (location, how to apply) and its application and
   résumé as written;
 - Not interested and Bring back;
-- the free keyword match of new posts against your profile or a pasted CV;
+- the free keyword match of new posts against your profile or a chosen CV, one post or up to 10
+  ranked;
 - with your own key (below), the AI match: the post and CV read by the model (extract_job,
   extract_cv), what the taxonomy can't decide judged by it, scored and saved; a post read from a
   pasted link (fetch_job), public web pages only, never this computer or the home network;
 - the job application and the tailored résumé written for a saved match, each writing kept as
   a new version: the box shows the newest, with the earlier ones listed under it (when, by which
-  model, with which notes) to copy or download as a PDF; the résumé's own match against the post
+  model, with which notes) to copy or save as a PDF; the résumé's own match against the post
   next to the CV's;
-- the Apply dialog: by email (recipient, subject, body, mailto link) or on the employer's site,
-  with the PDFs and your profile links;
-- a match's Jobnet joblog panel, and what the Jobnet extension asks for (the history, a joblog
-  entry, marking a match as on Jobnet, the PDFs it attaches);
-- the application, the tailored résumé, the CV and the job post as PDFs (`POST match/pdf`);
-- reading an uploaded PDF CV's text in the app (`POST match/pdf_text`, `src/pdf_text`, from
-  sappkit's PDF reader), so it works offline and a desktop window can read it too;
-- the API key page (http://127.0.0.1:8765/account), below;
+- Apply: by email (recipient, subject, body, mailto link) or on the employer's site, with the
+  PDFs and your profile links, and the match's Jobnet joblog entry;
+- the application, the tailored résumé, the CV and the job post as PDFs;
+- reading a PDF CV's text in the app (`src/pdf_text`, from sappkit's PDF reader, in a child
+  process), so it works offline;
+- Language models and Local model, below;
 - Laya's reading of the free match and the AI match, when its model is there (below).
+
+The server on http://127.0.0.1:8765 is only for the Jobnet extension (`src/extension_api.rs`:
+the saved matches, a joblog entry, the joblog status, the PDFs it attaches, and a post sent from
+the browser) and for a second start to find this one (`src/instance.rs`). There are no web
+pages.
 
 ## Laya
 
@@ -103,12 +103,12 @@ Helvetica lacks is set in DejaVu Sans, with only the letters used embedded
 (`assets/fonts`, Bitstream Vera licence).
 
 The server only answers requests whose Host is its own address, and only takes changes (POST)
-from its own pages and the Jobnet extension (their Origin), so other sites open in the browser
+from the app itself and the Jobnet extension (their Origin), so other sites open in the browser
 can't use it.
 
 ## The API key and the language models
 
-The AI features run on your own keys, saved on the API key page (`account`): an OpenAI key, an Anthropic key, or a local OpenAI-compatible server
+The AI features run on your own keys, saved on Language models (`account`): an OpenAI key, an Anthropic key, or a local OpenAI-compatible server
 such as Ollama (`http://localhost:11434/v1`) or LM Studio (`http://localhost:1234/v1`), which
 needs a model name and usually no key. One key is kept per provider. Each goes in Windows
 Credential Manager (service `JobFinder`, user `user_llm_keys:1:{provider}@` and the database
@@ -124,21 +124,21 @@ answer that follows a schema. `openai` speaks Chat Completions (and the Response
 search), also for a local server at its `base_url`; `anthropic` speaks the Messages API with
 structured output, effort and server-side refusal fallbacks. With no model named, a key runs on
 gpt-5.4-mini (OpenAI) or claude-sonnet-5-5 (Anthropic). A call waits up to 180 seconds; errors
-come back in the provider's own words for the page, and the log gets the status, the rate-limit
+come back in the provider's own words for the window, and the log gets the status, the rate-limit
 headers and the body, with any key in it cut to its prefix.
 
-The match page runs each AI step on the key picked for that use: evaluating job
+The Match screen runs each AI step on the key picked for that use: evaluating job
 posts (extract_job, extract_cv, the judging in match), writing applications, tailoring résumés.
 With no key picked for evaluating, the free reader reads the post and CV instead, so a match is still
-saved and can have its application and résumé written. Without a key for a use, the page says
-why (none saved, none picked for the use, or gone from Credential Manager) and links to the API key page.
+saved and can have its application and résumé written. Without a key for a use, the window says
+why (none saved, none picked for the use, or gone from Credential Manager) and goes to Language models.
 
 ## The Jobnet extension
 
 The app carries `extension/jobnet-joblog` and writes it to a `jobnet-joblog` folder next to the
 database at every start (`%APPDATA%\JobFinder\jobnet-joblog`). Load that folder once in Edge or
-Chrome (extensions page, Developer mode, "Load unpacked"); the app's page
-http://127.0.0.1:8765/joblog_extension shows the folder and the steps. After an update, press
+Chrome (extensions page, Developer mode, "Load unpacked"); Settings, Jobnet extension shows the
+folder and the steps. After an update, press
 Reload on the extension. Its manifest `key` fixes its ID, the one `src/extension.rs` lets in.
 
 ## Database
@@ -147,7 +147,7 @@ The app keeps its data in one SQLite file, `%APPDATA%\JobFinder\jobfinder.sqlite
 Its tables are cv_match's MariaDB tables (`migrations/`, applied in order at start-up and
 recorded in `schema_migrations`) without the `cv_match` prefix, since the whole app is the
 match: `cv_matches` is `matches`, `cv_match_id` is `match_id`, `cv_match_items` is
-`match_items`, and so on. Besides the names, there are five changes:
+`match_items`, and so on. Besides the names, there are six changes:
 
 - `trongate_users` keeps only `id`, and `candidates` drops the login columns.
 - `user_llm_keys.uses` (a SET) is three yes/no columns, `use_for_resume`,
@@ -163,6 +163,10 @@ match: `cv_matches` is `matches`, `cv_match_id` is `match_id`, `cv_match_items` 
   `matches.cv_name` and `cv_text`. `match_documents` says which match uses which document, so
   a CV is kept once however many matches are made with it; a document no match uses any more
   is deleted with the last one (migration 0004).
+- `matches` has four more columns for the still-open check (`matches::still_open`, migration
+  0008): the post's application `deadline`, when its page was last read for it
+  (`still_open_checked_at`), and when and why the job was found closed (`closed_at`,
+  `closed_why`). A closed job leaves the Shortlist and All for the "No longer open" list.
 
 While the app is new, `migrations/0001_schema.sql` is changed in place instead of getting new
 migrations. A database made from an older version of it is refused at start with a message
@@ -205,10 +209,11 @@ The fixtures are a fixed snapshot of what the web app answered for these cases. 
 to the matching is meant to change an answer, change the expected answer in `parity.json` in
 the same commit, so the diff shows what moved.
 
-`tests/server.rs` sends the page's requests to the server: the lists, a saved match, the free
-match, the AI match and writing against a stand-in for a local model on 127.0.0.1, the Apply
-dialog, the joblog, the extension's calls, the PDFs, the API key page, links that may not be
-fetched, and requests from other sites. `tests/llm.rs` calls each adapter against a stand-in for its API on
+`tests/server.rs` sends the Jobnet extension's requests to the server: the history, a joblog
+entry and its status, the PDFs, a post sent from the browser, a second start, and requests from
+other sites. `tests/ai_work.rs` runs the AI match and writing against a stand-in for a local
+model on 127.0.0.1; `tests/match_service.rs`, `job_scan_service.rs` and `account_service.rs`
+call the rest of the work the window calls. `tests/llm.rs` calls each adapter against a stand-in for its API on
 127.0.0.1 and checks the request it sends and how it reads the answers and failures.
 
 CI (`.github/workflows/app.yml`) runs fmt, clippy and the tests on Windows, and checks `.sqlx/` is what the queries are.

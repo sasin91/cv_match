@@ -1,12 +1,14 @@
-//! The match page's work answers the same without a web server, as a desktop window will call it:
-//! view models and data back, and errors as a kind and a message to show.
+//! The match work as the window calls it: view models and data back, and errors as a kind and a
+//! message to show.
 
 use std::sync::{Arc, LazyLock};
 
 use jobfinder::account::key_vault::KeyVault;
 use jobfinder::context::Context;
 use jobfinder::db;
+use jobfinder::laya::laya_client::{self, LayaClient};
 use jobfinder::matches::match_service::{self, MatchAsk, RejectOutcome};
+use jobfinder::matches::{Job, Profile, Requirement};
 use jobfinder::server;
 use jobfinder::service_error::ErrorKind;
 use jobfinder::taxonomy::Taxonomy;
@@ -224,4 +226,74 @@ async fn writing_a_document_without_a_key_points_to_the_key_page_and_says_its_st
         .unwrap_err();
     assert_eq!(error.kind, ErrorKind::NeedKey);
     assert_eq!(*said.lock().unwrap(), ["Tailoring the résumé…"]);
+}
+
+/// A match request of a post asking for PHP and a CV naming it, without texts.
+fn php_request() -> match_service::MatchRequest {
+    match_service::MatchRequest {
+        job: Job {
+            job_title: "PHP-udvikler".to_string(),
+            requirements: vec![Requirement {
+                value: "PHP".to_string(),
+                kind: "skill".to_string(),
+                ..Default::default()
+            }],
+            ..Default::default()
+        },
+        profile: Profile {
+            skill: vec!["PHP".to_string()],
+            ..Default::default()
+        },
+        ..Default::default()
+    }
+}
+
+#[tokio::test]
+async fn a_laya_model_that_cant_load_is_said_under_the_score() {
+    let folder = std::env::temp_dir().join(format!("jobfinder-laya-{}", std::process::id()));
+    std::fs::create_dir_all(&folder).unwrap();
+    std::fs::write(folder.join(laya_client::ONNX_FILE), "not a model").unwrap();
+    let mut context = context().await;
+    context.laya = LayaClient::from_folder(&folder);
+    assert!(context.laya.is_some());
+
+    let result = match_service::quick_match(
+        &context,
+        "PHP-udvikler\nDin profil\n- Erfaring med PHP",
+        "Udvikler\nPHP, Laravel",
+    )
+    .await
+    .unwrap();
+    assert!(result.laya.failed);
+    assert!(
+        result
+            .laya
+            .text
+            .starts_with("No Laya reading this time. Laya couldn't load its model from"),
+        "{}",
+        result.laya.text
+    );
+    assert!(result.laya.text.contains("The score above doesn't depend on it."));
+
+    let found = match_service::ai_match(&context, &php_request()).await.unwrap();
+    assert!(found.laya_reading.laya.is_none());
+    assert!(
+        found
+            .laya_reading
+            .laya_error
+            .as_deref()
+            .unwrap()
+            .starts_with("Laya couldn't load its model from"),
+        "{:?}",
+        found.laya_reading.laya_error
+    );
+    std::fs::remove_dir_all(folder).unwrap();
+}
+
+#[tokio::test]
+async fn without_a_laya_model_a_match_has_no_laya_line() {
+    let context = context().await;
+    let found = match_service::ai_match(&context, &php_request()).await.unwrap();
+    assert!(found.laya_reading.laya.is_none());
+    assert!(found.laya_reading.laya_error.is_none());
 }

@@ -1,8 +1,8 @@
-//! A saved match as a row of the page's list (templates/match/history.html): its id, tag, title and
-//! meta line, ready to print.
+//! A saved match as a row of the Match screen's lists: its id, tag, title and meta line, ready to
+//! print.
 
 use super::match_model::{APPLIED_STATUSES, ListedMatch};
-use super::{dates, match_score, reject_reason};
+use super::{dates, match_score, reject_reason, still_open};
 
 /// How a match of a tailored résumé is named (its cv_name ends with this).
 pub const TAILORED_CV: &str = "(tailored résumé)";
@@ -18,6 +18,11 @@ pub struct SavedMatchRow {
     pub saved_on: String,
     /// "application · applied · on Jobnet", ending "rejected: Too long commute" when rejected.
     pub done: String,
+    /// "Deadline 15 Nov (in 3 days)" or "Closed 2 Nov: the post was taken down" (still_open), ""
+    /// when nothing is known.
+    pub opening: String,
+    /// The job no longer takes applications.
+    pub closed: bool,
 }
 
 impl SavedMatchRow {
@@ -37,6 +42,8 @@ impl SavedMatchRow {
             saved_at: dates::iso(m.created_at),
             saved_on: dates::day(m.created_at),
             done: done(m).join(" · "),
+            opening: still_open::describe(&m.opening, still_open::today()),
+            closed: still_open::is_closed(&m.opening),
         }
     }
 }

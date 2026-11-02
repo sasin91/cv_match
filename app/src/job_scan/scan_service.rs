@@ -42,6 +42,7 @@ use crate::llm::transcript::{self, Exchange};
 use crate::llm::{Effort, OPENAI};
 use crate::matches::match_service::{self, MatchRequest};
 use crate::matches::page_reader::ReadWith;
+use crate::matches::still_open::{self, CheckReport};
 use crate::matches::{Profile, llm_key, match_model, page_reader};
 use crate::profile;
 use crate::service_error::{ErrorKind, ServiceError};
@@ -147,6 +148,8 @@ pub struct ScanReport {
     pub problems: Vec<String>,
     /// Why the scan stopped before it was done (the user stayed busy), in words to show.
     pub stopped: Option<String>,
+    /// What the still-open check after the scan found, when it ran.
+    pub still_open: Option<CheckReport>,
 }
 
 impl ScanReport {
@@ -168,6 +171,10 @@ impl ScanReport {
         if let Some(why) = self.stopped.as_ref().filter(|_| self.scanned > 0) {
             said.push(' ');
             said.push_str(why);
+        }
+        if let Some(checked) = self.still_open.as_ref().filter(|checked| checked.did_anything()) {
+            said.push(' ');
+            said.push_str(&checked.summary());
         }
         said
     }
@@ -348,9 +355,25 @@ async fn scan_holding_lock(context: Arc<Context>, started: Started) -> Result<Sc
     // Asked before this scan held the lock: meant for one that ended already.
     scan_lock::forget_stop_request(&context);
     tokio::select! {
-        scanned = scan_searches(&context, started) => scanned,
+        scanned = scan_then_check_open(&context, started) => scanned,
         never = scan_lock::stop_when_asked(&context) => match never {},
     }
+}
+
+/// The scan, then the still-open check of the saved matches (still_open), unless the scan
+/// stopped before it was done. What the check couldn't do is one of the scan's problems.
+async fn scan_then_check_open(context: &Arc<Context>, started: Started) -> Result<ScanReport, ServiceError> {
+    let mut report = Box::pin(scan_searches(context, started)).await?;
+    if report.stopped.is_none() {
+        match Box::pin(still_open::check(context, still_open::PAUSE_BETWEEN_READS)).await {
+            Ok(checked) => report.still_open = Some(checked),
+            Err(e) => report.problems.push(format!(
+                "Checking whether saved jobs are still open failed: {}",
+                e.message
+            )),
+        }
+    }
+    Ok(report)
 }
 
 /// The scan itself, holding the lock.

@@ -21,7 +21,7 @@ use crate::context::Context;
 use crate::dashboard::Health;
 use crate::matches::document_box::APPLICATION;
 use crate::matches::match_model::LISTS;
-use crate::matches::match_result::{MatchResult, Section};
+use crate::matches::match_result::{MatchResult, OpeningLine, Section};
 use crate::matches::match_service::{
     self, JobAsk, MAX_JOBS, MatchAnswer, MatchAsk, ReadCv, RejectOutcome, SavedMatchList, WriteAnswer,
 };
@@ -29,6 +29,7 @@ use crate::matches::page_reader::Page as Fetched;
 use crate::matches::reject_button::{self, RejectButton};
 use crate::matches::reject_reason::{self, Rejection};
 use crate::matches::saved_match_row::SavedMatchRow;
+use crate::matches::still_open;
 use crate::matches::verdict_row::VerdictRow;
 use crate::profile;
 use crate::service_error::{ErrorKind, ServiceError};
@@ -247,6 +248,16 @@ pub enum Msg {
     Note(&'static str, String),
     Reject,
     BringBack,
+    /// "Check which are still open" on Saved matches.
+    CheckOpen,
+    /// What the check found, in words.
+    CheckedOpen(Result<String, String>),
+    /// "It's still open" on a closed saved match's page.
+    KeepOpen,
+    KeptOpen {
+        id: i64,
+        outcome: Result<(), String>,
+    },
     Rejected {
         /// The saved match rejected or brought back.
         id: i64,
@@ -273,8 +284,6 @@ pub enum Msg {
     PdfSaved(Result<Option<String>, String>),
     /// For the shell: go to Language models.
     ShowLanguageModels,
-    /// For the shell: a web page to open in the browser.
-    OpenPage(String),
     /// For the shell: a match was saved or rejected, so the overview is read again.
     Changed,
 }
@@ -458,6 +467,61 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
         }
         Msg::Reject => return reject(state, false, runner),
         Msg::BringBack => return reject(state, true, runner),
+        Msg::CheckOpen => {
+            state.busy = true;
+            state.said = Some((
+                Health::Neutral,
+                "Checking whether your saved jobs are still open…".to_string(),
+            ));
+            return runner.run(
+                |context| async move { still_open::check_now(&context).await },
+                |checked| Msg::CheckedOpen(checked.and_then(|checked| checked.map_err(|e| e.message))),
+            );
+        }
+        Msg::CheckedOpen(checked) => {
+            state.busy = false;
+            state.said = Some(match checked {
+                Ok(said) => (Health::Ready, said),
+                Err(why) => (Health::Attention, why),
+            });
+            // The lists have changed.
+            if let Page::List(list) = state.page {
+                return Task::batch([reload_list(state, list, runner), Task::done(Msg::Changed)]);
+            }
+            state.list.read = None;
+            return Task::done(Msg::Changed);
+        }
+        Msg::KeepOpen => {
+            let Some(id) = shown_mut(state).and_then(|shown| shown.result.saved_id) else {
+                return Task::none();
+            };
+            state.busy = true;
+            return runner.run(
+                move |context| async move { still_open::keep_open(&context, id).await },
+                move |outcome| Msg::KeptOpen {
+                    id,
+                    outcome: outcome.and_then(|outcome| outcome.map_err(|e| e.message)),
+                },
+            );
+        }
+        Msg::KeptOpen { id, outcome } => {
+            state.busy = false;
+            match outcome {
+                Ok(()) => {
+                    for shown in results_of(state, id) {
+                        shown.result.opening = None;
+                    }
+                    state.said = Some((
+                        Health::Ready,
+                        "Marked as still open: it is back in its lists, and JobFinder won't check it again."
+                            .to_string(),
+                    ));
+                    state.list.read = None;
+                    return Task::done(Msg::Changed);
+                }
+                Err(why) => state.said = Some((Health::Attention, why)),
+            }
+        }
         Msg::Rejected {
             id,
             undo,
@@ -526,7 +590,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                 Err(why) => state.said = Some((Health::Attention, why)),
             }
         }
-        Msg::OpenPage(_) | Msg::Changed | Msg::ShowLanguageModels => {}
+        Msg::Changed | Msg::ShowLanguageModels => {}
     }
     Task::none()
 }
@@ -542,6 +606,8 @@ fn starts_work(msg: &Msg) -> bool {
             | Msg::ChooseFile(_)
             | Msg::Reject
             | Msg::BringBack
+            | Msg::CheckOpen
+            | Msg::KeepOpen
             | Msg::Doc(_, DocMsg::Write(_) | DocMsg::SavePdf(..))
             | Msg::Apply(_, _, ApplyMsg::SavePdf(_))
     )
@@ -598,11 +664,7 @@ fn go(state: &mut State, page: Page, runner: &Runner) -> Task<Msg> {
                 .iter()
                 .find(|(name, ..)| *name == list)
                 .map_or("", |(.., empty)| *empty);
-            // Another list: nothing of the last one stays, its cursor least of all.
-            state.list.read = None;
-            state.list.rows.clear();
-            state.list.next_after = None;
-            load_list(state, list, String::new(), runner)
+            reload_list(state, list, runner)
         }
         Page::Saved(id) => {
             state.request += 1;
@@ -620,6 +682,14 @@ fn go(state: &mut State, page: Page, runner: &Runner) -> Task<Msg> {
 }
 
 /// Reads a batch of list after the cursor after ("" for the first one).
+/// Reads list from its start: nothing of the last read stays, its cursor least of all.
+fn reload_list(state: &mut State, list: &'static str, runner: &Runner) -> Task<Msg> {
+    state.list.read = None;
+    state.list.rows.clear();
+    state.list.next_after = None;
+    load_list(state, list, String::new(), runner)
+}
+
 fn load_list(state: &mut State, list: &'static str, after: String, runner: &Runner) -> Task<Msg> {
     state.request += 1;
     let request = state.request;
@@ -1257,13 +1327,20 @@ fn list_view<'a>(state: &'a State, current: &'static str) -> Element<'a, Msg> {
     }))
     .spacing(4)
     .wrap();
+    let check_open = button(text("Check which are still open").size(style::BODY_SIZE))
+        .style(style::standard_button)
+        .on_press_maybe((!state.busy).then_some(Msg::CheckOpen));
     let mut page = Column::new()
         .spacing(GAP * 1.5)
         .push(widgets::page_title(
             "Saved matches",
             widgets::note("Best first. Open one to see its verdicts, or to say you're not interested."),
         ))
-        .push(tabs);
+        .push(
+            row![container(tabs).width(Fill), check_open]
+                .spacing(12)
+                .align_y(Center),
+        );
     if let Some(bar) = said_bar(state) {
         page = page.push(bar);
     }
@@ -1299,6 +1376,9 @@ fn saved_row(saved: &SavedMatchRow) -> Element<'_, Msg> {
     if !saved.done.is_empty() {
         about = about.push(widgets::caption(saved.done.as_str()));
     }
+    if !saved.opening.is_empty() {
+        about = about.push(widgets::caption(saved.opening.as_str()));
+    }
     button(
         row![
             about,
@@ -1333,6 +1413,9 @@ fn saved_view(state: &State) -> Element<'_, Msg> {
 fn result_view(shown: &Shown, busy: bool) -> Element<'_, Msg> {
     let result = &shown.result;
     let mut view = Column::new().spacing(GAP * 1.5).push(score_card(result));
+    if let Some(opening) = &result.opening {
+        view = view.push(opening_bar(opening, busy));
+    }
     if let Some(reject) = &result.reject {
         view = view.push(reject_card(shown, reject, busy));
     }
@@ -1490,6 +1573,36 @@ pub(super) fn tag_health(tag: &str) -> Health {
 }
 
 /// Not interested, its form, or the rejected match's Bring back.
+/// Whether a saved match's job still takes applications; a closed one can be said to be open.
+fn opening_bar(opening: &OpeningLine, busy: bool) -> Element<'_, Msg> {
+    let mut line = row![
+        style::mark(if opening.closed {
+            Health::Attention
+        } else {
+            Health::Neutral
+        }),
+        text(opening.text.as_str()).size(style::BODY_SIZE).width(Fill),
+    ]
+    .spacing(12)
+    .align_y(Center);
+    if opening.closed {
+        line = line.push(
+            button(text("It's still open").size(style::BODY_SIZE))
+                .style(style::standard_button)
+                .on_press_maybe((!busy).then_some(Msg::KeepOpen)),
+        );
+    }
+    container(line)
+        .padding([12.0, CARD_PADDING])
+        .width(Fill)
+        .style(if opening.closed {
+            style::warning_bar
+        } else {
+            style::card
+        })
+        .into()
+}
+
 fn reject_card<'a>(shown: &'a Shown, reject: &'a RejectButton, busy: bool) -> Element<'a, Msg> {
     if reject.rejected {
         return widgets::card(

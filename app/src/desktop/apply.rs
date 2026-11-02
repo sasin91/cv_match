@@ -1,5 +1,4 @@
-//! Applying for a saved match in the window, as the match page's Apply dialog and Jobnet joblog
-//! have it (templates/match/application_delivery.html, joblog_panel.html):
+//! Applying for a saved match in the window:
 //! - Apply: how the post asks for the application (by email, or on the employer's site), each
 //!   value to copy, the PDFs to attach or upload, the profile links, and the email app or the job
 //!   post to open (match_service::application_delivery);
