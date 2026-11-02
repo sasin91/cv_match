@@ -424,6 +424,11 @@ pub async fn download_model(model: &CatalogModel, models_folder: &Path, download
 /// and on resume asks for the rest (an HTTP range), or for all of it again when the server can't
 /// send a part.
 async fn download_file(client: &reqwest::Client, url: &str, to: &Path, downloads: &Downloads) -> Result<(), String> {
+    // Paused before this file (between two of a build's zips): it waits to be resumed first.
+    running_work::until_resumed().await;
+    if running_work::stop_asked() {
+        return Err(Stopped::SAID.to_string());
+    }
     let Some(mut response) = get_from(client, url, 0).await? else {
         return Err(format!("{url} couldn't be downloaded: the server sent nothing."));
     };

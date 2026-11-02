@@ -491,10 +491,25 @@ impl Matching {
             }
         }
         self.started_one = true;
-        let left = self.time_left()?;
-        tokio::select! {
-            free = crate::user_busy::wait_until_free(BUSY_GIVE_UP.min(left)) => free?,
-            () = running_work::until_stop_asked() => return stopped(),
+        let give_up_after = BUSY_GIVE_UP.min(self.time_left()?);
+        // The time the scan is paused doesn't count toward giving up on the user being busy.
+        let waited = running_work::Clock::start();
+        loop {
+            let left = give_up_after.saturating_sub(waited.ran());
+            let free = tokio::select! {
+                free = crate::user_busy::wait_until_free(left) => free,
+                () = running_work::until_stop_asked() => return stopped(),
+            };
+            match free {
+                Ok(()) => break,
+                Err(why) if waited.ran() >= give_up_after => return Err(why),
+                // Paused meanwhile: wait to be resumed, then the rest of the time.
+                Err(_) => running_work::until_resumed().await,
+            }
+        }
+        running_work::until_resumed().await;
+        if running_work::stop_asked() {
+            return stopped();
         }
         self.time_left().map(|_| ())
     }
