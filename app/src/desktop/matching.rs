@@ -11,6 +11,7 @@ use std::sync::Arc;
 use iced::widget::{Column, Row, button, checkbox, column, container, row, text, text_editor, text_input};
 use iced::{Center, Element, Fill, Task};
 
+use super::documents::{self, DocMsg, Docs};
 use super::style;
 use super::widgets::{self, CARD_PADDING, ROW_PADDING};
 use super::{GAP, Runner, Step};
@@ -18,7 +19,7 @@ use crate::context::Context;
 use crate::dashboard::Health;
 use crate::matches::match_model::LISTS;
 use crate::matches::match_result::{MatchResult, Section};
-use crate::matches::match_service::{self, MatchAnswer, MatchAsk, ReadCv, RejectOutcome, SavedMatchList};
+use crate::matches::match_service::{self, MatchAnswer, MatchAsk, ReadCv, RejectOutcome, SavedMatchList, WriteAnswer};
 use crate::matches::page_reader::Page as Fetched;
 use crate::matches::reject_button::{self, RejectButton};
 use crate::matches::reject_reason::{self, Rejection};
@@ -73,11 +74,14 @@ struct Shown {
     notes: Vec<(&'static str, String)>,
     /// What the form says is missing.
     problem: Option<String>,
+    /// The application and résumé, for a saved match.
+    docs: Option<Docs>,
 }
 
 impl Shown {
     fn new(result: MatchResult) -> Self {
         Shown {
+            docs: result.documents.as_ref().map(Docs::new),
             result,
             filter: ALL,
             rejecting: false,
@@ -214,6 +218,22 @@ pub enum Msg {
         rejections: Arc<Vec<Rejection>>,
         outcome: Result<RejectOutcome, String>,
     },
+    /// The application and résumé of saved match id.
+    Doc(i64, DocMsg),
+    /// What writing a document of saved match id came to.
+    Wrote {
+        id: i64,
+        answer: Arc<Result<WriteAnswer, String>>,
+    },
+    /// The just matched job's documents read again: whether each can be written now.
+    Availability {
+        id: i64,
+        result: Result<Arc<MatchResult>, String>,
+    },
+    /// Where a PDF was saved; None when the dialog was closed.
+    PdfSaved(Result<Option<String>, String>),
+    /// For the shell: go to Language models.
+    ShowLanguageModels,
     /// For the shell: a web page to open in the browser.
     OpenPage(String),
     /// For the shell: a match was saved or rejected, so the overview is read again.
@@ -324,6 +344,21 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
         Msg::SavedLoaded { result, .. } => {
             state.saved = Some(result.map(|result| Shown::new(Arc::unwrap_or_clone(result))));
         }
+        Msg::Availability { id, result } => match result {
+            Ok(read) => {
+                let docs = state.fresh.as_mut().and_then(|shown| shown.docs.as_mut());
+                if let (Some(docs), Some(now)) = (docs.filter(|docs| docs.id == Some(id)), &read.documents) {
+                    docs.availability(&now.boxes);
+                }
+            }
+            Err(error) => {
+                crate::app_log::error(&format!("Could not read the match's documents again: {error}"));
+                state.said = Some((
+                    Health::Attention,
+                    format!("The documents couldn't be read again: {error}"),
+                ));
+            }
+        },
         Msg::Filter(key) => {
             if let Some(shown) = shown_mut(state) {
                 shown.filter = key;
@@ -386,7 +421,35 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             }
         }
         // The shell's.
-        Msg::OpenPage(_) | Msg::Changed => {}
+        Msg::Doc(id, msg) => return document(state, id, msg, runner),
+        Msg::Wrote { id, answer } => {
+            state.busy = false;
+            match answer.as_ref() {
+                Ok(answer) => {
+                    for shown in results_of(state, id) {
+                        if let Some(docs) = shown.docs.as_mut() {
+                            docs.written(answer);
+                        }
+                    }
+                    state.said = Some(match &answer.problem {
+                        Some(problem) => (Health::Attention, format!("{}. {problem}", answer.done)),
+                        None => (Health::Ready, format!("{}.", answer.done)),
+                    });
+                    state.list.read = None;
+                    return Task::done(Msg::Changed);
+                }
+                Err(why) => state.said = Some((Health::Attention, why.clone())),
+            }
+        }
+        Msg::PdfSaved(saved) => {
+            state.busy = false;
+            match saved {
+                Ok(None) => {}
+                Ok(Some(path)) => state.said = Some((Health::Ready, format!("Saved {path}."))),
+                Err(why) => state.said = Some((Health::Attention, why)),
+            }
+        }
+        Msg::OpenPage(_) | Msg::Changed | Msg::ShowLanguageModels => {}
     }
     Task::none()
 }
@@ -396,7 +459,12 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
 fn starts_work(msg: &Msg) -> bool {
     matches!(
         msg,
-        Msg::Fetch | Msg::Match | Msg::ChooseFile(_) | Msg::Reject | Msg::BringBack
+        Msg::Fetch
+            | Msg::Match
+            | Msg::ChooseFile(_)
+            | Msg::Reject
+            | Msg::BringBack
+            | Msg::Doc(_, DocMsg::Write(_) | DocMsg::SavePdf(..))
     )
 }
 
@@ -406,6 +474,26 @@ fn is_stale(request: u64, msg: &Msg) -> bool {
         Msg::ListLoaded { request: asked, .. } | Msg::SavedLoaded { request: asked, .. } => *asked != request,
         _ => false,
     }
+}
+
+/// Reads the just matched job's documents again, since a key may have been set or turned off
+/// on Language models while away; their texts stay as they are.
+fn refresh_availability(state: &State, runner: &Runner) -> Task<Msg> {
+    let Some(id) = state
+        .fresh
+        .as_ref()
+        .and_then(|shown| shown.docs.as_ref())
+        .and_then(|docs| docs.id)
+    else {
+        return Task::none();
+    };
+    runner.run(
+        move |context| async move { match_service::saved_result(&context, id).await.map(Arc::new) },
+        move |result| Msg::Availability {
+            id,
+            result: result.and_then(|result| result.map_err(|e| e.message)),
+        },
+    )
 }
 
 fn go(state: &mut State, page: Page, runner: &Runner) -> Task<Msg> {
@@ -419,10 +507,13 @@ fn go(state: &mut State, page: Page, runner: &Runner) -> Task<Msg> {
     match page {
         Page::Overview => Task::none(),
         // Read on every visit, so a CV read again in setup is the one matched.
-        Page::New => runner.run(
-            |context| async move { profile::text_for_user(context.db(), context.user_id).await },
-            |read| Msg::ProfileRead(read.and_then(|read| read.map_err(|e| e.to_string()))),
-        ),
+        Page::New => Task::batch([
+            runner.run(
+                |context| async move { profile::text_for_user(context.db(), context.user_id).await },
+                |read| Msg::ProfileRead(read.and_then(|read| read.map_err(|e| e.to_string()))),
+            ),
+            refresh_availability(state, runner),
+        ]),
         Page::List(list) => {
             state.list.empty = LISTS
                 .iter()
@@ -544,6 +635,61 @@ fn shown_mut(state: &mut State) -> Option<&mut Shown> {
         Page::New => state.fresh.as_mut(),
         Page::Saved(_) => state.saved.as_mut().and_then(|saved| saved.as_mut().ok()),
         Page::Overview | Page::List(_) => None,
+    }
+}
+
+/// A click in saved match id's application and résumé: writing, copying and saving run here,
+/// the rest is the panel's own.
+fn document(state: &mut State, id: i64, msg: DocMsg, runner: &Runner) -> Task<Msg> {
+    let Some(docs) = shown_mut(state)
+        .and_then(|shown| shown.docs.as_mut())
+        .filter(|docs| docs.id == Some(id))
+    else {
+        return Task::none();
+    };
+    match msg {
+        DocMsg::Write(kind) if !docs.asks_first(kind) => {
+            let notes = docs.notes();
+            state.busy = true;
+            state.said = Some((Health::Neutral, "Writing…".to_string()));
+            runner.run_saying(
+                move |context, say| async move { match_service::write_document(context, id, &notes, kind, &*say).await },
+                move |step| match step {
+                    Step::Said(line) => Msg::Matching(line),
+                    Step::Done(answer) => Msg::Wrote {
+                        id,
+                        answer: Arc::new(answer.and_then(|answer| answer.map_err(|e| e.message))),
+                    },
+                },
+            )
+        }
+        DocMsg::Copy(kind, version) => match docs.text_of(kind, version) {
+            Some(copied) => {
+                state.said = Some((Health::Ready, "Copied to clipboard.".to_string()));
+                iced::clipboard::write(copied)
+            }
+            None => Task::none(),
+        },
+        DocMsg::SavePdf(kind, version) => {
+            let edited = docs.text_of(kind, None).unwrap_or_default();
+            state.busy = true;
+            runner.run(
+                move |context| async move { documents::save_pdf(context, id, kind, edited, version).await },
+                |saved| {
+                    Msg::PdfSaved(saved.and_then(|saved| {
+                        saved
+                            .map(|path| path.map(|path| path.display().to_string()))
+                            .map_err(|e| e.message)
+                    }))
+                },
+            )
+        }
+        DocMsg::Open(match_id) => go(state, Page::Saved(match_id), runner),
+        DocMsg::OpenLanguageModels => Task::done(Msg::ShowLanguageModels),
+        msg => {
+            docs.update(msg);
+            Task::none()
+        }
     }
 }
 
@@ -986,27 +1132,24 @@ fn result_view(shown: &Shown, busy: bool) -> Element<'_, Msg> {
             text(result.laya.text.as_str()).size(style::BODY_SIZE).into()
         });
     }
-    if let Some(id) = result.saved_id {
+    if let (Some(docs), Some(id)) = (&shown.docs, result.saved_id) {
         view = view.push(widgets::section(
             "Application and résumé",
-            container(
-                row![
-                    text(
-                        "Writing the application and the résumé, and logging it on Jobnet, are still on the match's web page."
-                    )
+            documents::view(docs, busy).map(move |msg| Msg::Doc(id, msg)),
+        ));
+        view = view.push(
+            row![
+                text("Apply and the Jobnet joblog are still on the match's web page.")
                     .size(style::CAPTION_SIZE)
                     .style(style::secondary)
                     .width(Fill),
-                    button(text("Open in the browser").size(style::BODY_SIZE))
-                        .style(style::standard_button)
-                        .on_press(Msg::OpenPage(format!("match/{id}"))),
-                ]
-                .spacing(14)
-                .align_y(Center),
-            )
-            .padding(CARD_PADDING)
-            .into(),
-        ));
+                button(text("Open in the browser").size(style::BODY_SIZE))
+                    .style(style::standard_button)
+                    .on_press(Msg::OpenPage(format!("match/{id}"))),
+            ]
+            .spacing(14)
+            .align_y(Center),
+        );
     }
     view.into()
 }

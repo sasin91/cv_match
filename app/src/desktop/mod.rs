@@ -7,6 +7,7 @@
 //! The window runs on the main thread, as the OS's windowing wants; the app's work runs on the
 //! tokio runtime the server runs on (on_runtime), since the database and HTTP clients need it.
 
+mod documents;
 mod job_searches;
 mod language_models;
 mod local_model;
@@ -406,6 +407,9 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
         }
         Message::Matching(matching::Msg::OpenPage(path)) => return Task::done(Message::OpenPage(path)),
         Message::Matching(matching::Msg::Changed) => return Task::done(Message::Reload),
+        Message::Matching(matching::Msg::ShowLanguageModels) => {
+            return Task::done(Message::Show(Screen::LanguageModels));
+        }
         Message::Matching(msg) => {
             let runner = shell.runner();
             return matching::update(&mut shell.matching, msg, &runner).map(Message::Matching);
