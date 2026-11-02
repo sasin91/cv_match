@@ -49,8 +49,14 @@ pub struct Applying {
     id: i64,
     apply_open: bool,
     apply: Option<Result<Delivery, String>>,
+    /// The number of the newest read of Apply, and whether it is running: an older answer is
+    /// dropped, and showing the section again doesn't read it twice.
+    apply_read: u64,
+    apply_reading: bool,
     joblog_open: bool,
     joblog: Option<Result<Joblog, String>>,
+    /// The joblog's first read is running.
+    joblog_reading: bool,
 }
 
 struct Delivery {
@@ -96,7 +102,10 @@ impl Value {
 #[derive(Debug, Clone)]
 pub enum ApplyMsg {
     ToggleApply,
-    Delivered(Arc<Result<ApplicationDelivery, String>>),
+    Delivered {
+        read: u64,
+        answer: Arc<Result<ApplicationDelivery, String>>,
+    },
     DeliveryLine(usize, String),
     DeliveryArea(usize, text_editor::Action),
     CopyDelivery(usize),
@@ -110,6 +119,8 @@ pub enum ApplyMsg {
     OpenEmail,
     ToggleJoblog,
     JoblogRead(Arc<Result<(JoblogPanel, Option<CvrAddress>), String>>),
+    /// The joblog read again after writing: only its PDFs are new.
+    JoblogFiles(Arc<Result<JoblogPanel, String>>),
     JoblogLine(usize, usize, String),
     JoblogArea(usize, usize, text_editor::Action),
     CopyJoblog(usize, usize),
@@ -129,7 +140,7 @@ impl ApplyMsg {
     pub fn is_answer(&self) -> bool {
         matches!(
             self,
-            ApplyMsg::Delivered(_) | ApplyMsg::JoblogRead(_) | ApplyMsg::Saved { .. }
+            ApplyMsg::Delivered { .. } | ApplyMsg::JoblogRead(_) | ApplyMsg::JoblogFiles(_) | ApplyMsg::Saved { .. }
         )
     }
 }
@@ -143,8 +154,11 @@ impl Applying {
             id,
             apply_open: false,
             apply: None,
+            apply_read: 0,
+            apply_reading: false,
             joblog_open: false,
             joblog: None,
+            joblog_reading: false,
         }
     }
 
@@ -156,6 +170,9 @@ impl Applying {
     /// shown.
     pub fn written(&mut self, runner: &Runner) -> Task<ApplyMsg> {
         self.apply = None;
+        // A read from before the writing is out of date.
+        self.apply_read += 1;
+        self.apply_reading = false;
         let delivery = if self.apply_open {
             self.read_delivery(runner)
         } else {
@@ -166,11 +183,7 @@ impl Applying {
         let joblog = if matches!(self.joblog, Some(Ok(_))) {
             runner.run(
                 move |context| async move { match_service::joblog_panel(&context, id).await },
-                |read| {
-                    ApplyMsg::JoblogRead(Arc::new(
-                        read.and_then(|read| read.map(|panel| (panel, None)).map_err(|e| e.message)),
-                    ))
-                },
+                |read| ApplyMsg::JoblogFiles(Arc::new(read.and_then(|read| read.map_err(|e| e.message)))),
             )
         } else {
             Task::none()
@@ -178,11 +191,16 @@ impl Applying {
         Task::batch([delivery, joblog])
     }
 
-    fn read_delivery(&self, runner: &Runner) -> Task<ApplyMsg> {
-        let id = self.id;
+    fn read_delivery(&mut self, runner: &Runner) -> Task<ApplyMsg> {
+        self.apply_read += 1;
+        self.apply_reading = true;
+        let (id, read) = (self.id, self.apply_read);
         runner.run(
             move |context| async move { match_service::application_delivery(&context, id).await },
-            |read| ApplyMsg::Delivered(Arc::new(read.and_then(|read| read.map_err(|e| e.message)))),
+            move |answer| ApplyMsg::Delivered {
+                read,
+                answer: Arc::new(answer.and_then(|answer| answer.map_err(|e| e.message))),
+            },
         )
     }
 
@@ -198,7 +216,12 @@ impl Applying {
             ApplyMsg::ToggleApply => {
                 self.apply_open = !self.apply_open;
                 if self.apply_open && self.apply.is_none() {
-                    return (self.read_delivery(runner), None);
+                    let read = if self.apply_reading {
+                        Task::none()
+                    } else {
+                        self.read_delivery(runner)
+                    };
+                    return (read, None);
                 }
                 // The application may have been edited in its box while this was hidden.
                 if self.apply_open
@@ -207,8 +230,12 @@ impl Applying {
                     delivery.with_application(application);
                 }
             }
-            ApplyMsg::Delivered(read) => {
-                self.apply = Some(match read.as_ref() {
+            ApplyMsg::Delivered { read, answer } => {
+                if read != self.apply_read {
+                    return (Task::none(), None);
+                }
+                self.apply_reading = false;
+                self.apply = Some(match answer.as_ref() {
                     Ok(delivery) => Ok(Delivery::new(delivery.clone(), application)),
                     Err(why) => Err(why.clone()),
                 });
@@ -250,7 +277,8 @@ impl Applying {
             }
             ApplyMsg::ToggleJoblog => {
                 self.joblog_open = !self.joblog_open;
-                if self.joblog_open && self.joblog.is_none() {
+                if self.joblog_open && self.joblog.is_none() && !self.joblog_reading {
+                    self.joblog_reading = true;
                     let id = self.id;
                     return (
                         runner.run(
@@ -261,14 +289,31 @@ impl Applying {
                     );
                 }
             }
-            ApplyMsg::JoblogRead(read) => match (read.as_ref(), self.joblog.as_mut()) {
-                // Read again after writing: only the PDFs are new.
-                (Ok((panel, None)), Some(Ok(joblog))) => {
+            ApplyMsg::JoblogRead(read) => {
+                self.joblog_reading = false;
+                // Only the first read fills the joblog: later ones would undo its edits.
+                if self.joblog.is_none() {
+                    self.joblog = Some(match read.as_ref() {
+                        Ok((panel, address)) => Ok(Joblog::new(panel.clone(), address.as_ref())),
+                        Err(why) => Err(why.clone()),
+                    });
+                }
+            }
+            ApplyMsg::JoblogFiles(read) => match (read.as_ref(), self.joblog_mut()) {
+                (Ok(panel), Some(joblog)) => {
                     joblog.panel.files = panel.files.clone();
                     joblog.panel.missing = panel.missing.clone();
                 }
-                (Ok((panel, address)), _) => self.joblog = Some(Ok(Joblog::new(panel.clone(), address.as_ref()))),
-                (Err(why), _) => self.joblog = Some(Err(why.clone())),
+                (Err(why), _) => {
+                    return (
+                        Task::none(),
+                        Some((
+                            Health::Attention,
+                            format!("The joblog's PDFs couldn't be read again: {why}"),
+                        )),
+                    );
+                }
+                _ => {}
             },
             ApplyMsg::JoblogLine(s, f, line) => {
                 if let Some(Value::Line(value)) = self.joblog_value(s, f) {
