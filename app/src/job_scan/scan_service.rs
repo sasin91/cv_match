@@ -116,6 +116,10 @@ impl Started {
 /// stopped without saying so (the program was closed): another may take it (half an hour).
 pub const RUN_GIVE_UP_SECONDS: i64 = 1800;
 
+/// How often a post's match says it still runs (every five minutes), well inside
+/// RUN_GIVE_UP_SECONDS, after which its claim would be taken over.
+const KEEP_CLAIM_EVERY: Duration = Duration::from_secs(300);
+
 /// What a scan cut off before it finished says (the program was closed while it ran).
 const CUT_OFF: &str = "The scan stopped before it finished: the app was closed while it ran.";
 
@@ -1027,10 +1031,14 @@ async fn match_post_with(
     }
     let url = post.url.clone();
     let list = Arc::clone(&context.running);
-    match list
-        .run(WorkKind::Matching, url, match_claimed(context, post_id, post, cv, sent))
-        .await
-    {
+    let matching = list.run(WorkKind::Matching, url, match_claimed(context, post_id, post, cv, sent));
+    // The claim is kept fresh while the match runs, however long it is paused in the task
+    // manager, so Try again or another scan doesn't take the post over meanwhile.
+    let matched = tokio::select! {
+        matched = matching => matched,
+        never = keep_claim(context, post_id) => match never {},
+    };
+    match matched {
         Ok(matched) => matched,
         // Not finished in its grace: dropped, so it is marked here.
         Err(Stopped) => {
@@ -1149,6 +1157,18 @@ async fn match_claimed(
 /// or the browser reading it (whose error says so).
 fn read_was_stopped(why: &str) -> bool {
     running_work::stop_asked() || why.contains(Stopped::SAID)
+}
+
+/// Forever, while a post's match runs: says every KEEP_CLAIM_EVERY that it still runs
+/// (job_scan_model::keep_claim). A failed write is logged; the next one tries again.
+async fn keep_claim(context: &Context, post_id: i64) -> std::convert::Infallible {
+    loop {
+        tokio::time::sleep(KEEP_CLAIM_EVERY).await;
+        let now = chrono::Utc::now().timestamp();
+        if let Err(e) = model::keep_claim(context.db(), post_id, now).await {
+            crate::log_line!("job_scan: post {post_id}'s claim couldn't be kept fresh: {e}");
+        }
+    }
 }
 
 /// Claims a post for a match starting now (job_scan_model::claim_for_matching); false when it

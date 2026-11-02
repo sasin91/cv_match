@@ -424,7 +424,9 @@ pub async fn download_model(model: &CatalogModel, models_folder: &Path, download
 /// and on resume asks for the rest (an HTTP range), or for all of it again when the server can't
 /// send a part.
 async fn download_file(client: &reqwest::Client, url: &str, to: &Path, downloads: &Downloads) -> Result<(), String> {
-    let mut response = get_from(client, url, 0).await?;
+    let Some(mut response) = get_from(client, url, 0).await? else {
+        return Err(format!("{url} couldn't be downloaded: the server sent nothing."));
+    };
     let mut total = response.content_length();
     let part = part_path(to);
     let mut file = tokio::fs::File::create(&part)
@@ -433,13 +435,19 @@ async fn download_file(client: &reqwest::Client, url: &str, to: &Path, downloads
     let mut done = 0u64;
     downloads.set_bytes(done, total);
     loop {
-        if running_work::paused() {
+        // All of it came already: the end is read from this answer, paused or not.
+        let all_in = total.is_some_and(|total| done >= total);
+        if running_work::paused() && !all_in {
             drop(response);
             running_work::until_resumed().await;
             if running_work::stop_asked() {
                 return Err(Stopped::SAID.to_string());
             }
-            response = get_from(client, url, done).await?;
+            let Some(rest) = get_from(client, url, done).await? else {
+                // Nothing after done: it all came before the pause.
+                break;
+            };
+            response = rest;
             if response.status() != reqwest::StatusCode::PARTIAL_CONTENT {
                 // The whole file again: start over.
                 file.set_len(0)
@@ -476,16 +484,23 @@ async fn download_file(client: &reqwest::Client, url: &str, to: &Path, downloads
         .map_err(|e| format!("Couldn't move {} to {}: {e}", part.display(), to.display()))
 }
 
-/// The answer to a GET of url, from byte from on (the whole of it from 0).
-async fn get_from(client: &reqwest::Client, url: &str, from: u64) -> Result<reqwest::Response, String> {
+/// The answer to a GET of url, from byte from on (the whole of it from 0); None when there is
+/// nothing from there on (416, the file ends at from).
+async fn get_from(client: &reqwest::Client, url: &str, from: u64) -> Result<Option<reqwest::Response>, String> {
     let mut request = client.get(url);
     if from > 0 {
         request = request.header(reqwest::header::RANGE, format!("bytes={from}-"));
     }
-    request
+    let response = request
         .send()
         .await
-        .and_then(reqwest::Response::error_for_status)
+        .map_err(|e| format!("{url} couldn't be downloaded: {e}"))?;
+    if from > 0 && response.status() == reqwest::StatusCode::RANGE_NOT_SATISFIABLE {
+        return Ok(None);
+    }
+    response
+        .error_for_status()
+        .map(Some)
         .map_err(|e| format!("{url} couldn't be downloaded: {e}"))
 }
 
