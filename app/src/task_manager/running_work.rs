@@ -5,8 +5,9 @@
 //!
 //! The list lives in the Context (no static state): a piece started inside another one (a post's
 //! model call inside the scan that found the post) finds the list, and the piece it is part of,
-//! in a tokio task-local, as llm::transcript finds its recording; so the calls deep inside the
-//! match need no extra parameter. Outside a piece of work (tests, the read-pdf child) part()
+//! in the task's crate::task_scope, the one task-local it shares with llm::transcript's
+//! recording; so the calls deep inside the match need no extra parameter. Work that goes on in a
+//! task of its own takes both along with task_scope::carried(). Outside a piece of work (tests, the read-pdf child) part()
 //! runs its work as it is, unlisted.
 //!
 //! Stopping a piece asks it and every piece under it to stop. Work that only waits on something
@@ -14,6 +15,12 @@
 //! process (kill_on_drop). Work that keeps the books (a scan, a post's match) is given its
 //! grace (WorkKind::grace) to finish them: the pieces under it fail, so the post is marked failed and the scan
 //! says it was stopped, rather than leaving a post claimed for half an hour.
+//!
+//! run(), part(), within() and spawn() (and task_scope's wrappers) put the work they are given on the heap
+//! (Box::pin) before anything else: the future they answer holds a pointer to it, not the work
+//! itself. Otherwise each future would hold the whole work it wraps, the scan's ten or so levels
+//! (scan, search, post, match, model call) would add up to one future of tens of KB, and a debug
+//! build's poll of it took more than a tokio worker's 2 MiB stack (Start scan crashed).
 
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -21,6 +28,8 @@ use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
 
 use tokio::sync::watch;
+
+use crate::task_scope;
 
 /// How long the innermost work that keeps the books (a document being written) may take to finish
 /// once it was asked to stop; it is dropped after. Work around it gets one STOP_GRACE more for
@@ -137,13 +146,10 @@ pub struct RunningWork {
     entries: Mutex<Entries>,
 }
 
-tokio::task_local! {
-    /// The list, and the piece of work this task runs, inside run(), part() or within().
-    static CURRENT: Current;
-}
-
+/// The list, and the piece of work a task runs, inside run(), part() or within(); kept in the
+/// task's crate::task_scope.
 #[derive(Clone)]
-struct Current {
+pub struct WorkPlace {
     list: Arc<RunningWork>,
     /// None inside within(): work started there goes at the top of the list.
     piece: Option<Piece>,
@@ -174,31 +180,34 @@ impl RunningWork {
 
     /// Runs work as a piece of the list called what: under the piece this task runs, when it runs
     /// one of this list's, else at the top. Err when it was stopped before it finished.
-    pub async fn run<F: Future>(
+    pub fn run<F: Future>(
         self: &Arc<Self>,
         kind: WorkKind,
         what: impl Into<String>,
         work: F,
-    ) -> Result<F::Output, Stopped> {
-        let parent = CURRENT
-            .try_with(|current| {
-                Arc::ptr_eq(&current.list, self)
-                    .then(|| current.piece.as_ref().map(|piece| piece.id))
+    ) -> impl Future<Output = Result<F::Output, Stopped>> {
+        let list = Arc::clone(self);
+        let what = what.into();
+        let work = Box::pin(work);
+        async move {
+            let parent = this_place(|place| {
+                Arc::ptr_eq(&place.list, &list)
+                    .then(|| place.piece.as_ref().map(|piece| piece.id))
                     .flatten()
             })
-            .ok()
             .flatten();
-        track(Arc::clone(self), parent, kind, what.into(), work).await
+            track(list, parent, kind, what, work).await
+        }
     }
 
     /// Runs work with this list as the one the pieces started in it go in, at the top: for work a
     /// window or a page asks for, whose model calls are listed then.
-    pub async fn within<F: Future>(self: &Arc<Self>, work: F) -> F::Output {
-        let current = Current {
+    pub fn within<F: Future>(self: &Arc<Self>, work: F) -> impl Future<Output = F::Output> + use<F> {
+        let place = WorkPlace {
             list: Arc::clone(self),
             piece: None,
         };
-        CURRENT.scope(current, work).await
+        task_scope::with_work(place, work)
     }
 
     /// Runs work as a task of its own (tokio::spawn) within this list: work a page or a window
@@ -208,15 +217,14 @@ impl RunningWork {
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        let list = Arc::clone(self);
-        tokio::spawn(async move { list.within(work).await })
+        tokio::spawn(self.within(work))
     }
 
     /// The pieces running now, each followed by the pieces under it, oldest first.
     pub fn rows(&self) -> Vec<WorkRow> {
         let entries = self.lock();
         let mut rows = Vec::with_capacity(entries.rows.len());
-        // A piece whose parent ended already (a task of its own, carried()) shows at the top.
+        // A piece whose parent ended already (a task of its own, task_scope::carried()) shows at the top.
         let tops = entries
             .rows
             .iter()
@@ -320,7 +328,7 @@ async fn track<F: Future>(
 ) -> Result<F::Output, Stopped> {
     let (id, mut asked) = list.add(parent, kind, what);
     let _listed = Listed { list: &list, id };
-    let current = Current {
+    let place = WorkPlace {
         list: Arc::clone(&list),
         piece: Some(Piece {
             id,
@@ -329,7 +337,7 @@ async fn track<F: Future>(
     };
     // On the heap: the futures of work listed inside work listed (a model call in a post's match
     // in a scan) would otherwise nest too deep for the compiler to lay them out.
-    let mut work = Box::pin(CURRENT.scope(current, work));
+    let mut work = Box::pin(task_scope::with_work(place, work));
     tokio::select! {
         biased;
         done = &mut work => return Ok(done),
@@ -350,40 +358,36 @@ async fn asked_to_stop(asked: &mut watch::Receiver<bool>) {
 
 /// Runs work as a piece of the list this task's work is in, under the piece it runs. Outside a
 /// list (tests, the read-pdf child) it runs work as it is.
-pub async fn part<F: Future>(kind: WorkKind, what: impl Into<String>, work: F) -> Result<F::Output, Stopped> {
-    let Ok(current) = CURRENT.try_with(Current::clone) else {
-        return Ok(work.await);
-    };
-    let parent = current.piece.map(|piece| piece.id);
-    track(current.list, parent, kind, what.into(), work).await
+pub fn part<F: Future>(
+    kind: WorkKind,
+    what: impl Into<String>,
+    work: F,
+) -> impl Future<Output = Result<F::Output, Stopped>> {
+    let what = what.into();
+    let work = Box::pin(work);
+    async move {
+        let Some(place) = this_place(WorkPlace::clone) else {
+            return Ok(work.await);
+        };
+        let parent = place.piece.map(|piece| piece.id);
+        track(place.list, parent, kind, what, work).await
+    }
 }
 
-/// work, for a task of its own (tokio::spawn): in the list, and under the piece, this task's work
-/// is in, as part() inside it would see them.
-pub fn carried<F: Future>(work: F) -> impl Future<Output = F::Output> {
-    let current = CURRENT.try_with(Current::clone).ok();
-    async move {
-        match current {
-            Some(current) => CURRENT.scope(current, work).await,
-            None => work.await,
-        }
-    }
+/// What f answers about the list and the piece this task runs; None outside one.
+fn this_place<R>(f: impl FnOnce(&WorkPlace) -> R) -> Option<R> {
+    task_scope::read(|scope| scope.work.as_ref().map(f)).flatten()
 }
 
 /// Whether the piece this task runs was asked to stop.
 pub fn stop_asked() -> bool {
-    CURRENT
-        .try_with(|current| current.piece.as_ref().is_some_and(|piece| *piece.stop.borrow()))
-        .unwrap_or(false)
+    this_place(|place| place.piece.as_ref().is_some_and(|piece| *piece.stop.borrow())).unwrap_or(false)
 }
 
 /// Waits until the piece this task runs is asked to stop; forever outside one. For work that
 /// waits on its own between steps (a scan's pause between two posts).
 pub async fn until_stop_asked() {
-    let asked = CURRENT
-        .try_with(|current| current.piece.as_ref().map(|piece| piece.stop.clone()))
-        .ok()
-        .flatten();
+    let asked = this_place(|place| place.piece.as_ref().map(|piece| piece.stop.clone())).flatten();
     match asked {
         Some(mut asked) => asked_to_stop(&mut asked).await,
         None => std::future::pending().await,
@@ -392,18 +396,18 @@ pub async fn until_stop_asked() {
 
 /// Asks the piece this task runs, and the pieces under it, to stop, as the task manager would.
 pub fn stop_this() {
-    let _ = CURRENT.try_with(|current| {
-        if let Some(piece) = &current.piece {
-            current.list.stop(piece.id);
+    this_place(|place| {
+        if let Some(piece) = &place.piece {
+            place.list.stop(piece.id);
         }
     });
 }
 
 /// Says the child process the piece this task runs started (its process id), for the list.
 pub fn set_process(process_id: Option<u32>) {
-    let _ = CURRENT.try_with(|current| {
-        if let Some(piece) = &current.piece {
-            current.list.set_process(piece.id, process_id);
+    this_place(|place| {
+        if let Some(piece) = &place.piece {
+            place.list.set_process(piece.id, process_id);
         }
     });
 }

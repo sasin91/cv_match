@@ -3,6 +3,7 @@ name = "jobfinder"
 version = "0.1.0"
 edition = "2024"
 description = "JobFinder: Recruiter's CV match as a local desktop app"
+license = "BSD-2-Clause"
 publish = false
 
 # xtask/ holds the developer commands (`cargo dev`). It shares this Cargo.lock and target/, and
@@ -88,3 +89,9 @@ strip = true
 tower = { version = "0.5", features = ["util"] }
 http-body-util = "0.1"
 base64 = "0.22"
+
+[lints.clippy]
+# A future this big, awaited inside another, makes the debug build's poll frames add up past a
+# tokio worker's stack (Start scan overflowed it): box it (Box::pin) where it is awaited. The
+# threshold is in clippy.toml.
+large_futures = "warn"

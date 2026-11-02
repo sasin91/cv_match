@@ -1,0 +1,4 @@
+# Bytes a future may take before clippy::large_futures (Cargo.toml) asks to box it. Half clippy's
+# 16 KiB default: a debug build's poll of a future takes a stack frame of several times its size,
+# and the job scan nests about ten of them on one tokio worker's 2 MiB stack.
+future-size-threshold = 8192
