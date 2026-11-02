@@ -83,8 +83,6 @@ pub struct AccountView {
     pub base_url_placeholder: &'static str,
     /// Which model to run the AI on, shown while no key is saved.
     pub advice: ModelAdvice,
-    /// The setup wizard isn't finished, so the page links back to it.
-    pub setup_unfinished: bool,
     /// What happens while a game runs, when a saved key runs on this computer.
     pub while_playing: Option<WhilePlaying>,
 }
@@ -241,7 +239,6 @@ pub async fn account_view(context: &Context, typed: Option<&KeyForm>) -> Result<
     drop(together);
     let saved_models = task_model::saved(context.db()).await?;
     let downloaded = llama::model_files(context.llama.as_ref());
-    let setup_unfinished = setup::first_run_or_logged(context).await;
     let while_playing = stand_in::while_playing(&saved);
     let advice = ModelAdvice::from(context.llama.as_ref());
     let provider = typed
@@ -272,7 +269,6 @@ pub async fn account_view(context: &Context, typed: Option<&KeyForm>) -> Result<
         model_placeholder: model_placeholder(),
         base_url_placeholder: BASE_URL_PLACEHOLDER,
         advice,
-        setup_unfinished,
         while_playing,
     })
 }

@@ -72,7 +72,7 @@ pub async fn now(context: &Context) -> Result<Option<StandIn>, ServiceError> {
 /// model.
 async fn cloud_key(context: &Context) -> Result<Option<KeyFor>, ServiceError> {
     for provider in CLOUD_PROVIDERS {
-        let key = account_model::key_of(context.db(), &context.key_vault, context.user_id, provider)
+        let key = account_model::key_of(context.db(), &context.key_vault, provider)
             .await
             .map_err(|e| {
                 crate::log_line!("game mode: the {provider} key couldn't be read: {e}");

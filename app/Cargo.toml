@@ -68,7 +68,7 @@ rfd = "0.17"
 
 # The memory and graphics card a llama.cpp model is weighed against (DXGI), the job object
 # that ends llama-server with the app, whether the installer has its console to itself, and
-# whether a game runs (user_busy: the registry, and the window in front).
+# whether a game runs (game_mode: the registry, and the window in front).
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
     "Win32_Foundation",
@@ -83,7 +83,7 @@ windows = { version = "0.62", features = [
     "Win32_UI_WindowsAndMessaging",
 ] }
 
-# Whether Feral's gamemode runs a game (user_busy), on the session D-Bus; the window's theme
+# Whether Feral's gamemode runs a game (game_mode), on the session D-Bus; the window's theme
 # detection already builds it.
 [target.'cfg(target_os = "linux")'.dependencies]
 zbus = "5"

@@ -1778,9 +1778,8 @@ mod tests {
             ..Matching::new(Started::ByHand)
         };
         let db = crate::db::open_in_memory().await.unwrap();
-        let user_id = crate::server::local_user(&db).await.unwrap();
         let taxonomy = Arc::new(crate::taxonomy::Taxonomy::load());
-        let context = Context::new(db, taxonomy, user_id, crate::account::key_vault::KeyVault::in_memory());
+        let context = Context::new(db, taxonomy, crate::account::key_vault::KeyVault::in_memory());
         let why = out_of_time.make_way(&context).await.unwrap_err();
         assert!(why.starts_with("The scan ran for 0 minutes, its limit"), "{why}");
         let mut in_time = Matching::new(Started::ByHand);
