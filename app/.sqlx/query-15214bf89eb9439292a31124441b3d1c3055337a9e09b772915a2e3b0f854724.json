@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id, name, email, phone FROM candidates WHERE trongate_user_id = ?1",
+  "query": "SELECT id, name, email, phone FROM candidates ORDER BY id LIMIT 1",
   "describe": {
     "columns": [
       {
@@ -49,7 +49,7 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 0
     },
     "nullable": [
       false,
@@ -58,5 +58,5 @@
       true
     ]
   },
-  "hash": "d908dd2258aff005f9c51c652da9369b0f9026db42228b257620fe90fcdf4f55"
+  "hash": "15214bf89eb9439292a31124441b3d1c3055337a9e09b772915a2e3b0f854724"
 }

@@ -190,17 +190,9 @@ pub async fn use_model(context: &Context, file: &str) -> Result<ModelSaved, Serv
             format!("{file} isn't in the models folder yet. Download it first."),
         ));
     }
-    account_model::save(
-        context.db(),
-        &context.key_vault,
-        context.user_id,
-        LLAMA_CPP,
-        file,
-        "",
-        "",
-    )
-    .await
-    .map_err(|e| ServiceError::internal("llama_setup", format!("The model couldn't be saved: {e}")))?;
+    account_model::save(context.db(), &context.key_vault, LLAMA_CPP, file, "", "")
+        .await
+        .map_err(|e| ServiceError::internal("llama_setup", format!("The model couldn't be saved: {e}")))?;
     let setup_unfinished = setup::first_run_or_logged(context).await;
     let message = if setup_unfinished {
         format!("This app's own model runs on {file}. It starts on the first AI call, which reads your CV below.")

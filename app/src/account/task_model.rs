@@ -105,38 +105,30 @@ pub fn model_for(task: &Task, provider: &str, key_model: &str, saved: &str) -> S
 }
 
 /// The model saved for each task, as (task, model); a task without one isn't listed.
-pub async fn saved(db: &SqlitePool, user_id: i64) -> sqlx::Result<Vec<(String, String)>> {
-    let rows = sqlx::query!(
-        r#"SELECT use AS "task!", model FROM user_llm_use_models WHERE trongate_user_id = ?1 AND model != ''"#,
-        user_id
-    )
-    .fetch_all(db)
-    .await?;
+pub async fn saved(db: &SqlitePool) -> sqlx::Result<Vec<(String, String)>> {
+    let rows = sqlx::query!(r#"SELECT use AS "task!", model FROM user_llm_use_models WHERE model != ''"#)
+        .fetch_all(db)
+        .await?;
     Ok(rows.into_iter().map(|row| (row.task, row.model)).collect())
 }
 
 /// The model saved for task, "" when none is.
-pub async fn saved_for(db: &SqlitePool, user_id: i64, task: &Task) -> sqlx::Result<String> {
-    let model = sqlx::query_scalar!(
-        r#"SELECT model FROM user_llm_use_models WHERE trongate_user_id = ?1 AND use = ?2"#,
-        user_id,
-        task.name
-    )
-    .fetch_optional(db)
-    .await?;
+pub async fn saved_for(db: &SqlitePool, task: &Task) -> sqlx::Result<String> {
+    let model = sqlx::query_scalar!(r#"SELECT model FROM user_llm_use_models WHERE use = ?1"#, task.name)
+        .fetch_optional(db)
+        .await?;
     Ok(model.unwrap_or_default())
 }
 
 /// Saves each (task, model); "" runs the task on its default again.
-pub async fn save(db: &SqlitePool, user_id: i64, chosen: &[(&'static Task, String)]) -> sqlx::Result<()> {
+pub async fn save(db: &SqlitePool, chosen: &[(&'static Task, String)]) -> sqlx::Result<()> {
     let mut tx = crate::db::write_transaction(db).await?;
     for (task, model) in chosen {
         sqlx::query!(
             r#"
-            INSERT INTO user_llm_use_models (trongate_user_id, use, model) VALUES (?1, ?2, ?3)
-            ON CONFLICT (trongate_user_id, use) DO UPDATE SET model = excluded.model
+            INSERT INTO user_llm_use_models (use, model) VALUES (?1, ?2)
+            ON CONFLICT (use) DO UPDATE SET model = excluded.model
             "#,
-            user_id,
             task.name,
             model
         )
@@ -149,15 +141,11 @@ pub async fn save(db: &SqlitePool, user_id: i64, chosen: &[(&'static Task, Strin
 /// Forgets the models saved for the tasks of each of uses, which now run on another key or on
 /// none, so they run on their defaults. Runs on connection, so it can be in the caller's
 /// transaction.
-pub async fn forget_for_uses(connection: &mut SqliteConnection, user_id: i64, uses: &[&str]) -> sqlx::Result<()> {
+pub async fn forget_for_uses(connection: &mut SqliteConnection, uses: &[&str]) -> sqlx::Result<()> {
     for task in TASKS.iter().filter(|task| uses.contains(&task.use_)) {
-        sqlx::query!(
-            r#"DELETE FROM user_llm_use_models WHERE trongate_user_id = ?1 AND use = ?2"#,
-            user_id,
-            task.name
-        )
-        .execute(&mut *connection)
-        .await?;
+        sqlx::query!(r#"DELETE FROM user_llm_use_models WHERE use = ?1"#, task.name)
+            .execute(&mut *connection)
+            .await?;
     }
     Ok(())
 }
@@ -168,13 +156,8 @@ mod tests {
     use crate::db;
     use crate::llm::{LOCAL, OPENAI};
 
-    async fn with_user() -> SqlitePool {
-        let db = db::open_in_memory().await.unwrap();
-        sqlx::query("INSERT INTO trongate_users (id) VALUES (1)")
-            .execute(&db)
-            .await
-            .unwrap();
-        db
+    async fn opened() -> SqlitePool {
+        db::open_in_memory().await.unwrap()
     }
 
     #[test]
@@ -221,18 +204,17 @@ mod tests {
 
     #[tokio::test]
     async fn the_table_takes_every_task() {
-        let db = with_user().await;
+        let db = opened().await;
         let every: Vec<(&'static Task, String)> = TASKS.iter().map(|task| (task, "m".to_string())).collect();
-        save(&db, 1, &every).await.unwrap();
-        assert_eq!(saved(&db, 1).await.unwrap().len(), TASKS.len());
+        save(&db, &every).await.unwrap();
+        assert_eq!(saved(&db).await.unwrap().len(), TASKS.len());
     }
 
     #[tokio::test]
     async fn a_saved_model_is_kept_per_task_until_its_use_moves() {
-        let db = with_user().await;
+        let db = opened().await;
         save(
             &db,
-            1,
             &[
                 (&READ_JOB, GEMMA_4_E4B.to_string()),
                 (&JUDGE, QWEN3_4B.to_string()),
@@ -241,9 +223,9 @@ mod tests {
         )
         .await
         .unwrap();
-        assert_eq!(saved_for(&db, 1, &READ_JOB).await.unwrap(), GEMMA_4_E4B);
-        assert_eq!(saved_for(&db, 1, &READ_CV).await.unwrap(), "");
-        let mut listed = saved(&db, 1).await.unwrap();
+        assert_eq!(saved_for(&db, &READ_JOB).await.unwrap(), GEMMA_4_E4B);
+        assert_eq!(saved_for(&db, &READ_CV).await.unwrap(), "");
+        let mut listed = saved(&db).await.unwrap();
         listed.sort();
         assert_eq!(
             listed,
@@ -254,19 +236,17 @@ mod tests {
             "a task saved with \"\" isn't listed"
         );
 
-        save(&db, 1, &[(&READ_JOB, "Qwen3-8B-Q4_K_M.gguf".to_string())])
+        save(&db, &[(&READ_JOB, "Qwen3-8B-Q4_K_M.gguf".to_string())])
             .await
             .unwrap();
-        assert_eq!(saved_for(&db, 1, &READ_JOB).await.unwrap(), "Qwen3-8B-Q4_K_M.gguf");
+        assert_eq!(saved_for(&db, &READ_JOB).await.unwrap(), "Qwen3-8B-Q4_K_M.gguf");
 
-        save(&db, 1, &[(&APPLICATION_TASK, "gpt-5.4".to_string())])
-            .await
-            .unwrap();
+        save(&db, &[(&APPLICATION_TASK, "gpt-5.4".to_string())]).await.unwrap();
         let mut connection = db.acquire().await.unwrap();
-        forget_for_uses(&mut connection, 1, &[JOB_EVALUATION]).await.unwrap();
+        forget_for_uses(&mut connection, &[JOB_EVALUATION]).await.unwrap();
         drop(connection);
         assert_eq!(
-            saved(&db, 1).await.unwrap(),
+            saved(&db).await.unwrap(),
             [("application".to_string(), "gpt-5.4".to_string())]
         );
     }

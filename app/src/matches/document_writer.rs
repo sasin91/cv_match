@@ -335,15 +335,12 @@ fn strengths_and_gaps(items: &[SavedItem]) -> (String, String) {
     (list(strengths, NO_STRENGTHS), list(gaps, NO_GAPS))
 }
 
-/// What a match's application and résumé are written from: its owner's profile when they have
+/// What a match's application and résumé are written from: the user's profile when they have
 /// one, else the CV the match was made with.
 async fn written_from(db: &SqlitePool, found: &SavedMatch) -> sqlx::Result<String> {
-    if let Some(user_id) = found.trongate_user_id
-        && let Some(profile) = profile::text_for_user(db, user_id).await?
-    {
-        return Ok(profile);
-    }
-    Ok(found.cv_text.clone())
+    Ok(profile::text_for_user(db)
+        .await?
+        .unwrap_or_else(|| found.cv_text.clone()))
 }
 
 /// The model's {term, basis} keyword list, cleaned for the page.

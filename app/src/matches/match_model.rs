@@ -131,7 +131,6 @@ pub struct NewMatch<'a> {
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SavedMatch {
     pub id: i64,
-    pub trongate_user_id: Option<i64>,
     pub job_title: String,
     pub company: String,
     pub job_url: Option<String>,
@@ -240,7 +239,6 @@ impl From<ListedRow> for ListedMatch {
 /// its verdict; the new match's id.
 pub async fn save(
     db: &SqlitePool,
-    user_id: i64,
     new: NewMatch<'_>,
     groups: &Groups,
     verdicts: &Verdicts,
@@ -255,7 +253,6 @@ pub async fn save(
     let mut tx = crate::db::write_transaction(db).await?;
     let id = sqlx::query_file!(
         "queries/match_model/save.sql",
-        user_id,
         job_title,
         company,
         job_url,
@@ -342,23 +339,17 @@ fn cut(text: &str, length: usize) -> String {
 }
 
 /// The user's newest matches not rejected, for the extension's history.
-pub async fn recent(db: &SqlitePool, user_id: i64, limit: usize) -> sqlx::Result<Vec<ListedMatch>> {
+pub async fn recent(db: &SqlitePool, limit: usize) -> sqlx::Result<Vec<ListedMatch>> {
     let limit = limit.max(1) as i64;
-    let rows = sqlx::query_file_as!(
-        ListedRow,
-        "queries/match_model/recent.sql",
-        user_id,
-        JOBNET_JOBLOG,
-        limit
-    )
-    .fetch_all(db)
-    .await?;
+    let rows = sqlx::query_file_as!(ListedRow, "queries/match_model/recent.sql", JOBNET_JOBLOG, limit)
+        .fetch_all(db)
+        .await?;
     Ok(rows.into_iter().map(ListedMatch::from).collect())
 }
 
 /// A batch of the user's matches in list `list` (LISTS), best first (highest score, then
 /// newest), after cursor `after` (score_cursor) when it is one.
-pub async fn best_first(db: &SqlitePool, user_id: i64, limit: usize, after: &str, list: &str) -> sqlx::Result<Batch> {
+pub async fn best_first(db: &SqlitePool, limit: usize, after: &str, list: &str) -> sqlx::Result<Batch> {
     let place = score_cursor::place(after);
     let after_score = place.as_ref().map(|place| place.score);
     let after_at = place.as_ref().map(|place| place.at);
@@ -369,7 +360,6 @@ pub async fn best_first(db: &SqlitePool, user_id: i64, limit: usize, after: &str
     let mut rows: Vec<ListedMatch> = sqlx::query_file_as!(
         ListedRow,
         "queries/match_model/best_first.sql",
-        user_id,
         JOBNET_JOBLOG,
         list,
         applied,
@@ -403,9 +393,9 @@ pub async fn best_first(db: &SqlitePool, user_id: i64, limit: usize, after: &str
 
 /// APPLIED_STATUSES as the JSON array the queries read with json_each.
 /// How many matches each list (LISTS) holds, in LISTS's order, as (list, count).
-pub async fn list_counts(db: &SqlitePool, user_id: i64) -> sqlx::Result<Vec<(&'static str, i64)>> {
+pub async fn list_counts(db: &SqlitePool) -> sqlx::Result<Vec<(&'static str, i64)>> {
     let applied = applied_statuses_json();
-    let row = sqlx::query_file!("queries/match_model/list_counts.sql", user_id, JOBNET_JOBLOG, applied)
+    let row = sqlx::query_file!("queries/match_model/list_counts.sql", JOBNET_JOBLOG, applied)
         .fetch_one(db)
         .await?;
     let counts = [row.shortlist, row.every, row.not_joblogged, row.joblogged, row.rejected];
@@ -446,7 +436,7 @@ async fn rejections(db: &SqlitePool, ids: &[i64]) -> sqlx::Result<HashMap<i64, V
 /// The id of the user's newest match of this CV with the same job post text, or None. By text,
 /// not link: a page can change, and a post read wrongly before is matched again once it reads
 /// right.
-pub async fn existing(db: &SqlitePool, user_id: i64, cv_text: &str, job_text: &str) -> sqlx::Result<Option<i64>> {
+pub async fn existing(db: &SqlitePool, cv_text: &str, job_text: &str) -> sqlx::Result<Option<i64>> {
     if cv_text.is_empty() || job_text.is_empty() {
         return Ok(None);
     }
@@ -454,12 +444,11 @@ pub async fn existing(db: &SqlitePool, user_id: i64, cv_text: &str, job_text: &s
         r#"
         SELECT m.id FROM matches m
         JOIN match_documents md ON md.match_id = m.id
-        JOIN documents d ON d.id = md.document_id AND d.kind = ?4
-        WHERE m.trongate_user_id IS ?1 AND d.text = ?2 AND m.job_text = ?3
+        JOIN documents d ON d.id = md.document_id AND d.kind = ?3
+        WHERE d.text = ?1 AND m.job_text = ?2
         ORDER BY m.created_at DESC, m.id DESC
         LIMIT 1
         "#,
-        user_id,
         cv_text,
         job_text,
         CV
@@ -507,8 +496,8 @@ async fn link_document(tx: &mut SqliteConnection, match_id: i64, document_id: i6
 }
 
 /// One of the user's saved matches with its items, joblog status and rejections, or None.
-pub async fn find(db: &SqlitePool, id: i64, user_id: i64) -> sqlx::Result<Option<SavedMatch>> {
-    let Some(row) = sqlx::query_file!("queries/match_model/find.sql", id, user_id)
+pub async fn find(db: &SqlitePool, id: i64) -> sqlx::Result<Option<SavedMatch>> {
+    let Some(row) = sqlx::query_file!("queries/match_model/find.sql", id)
         .fetch_optional(db)
         .await?
     else {
@@ -534,7 +523,6 @@ pub async fn find(db: &SqlitePool, id: i64, user_id: i64) -> sqlx::Result<Option
     };
     Ok(Some(SavedMatch {
         id: row.id,
-        trongate_user_id: row.trongate_user_id,
         job_title: row.job_title,
         company: row.company,
         job_url: row.job_url,
@@ -827,9 +815,9 @@ pub async fn save_integration(
 }
 
 /// Rejects one of the user's matches (not interested), with why; false when it isn't theirs.
-pub async fn reject(db: &SqlitePool, id: i64, user_id: i64, rows: &[Rejection], now: i64) -> sqlx::Result<bool> {
+pub async fn reject(db: &SqlitePool, id: i64, rows: &[Rejection], now: i64) -> sqlx::Result<bool> {
     let mut tx = crate::db::write_transaction(db).await?;
-    if !mark_rejected(&mut tx, id, user_id, Some(now)).await? {
+    if !mark_rejected(&mut tx, id, Some(now)).await? {
         return Ok(false);
     }
     sqlx::query!(r#"DELETE FROM match_rejections WHERE match_id = ?1"#, id)
@@ -854,9 +842,9 @@ pub async fn reject(db: &SqlitePool, id: i64, user_id: i64, rows: &[Rejection], 
 }
 
 /// Brings back one of the user's rejected matches; false when it isn't theirs.
-pub async fn bring_back(db: &SqlitePool, id: i64, user_id: i64) -> sqlx::Result<bool> {
+pub async fn bring_back(db: &SqlitePool, id: i64) -> sqlx::Result<bool> {
     let mut tx = crate::db::write_transaction(db).await?;
-    if !mark_rejected(&mut tx, id, user_id, None).await? {
+    if !mark_rejected(&mut tx, id, None).await? {
         return Ok(false);
     }
     sqlx::query!(r#"DELETE FROM match_rejections WHERE match_id = ?1"#, id)
@@ -866,18 +854,12 @@ pub async fn bring_back(db: &SqlitePool, id: i64, user_id: i64) -> sqlx::Result<
     Ok(true)
 }
 
-/// Sets when one of the user's matches was rejected (None: not rejected); false when it isn't
-/// theirs. The reject and bring-back transactions hold the write lock from their start
+/// Sets when a saved match was rejected (None: not rejected); false when there is no such match. The reject and bring-back transactions hold the write lock from their start
 /// (db::write_transaction), so overlapping ones wait for each other.
-async fn mark_rejected(db: &mut SqliteConnection, id: i64, user_id: i64, at: Option<i64>) -> sqlx::Result<bool> {
-    let updated = sqlx::query!(
-        r#"UPDATE matches SET rejected_at = ?1 WHERE id = ?2 AND trongate_user_id IS ?3"#,
-        at,
-        id,
-        user_id
-    )
-    .execute(db)
-    .await?;
+async fn mark_rejected(db: &mut SqliteConnection, id: i64, at: Option<i64>) -> sqlx::Result<bool> {
+    let updated = sqlx::query!(r#"UPDATE matches SET rejected_at = ?1 WHERE id = ?2"#, at, id)
+        .execute(db)
+        .await?;
     Ok(updated.rows_affected() > 0)
 }
 
@@ -986,15 +968,14 @@ mod tests {
 
     /// One match per kind of list: scores fall with the id, so best first is by id.
     const SEED: &str = r#"
-        INSERT INTO trongate_users (id) VALUES (1);
-        INSERT INTO matches (id, trongate_user_id, job_title, job_text, score, points, max_points, tag,
+        INSERT INTO matches (id, job_title, job_text, score, points, max_points, tag,
                                 rejected_at, created_at)
-        VALUES (1, 1, 'Top, not applied', 'post', 0.9, 9, 10, 'top', NULL, 0),
-               (2, 1, 'Applied, not logged', 'post', 0.8, 8, 10, 'good', NULL, 0),
-               (3, 1, 'Logged', 'post', 0.7, 7, 10, 'top', NULL, 0),
-               (4, 1, 'Rejected', 'post', 0.6, 6, 10, 'good', 100, 0),
-               (5, 1, 'Poor', 'post', 0.5, 5, 10, 'poor', NULL, 0),
-               (6, 1, 'Good, interested', 'post', 0.4, 4, 10, 'good', NULL, 0);
+        VALUES (1, 'Top, not applied', 'post', 0.9, 9, 10, 'top', NULL, 0),
+               (2, 'Applied, not logged', 'post', 0.8, 8, 10, 'good', NULL, 0),
+               (3, 'Logged', 'post', 0.7, 7, 10, 'top', NULL, 0),
+               (4, 'Rejected', 'post', 0.6, 6, 10, 'good', 100, 0),
+               (5, 'Poor', 'post', 0.5, 5, 10, 'poor', NULL, 0),
+               (6, 'Good, interested', 'post', 0.4, 4, 10, 'good', NULL, 0);
         INSERT INTO match_integrations (match_id, integration, status, logged_at, created_at, updated_at)
         VALUES (2, 'jobnet_joblog', 'Soegt', NULL, 0, 0),
                (3, 'jobnet_joblog', 'Samtale', 50, 0, 0),
@@ -1003,7 +984,7 @@ mod tests {
     "#;
 
     async fn ids(db: &SqlitePool, list: &str, limit: usize, after: &str) -> (Vec<i64>, Option<String>) {
-        let batch = best_first(db, 1, limit, after, list).await.unwrap();
+        let batch = best_first(db, limit, after, list).await.unwrap();
         (batch.rows.iter().map(|row| row.id).collect(), batch.next)
     }
 
@@ -1011,7 +992,7 @@ mod tests {
     async fn the_counts_are_the_lists_lengths() {
         let db = db::open_in_memory().await.unwrap();
         db.execute(sqlx::raw_sql(SEED)).await.unwrap();
-        for (list, count) in list_counts(&db, 1).await.unwrap() {
+        for (list, count) in list_counts(&db).await.unwrap() {
             assert_eq!(count as usize, ids(&db, list, 100, "").await.0.len(), "{list}");
         }
     }
@@ -1025,7 +1006,7 @@ mod tests {
         assert_eq!(ids(&db, "not_joblogged", 10, "").await, (vec![2], None));
         assert_eq!(ids(&db, "joblogged", 10, "").await, (vec![3], None));
         assert_eq!(ids(&db, "rejected", 10, "").await, (vec![4], None));
-        let rejected = best_first(&db, 1, 10, "", "rejected").await.unwrap();
+        let rejected = best_first(&db, 10, "", "rejected").await.unwrap();
         assert_eq!(rejected.rows[0].rejections[0].note, "low");
     }
 
@@ -1070,7 +1051,7 @@ mod tests {
             .await
             .unwrap();
 
-        let found = find(&db, 1, 1).await.unwrap().unwrap();
+        let found = find(&db, 1).await.unwrap().unwrap();
         assert_eq!(
             (found.application_text.as_deref(), found.application_written_at),
             (Some("Dear Acme team"), Some(20))
@@ -1084,7 +1065,7 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(versions, 4);
-        let listed = best_first(&db, 1, 10, "", "all").await.unwrap();
+        let listed = best_first(&db, 10, "", "all").await.unwrap();
         assert!(listed.rows[0].has_application && listed.rows[0].has_resume);
         assert!(!listed.rows[1].has_application && !listed.rows[1].has_resume);
     }
@@ -1107,9 +1088,9 @@ mod tests {
                             reason: "salary".to_string(),
                             note: String::new(),
                         };
-                        reject(&db, 1, 1, &[why], n).await
+                        reject(&db, 1, &[why], n).await
                     } else {
-                        bring_back(&db, 1, 1).await
+                        bring_back(&db, 1).await
                     }
                 })
             })

@@ -10,7 +10,6 @@ use jobfinder::account::key_vault::KeyVault;
 use jobfinder::account::llama_setup_service;
 use jobfinder::context::Context;
 use jobfinder::db;
-use jobfinder::server;
 use jobfinder::service_error::ErrorKind;
 use jobfinder::setup::setup_steps;
 use jobfinder::taxonomy::Taxonomy;
@@ -23,8 +22,7 @@ const OPENAI_KEY: &str = "sk-proj-0123456789abcdef";
 /// The work's shared state on a new, empty in-memory database: a first run.
 async fn context() -> Context {
     let db = db::open_in_memory().await.unwrap();
-    let user_id = server::local_user(&db).await.unwrap();
-    Context::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory())
+    Context::new(db, TAXONOMY.clone(), KeyVault::in_memory())
 }
 
 fn openai_form(api_key: &str) -> KeyForm {

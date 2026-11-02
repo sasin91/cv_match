@@ -7,7 +7,6 @@ use jobfinder::account::key_vault::KeyVault;
 use jobfinder::context::Context;
 use jobfinder::db;
 use jobfinder::matches::match_service::{self, MatchAsk, RejectOutcome};
-use jobfinder::server;
 use jobfinder::service_error::ErrorKind;
 use jobfinder::taxonomy::Taxonomy;
 use sqlx::Executor;
@@ -16,9 +15,8 @@ static TAXONOMY: LazyLock<Arc<Taxonomy>> = LazyLock::new(|| Arc::new(Taxonomy::l
 
 /// One saved match, with a résumé written as fields.
 const SEED: &str = "
-INSERT INTO trongate_users (id) VALUES (3);
-INSERT INTO matches (id, trongate_user_id, job_title, company, job_url, job_text, score, points, max_points, tag, created_at)
-VALUES (21, 3, 'PHP-udvikler', 'Firma', 'https://www.jobindex.dk/job/1', 'Vi søger en PHP-udvikler.', 0.86, 9, 10, 'top', 1760000000);
+INSERT INTO matches (id, job_title, company, job_url, job_text, score, points, max_points, tag, created_at)
+VALUES (21, 'PHP-udvikler', 'Firma', 'https://www.jobindex.dk/job/1', 'Vi søger en PHP-udvikler.', 0.86, 9, 10, 'top', 1760000000);
 INSERT INTO documents (id, kind, name, text, written_at) VALUES (1, 'cv', 'cv', 'PHP', 1760000000);
 INSERT INTO match_documents (match_id, document_id) VALUES (21, 1);
 INSERT INTO match_items (match_id, criterion, text, verdict, decided_by, reason, sort_order)
@@ -29,8 +27,7 @@ VALUES (21, 'requirements', 'PHP', 'met', 'exact', 'Named in the CV.', 0);
 async fn context() -> Context {
     let db = db::open_in_memory().await.unwrap();
     db.execute(sqlx::raw_sql(SEED)).await.unwrap();
-    let user_id = server::local_user(&db).await.unwrap();
-    Context::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory())
+    Context::new(db, TAXONOMY.clone(), KeyVault::in_memory())
 }
 
 #[tokio::test]

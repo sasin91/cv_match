@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "-- One of the user's saved matches, with the CV it was matched with. ?1 the match, ?2 the user.\nSELECT\n  m.id,\n  m.trongate_user_id,\n  m.job_title,\n  m.company,\n  m.job_url,\n  m.job_text,\n  COALESCE(cv.name, '') AS \"cv_name!: String\",\n  COALESCE(cv.text, '') AS \"cv_text!: String\",\n  m.score,\n  m.points,\n  m.max_points,\n  m.tag,\n  m.rejected_at,\n  m.created_at\nFROM matches m\nLEFT JOIN (\n  SELECT md.match_id, d.name, d.text\n  FROM match_documents md\n  JOIN documents d ON d.id = md.document_id AND d.kind = 'cv'\n) cv ON cv.match_id = m.id\nWHERE m.id = ?1 AND m.trongate_user_id IS ?2\n",
+  "query": "-- One of the user's saved matches, with the CV it was matched with. ?1 the match.\nSELECT\n  m.id,\n  m.job_title,\n  m.company,\n  m.job_url,\n  m.job_text,\n  COALESCE(cv.name, '') AS \"cv_name!: String\",\n  COALESCE(cv.text, '') AS \"cv_text!: String\",\n  m.score,\n  m.points,\n  m.max_points,\n  m.tag,\n  m.rejected_at,\n  m.created_at\nFROM matches m\nLEFT JOIN (\n  SELECT md.match_id, d.name, d.text\n  FROM match_documents md\n  JOIN documents d ON d.id = md.document_id AND d.kind = 'cv'\n) cv ON cv.match_id = m.id\nWHERE m.id = ?1\n",
   "describe": {
     "columns": [
       {
@@ -15,19 +15,8 @@
         }
       },
       {
-        "name": "trongate_user_id",
-        "ordinal": 1,
-        "type_info": "Integer",
-        "origin": {
-          "Table": {
-            "table": "matches",
-            "name": "trongate_user_id"
-          }
-        }
-      },
-      {
         "name": "job_title",
-        "ordinal": 2,
+        "ordinal": 1,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -38,7 +27,7 @@
       },
       {
         "name": "company",
-        "ordinal": 3,
+        "ordinal": 2,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -49,7 +38,7 @@
       },
       {
         "name": "job_url",
-        "ordinal": 4,
+        "ordinal": 3,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -60,7 +49,7 @@
       },
       {
         "name": "job_text",
-        "ordinal": 5,
+        "ordinal": 4,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -71,19 +60,19 @@
       },
       {
         "name": "cv_name!: String",
-        "ordinal": 6,
+        "ordinal": 5,
         "type_info": "Text",
         "origin": "Expression"
       },
       {
         "name": "cv_text!: String",
-        "ordinal": 7,
+        "ordinal": 6,
         "type_info": "Text",
         "origin": "Expression"
       },
       {
         "name": "score",
-        "ordinal": 8,
+        "ordinal": 7,
         "type_info": "Float",
         "origin": {
           "Table": {
@@ -94,7 +83,7 @@
       },
       {
         "name": "points",
-        "ordinal": 9,
+        "ordinal": 8,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -105,7 +94,7 @@
       },
       {
         "name": "max_points",
-        "ordinal": 10,
+        "ordinal": 9,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -116,7 +105,7 @@
       },
       {
         "name": "tag",
-        "ordinal": 11,
+        "ordinal": 10,
         "type_info": "Text",
         "origin": {
           "Table": {
@@ -127,7 +116,7 @@
       },
       {
         "name": "rejected_at",
-        "ordinal": 12,
+        "ordinal": 11,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -138,7 +127,7 @@
       },
       {
         "name": "created_at",
-        "ordinal": 13,
+        "ordinal": 12,
         "type_info": "Integer",
         "origin": {
           "Table": {
@@ -149,11 +138,10 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
       false,
-      true,
       false,
       false,
       true,
@@ -168,5 +156,5 @@
       false
     ]
   },
-  "hash": "9d3caab918fcdf845ac772da67ba766dd84b2f4975fd5663b0da8b535f735f6b"
+  "hash": "cd3d0c6b325158093d1d9519a0862e356d1610bb1392154bd0962787d56f3eb6"
 }

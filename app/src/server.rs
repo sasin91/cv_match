@@ -21,7 +21,6 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
 use rust_embed::RustEmbed;
-use sqlx::SqlitePool;
 
 use crate::account;
 use crate::context::Context;
@@ -92,21 +91,6 @@ impl AppState {
             .unwrap_or_else(|poisoned| poisoned.into_inner())
             .take()
     }
-}
-
-/// The local user: the one imported, or a new one on a fresh database.
-pub async fn local_user(db: &SqlitePool) -> sqlx::Result<i64> {
-    sqlx::query!(
-        r#"
-        INSERT INTO trongate_users (id)
-        SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM trongate_users)
-        "#
-    )
-    .execute(db)
-    .await?;
-    sqlx::query_scalar!(r#"SELECT MIN(id) AS "id!: i64" FROM trongate_users"#)
-        .fetch_one(db)
-        .await
 }
 
 pub fn router(state: Arc<AppState>) -> Router {

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT m.id FROM matches m\n        JOIN match_documents md ON md.match_id = m.id\n        JOIN documents d ON d.id = md.document_id AND d.kind = ?3\n        WHERE d.text = ?1 AND m.job_text = ?2\n        ORDER BY m.created_at DESC, m.id DESC\n        LIMIT 1\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "id"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "cb4dd5929767855e88170d991845e8a91d74fbeeae1e93cb39bc8ba942f7a2c7"
+}

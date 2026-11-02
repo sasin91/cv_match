@@ -68,7 +68,7 @@ pub async fn saved_matches(context: &Context, list: Option<&str>, after: &str) -
         .map(|(name, ..)| *name)
         .find(|name| list == Some(*name))
         .unwrap_or(SHORTLIST);
-    let found = match_model::best_first(context.db(), context.user_id, PER_PAGE, after, list).await?;
+    let found = match_model::best_first(context.db(), PER_PAGE, after, list).await?;
     Ok(SavedMatchList {
         matches: found.rows.iter().map(SavedMatchRow::from).collect(),
         list,
@@ -81,7 +81,7 @@ pub async fn saved_match(context: &Context, id: i64) -> Result<SavedMatch, Servi
     if id <= 0 {
         return Err(ServiceError::not_found());
     }
-    match_model::find(context.db(), id, context.user_id)
+    match_model::find(context.db(), id)
         .await?
         .ok_or_else(ServiceError::not_found)
 }
@@ -200,17 +200,10 @@ pub async fn reject(
         }
     }
     let done = if undo {
-        match_model::bring_back(context.db(), id, context.user_id).await?
+        match_model::bring_back(context.db(), id).await?
     } else {
         let now = chrono::Utc::now().timestamp();
-        match_model::reject(
-            context.db(),
-            id,
-            context.user_id,
-            &reject_reason::rows(reasons, notes),
-            now,
-        )
-        .await?
+        match_model::reject(context.db(), id, &reject_reason::rows(reasons, notes), now).await?
     };
     if done {
         // Its found post, if the job scan found it, says the same.
@@ -236,8 +229,8 @@ pub struct ExtensionHistory {
 pub async fn extension_history(context: &Context) -> Result<ExtensionHistory, ServiceError> {
     let db = context.db();
     Ok(ExtensionHistory {
-        matches: match_model::recent(db, context.user_id, HISTORY_SIZE).await?,
-        not_joblogged: match_model::best_first(db, context.user_id, HISTORY_SIZE, "", "not_joblogged")
+        matches: match_model::recent(db, HISTORY_SIZE).await?,
+        not_joblogged: match_model::best_first(db, HISTORY_SIZE, "", "not_joblogged")
             .await?
             .rows,
     })
@@ -396,7 +389,7 @@ fn pdf_title(found: &SavedMatch, kind: &str) -> String {
 /// The newest saved match of this CV with the same job post text, if any, so a post matched
 /// before can be skipped.
 pub async fn already_matched(context: &Context, cv_text: &str, job_text: &str) -> Result<Option<i64>, ServiceError> {
-    Ok(match_model::existing(context.db(), context.user_id, cv_text.trim(), job_text.trim()).await?)
+    Ok(match_model::existing(context.db(), cv_text.trim(), job_text.trim()).await?)
 }
 
 /// The job post at a pasted link (page_reader). Fetches are counted (MAX_FETCHES in
@@ -505,7 +498,6 @@ pub async fn ai_match(context: &Context, request: &MatchRequest) -> Result<AiMat
     let matching = Matching {
         db: context.db(),
         taxonomy: &taxonomy,
-        user_id: context.user_id,
         now: chrono::Utc::now().timestamp(),
         laya: context.laya.as_ref(),
     };
@@ -1025,7 +1017,7 @@ pub async fn resume_comparison(context: &Context, id: i64, resume_id: i64) -> Re
 /// the employer's form, with the PDFs and the profile links to copy.
 pub async fn application_delivery(context: &Context, id: i64) -> Result<ApplicationDelivery, ServiceError> {
     let found = saved_match(context, id).await?;
-    let links: Vec<CvLink> = profile::links_for_user(context.db(), context.user_id)
+    let links: Vec<CvLink> = profile::links_for_user(context.db())
         .await?
         .into_iter()
         .map(|(label, url)| CvLink { label, url })

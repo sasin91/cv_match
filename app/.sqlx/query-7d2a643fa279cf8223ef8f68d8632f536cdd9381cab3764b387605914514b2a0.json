@@ -1,10 +1,10 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT id FROM candidates WHERE trongate_user_id = ?1",
+  "query": "SELECT id AS \"id!: i64\" FROM candidates ORDER BY id LIMIT 1",
   "describe": {
     "columns": [
       {
-        "name": "id",
+        "name": "id!: i64",
         "ordinal": 0,
         "type_info": "Integer",
         "origin": {
@@ -16,11 +16,11 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 0
     },
     "nullable": [
       false
     ]
   },
-  "hash": "adaa68e6722ea32a1b9421db8082e4786c5ad2aed3ab3ecc14e98718aaf78c37"
+  "hash": "7d2a643fa279cf8223ef8f68d8632f536cdd9381cab3764b387605914514b2a0"
 }

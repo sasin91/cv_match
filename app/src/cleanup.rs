@@ -145,13 +145,13 @@ pub fn database_files(database: &Path) -> Vec<PathBuf> {
     files
 }
 
-/// Looks for what the app left for database, whose keys vault keeps for user_id.
-pub async fn find(database: &Path, schedule: &ScanSchedule, vault: &KeyVault, user_id: i64) -> Found {
+/// Looks for what the app left for database, whose keys vault keeps.
+pub async fn find(database: &Path, schedule: &ScanSchedule, vault: &KeyVault) -> Found {
     let (schedule, schedule_error) = match schedule.interval_hours().await {
         Ok(hours) => (hours, None),
         Err(why) => (None, Some(why)),
     };
-    let (keys, keys_error) = match vault.kept(user_id) {
+    let (keys, keys_error) = match vault.kept() {
         Ok(keys) => (keys, None),
         Err(why) => (Vec::new(), Some(why)),
     };
@@ -173,12 +173,7 @@ pub async fn find(database: &Path, schedule: &ScanSchedule, vault: &KeyVault, us
 }
 
 /// Removes the schedule, the keys and the app's folders; what couldn't be removed, said why.
-pub async fn remove_besides_the_database(
-    found: &Found,
-    schedule: &ScanSchedule,
-    vault: &KeyVault,
-    user_id: i64,
-) -> Vec<String> {
+pub async fn remove_besides_the_database(found: &Found, schedule: &ScanSchedule, vault: &KeyVault) -> Vec<String> {
     let mut failed = Vec::new();
     if found.schedule.is_some()
         && let Err(why) = schedule.remove().await
@@ -186,7 +181,7 @@ pub async fn remove_besides_the_database(
         failed.push(format!("The job scan's schedule: {why}"));
     }
     for provider in &found.keys {
-        if let Err(why) = vault.delete(user_id, provider) {
+        if let Err(why) = vault.delete(provider) {
             failed.push(format!("The {} key: {why}", key_name(provider)));
         }
     }
@@ -327,22 +322,18 @@ mod tests {
         let schedule = ScanSchedule::in_memory();
         schedule.register(4).await.unwrap();
         let vault = KeyVault::in_memory();
-        vault.save(7, "openai", "sk-1").unwrap();
+        vault.save("openai", "sk-1").unwrap();
 
-        let found = find(&database, &schedule, &vault, 7).await;
+        let found = find(&database, &schedule, &vault).await;
         assert_eq!(found.schedule, Some(4));
         assert_eq!(found.keys, ["openai"]);
         assert_eq!(found.folders, [folder.join("llama")]);
         assert_eq!(found.database_files, std::slice::from_ref(&database));
         assert!(found.anything_besides_the_database());
 
-        assert!(
-            remove_besides_the_database(&found, &schedule, &vault, 7)
-                .await
-                .is_empty()
-        );
+        assert!(remove_besides_the_database(&found, &schedule, &vault).await.is_empty());
         assert_eq!(schedule.interval_hours().await.unwrap(), None);
-        assert_eq!(vault.key_for(7, "openai").unwrap(), None);
+        assert_eq!(vault.key_for("openai").unwrap(), None);
         assert!(!folder.join("llama").exists());
         assert!(database.exists(), "the database stays unless asked again");
         assert!(folder.join("mine").exists(), "nothing else in the folder is touched");

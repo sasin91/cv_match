@@ -279,7 +279,6 @@ fn saved_match(case: &Value) -> SavedMatch {
     let job_text = text(&case["job_text"]).to_string();
     SavedMatch {
         id: 1,
-        trongate_user_id: Some(1),
         job_title: text(&case["job_title"]).to_string(),
         company: text(&case["company"]).to_string(),
         job_url: optional(&case["job_url"]),

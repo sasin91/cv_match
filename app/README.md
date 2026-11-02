@@ -111,12 +111,14 @@ can't use it.
 The AI features run on your own keys, saved on the API key page (`account`): an OpenAI key, an Anthropic key, or a local OpenAI-compatible server
 such as Ollama (`http://localhost:11434/v1`) or LM Studio (`http://localhost:1234/v1`), which
 needs a model name and usually no key. One key is kept per provider. Each goes in Windows
-Credential Manager (service `JobFinder`, user `user_llm_keys:1:{provider}@` and the database
+Credential Manager (service `JobFinder`, user `user_llm_keys:{provider}@` and the database
 file's full path, so each provider and each database has its own key), never in the database;
 `user_llm_keys` keeps a row per provider with the model, address, the key's last 4 characters
 and the uses it is picked for (each use on one key at most); `user_llm_use_models` keeps the
 model each task runs on, on its use's key (`account/task_model.rs`). A key saved before keys were kept
-per provider (`user_llm_keys:1@…`) moves to its provider's credential the first time it is read. "Check key" sends one
+per provider (`user_llm_keys@…`) moves to its provider's credential the first time it is read.
+Keys saved while the names had the user's id in them (`user_llm_keys:1:{provider}@…`) move to
+the names without it at the first start after migration `0010_one_local_user`. "Check key" sends one
 tiny request and says whether it was answered.
 
 `src/llm` is modules/llm: `Llm::use_key` picks the adapter, and `structured()` asks for one JSON
@@ -149,7 +151,8 @@ recorded in `schema_migrations`) without the `cv_match` prefix, since the whole 
 match: `cv_matches` is `matches`, `cv_match_id` is `match_id`, `cv_match_items` is
 `match_items`, and so on. Besides the names, there are five changes:
 
-- `trongate_users` keeps only `id`, and `candidates` drops the login columns.
+- There is no `trongate_users`: the app has one local user, so no table has a
+  `trongate_user_id` (migration `0010_one_local_user`), and `candidates` drops the login columns.
 - `user_llm_keys.uses` (a SET) is three yes/no columns, `use_for_resume`,
   `use_for_application` and `use_for_job_evaluation`; `base_url` is set for a local model.
 - The API key itself goes in Windows Credential Manager, so the table has no key column.

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT use AS \"task!\", model FROM user_llm_use_models WHERE trongate_user_id = ?1 AND model != ''",
+  "query": "SELECT use AS \"task!\", model FROM user_llm_use_models WHERE model != ''",
   "describe": {
     "columns": [
       {
@@ -27,12 +27,12 @@
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 0
     },
     "nullable": [
-      false,
+      true,
       false
     ]
   },
-  "hash": "3ea7af0f3c371a2b91cfff7590c8f9d79a7153a0b08d2d4518d4caaef702dc39"
+  "hash": "74949ee14ebcccd9ea63eec6cafb5137fe26ce8786389d53a0ae6f55a0b2e49e"
 }

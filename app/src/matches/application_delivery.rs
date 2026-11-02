@@ -313,7 +313,6 @@ mod tests {
     fn saved() -> SavedMatch {
         SavedMatch {
             id: 7,
-            trongate_user_id: Some(1),
             job_title: "Backend-udvikler".into(),
             company: String::new(),
             job_url: Some("https://example.dk/job/1".into()),

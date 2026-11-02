@@ -588,7 +588,7 @@ fn go(state: &mut State, page: Page, runner: &Runner) -> Task<Msg> {
         // Read on every visit, so a CV read again in setup is the one matched.
         Page::New => Task::batch([
             runner.run(
-                |context| async move { profile::text_for_user(context.db(), context.user_id).await },
+                |context| async move { profile::text_for_user(context.db()).await },
                 |read| Msg::ProfileRead(read.and_then(|read| read.map_err(|e| e.to_string()))),
             ),
             refresh_availability(state, runner),

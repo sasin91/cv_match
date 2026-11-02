@@ -26,10 +26,9 @@ static TAXONOMY: LazyLock<Arc<Taxonomy>> = LazyLock::new(|| Arc::new(Taxonomy::l
 /// A saved match with a missed location, an email instruction and a résumé written as fields, and
 /// a rejected one.
 const SEED: &str = "
-INSERT INTO trongate_users (id) VALUES (3);
-INSERT INTO matches (id, trongate_user_id, job_title, company, job_url, job_text, score, points, max_points, tag, created_at)
-VALUES (21, 3, 'PHP-udvikler', 'Firma <A/S>', 'https://www.jobindex.dk/job/1', 'Vi søger en PHP-udvikler.\nSend din ansøgning til job@firma.dk. Skriv \"Backend\" i emnefeltet.', 0.86, 9, 10, 'top', 1760000000),
-       (22, 3, 'Mekaniker', '', NULL, 'Mekaniker søges', 0.2, 1, 10, 'poor', 1760000100);
+INSERT INTO matches (id, job_title, company, job_url, job_text, score, points, max_points, tag, created_at)
+VALUES (21, 'PHP-udvikler', 'Firma <A/S>', 'https://www.jobindex.dk/job/1', 'Vi søger en PHP-udvikler.\nSend din ansøgning til job@firma.dk. Skriv \"Backend\" i emnefeltet.', 0.86, 9, 10, 'top', 1760000000),
+       (22, 'Mekaniker', '', NULL, 'Mekaniker søges', 0.2, 1, 10, 'poor', 1760000100);
 INSERT INTO documents (id, kind, name, text, written_at) VALUES (1, 'cv', 'cv', 'PHP', 1760000000);
 INSERT INTO match_documents (match_id, document_id) VALUES (21, 1), (22, 1);
 INSERT INTO match_items (match_id, criterion, text, verdict, decided_by, reason, sort_order)
@@ -54,8 +53,7 @@ async fn seeded() -> SqlitePool {
 
 async fn app() -> axum::Router {
     let db = seeded().await;
-    let user_id = server::local_user(&db).await.unwrap();
-    let mut context = Context::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory());
+    let mut context = Context::new(db, TAXONOMY.clone(), KeyVault::in_memory());
     // PDFs are read by `jobfinder read-pdf`; this test's own program isn't jobfinder.
     context.pdf_reader = Some(PathBuf::from(env!("CARGO_BIN_EXE_jobfinder")));
     server::router(Arc::new(AppState::new(Arc::new(context), PORT)))
@@ -155,8 +153,7 @@ async fn app_with_broken_laya() -> (axum::Router, std::path::PathBuf) {
     std::fs::create_dir_all(&folder).unwrap();
     std::fs::write(folder.join(laya_client::ONNX_FILE), "not a model").unwrap();
     let db = seeded().await;
-    let user_id = server::local_user(&db).await.unwrap();
-    let mut context = Context::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory());
+    let mut context = Context::new(db, TAXONOMY.clone(), KeyVault::in_memory());
     context.laya = LayaClient::from_folder(&folder);
     assert!(context.laya.is_some());
     (server::router(Arc::new(AppState::new(Arc::new(context), PORT))), folder)
@@ -717,14 +714,13 @@ fn resume_answer() -> Value {
 /// The seeded app with a local model saved as the user's key.
 async fn app_with_model() -> (axum::Router, SqlitePool, Arc<std::sync::atomic::AtomicUsize>) {
     let db = seeded().await;
-    let user_id = server::local_user(&db).await.unwrap();
     let vault = KeyVault::in_memory();
     let (base_url, calls) = stand_in_model().await;
-    jobfinder::account::account_model::save(&db, &vault, user_id, "local", "stand-in", &base_url, "")
+    jobfinder::account::account_model::save(&db, &vault, "local", "stand-in", &base_url, "")
         .await
         .unwrap();
     let app = server::router(Arc::new(AppState::new(
-        Arc::new(Context::new(db.clone(), TAXONOMY.clone(), user_id, vault)),
+        Arc::new(Context::new(db.clone(), TAXONOMY.clone(), vault)),
         PORT,
     )));
     (app, db, calls)
@@ -770,10 +766,7 @@ async fn the_ai_match_reads_judges_scores_and_saves() {
     assert!(result.contains("Built payment flows"), "the model's evidence: {result}");
     assert!(result.contains(r#"class="document" data-kind="application""#));
     assert!(result.contains("For Laya"));
-    let found = jobfinder::matches::match_model::find(&db, id, 3)
-        .await
-        .unwrap()
-        .unwrap();
+    let found = jobfinder::matches::match_model::find(&db, id).await.unwrap().unwrap();
     assert_eq!(found.cv_name, "Mette Sørensen", "the CV's own name");
     assert_eq!(found.company, "Firma A/S");
     let judged: Vec<&str> = found.items.iter().map(|item| item.decided_by.as_str()).collect();
@@ -917,7 +910,6 @@ async fn a_key_switched_off_for_a_use_says_so() {
     let (app, db, calls) = app_with_model().await;
     jobfinder::account::account_model::save_uses(
         &db,
-        3,
         &jobfinder::account::account_model::UseChoices {
             resume: Some("local".to_string()),
             application: None,
@@ -986,9 +978,8 @@ async fn edge_isnt_opened_without_an_extension_folder() {
 /// A new database's app: nothing in it but the local user.
 async fn new_app(vault: KeyVault) -> (axum::Router, SqlitePool) {
     let db = db::open_in_memory().await.unwrap();
-    let user_id = server::local_user(&db).await.unwrap();
     let app = server::router(Arc::new(AppState::new(
-        Arc::new(Context::new(db.clone(), TAXONOMY.clone(), user_id, vault)),
+        Arc::new(Context::new(db.clone(), TAXONOMY.clone(), vault)),
         PORT,
     )));
     (app, db)
@@ -1075,7 +1066,7 @@ async fn the_setup_reads_the_cv_into_the_profile_the_match_page_uses() {
         "{page}"
     );
     assert!(page.contains(r#"name="replace""#));
-    let profile = jobfinder::profile::text_for_user(&db, 1).await.unwrap().unwrap();
+    let profile = jobfinder::profile::text_for_user(&db).await.unwrap().unwrap();
     assert!(profile.contains("Udvikler · Firma"), "{profile}");
     // The dashboard says whose profile it is, and the match form matches with it.
     let (_, match_page) = send_to(&app, get("/match")).await;
@@ -1189,8 +1180,8 @@ async fn dismissing_a_found_post_rejects_its_match_and_rejecting_the_match_dismi
     followed_to(&app, post_form("/job_scan/submit/0", saved)).await;
     db.execute(sqlx::raw_sql(
         r#"
-        INSERT INTO matches (id, trongate_user_id, job_title, company, job_text, score, points, max_points, tag, created_at)
-        VALUES (5, 1, 'PHP developer', 'Acme', 'post', 0.8, 8, 10, 'good', 100);
+        INSERT INTO matches (id, job_title, company, job_text, score, points, max_points, tag, created_at)
+        VALUES (5, 'PHP developer', 'Acme', 'post', 0.8, 8, 10, 'good', 100);
         INSERT INTO scanned_job_posts (id, job_search_id, url, url_hash, title, status, match_id, found_at)
         VALUES (1, 1, 'https://jobnet.dk/1', 'x', 'PHP developer', 'matched', 5, 100);
         "#,
@@ -1237,8 +1228,7 @@ async fn a_second_start_brings_the_window_to_the_front_or_is_told_there_is_none(
     assert_eq!(send(front()).await.0, StatusCode::NOT_FOUND);
 
     let db = seeded().await;
-    let user_id = server::local_user(&db).await.unwrap();
-    let context = Context::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory());
+    let context = Context::new(db, TAXONOMY.clone(), KeyVault::in_memory());
     let mut state = AppState::new(Arc::new(context), PORT);
     let (window, mut asked) = tokio::sync::mpsc::unbounded_channel();
     state.front = Some(window);

@@ -1,7 +1,7 @@
 -- A new saved match: the post and its score; the CV it was matched with is linked to it after
--- (match_documents). ?1 the user, ?2 job_title, ?3 company, ?4 job_url, ?5 job_text, ?6 score,
--- ?7 points, ?8 max_points, ?9 tag, ?10 created_at.
+-- (match_documents). ?1 job_title, ?2 company, ?3 job_url, ?4 job_text, ?5 score,
+-- ?6 points, ?7 max_points, ?8 tag, ?9 created_at.
 INSERT INTO matches
-  (trongate_user_id, job_title, company, job_url, job_text, score, points, max_points, tag,
+  (job_title, company, job_url, job_text, score, points, max_points, tag,
    created_at)
-VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)
+VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)

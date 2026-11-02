@@ -84,7 +84,7 @@ pub async fn fill_from_cv(context: &Context, cv_text: &str, cv_name: &str) -> Re
             "No jobs, projects or education were found in that CV. Check that the whole CV was pasted and try again.",
         )
     })?;
-    profile_model::replace_from_cv(context.db(), context.user_id, &profile, cv_name)
+    profile_model::replace_from_cv(context.db(), &profile, cv_name)
         .await
         .map_err(|e| ServiceError::internal("profile (fill_from_cv)", format!("The profile couldn't be saved: {e}")))?;
     Ok(format!(

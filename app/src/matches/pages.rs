@@ -209,7 +209,7 @@ async fn match_page(state: &AppState, query: &ListQuery, open_id: Option<i64>) -
                 .to_string(),
         max_jobs: match_service::MAX_JOBS,
         open_id_json: json!(open_id).to_string(),
-        profile_text: profile::text_for_user(context.db(), context.user_id).await?,
+        profile_text: profile::text_for_user(context.db()).await?,
         list_tabs: list_tabs(saved.list),
         matches: saved.matches,
         next: saved.next,

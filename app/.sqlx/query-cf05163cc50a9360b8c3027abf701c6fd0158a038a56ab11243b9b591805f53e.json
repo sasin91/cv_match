@@ -1,10 +1,10 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT MIN(id) AS \"id!: i64\" FROM trongate_users",
+  "query": "SELECT EXISTS (SELECT 1 FROM matches) AS \"has!: bool\"",
   "describe": {
     "columns": [
       {
-        "name": "id!: i64",
+        "name": "has!: bool",
         "ordinal": 0,
         "type_info": "Integer",
         "origin": "Expression"
@@ -14,8 +14,8 @@
       "Right": 0
     },
     "nullable": [
-      true
+      false
     ]
   },
-  "hash": "fb2ce1262d9735039feb1db8cb0bb1e346aad327241e6b44c6d5f261ff06ada1"
+  "hash": "cf05163cc50a9360b8c3027abf701c6fd0158a038a56ab11243b9b591805f53e"
 }
