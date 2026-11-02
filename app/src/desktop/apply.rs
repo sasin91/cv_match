@@ -20,7 +20,7 @@ use super::style;
 use super::widgets::{self, CARD_PADDING};
 use super::{GAP, Runner};
 use crate::dashboard::Health;
-use crate::matches::application_delivery::{ApplicationDelivery, EMAIL};
+use crate::matches::application_delivery::{self, ApplicationDelivery, EMAIL};
 use crate::matches::cvr::{self, CvrAddress};
 use crate::matches::document_box::APPLICATION;
 use crate::matches::joblog_panel::{self, CHARACTERS_LEFT, JoblogPanel, Logged, PanelField};
@@ -38,6 +38,9 @@ const COUNTRY: &str = "companyCountry";
 const COUNTRY_DENMARK: &str = "Danmark";
 const UNKNOWN_POSTCODE: &str = "unknownPostalOrCity";
 const UNKNOWN_POSTCODE_NO: &str = "no";
+/// The Apply fields the email link is made from (application_delivery's ids).
+const TO: &str = "delivery-to";
+const SUBJECT: &str = "delivery-subject";
 /// The joblog's date field, which follows the status when it is saved.
 const APPLIED_ON: &str = "submissionDate";
 
@@ -103,6 +106,8 @@ pub enum ApplyMsg {
     /// A PDF that can't be had yet: why.
     Unavailable(&'static str),
     OpenLink(String),
+    /// The email app, with To and Subject as edited.
+    OpenEmail,
     ToggleJoblog,
     JoblogRead(Arc<Result<(JoblogPanel, Option<CvrAddress>), String>>),
     JoblogLine(usize, usize, String),
@@ -229,6 +234,11 @@ impl Applying {
                 }
             }
             ApplyMsg::Unavailable(why) => return (Task::none(), Some((Health::Attention, why.to_string()))),
+            ApplyMsg::OpenEmail => {
+                if let Some(href) = self.delivery_mut().map(|delivery| delivery.mailto()) {
+                    return self.update(ApplyMsg::OpenLink(href), runner, application);
+                }
+            }
             ApplyMsg::OpenLink(href) => {
                 if let Err(e) = webbrowser::open(&href) {
                     crate::log_line!("Couldn't open {href}: {e}");
@@ -266,8 +276,16 @@ impl Applying {
                 }
             }
             ApplyMsg::JoblogArea(s, f, action) => {
+                let limited = self
+                    .joblog_mut()
+                    .and_then(|joblog| joblog.panel.sections.get(s)?.fields.get(f))
+                    .is_some_and(|field| field.left.is_some());
                 if let Some(Value::Area(area)) = self.joblog_value(s, f) {
                     area.perform(action);
+                    // Jobnet's notes take no more than this: the rest is cut, as the page's box does.
+                    if limited {
+                        cut_to(area, joblog::MAX_NOTES);
+                    }
                 }
             }
             ApplyMsg::CopyJoblog(s, f) => {
@@ -382,6 +400,20 @@ impl Delivery {
         let mut shown = Delivery { delivery, values };
         shown.with_application(application);
         shown
+    }
+
+    /// The mailto link with To and Subject as edited.
+    fn mailto(&self) -> String {
+        let value = |id: &str| {
+            self.delivery
+                .fields
+                .iter()
+                .zip(&self.values)
+                .find(|(field, _)| field.id == id)
+                .map(|(_, value)| value.text().trim().to_string())
+                .unwrap_or_default()
+        };
+        application_delivery::mailto(&value(TO), &value(SUBJECT))
     }
 
     /// The body (the one long field) as the application is edited in its box.
@@ -504,6 +536,14 @@ fn with_address(panel: &mut JoblogPanel, address: &CvrAddress) {
             }
             _ => {}
         }
+    }
+}
+
+/// Cuts area's text to its first most characters.
+fn cut_to(area: &mut text_editor::Content, most: usize) {
+    let text = area.text();
+    if text.chars().count() > most {
+        *area = text_editor::Content::with_text(&text.chars().take(most).collect::<String>());
     }
 }
 
@@ -632,7 +672,11 @@ fn delivery_view(delivery: &Delivery, busy: bool) -> Element<'_, ApplyMsg> {
         body = body.push(
             button(text(open.label).size(style::BODY_SIZE))
                 .style(style::primary_button)
-                .on_press(ApplyMsg::OpenLink(open.href.clone())),
+                .on_press(if d.by == EMAIL {
+                    ApplyMsg::OpenEmail
+                } else {
+                    ApplyMsg::OpenLink(open.href.clone())
+                }),
         );
     }
     if d.by == EMAIL {
@@ -936,5 +980,14 @@ mod tests {
         assert_eq!(shown.values[1].text(), "Edited again");
         shown.with_application(None);
         assert_eq!(shown.values[1].text(), "Edited again");
+        shown.values[0] = Value::Line("Ny overskrift".into());
+        assert_eq!(shown.mailto(), "mailto:?subject=Ny%20overskrift");
+    }
+
+    #[test]
+    fn the_notes_are_cut_to_jobnets_limit() {
+        let mut area = text_editor::Content::with_text(&"x".repeat(joblog::MAX_NOTES + 5));
+        cut_to(&mut area, joblog::MAX_NOTES);
+        assert_eq!(area.text().chars().count(), joblog::MAX_NOTES);
     }
 }
