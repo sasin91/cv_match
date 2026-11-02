@@ -17,15 +17,13 @@ use crate::taxonomy_store::{
 
 /// The search field's width.
 const SEARCH_WIDTH: f32 = 320.0;
-/// The Term column's width.
-const TERM_WIDTH: f32 = 200.0;
 /// The Status column's width.
-const STATUS_WIDTH: f32 = 90.0;
-/// The Seen column's width: "12 × since 30 Nov 2026" on one line.
-const SEEN_WIDTH: f32 = 150.0;
+const STATUS_WIDTH: f32 = 80.0;
+/// The Seen column's width: "12 ×, 30 Nov 2026" on one line.
+const SEEN_WIDTH: f32 = 120.0;
 /// The buttons' column width: Why, Approve, Reject and Edit side by side. The same in the header and
 /// every row, whichever buttons a row has, so the columns line up.
-const ACTIONS_WIDTH: f32 = 250.0;
+const ACTIONS_WIDTH: f32 = 260.0;
 
 #[derive(Default)]
 pub struct State {
@@ -188,8 +186,7 @@ fn header<'a>() -> Element<'a, Msg> {
     };
     container(
         row![
-            name("Label", Fill),
-            name("Term", Length::Fixed(TERM_WIDTH)),
+            name("Label, and the term it names", Fill),
             name("Status", Length::Fixed(STATUS_WIDTH)),
             name("Seen", Length::Fixed(SEEN_WIDTH)),
             name("", Length::Fixed(ACTIONS_WIDTH)),
@@ -221,11 +218,16 @@ fn label_row<'a>(
             .style(style::text_field)
             .width(Fill)
             .into(),
-        None => cell(format!("{} ({})", label.text, label.lang), Fill).into(),
+        None => column![
+            text(format!("{} ({})", label.text, label.lang)).size(style::BODY_SIZE),
+            widgets::caption(format!("names {}", label.term_label)),
+        ]
+        .spacing(2)
+        .width(Fill)
+        .into(),
     };
     let line = row![
         name,
-        cell(label.term_label.clone(), Length::Fixed(TERM_WIDTH)),
         cell(status_text(label).to_string(), Length::Fixed(STATUS_WIDTH)),
         cell(seen_text(label), Length::Fixed(SEEN_WIDTH)),
         actions_cell(actions(label, edited)),
@@ -316,10 +318,11 @@ fn status_text(label: &ListedLabel) -> &'static str {
     }
 }
 
-/// "2 × since 1 Nov", or "" for a label no match taught.
+/// "2 ×, 1 Nov 2026": how many matches taught it, and the first one's day; "" for a label no
+/// match taught.
 fn seen_text(label: &ListedLabel) -> String {
     match label.first_seen_at {
-        Some(at) => format!("{} × since {}", label.sightings, crate::matches::dates::day(at)),
+        Some(at) => format!("{} ×, {}", label.sightings, crate::matches::dates::day(at)),
         None => String::new(),
     }
 }
