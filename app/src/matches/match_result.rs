@@ -13,12 +13,12 @@ use super::apply_instructions::ApplyInstructions;
 use super::apply_notice::ApplyNotice;
 use super::disqualifier_notice::DisqualifierNotice;
 use super::match_documents::MatchDocuments;
-use super::match_model::SavedMatch;
+use super::match_model::{Opening, SavedMatch};
 use super::match_score::{self, MatchScore};
 use super::matcher::{Groups, Part, Score, Verdicts};
 use super::reject_button::RejectButton;
 use super::verdict_row::{self, VerdictRow};
-use super::{Job, Profile, dates};
+use super::{Job, Profile, dates, still_open};
 use crate::laya::laya_client::LayaReading;
 
 /// The groups' names, in the order a saved match's unknown criterion falls back from.
@@ -106,6 +106,26 @@ pub struct CvFound {
     pub more: String,
 }
 
+/// Whether a saved match's job still takes applications, as its page says it (still_open):
+/// "Deadline 15 Nov (in 3 days)" or "Closed 2 Nov: the post was taken down".
+#[derive(Debug, Clone, PartialEq)]
+pub struct OpeningLine {
+    pub text: String,
+    /// Closed: the page offers to say it is still open.
+    pub closed: bool,
+}
+
+impl OpeningLine {
+    /// The line for a saved match, None when nothing is known.
+    pub fn of(opening: &Opening) -> Option<Self> {
+        let text = still_open::describe(opening, still_open::today());
+        (!text.is_empty()).then(|| OpeningLine {
+            text,
+            closed: still_open::is_closed(opening),
+        })
+    }
+}
+
 #[derive(Debug, Clone, PartialEq)]
 pub struct MatchResult {
     pub saved_id: Option<i64>,
@@ -114,6 +134,7 @@ pub struct MatchResult {
     pub parts: String,
     pub saved_at: String,
     pub reject: Option<RejectButton>,
+    pub opening: Option<OpeningLine>,
     pub disqualifier: Option<DisqualifierNotice>,
     pub apply: Option<ApplyNotice>,
     pub filters: Vec<Filter>,
@@ -155,6 +176,7 @@ impl MatchResult {
             parts: parts(&fresh.score.parts),
             saved_at: String::new(),
             reject: RejectButton::from(fresh.saved_id, None),
+            opening: None,
             disqualifier: DisqualifierNotice::from(fresh.groups, fresh.verdicts),
             apply: ApplyNotice::from(fresh.apply_instructions, writer),
             filters: filters(&sections),
@@ -179,6 +201,7 @@ impl MatchResult {
             parts: format!("{}/{} points", found.points, found.max_points),
             saved_at: dates::iso(found.created_at),
             reject: RejectButton::from(Some(found.id), found.rejected_at.map(|_| found.rejections.as_slice())),
+            opening: OpeningLine::of(&found.opening),
             disqualifier: DisqualifierNotice::from_saved(&found.items),
             apply: ApplyNotice::from(found.apply_instructions.as_ref(), writer),
             filters: filters(&sections),

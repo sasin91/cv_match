@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE matches SET closed_at = ?3, closed_why = ?2 WHERE id = ?1 AND closed_at IS NULL",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "82313c8c1054b4dda7048abf97f266470b45780627e1c152592f7d51794b2270"
+}

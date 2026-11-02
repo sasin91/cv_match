@@ -148,6 +148,9 @@ static SPACES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"[ \t]+").expect("
 static AROUND_NEWLINE: LazyLock<Regex> = LazyLock::new(|| Regex::new(r" *\n *").expect("around newline"));
 static BLANK_LINES: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"\n{3,}").expect("blank lines"));
 
+/// The first HTTP status that is an error (client errors start at 400).
+const FIRST_ERROR_STATUS: u16 = 400;
+
 /// A job post read from a link: where the last redirect landed, the page's title and its text.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct Page {
@@ -266,10 +269,16 @@ impl Page {
     }
 }
 
+/// Whether a page's text is too little to be a job post: what a page that needs its JavaScript
+/// to show the post comes back with.
+pub fn is_too_short(text: &str) -> bool {
+    text.chars().count() < MIN_PAGE_TEXT
+}
+
 /// Whether a page read without running its JavaScript has too little text to be its post.
 fn needs_javascript(page: &Result<PageText, String>) -> bool {
     match page {
-        Ok(page) => page.text.chars().count() < MIN_PAGE_TEXT,
+        Ok(page) => is_too_short(&page.text),
         Err(why) => why == NO_TEXT,
     }
 }
@@ -305,6 +314,31 @@ pub struct Fetched {
 /// Fetches url under the fetching rules (only public addresses, every redirect checked), taking
 /// only what wanted takes.
 pub async fn get(url: &str, wanted: &Wanted) -> Result<Fetched, String> {
+    match get_or_status(url, wanted).await? {
+        Got::Page(fetched) => Ok(fetched),
+        Got::Status { status, .. } => Err(format!(
+            "The page answered HTTP {status}. If it needs a login, copy the text and paste it instead."
+        )),
+    }
+}
+
+/// The statuses that say a page was taken down: 404 Not Found and 410 Gone.
+pub const GONE_STATUSES: [u16; 2] = [404, 410];
+
+/// What a fetch got: the page, or the error status (400 and up) the server answered instead.
+pub enum Got {
+    Page(Fetched),
+    Status {
+        /// Where the last redirect landed.
+        url: String,
+        status: u16,
+    },
+}
+
+/// Fetches url as get does, but an error status is an answer (Got::Status) rather than an Err,
+/// for the still-open check (a post taken down answers 404 or 410). Err is a fetch that got no
+/// answer at all.
+pub async fn get_or_status(url: &str, wanted: &Wanted) -> Result<Got, String> {
     let mut url = url.trim().to_string();
     for _ in 0..=MAX_REDIRECTS {
         let checking = url.clone();
@@ -313,12 +347,18 @@ pub async fn get(url: &str, wanted: &Wanted) -> Result<Fetched, String> {
             .map_err(|e| format!("Couldn't check the address: {e}"))??;
         match fetch(&target, wanted).await? {
             Answer::Redirect(to) => url = to,
+            Answer::Refused(status) => {
+                return Ok(Got::Status {
+                    url: target.url,
+                    status,
+                });
+            }
             Answer::Body { body, content_type } => {
-                return Ok(Fetched {
+                return Ok(Got::Page(Fetched {
                     url: target.url,
                     body,
                     content_type,
-                });
+                }));
             }
         }
     }
@@ -415,7 +455,12 @@ fn resolve(host: &str) -> Vec<IpAddr> {
 /// A page's answer: the address it redirects to, or its body.
 enum Answer {
     Redirect(String),
-    Body { body: Vec<u8>, content_type: String },
+    /// An error status, 400 and up.
+    Refused(u16),
+    Body {
+        body: Vec<u8>,
+        content_type: String,
+    },
 }
 
 /// Fetches a checked link from its checked address, without following redirects.
@@ -453,11 +498,8 @@ async fn fetch(target: &Target, wanted: &Wanted) -> Result<Answer, String> {
             .map_err(|_| "The page redirects to an address that can't be read.".to_string())?;
         return Ok(Answer::Redirect(to.to_string()));
     }
-    if status.as_u16() >= 400 {
-        return Err(format!(
-            "The page answered HTTP {}. If it needs a login, copy the text and paste it instead.",
-            status.as_u16()
-        ));
+    if status.as_u16() >= FIRST_ERROR_STATUS {
+        return Ok(Answer::Refused(status.as_u16()));
     }
     let content_type = response
         .headers()
