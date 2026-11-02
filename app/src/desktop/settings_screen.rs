@@ -21,7 +21,7 @@ enum Target {
 use Target::Page;
 
 /// The settings pages: label, what it sets, and where it is.
-const PAGES: [(&str, &str, Target); 5] = [
+const PAGES: [(&str, &str, Target); 6] = [
     (
         "Language models",
         "The API keys, and what each model is used for.",
@@ -31,6 +31,11 @@ const PAGES: [(&str, &str, Target); 5] = [
         "Local model",
         "The app's own llama.cpp model: download it and pick one.",
         Target::Screen(Screen::LocalModel),
+    ),
+    (
+        "Learned terms",
+        "What the taxonomy learned from your matches: approve, reject or edit it.",
+        Target::Screen(Screen::LearnedTerms),
     ),
     (
         "Job searches",

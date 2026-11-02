@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM taxonomy_terms WHERE id = ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "94d85e96a4a51c3350ab4db7a70e18d822350398127dd29ad5cfbf378c1b1b56"
+}

@@ -1,0 +1,119 @@
+{
+  "db_name": "SQLite",
+  "query": "-- The learned labels for the Learned terms screen: candidates first, then the newest changed.\n-- term_label is the term's preferred label, Danish first; the first sighting is the oldest.\nSELECT\n  l.id AS \"id!\",\n  l.term_id AS \"term_id!\",\n  COALESCE((SELECT p.text FROM taxonomy_labels p\n            WHERE p.term_id = l.term_id AND p.preferred = 1 AND p.status = 'active'\n            ORDER BY p.lang <> 'da' LIMIT 1), '') AS \"term_label!: String\",\n  l.text AS \"text!\",\n  l.lang AS \"lang!\",\n  l.source AS \"source!\",\n  l.status AS \"status!\",\n  (SELECT COUNT(*) FROM taxonomy_label_sightings s WHERE s.label_id = l.id) AS \"sightings!: i64\",\n  (SELECT s.match_id FROM taxonomy_label_sightings s WHERE s.label_id = l.id\n   ORDER BY s.seen_at, s.id LIMIT 1) AS \"first_match_id: i64\",\n  (SELECT MIN(s.seen_at) FROM taxonomy_label_sightings s WHERE s.label_id = l.id) AS \"first_seen_at: i64\"\nFROM taxonomy_labels l\nWHERE l.source = 'learned'\nORDER BY l.status <> 'candidate', l.updated_at DESC, l.id DESC\nLIMIT ?1\n",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_labels",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "term_id!",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_labels",
+            "name": "term_id"
+          }
+        }
+      },
+      {
+        "name": "term_label!: String",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": "Expression"
+      },
+      {
+        "name": "text!",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_labels",
+            "name": "text"
+          }
+        }
+      },
+      {
+        "name": "lang!",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_labels",
+            "name": "lang"
+          }
+        }
+      },
+      {
+        "name": "source!",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_labels",
+            "name": "source"
+          }
+        }
+      },
+      {
+        "name": "status!",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_labels",
+            "name": "status"
+          }
+        }
+      },
+      {
+        "name": "sightings!: i64",
+        "ordinal": 7,
+        "type_info": "Integer",
+        "origin": "Expression"
+      },
+      {
+        "name": "first_match_id: i64",
+        "ordinal": 8,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_label_sightings",
+            "name": "match_id"
+          }
+        }
+      },
+      {
+        "name": "first_seen_at: i64",
+        "ordinal": 9,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "4067a0cdc0122aeb52b7e8ed5b44772ef3e2a2ef2cfdff9c100c991593bfcec7"
+}

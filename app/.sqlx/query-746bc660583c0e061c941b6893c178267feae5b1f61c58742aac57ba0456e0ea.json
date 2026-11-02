@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM taxonomy_labels WHERE source = 'shipped'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": []
+  },
+  "hash": "746bc660583c0e061c941b6893c178267feae5b1f61c58742aac57ba0456e0ea"
+}

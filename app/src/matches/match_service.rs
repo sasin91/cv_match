@@ -21,7 +21,7 @@ use super::matcher::{self, Matcher, Verdict, Verdicts};
 use super::page_reader::{self, Page};
 use super::resume_comparison::ResumeComparison;
 use super::saved_match_row::SavedMatchRow;
-use super::{Job, Profile, apply_instructions, match_prompts, pdf_writer, reject_reason};
+use super::{Job, Profile, apply_instructions, match_prompts, pdf_writer, reject_reason, taxonomy_lessons};
 use crate::account::account_model::JOB_EVALUATION;
 use crate::context::Context;
 use crate::laya::laya_client;
@@ -29,6 +29,8 @@ use crate::pdf_text::child;
 use crate::profile;
 use crate::service_error::{ErrorKind, ServiceError};
 use crate::task_manager::running_work::{self, Stopped, WorkKind};
+use crate::taxonomy::Taxonomy;
+use crate::taxonomy_store;
 
 /// Longest CV or job post the free match reads, and longest text made into a PDF, in characters.
 pub const MAX_TEXT: usize = 40_000;
@@ -115,7 +117,8 @@ pub async fn quick_match(context: &Context, job_text: &str, cv_text: &str) -> Re
             "That text is too long. Paste only the CV and the job post.",
         ));
     }
-    let taxonomy = &context.taxonomy;
+    let taxonomy = context.taxonomy();
+    let taxonomy = taxonomy.as_ref();
     let mut reader = FreeReader::new(taxonomy, this_month());
     let job = reader.job(job_text);
     let profile = reader.cv(cv_text);
@@ -460,7 +463,7 @@ pub async fn read_pdf(context: &Context, bytes: Vec<u8>) -> Result<String, Servi
 /// key is off for evaluating job posts.
 pub async fn extract_job(context: &Context, text: &str) -> Result<Job, ServiceError> {
     if llm_key::llm_settings(context, JOB_EVALUATION).await?.is_none() {
-        return Ok(FreeReader::new(&context.taxonomy, this_month()).job(text));
+        return Ok(FreeReader::new(&context.taxonomy(), this_month()).job(text));
     }
     let keyed = llm_key::llm(context, JOB_EVALUATION).await?;
     match_prompts::read_job(&keyed.llm, text)
@@ -472,7 +475,7 @@ pub async fn extract_job(context: &Context, text: &str) -> Result<Job, ServiceEr
 /// for evaluating job posts.
 pub async fn extract_cv(context: &Context, text: &str) -> Result<Profile, ServiceError> {
     if llm_key::llm_settings(context, JOB_EVALUATION).await?.is_none() {
-        return Ok(FreeReader::new(&context.taxonomy, this_month()).cv(text));
+        return Ok(FreeReader::new(&context.taxonomy(), this_month()).cv(text));
     }
     let keyed = llm_key::llm(context, JOB_EVALUATION).await?;
     match_prompts::read_cv(&keyed.llm, text)
@@ -497,9 +500,10 @@ pub async fn ai_match(context: &Context, request: &MatchRequest) -> Result<AiMat
         Some(_) => Some(llm_key::llm(context, JOB_EVALUATION).await?),
         None => None,
     };
+    let taxonomy = context.taxonomy();
     let matching = Matching {
         db: context.db(),
-        taxonomy: &context.taxonomy,
+        taxonomy: &taxonomy,
         user_id: context.user_id,
         now: chrono::Utc::now().timestamp(),
         laya: context.laya.as_ref(),
@@ -512,9 +516,45 @@ pub async fn ai_match(context: &Context, request: &MatchRequest) -> Result<AiMat
         cv_text: &request.cv_text,
     };
     let llm = keyed.as_ref().map(|keyed| &keyed.llm);
-    ai_match::ai_match(&matching, llm, new, &request.profile, Default::default())
+    let found = ai_match::ai_match(&matching, llm, new, &request.profile, Default::default())
         .await
-        .map_err(|e| ServiceError::llm("match/match", &e))
+        .map_err(|e| ServiceError::llm("match/match", &e))?;
+    if let (Some(keyed), Some(match_id)) = (&keyed, found.saved_id) {
+        learn_from_match(context, &taxonomy, request, &found, match_id, &keyed.written_by).await;
+    }
+    Ok(found)
+}
+
+/// What a saved AI match teaches the taxonomy (taxonomy_lessons), recorded, and the taxonomy
+/// built again when a label turned active. A failure here only costs the lesson, so it is logged
+/// and the match goes on.
+async fn learn_from_match(
+    context: &Context,
+    taxonomy: &Taxonomy,
+    request: &MatchRequest,
+    found: &AiMatch,
+    match_id: i64,
+    model: &str,
+) {
+    let cv_text = if request.profile.text_en.is_empty() {
+        &request.cv_text
+    } else {
+        &request.profile.text_en
+    };
+    let lessons = taxonomy_lessons::lessons(taxonomy, &request.job, &request.profile, cv_text, &found.verdicts);
+    if lessons.is_empty() {
+        return;
+    }
+    let now = chrono::Utc::now().timestamp();
+    match taxonomy_store::learn(context.db(), &lessons, match_id, model, now).await {
+        Ok(activated) if !activated.is_empty() => {
+            if let Err(why) = taxonomy_store::reload(context).await {
+                crate::log_line!("match (learning): {why}");
+            }
+        }
+        Ok(_) => {}
+        Err(e) => crate::log_line!("match (learning): the lessons of match {match_id} weren't saved: {e}"),
+    }
 }
 
 /// The AI match as its result shows it, with the application and résumé panel of its saved match.

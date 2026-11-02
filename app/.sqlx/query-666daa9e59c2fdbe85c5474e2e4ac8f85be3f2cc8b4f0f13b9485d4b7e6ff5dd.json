@@ -1,0 +1,21 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT EXISTS (SELECT 1 FROM taxonomy_labels\n                 WHERE text = ?1 COLLATE NOCASE AND lang = ?2 AND status = 'active' AND term_id <> ?3) AS \"taken: bool\"",
+  "describe": {
+    "columns": [
+      {
+        "name": "taken: bool",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": "Expression"
+      }
+    ],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "666daa9e59c2fdbe85c5474e2e4ac8f85be3f2cc8b4f0f13b9485d4b7e6ff5dd"
+}
