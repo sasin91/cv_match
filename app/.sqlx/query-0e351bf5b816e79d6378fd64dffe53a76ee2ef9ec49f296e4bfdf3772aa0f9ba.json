@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT provider, model, base_url, key_hint,\n       use_for_resume, use_for_application, use_for_job_evaluation,\n       updated_at\nFROM user_llm_keys\nORDER BY created_at, id\n",
+  "query": "SELECT provider, model, base_url, key_hint,\n       use_for_resume, use_for_application, use_for_job_evaluation,\n       updated_at\nFROM llm_keys\nORDER BY created_at, id\n",
   "describe": {
     "columns": [
       {
@@ -9,7 +9,7 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "user_llm_keys",
+            "table": "llm_keys",
             "name": "provider"
           }
         }
@@ -20,7 +20,7 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "user_llm_keys",
+            "table": "llm_keys",
             "name": "model"
           }
         }
@@ -31,7 +31,7 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "user_llm_keys",
+            "table": "llm_keys",
             "name": "base_url"
           }
         }
@@ -42,7 +42,7 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "user_llm_keys",
+            "table": "llm_keys",
             "name": "key_hint"
           }
         }
@@ -53,7 +53,7 @@
         "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "user_llm_keys",
+            "table": "llm_keys",
             "name": "use_for_resume"
           }
         }
@@ -64,7 +64,7 @@
         "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "user_llm_keys",
+            "table": "llm_keys",
             "name": "use_for_application"
           }
         }
@@ -75,7 +75,7 @@
         "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "user_llm_keys",
+            "table": "llm_keys",
             "name": "use_for_job_evaluation"
           }
         }
@@ -86,7 +86,7 @@
         "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "user_llm_keys",
+            "table": "llm_keys",
             "name": "updated_at"
           }
         }
@@ -106,5 +106,5 @@
       false
     ]
   },
-  "hash": "1b08680c32249cbd222bfe03290ba63d606b2a82a4a4fb07acba1b75fc81ec77"
+  "hash": "0e351bf5b816e79d6378fd64dffe53a76ee2ef9ec49f296e4bfdf3772aa0f9ba"
 }

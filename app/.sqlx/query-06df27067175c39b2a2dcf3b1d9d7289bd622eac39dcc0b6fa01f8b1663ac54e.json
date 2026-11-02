@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "-- The candidate's profile entries by section, newest first: ongoing ones on top, then by when\n-- they ended and started; the CV's order breaks ties. ?1 the candidate.\nSELECT id, section, title, organisation, location, url, started_on, ended_on, summary, note\nFROM candidate_profile_entries\nWHERE candidate_id = ?1\nORDER BY\n  CASE section WHEN 'experience' THEN 1 WHEN 'project' THEN 2 WHEN 'education' THEN 3 ELSE 0 END,\n  ended_on IS NULL DESC,\n  ended_on DESC,\n  started_on DESC,\n  sort_order,\n  id\n",
+  "query": "-- The profile's entries by section, newest first: ongoing ones on top, then by when they ended\n-- and started; the CV's order breaks ties.\nSELECT id, section, title, organisation, location, url, started_on, ended_on, summary, note\nFROM profile_entries\nORDER BY\n  CASE section WHEN 'experience' THEN 1 WHEN 'project' THEN 2 WHEN 'education' THEN 3 ELSE 0 END,\n  ended_on IS NULL DESC,\n  ended_on DESC,\n  started_on DESC,\n  sort_order,\n  id\n",
   "describe": {
     "columns": [
       {
@@ -9,7 +9,7 @@
         "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "candidate_profile_entries",
+            "table": "profile_entries",
             "name": "id"
           }
         }
@@ -20,7 +20,7 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "candidate_profile_entries",
+            "table": "profile_entries",
             "name": "section"
           }
         }
@@ -31,7 +31,7 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "candidate_profile_entries",
+            "table": "profile_entries",
             "name": "title"
           }
         }
@@ -42,7 +42,7 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "candidate_profile_entries",
+            "table": "profile_entries",
             "name": "organisation"
           }
         }
@@ -53,7 +53,7 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "candidate_profile_entries",
+            "table": "profile_entries",
             "name": "location"
           }
         }
@@ -64,7 +64,7 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "candidate_profile_entries",
+            "table": "profile_entries",
             "name": "url"
           }
         }
@@ -75,7 +75,7 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "candidate_profile_entries",
+            "table": "profile_entries",
             "name": "started_on"
           }
         }
@@ -86,7 +86,7 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "candidate_profile_entries",
+            "table": "profile_entries",
             "name": "ended_on"
           }
         }
@@ -97,7 +97,7 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "candidate_profile_entries",
+            "table": "profile_entries",
             "name": "summary"
           }
         }
@@ -108,14 +108,14 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "candidate_profile_entries",
+            "table": "profile_entries",
             "name": "note"
           }
         }
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 0
     },
     "nullable": [
       false,
@@ -130,5 +130,5 @@
       false
     ]
   },
-  "hash": "4fbc6f694c3cf55ebe2a1c83f2a13d648f5c533e995e3ce1c81e0218442ea0d1"
+  "hash": "06df27067175c39b2a2dcf3b1d9d7289bd622eac39dcc0b6fa01f8b1663ac54e"
 }

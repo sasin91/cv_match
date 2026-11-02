@@ -551,7 +551,7 @@ pub async fn resume_after_new_key(db: &SqlitePool) -> sqlx::Result<()> {
         SET paused_reason = ''
         WHERE active = 1
           AND paused_reason <> ''
-          AND updated_at <= (SELECT COALESCE(MAX(updated_at), 0) FROM user_llm_keys)
+          AND updated_at <= (SELECT COALESCE(MAX(updated_at), 0) FROM llm_keys)
         "#
     )
     .execute(db)

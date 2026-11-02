@@ -1,4 +1,4 @@
-//! The model each task runs on (user_llm_use_models). A task runs on the key its use picks
+//! The model each task runs on (llm_task_models). A task runs on the key its use picks
 //! (account_model::USES), on the model saved for the task, else on the task's default for this
 //! app's own model (downloaded when the task first needs it, matches::llm_key), else on the key's
 //! own model.
@@ -30,7 +30,7 @@ pub const KEYS_OWN_MODEL: &str = "=key";
 /// Something the AI does, on its own model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Task {
-    /// Its name in user_llm_use_models and in the forms (model_for_{name}).
+    /// Its name in llm_task_models and in the forms (model_for_{name}).
     pub name: &'static str,
     /// The use (account_model::USES) whose key it runs on.
     pub use_: &'static str,
@@ -106,7 +106,7 @@ pub fn model_for(task: &Task, provider: &str, key_model: &str, saved: &str) -> S
 
 /// The model saved for each task, as (task, model); a task without one isn't listed.
 pub async fn saved(db: &SqlitePool) -> sqlx::Result<Vec<(String, String)>> {
-    let rows = sqlx::query!(r#"SELECT use AS "task!", model FROM user_llm_use_models WHERE model != ''"#)
+    let rows = sqlx::query!(r#"SELECT task AS "task!", model FROM llm_task_models WHERE model != ''"#)
         .fetch_all(db)
         .await?;
     Ok(rows.into_iter().map(|row| (row.task, row.model)).collect())
@@ -114,7 +114,7 @@ pub async fn saved(db: &SqlitePool) -> sqlx::Result<Vec<(String, String)>> {
 
 /// The model saved for task, "" when none is.
 pub async fn saved_for(db: &SqlitePool, task: &Task) -> sqlx::Result<String> {
-    let model = sqlx::query_scalar!(r#"SELECT model FROM user_llm_use_models WHERE use = ?1"#, task.name)
+    let model = sqlx::query_scalar!(r#"SELECT model FROM llm_task_models WHERE task = ?1"#, task.name)
         .fetch_optional(db)
         .await?;
     Ok(model.unwrap_or_default())
@@ -126,8 +126,8 @@ pub async fn save(db: &SqlitePool, chosen: &[(&'static Task, String)]) -> sqlx::
     for (task, model) in chosen {
         sqlx::query!(
             r#"
-            INSERT INTO user_llm_use_models (use, model) VALUES (?1, ?2)
-            ON CONFLICT (use) DO UPDATE SET model = excluded.model
+            INSERT INTO llm_task_models (task, model) VALUES (?1, ?2)
+            ON CONFLICT (task) DO UPDATE SET model = excluded.model
             "#,
             task.name,
             model
@@ -143,7 +143,7 @@ pub async fn save(db: &SqlitePool, chosen: &[(&'static Task, String)]) -> sqlx::
 /// transaction.
 pub async fn forget_for_uses(connection: &mut SqliteConnection, uses: &[&str]) -> sqlx::Result<()> {
     for task in TASKS.iter().filter(|task| uses.contains(&task.use_)) {
-        sqlx::query!(r#"DELETE FROM user_llm_use_models WHERE use = ?1"#, task.name)
+        sqlx::query!(r#"DELETE FROM llm_task_models WHERE task = ?1"#, task.name)
             .execute(&mut *connection)
             .await?;
     }
