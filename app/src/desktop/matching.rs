@@ -153,9 +153,12 @@ pub struct State {
     job: text_editor::Content,
     job_file: Option<String>,
     /// More job posts to match with the same CV (text or a link), after the first.
-    more_jobs: Vec<text_editor::Content>,
+    more_jobs: Vec<MoreJob>,
     /// The last batch of several posts, ranked.
     batch: Option<Batch>,
+    /// Per ranked row (by its place in the batch), its result as last shown, with its edits and
+    /// documents written, kept while another row is open.
+    ranked_shown: Vec<Option<Shown>>,
     /// Matching, fetching or reading a file: the form's buttons wait.
     busy: bool,
     /// The step running, or what the last one came to.
@@ -181,6 +184,7 @@ impl Default for State {
             job_file: None,
             more_jobs: Vec::new(),
             batch: None,
+            ranked_shown: Vec::new(),
             busy: false,
             said: None,
             fresh: None,
@@ -190,6 +194,14 @@ impl Default for State {
             request: 0,
         }
     }
+}
+
+/// Another job post to match: its box, and the link it was fetched from.
+#[derive(Default)]
+struct MoreJob {
+    text: text_editor::Content,
+    /// Where the box's text was fetched from, saved with the match; "" when it was typed.
+    url: String,
 }
 
 /// A file picked: its name and text; None when the dialog was closed.
@@ -353,7 +365,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
         Msg::Match => return start_batch(state, runner),
         Msg::AddJob => {
             if state.more_jobs.len() + 1 < MAX_JOBS {
-                state.more_jobs.push(text_editor::Content::new());
+                state.more_jobs.push(MoreJob::default());
             }
         }
         Msg::RemoveJob(index) => {
@@ -363,14 +375,23 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
         }
         Msg::MoreJobEdit(index, action) => {
             if let Some(job) = state.more_jobs.get_mut(index) {
-                job.perform(action);
+                job.text.perform(action);
             }
         }
         Msg::BatchMatched(answers) => return batch_matched(state, &answers),
         Msg::OpenRanked(index) => {
             if let Some(batch) = &mut state.batch {
+                // The open row's result is kept as it is, edits and written documents with it.
+                if let Some(open) = batch.open
+                    && let Some(slot) = state.ranked_shown.get_mut(open)
+                {
+                    *slot = state.fresh.take();
+                }
                 let open = (batch.open != Some(index)).then_some(index);
-                state.fresh = open.and_then(|index| batch.result(index)).cloned().map(Shown::new);
+                state.fresh = open.and_then(|index| {
+                    let kept = state.ranked_shown.get_mut(index).and_then(Option::take);
+                    kept.or_else(|| batch.result(index).cloned().map(Shown::new))
+                });
                 batch.open = open;
             }
         }
@@ -518,6 +539,7 @@ fn starts_work(msg: &Msg) -> bool {
         msg,
         Msg::Fetch
             | Msg::Match
+            | Msg::OpenRanked(_)
             | Msg::ChooseFile(_)
             | Msg::Reject
             | Msg::BringBack
@@ -648,8 +670,8 @@ fn jobs_typed(state: &State) -> Vec<JobAsk> {
         job_url: state.job_url.clone(),
     };
     let more = state.more_jobs.iter().map(|job| JobAsk {
-        job_text: job.text(),
-        job_url: String::new(),
+        job_text: job.text.text(),
+        job_url: job.url.clone(),
     });
     std::iter::once(first).chain(more).collect()
 }
@@ -709,7 +731,8 @@ fn batch_matched(state: &mut State, answers: &Result<Vec<Result<MatchAnswer, Str
             None => put_fetched(state, page),
             Some(more) => {
                 if let Some(job) = state.more_jobs.get_mut(more) {
-                    *job = text_editor::Content::with_text(&page.text);
+                    job.text = text_editor::Content::with_text(&page.text);
+                    job.url = page.url.clone();
                 }
             }
         }
@@ -725,6 +748,7 @@ fn batch_matched(state: &mut State, answers: &Result<Vec<Result<MatchAnswer, Str
     // The list says how it went, and each post that failed says why.
     state.said = None;
     let saved_now = batch.saved_now > 0;
+    state.ranked_shown = std::iter::repeat_with(|| None).take(answers.len()).collect();
     state.batch = Some(batch);
     state.fresh = None;
     if saved_now {
@@ -760,6 +784,7 @@ fn matched(state: &mut State, answer: &Result<MatchAnswer, String>) -> Task<Msg>
     };
     state.fresh = Some(Shown::new(answer.result.clone()));
     state.batch = None;
+    state.ranked_shown.clear();
     let saved_now = answer.result.saved_id.is_some() && !answer.matched_before;
     if saved_now {
         state.list.read = None;
@@ -1087,7 +1112,7 @@ fn job_card(state: &State) -> Element<'_, Msg> {
 }
 
 /// Another job post's box, with Remove.
-fn more_job_card<'a>(state: &'a State, index: usize, job: &'a text_editor::Content) -> Element<'a, Msg> {
+fn more_job_card<'a>(state: &'a State, index: usize, job: &'a MoreJob) -> Element<'a, Msg> {
     let heading = row![
         widgets::section_title(format!("Job post {}", index + 2)),
         iced::widget::space().width(Fill),
@@ -1096,13 +1121,17 @@ fn more_job_card<'a>(state: &'a State, index: usize, job: &'a text_editor::Conte
             .on_press_maybe((!state.busy).then_some(Msg::RemoveJob(index))),
     ]
     .align_y(Center);
-    let body = text_editor(job)
+    let editor = text_editor(&job.text)
         .placeholder("Paste the job post here, or a link to it")
         .on_action(move |action| Msg::MoreJobEdit(index, action))
         .size(style::BODY_SIZE)
         .padding(8)
         .height(MORE_JOB_HEIGHT)
         .style(style::text_area);
+    let mut body = column![editor].spacing(8);
+    if !job.url.is_empty() {
+        body = body.push(widgets::caption(format!("Fetched from {}", job.url)));
+    }
     column![
         heading,
         widgets::card(container(body).padding(CARD_PADDING).width(Fill).into())
