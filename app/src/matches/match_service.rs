@@ -29,7 +29,7 @@ use crate::laya::laya_client;
 use crate::pdf_text::child;
 use crate::profile;
 use crate::service_error::{ErrorKind, ServiceError};
-use crate::task_manager::running_work::{self, Stopped, WorkKind};
+use crate::task_manager::running_work::{Stopped, WorkKind};
 use crate::taxonomy::Taxonomy;
 use crate::taxonomy_store;
 
@@ -837,8 +837,9 @@ pub async fn write(
     let notes = document_writer::notes(notes);
     let task_context = context.clone();
     let task_found = found.clone();
-    let recording = crate::llm::transcript::is_recording();
-    let listed = running_work::carried(async move {
+    // In a task of its own (abandoned says when it stops), listed and recorded as the work
+    // asking for it is.
+    let listed = crate::task_scope::carried(async move {
         let list = Arc::clone(&task_context.running);
         let what = writing_label(kind, &task_found);
         let writing = async {
@@ -858,17 +859,16 @@ pub async fn write(
             .await
             .unwrap_or_else(|Stopped| Err(WriteError::Empty(Stopped::SAID)))
     });
-    let writing = tokio::spawn(crate::llm::transcript::carried(recording, listed));
+    let writing = tokio::spawn(listed);
     let _stopped_with_waiter = (abandoned == WhenAbandoned::StopWriting).then(|| AbortOnDrop(writing.abort_handle()));
     let work = if kind == RESUME {
         "match/tailor_resume"
     } else {
         "match/write_application"
     };
-    let (written, calls) = writing
+    let written = writing
         .await
         .map_err(|e| ServiceError::failed(work, format!("The writing stopped: {e}")))?;
-    crate::llm::transcript::keep(calls);
     let (keywords, left_out) = written.map_err(|e| match e {
         WriteError::Llm(e) => ServiceError::llm(work, &e),
         WriteError::Database(e) => ServiceError::from(e),

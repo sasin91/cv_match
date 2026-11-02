@@ -2,15 +2,18 @@
 //! (job_scan::run_steps): every structured() and web_search() call inside recording() is kept,
 //! with how long it took.
 //!
-//! The calls are kept in a tokio task-local, so the language model calls deep inside the match
-//! (match_prompts, ai_match, document_writer) need no extra parameter. It is set only for the
-//! future recording() runs, and only that task sees it: two scans, or a scan and a match on the
-//! match page, never see each other's calls, and outside recording() nothing is kept. Work that
-//! goes on in a task of its own (match_service::write) carries it over with carried().
+//! The recording is kept in the task's crate::task_scope, so the language model calls deep inside
+//! the match (match_prompts, ai_match, document_writer) need no extra parameter. It is set only
+//! for the future recording() runs, and only that task sees it: two scans, or a scan and a match
+//! on the match page, never see each other's calls, and outside recording() nothing is kept. Work
+//! that goes on in a task of its own (match_service::write) keeps its calls in the same recording
+//! when it is started with task_scope::carried().
 
-use std::cell::RefCell;
 use std::future::Future;
+use std::sync::{Arc, Mutex};
 use std::time::Instant;
+
+use crate::task_scope;
 
 /// One call to the model: what it was asked and what it answered (or why it failed).
 #[derive(Debug, Clone, Default, PartialEq)]
@@ -22,43 +25,37 @@ pub struct Exchange {
     pub took_ms: i64,
 }
 
-tokio::task_local! {
-    /// The calls of the recording() running in this task.
-    static CALLS: RefCell<Vec<Exchange>>;
-}
+/// Where a recording() keeps its calls: shared with the tasks its work carries it into.
+pub type Recording = Arc<Mutex<Vec<Exchange>>>;
 
 /// Runs work, and keeps every call to the model it makes.
-/// The work is on the heap (as running_work's wrappers put theirs, for the same reason).
 pub fn recording<F: Future>(work: F) -> impl Future<Output = (F::Output, Vec<Exchange>)> {
-    let work = Box::pin(work);
-    CALLS.scope(RefCell::new(Vec::new()), async move {
-        let output = work.await;
-        let calls = CALLS.with(|calls| calls.take());
+    let recording = Recording::default();
+    let recorded = task_scope::with_recording(Arc::clone(&recording), work);
+    async move {
+        let output = recorded.await;
+        let calls = std::mem::take(&mut *lock(&recording));
         (output, calls)
-    })
+    }
 }
 
 /// Whether this task is recording.
 pub fn is_recording() -> bool {
-    CALLS.try_with(|_| ()).is_ok()
+    task_scope::read(|scope| scope.recording.is_some()).unwrap_or(false)
 }
 
-/// work for a task of its own: recorded when this task is recording, its calls handed back
-/// with keep() once it is done.
-pub fn carried<F: Future>(recording_now: bool, work: F) -> impl Future<Output = (F::Output, Vec<Exchange>)> {
-    let work = Box::pin(work);
-    async move {
-        if recording_now {
-            recording(work).await
-        } else {
-            (work.await, Vec::new())
+/// Adds calls to this task's recording, if it records.
+fn keep(calls: Vec<Exchange>) {
+    task_scope::read(|scope| {
+        if let Some(recording) = &scope.recording {
+            lock(recording).extend(calls);
         }
-    }
+    });
 }
 
-/// Adds calls made elsewhere (a task of their own) to this task's recording, if it records.
-pub fn keep(calls: Vec<Exchange>) {
-    let _ = CALLS.try_with(|kept| kept.borrow_mut().extend(calls));
+/// The recording's calls, also when a task panicked holding them.
+fn lock(recording: &Recording) -> std::sync::MutexGuard<'_, Vec<Exchange>> {
+    recording.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
 }
 
 /// A call starting now, which call() finishes.
@@ -104,15 +101,15 @@ mod tests {
         ask("before");
         let ((), calls) = recording(async {
             ask("one");
-            let ((), inner) = carried(is_recording(), async { ask("two") }).await;
-            keep(inner);
+            // A task of its own, carried: its calls are kept too.
+            tokio::spawn(task_scope::carried(async { ask("two") })).await.unwrap();
+            // One not carried isn't recording.
+            tokio::spawn(async { ask("unrecorded") }).await.unwrap();
         })
         .await;
         assert_eq!(calls.len(), 2);
         assert_eq!(calls[0].asked, "system\n\none");
         assert_eq!(calls[1].answered, "answer to two");
         assert!(!is_recording());
-        let ((), none) = carried(false, async { ask("unrecorded") }).await;
-        assert!(none.is_empty());
     }
 }
