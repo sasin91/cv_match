@@ -450,7 +450,8 @@ async fn wait_while_paused(piece: &Piece) -> bool {
 }
 
 /// Runs work as a piece of the list this task's work is in, under the piece it runs. Outside a
-/// list (tests, the read-pdf child) it runs work as it is.
+/// list (tests, the read-pdf child) it runs work as it is. Under a paused piece work waits before
+/// it is first polled, so a time limit for it goes inside it (an async block), not around it.
 pub fn part<F: Future>(
     kind: WorkKind,
     what: impl Into<String>,
