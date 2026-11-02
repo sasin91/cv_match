@@ -725,9 +725,8 @@ mod tests {
         let runtime = tokio::runtime::Runtime::new().unwrap();
         let context = runtime.block_on(async {
             let db = crate::db::open_in_memory().await.unwrap();
-            let user_id = crate::server::local_user(&db).await.unwrap();
             let taxonomy = Arc::new(crate::taxonomy::Taxonomy::load());
-            Arc::new(Context::new(db, taxonomy, user_id, KeyVault::in_memory()))
+            Arc::new(Context::new(db, taxonomy, KeyVault::in_memory()))
         });
         let handle = runtime.handle().clone();
         // The window's thread: no runtime entered, as in run_window.

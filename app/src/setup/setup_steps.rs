@@ -49,18 +49,13 @@ pub struct ScheduleStep {
 
 /// Whether the app hasn't been set up yet: no profile and no saved matches.
 pub async fn is_first_run(context: &Context) -> sqlx::Result<bool> {
-    let has_profile = profile_model::filled_from(context.db(), context.user_id)
-        .await?
-        .is_some();
+    let has_profile = profile_model::filled_from(context.db()).await?.is_some();
     if has_profile {
         return Ok(false);
     }
-    let has_matches = sqlx::query_scalar!(
-        r#"SELECT EXISTS (SELECT 1 FROM matches WHERE trongate_user_id = ?1) AS "has!: bool""#,
-        context.user_id
-    )
-    .fetch_one(context.db())
-    .await?;
+    let has_matches = sqlx::query_scalar!(r#"SELECT EXISTS (SELECT 1 FROM matches) AS "has!: bool""#)
+        .fetch_one(context.db())
+        .await?;
     Ok(!has_matches)
 }
 
@@ -106,7 +101,7 @@ pub fn database(context: &Context) -> DatabaseStep {
 }
 
 pub async fn ai(context: &Context) -> sqlx::Result<AiStep> {
-    let saved = account_model::saved(context.db(), context.user_id).await?;
+    let saved = account_model::saved(context.db()).await?;
     Ok(AiStep {
         saved: saved.iter().map(saved_key_line).collect(),
         advice: ModelAdvice::from(context.llama.as_ref()),
@@ -124,7 +119,7 @@ fn saved_key_line(saved: &account_model::Saved) -> String {
 }
 
 pub async fn cv(context: &Context) -> Result<CvStep, String> {
-    let filled = profile_model::filled_from(context.db(), context.user_id)
+    let filled = profile_model::filled_from(context.db())
         .await
         .map_err(|e| format!("The database couldn't answer: {e}"))?;
     let can_read = llm_key::llm_settings(context, RESUME)

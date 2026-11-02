@@ -48,7 +48,6 @@ pub struct AiMatch {
 pub struct Matching<'a> {
     pub db: &'a SqlitePool,
     pub taxonomy: &'a Taxonomy,
-    pub user_id: i64,
     pub now: i64,
     pub laya: Option<&'a LayaClient>,
 }
@@ -148,7 +147,6 @@ async fn score_and_save(matching: &Matching<'_>, new: NewMatch<'_>, verdicts: &V
     }
     let saved = match_model::save(
         matching.db,
-        matching.user_id,
         new,
         &answer.groups,
         &answer.verdicts,

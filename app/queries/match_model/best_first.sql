@@ -1,8 +1,8 @@
 -- A batch of the user's saved matches in one list (LISTS), best first: highest score, then newest.
--- ?1 the user, ?2 the integration the Jobnet joblog is kept under, ?3 the list,
--- ?4 the applied statuses as a JSON array (APPLIED_STATUSES),
--- ?5 ?6 ?7 the score, created_at and id of the row the batch comes after (all NULL for the first),
--- ?8 how many.
+-- ?1 the integration the Jobnet joblog is kept under, ?2 the list,
+-- ?3 the applied statuses as a JSON array (APPLIED_STATUSES),
+-- ?4 ?5 ?6 the score, created_at and id of the row the batch comes after (all NULL for the first),
+-- ?7 how many.
 -- Selects what recent.sql selects, so both read into ListedRow.
 SELECT
   m.id,
@@ -42,20 +42,19 @@ SELECT
   m.closed_at,
   m.closed_why
 FROM matches m
-LEFT JOIN match_integrations j ON j.match_id = m.id AND j.integration = ?2
-WHERE m.trongate_user_id IS ?1
-  AND CASE ?3
+LEFT JOIN match_integrations j ON j.match_id = m.id AND j.integration = ?1
+WHERE CASE ?2
     -- The top and good ones not applied for yet, while they are open.
     WHEN 'shortlist' THEN
       m.rejected_at IS NULL
       AND m.closed_at IS NULL
       AND m.tag IN ('top', 'good')
-      AND (j.status IS NULL OR j.status NOT IN (SELECT value FROM json_each(?4)))
+      AND (j.status IS NULL OR j.status NOT IN (SELECT value FROM json_each(?3)))
       AND j.logged_at IS NULL
     -- Applied for, but not yet entered in Jobnet's joblog.
     WHEN 'not_joblogged' THEN
       m.rejected_at IS NULL
-      AND j.status IN (SELECT value FROM json_each(?4))
+      AND j.status IN (SELECT value FROM json_each(?3))
       AND j.logged_at IS NULL
     -- Entered in Jobnet's joblog.
     WHEN 'joblogged' THEN
@@ -73,6 +72,6 @@ WHERE m.trongate_user_id IS ?1
       m.rejected_at IS NULL
       AND m.closed_at IS NULL
   END
-  AND (?5 IS NULL OR (m.score, m.created_at, m.id) < (?5, ?6, ?7))
+  AND (?4 IS NULL OR (m.score, m.created_at, m.id) < (?4, ?5, ?6))
 ORDER BY m.score DESC, m.created_at DESC, m.id DESC
-LIMIT ?8
+LIMIT ?7

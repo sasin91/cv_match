@@ -12,7 +12,6 @@ use jobfinder::db;
 use jobfinder::matches::document_box::{APPLICATION, DocumentBox, RESUME};
 use jobfinder::matches::match_model;
 use jobfinder::matches::match_service::{self, MatchRequest};
-use jobfinder::server;
 use jobfinder::service_error::ErrorKind;
 use jobfinder::taxonomy::Taxonomy;
 use serde_json::{Value, json};
@@ -22,10 +21,9 @@ static TAXONOMY: LazyLock<Arc<Taxonomy>> = LazyLock::new(|| Arc::new(Taxonomy::l
 
 /// A saved match with an email instruction and a résumé written as fields, and a poor one.
 const SEED: &str = "
-INSERT INTO trongate_users (id) VALUES (3);
-INSERT INTO matches (id, trongate_user_id, job_title, company, job_url, job_text, score, points, max_points, tag, created_at)
-VALUES (21, 3, 'PHP-udvikler', 'Firma <A/S>', 'https://www.jobindex.dk/job/1', 'Vi søger en PHP-udvikler.\nSend din ansøgning til job@firma.dk. Skriv \"Backend\" i emnefeltet.', 0.86, 9, 10, 'top', 1760000000),
-       (22, 3, 'Mekaniker', '', NULL, 'Mekaniker søges', 0.2, 1, 10, 'poor', 1760000100);
+INSERT INTO matches (id, job_title, company, job_url, job_text, score, points, max_points, tag, created_at)
+VALUES (21, 'PHP-udvikler', 'Firma <A/S>', 'https://www.jobindex.dk/job/1', 'Vi søger en PHP-udvikler.\nSend din ansøgning til job@firma.dk. Skriv \"Backend\" i emnefeltet.', 0.86, 9, 10, 'top', 1760000000),
+       (22, 'Mekaniker', '', NULL, 'Mekaniker søges', 0.2, 1, 10, 'poor', 1760000100);
 INSERT INTO documents (id, kind, name, text, written_at) VALUES (1, 'cv', 'cv', 'PHP', 1760000000);
 INSERT INTO match_documents (match_id, document_id) VALUES (21, 1), (22, 1);
 INSERT INTO match_items (match_id, criterion, text, verdict, decided_by, reason, sort_order)
@@ -141,13 +139,12 @@ fn resume_answer() -> Value {
 async fn with_model() -> (Arc<Context>, SqlitePool, Arc<AtomicUsize>) {
     let db = db::open_in_memory().await.unwrap();
     db.execute(sqlx::raw_sql(SEED)).await.unwrap();
-    let user_id = server::local_user(&db).await.unwrap();
     let vault = KeyVault::in_memory();
     let (base_url, calls) = stand_in_model().await;
-    account_model::save(&db, &vault, user_id, "local", "stand-in", &base_url, "")
+    account_model::save(&db, &vault, "local", "stand-in", &base_url, "")
         .await
         .unwrap();
-    let context = Context::new(db.clone(), TAXONOMY.clone(), user_id, vault);
+    let context = Context::new(db.clone(), TAXONOMY.clone(), vault);
     (Arc::new(context), db, calls)
 }
 
@@ -187,7 +184,7 @@ async fn the_ai_match_reads_judges_scores_and_saves() {
         .unwrap();
     let documents = result.documents.expect("a saved match's documents");
     assert!(documents.boxes.iter().any(|document| document.kind == APPLICATION));
-    let saved = match_model::find(&db, id, 3).await.unwrap().unwrap();
+    let saved = match_model::find(&db, id).await.unwrap().unwrap();
     assert_eq!(saved.cv_name, "Mette Sørensen", "the CV's own name");
     assert_eq!(saved.company, "Firma A/S");
     let judged: Vec<&str> = saved.items.iter().map(|item| item.decided_by.as_str()).collect();
@@ -286,7 +283,7 @@ async fn a_key_switched_off_for_a_use_says_so() {
         application: None,
         job_evaluation: None,
     };
-    account_model::save_uses(&db, 3, &uses).await.unwrap();
+    account_model::save_uses(&db, &uses).await.unwrap();
     let refused = match_service::write_document(Arc::clone(&context), 21, "", APPLICATION, &|_| {})
         .await
         .unwrap_err();

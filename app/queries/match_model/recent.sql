@@ -1,5 +1,5 @@
 -- The user's newest saved matches not rejected, for the extension's history.
--- ?1 the user, ?2 the integration the Jobnet joblog is kept under, ?3 how many.
+-- ?1 the integration the Jobnet joblog is kept under, ?2 how many.
 -- Selects what best_first.sql selects, so both read into ListedRow.
 SELECT
   m.id,
@@ -39,7 +39,7 @@ SELECT
   m.closed_at,
   m.closed_why
 FROM matches m
-LEFT JOIN match_integrations j ON j.match_id = m.id AND j.integration = ?2
-WHERE m.trongate_user_id IS ?1 AND m.rejected_at IS NULL
+LEFT JOIN match_integrations j ON j.match_id = m.id AND j.integration = ?1
+WHERE m.rejected_at IS NULL
 ORDER BY m.created_at DESC, m.id DESC
-LIMIT ?3
+LIMIT ?2
