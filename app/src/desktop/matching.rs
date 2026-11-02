@@ -156,8 +156,8 @@ pub struct State {
     more_jobs: Vec<MoreJob>,
     /// The last batch of several posts, ranked.
     batch: Option<Batch>,
-    /// Per ranked row (by its place in the batch), its result as last shown, with its edits and
-    /// documents written, kept while another row is open.
+    /// Per ranked row (by its place in the batch), its result with its edits and documents
+    /// written, made when the batch is matched; the open row's is in fresh meanwhile.
     ranked_shown: Vec<Option<Shown>>,
     /// Matching, fetching or reading a file: the form's buttons wait.
     busy: bool,
@@ -388,10 +388,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                     *slot = state.fresh.take();
                 }
                 let open = (batch.open != Some(index)).then_some(index);
-                state.fresh = open.and_then(|index| {
-                    let kept = state.ranked_shown.get_mut(index).and_then(Option::take);
-                    kept.or_else(|| batch.result(index).cloned().map(Shown::new))
-                });
+                state.fresh = open.and_then(|index| state.ranked_shown.get_mut(index).and_then(Option::take));
                 batch.open = open;
                 // A use may have been turned on or off since the batch: Write follows it.
                 return refresh_availability(state, runner);
@@ -750,7 +747,11 @@ fn batch_matched(state: &mut State, answers: &Result<Vec<Result<MatchAnswer, Str
     // The list says how it went, and each post that failed says why.
     state.said = None;
     let saved_now = batch.saved_now > 0;
-    state.ranked_shown = std::iter::repeat_with(|| None).take(answers.len()).collect();
+    // Every row's result is made now, not when first opened, so a document written or a status
+    // saved through another row (or the saved match's page) of the same match reaches it too.
+    state.ranked_shown = (0..answers.len())
+        .map(|index| batch.result(index).cloned().map(Shown::new))
+        .collect();
     state.batch = Some(batch);
     state.fresh = None;
     if saved_now {
