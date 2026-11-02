@@ -113,8 +113,8 @@ such as Ollama (`http://localhost:11434/v1`) or LM Studio (`http://localhost:123
 needs a model name and usually no key. One key is kept per provider. Each goes in Windows
 Credential Manager (service `JobFinder`, user `user_llm_keys:{provider}@` and the database
 file's full path, so each provider and each database has its own key), never in the database;
-`user_llm_keys` keeps a row per provider with the model, address, the key's last 4 characters
-and the uses it is picked for (each use on one key at most); `user_llm_use_models` keeps the
+`llm_keys` keeps a row per provider with the model, address, the key's last 4 characters
+and the uses it is picked for (each use on one key at most); `llm_task_models` keeps the
 model each task runs on, on its use's key (`account/task_model.rs`). A key saved before keys were kept
 per provider (`user_llm_keys@…`) moves to its provider's credential the first time it is read.
 Keys saved while the names had the user's id in them (`user_llm_keys:1:{provider}@…`) move to
@@ -149,11 +149,17 @@ The app keeps its data in one SQLite file, `%APPDATA%\JobFinder\jobfinder.sqlite
 Its tables are cv_match's MariaDB tables (`migrations/`, applied in order at start-up and
 recorded in `schema_migrations`) without the `cv_match` prefix, since the whole app is the
 match: `cv_matches` is `matches`, `cv_match_id` is `match_id`, `cv_match_items` is
-`match_items`, and so on. Besides the names, there are six changes:
+`match_items`, and so on. Besides the names, there are these changes:
 
 - There is no `trongate_users`: the app has one local user, so no table has a
-  `trongate_user_id` (migration `0010_one_local_user`), and `candidates` drops the login columns.
-- `user_llm_keys.uses` (a SET) is three yes/no columns, `use_for_resume`,
+  `trongate_user_id` (migration `0010_one_local_user`).
+- The profile is one row (migration `0011_one_user_schema`): `candidates` and
+  `candidate_profiles` are `profile` (its `id` is always 1, and the login columns,
+  `postal_code` and `open_to_work` are gone), and `candidate_profile_entries`, `_lines` and
+  `_links` are `profile_entries`, `profile_lines` and `profile_links`, without
+  `candidate_id`. `candidate_resumes` isn't kept: nothing used it.
+- `user_llm_keys` is `llm_keys`, and `user_llm_use_models` is `llm_task_models (task, model)`.
+- `llm_keys.uses` (a SET) is three yes/no columns, `use_for_resume`,
   `use_for_application` and `use_for_job_evaluation`; `base_url` is set for a local model.
 - The API key itself goes in Windows Credential Manager, so the table has no key column.
 - The documents written for a match (its application and tailored résumé) are versions in

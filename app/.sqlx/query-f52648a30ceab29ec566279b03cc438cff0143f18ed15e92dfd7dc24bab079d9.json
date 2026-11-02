@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n        SELECT candidates.name, candidate_profiles.filled_from_cv_name, candidate_profiles.filled_from_cv_at\n        FROM candidates\n        JOIN candidate_profiles ON candidate_profiles.candidate_id = candidates.id\n        ORDER BY candidates.id\n        LIMIT 1\n        ",
+  "query": "SELECT name, filled_from_cv_name, filled_from_cv_at FROM profile",
   "describe": {
     "columns": [
       {
@@ -9,7 +9,7 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "candidates",
+            "table": "profile",
             "name": "name"
           }
         }
@@ -20,7 +20,7 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "candidate_profiles",
+            "table": "profile",
             "name": "filled_from_cv_name"
           }
         }
@@ -31,7 +31,7 @@
         "type_info": "Integer",
         "origin": {
           "Table": {
-            "table": "candidate_profiles",
+            "table": "profile",
             "name": "filled_from_cv_at"
           }
         }
@@ -46,5 +46,5 @@
       true
     ]
   },
-  "hash": "07ab59b772eae1033c23a2ffd3cbfe63deab7c37ddd4d0acdde638256925c846"
+  "hash": "f52648a30ceab29ec566279b03cc438cff0143f18ed15e92dfd7dc24bab079d9"
 }

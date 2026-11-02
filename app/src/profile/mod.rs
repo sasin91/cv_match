@@ -34,27 +34,20 @@ struct Entry {
     bullets: Vec<String>,
 }
 
+/// The profile's one row: profile.id is always this (its CHECK, migration 0011_one_user_schema).
+pub const PROFILE_ID: i64 = 1;
+
 /// The user's profile as text, or None when they have none.
 pub async fn text_for_user(db: &SqlitePool) -> sqlx::Result<Option<String>> {
-    // The local user's candidate: there is at most one (migration 0010_one_local_user).
-    let Some(candidate) = sqlx::query!(r#"SELECT id, name, email, phone FROM candidates ORDER BY id LIMIT 1"#)
+    let Some(profile) = sqlx::query!(r#"SELECT name, email, phone, title, location, about FROM profile"#)
         .fetch_optional(db)
         .await?
     else {
         return Ok(None);
     };
-    let Some(profile) = sqlx::query!(
-        r#"SELECT title, location, about FROM candidate_profiles WHERE candidate_id = ?1"#,
-        candidate.id
-    )
-    .fetch_optional(db)
-    .await?
-    else {
-        return Ok(None);
-    };
-    let entries = entries(db, candidate.id).await?;
-    let links = profile_links(db, candidate.id).await?;
-    let (name, email, phone) = (candidate.name, candidate.email, candidate.phone);
+    let entries = entries(db).await?;
+    let links = links_for_user(db).await?;
+    let (name, email, phone) = (profile.name, profile.email, profile.phone);
     let (title, location, about) = (profile.title, profile.location, profile.about);
 
     let phone = phone.unwrap_or_default();
@@ -80,7 +73,7 @@ pub async fn text_for_user(db: &SqlitePool) -> sqlx::Result<Option<String>> {
         }
     }
     for (kind, heading) in LISTS {
-        let lines = lines(db, candidate.id, kind).await?;
+        let lines = lines(db, kind).await?;
         if !lines.is_empty() {
             blocks.push(format!(
                 "{heading}\n{}",
@@ -95,31 +88,12 @@ pub async fn text_for_user(db: &SqlitePool) -> sqlx::Result<Option<String>> {
     Ok(Some(blocks.join("\n\n")))
 }
 
-/// The candidate's profile links, (label, url) in their order.
-pub async fn profile_links(db: &SqlitePool, candidate_id: i64) -> sqlx::Result<Vec<(String, String)>> {
-    let rows = sqlx::query!(
-        r#"
-        SELECT label, url
-        FROM candidate_profile_links
-        WHERE candidate_id = ?1
-        ORDER BY position, id
-        "#,
-        candidate_id
-    )
-    .fetch_all(db)
-    .await?;
-    Ok(rows.into_iter().map(|row| (row.label, row.url)).collect())
-}
-
-/// The user's profile links (LinkedIn, GitHub, ...) as (label, url), none without a candidate.
+/// The user's profile links (LinkedIn, GitHub, ...) as (label, url) in their order.
 pub async fn links_for_user(db: &SqlitePool) -> sqlx::Result<Vec<(String, String)>> {
-    let candidate = sqlx::query_scalar!(r#"SELECT id FROM candidates ORDER BY id LIMIT 1"#)
-        .fetch_optional(db)
+    let rows = sqlx::query!(r#"SELECT label, url FROM profile_links ORDER BY position, id"#)
+        .fetch_all(db)
         .await?;
-    match candidate {
-        Some(candidate_id) => profile_links(db, candidate_id).await,
-        None => Ok(Vec::new()),
-    }
+    Ok(rows.into_iter().map(|row| (row.label, row.url)).collect())
 }
 
 /// The parts that aren't empty (nor "0"), joined.
@@ -134,20 +108,17 @@ fn join_present(parts: &[&str], glue: &str) -> String {
 
 /// The entries, each with its bullets, by section, newest first: ongoing ones on top, then by
 /// when they ended and started; the CV's order breaks ties.
-async fn entries(db: &SqlitePool, candidate_id: i64) -> sqlx::Result<Vec<Entry>> {
-    let rows = sqlx::query_file!("queries/profile/entries.sql", candidate_id)
-        .fetch_all(db)
-        .await?;
+async fn entries(db: &SqlitePool) -> sqlx::Result<Vec<Entry>> {
+    let rows = sqlx::query_file!("queries/profile/entries.sql").fetch_all(db).await?;
     let mut entries = Vec::with_capacity(rows.len());
     for row in rows {
         let bullets = sqlx::query_scalar!(
             r#"
             SELECT text
-            FROM candidate_profile_lines
-            WHERE candidate_id = ?1 AND entry_id = ?2 AND kind = 'bullet'
+            FROM profile_lines
+            WHERE entry_id = ?1 AND kind = 'bullet'
             ORDER BY sort_order, id
             "#,
-            candidate_id,
             row.id
         )
         .fetch_all(db)
@@ -168,15 +139,14 @@ async fn entries(db: &SqlitePool, candidate_id: i64) -> sqlx::Result<Vec<Entry>>
     Ok(entries)
 }
 
-async fn lines(db: &SqlitePool, candidate_id: i64, kind: &str) -> sqlx::Result<Vec<String>> {
+async fn lines(db: &SqlitePool, kind: &str) -> sqlx::Result<Vec<String>> {
     sqlx::query_scalar!(
         r#"
         SELECT text
-        FROM candidate_profile_lines
-        WHERE candidate_id = ?1 AND entry_id IS NULL AND kind = ?2
+        FROM profile_lines
+        WHERE entry_id IS NULL AND kind = ?1
         ORDER BY sort_order, id
         "#,
-        candidate_id,
         kind
     )
     .fetch_all(db)
@@ -235,18 +205,16 @@ mod tests {
         let db = db::open_in_memory().await.unwrap();
         db.execute(sqlx::raw_sql(
             r#"
-             INSERT INTO candidates (id, name, email, phone, created_at, updated_at)
-             VALUES (11, 'Jonas', 'me@example.com', '12345678', 0, 0);
-             INSERT INTO candidate_profiles (candidate_id, title, location, about, created_at, updated_at)
-             VALUES (11, 'Software developer', 'Slagelse', ' I build things. ', 0, 0);
-             INSERT INTO candidate_profile_entries (id, candidate_id, section, title, organisation, started_on, ended_on, sort_order, created_at, updated_at)
-             VALUES (1, 11, 'experience', 'Developer', 'Old Firm', '2017-01-01', '2020-03-01', 0, 0, 0),
-                    (2, 11, 'experience', 'Lead', 'New Firm', '2020-04-01', NULL, 1, 0, 0),
-                    (3, 11, 'education', 'Datamatiker', 'Zealand', NULL, '2016-06-01', 0, 0, 0);
-             INSERT INTO candidate_profile_lines (candidate_id, entry_id, kind, text, sort_order)
-             VALUES (11, 2, 'bullet', 'Built the platform', 0), (11, NULL, 'skill', 'PHP', 0), (11, NULL, 'skill', 'Rust', 1);
-             INSERT INTO candidate_profile_links (candidate_id, label, url, position, created_at, updated_at)
-             VALUES (11, 'GitHub', 'https://github.com/sasin91', 0, 0, 0);
+             INSERT INTO profile (id, name, email, phone, title, location, about, created_at, updated_at)
+             VALUES (1, 'Jonas', 'me@example.com', '12345678', 'Software developer', 'Slagelse', ' I build things. ', 0, 0);
+             INSERT INTO profile_entries (id, section, title, organisation, started_on, ended_on, sort_order, created_at, updated_at)
+             VALUES (1, 'experience', 'Developer', 'Old Firm', '2017-01-01', '2020-03-01', 0, 0, 0),
+                    (2, 'experience', 'Lead', 'New Firm', '2020-04-01', NULL, 1, 0, 0),
+                    (3, 'education', 'Datamatiker', 'Zealand', NULL, '2016-06-01', 0, 0, 0);
+             INSERT INTO profile_lines (entry_id, kind, text, sort_order)
+             VALUES (2, 'bullet', 'Built the platform', 0), (NULL, 'skill', 'PHP', 0), (NULL, 'skill', 'Rust', 1);
+             INSERT INTO profile_links (label, url, position, created_at, updated_at)
+             VALUES ('GitHub', 'https://github.com/sasin91', 0, 0, 0);
             "#,
         ))
         .await

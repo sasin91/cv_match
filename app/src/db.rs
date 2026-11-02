@@ -39,6 +39,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0010_one_local_user",
         include_str!("../migrations/0010_one_local_user.sql"),
     ),
+    (
+        "0011_one_user_schema",
+        include_str!("../migrations/0011_one_user_schema.sql"),
+    ),
 ];
 
 /// How long a write waits for another connection's write to finish, in milliseconds.
@@ -345,12 +349,12 @@ mod tests {
 
         migrate(&db).await.unwrap();
         let kept: (String, String, i64, i64) =
-            sqlx::query_as(r#"SELECT provider, key_hint, use_for_resume, use_for_application FROM user_llm_keys"#)
+            sqlx::query_as(r#"SELECT provider, key_hint, use_for_resume, use_for_application FROM llm_keys"#)
                 .fetch_one(&db)
                 .await
                 .unwrap();
         assert_eq!(kept, ("openai".to_string(), "65sA".to_string(), 0, 1));
-        sqlx::query(r#"INSERT INTO user_llm_keys (provider, created_at, updated_at) VALUES ('anthropic', 7, 7)"#)
+        sqlx::query(r#"INSERT INTO llm_keys (provider, created_at, updated_at) VALUES ('anthropic', 7, 7)"#)
             .execute(&db)
             .await
             .unwrap();
@@ -458,7 +462,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_one_local_users_rows_stay_when_trongate_users_goes() {
+    async fn the_one_local_users_rows_stay_when_trongate_users_and_candidates_go() {
         let db = migrated_before(position_of("0010_one_local_user")).await;
         db.execute(sqlx::raw_sql(
             r#"
@@ -467,6 +471,12 @@ mod tests {
             VALUES (4, 3, 'Jonas', 'me@example.com', 0, 0);
             INSERT INTO candidate_profiles (candidate_id, title, location, about, created_at, updated_at)
             VALUES (4, 'Developer', 'Slagelse', '', 0, 0);
+            INSERT INTO candidate_profile_entries (id, candidate_id, section, title, created_at, updated_at)
+            VALUES (8, 4, 'experience', 'Lead', 0, 0);
+            INSERT INTO candidate_profile_lines (candidate_id, entry_id, kind, text)
+            VALUES (4, 8, 'bullet', 'Built it'), (4, NULL, 'skill', 'PHP');
+            INSERT INTO candidate_profile_links (candidate_id, label, url, created_at, updated_at)
+            VALUES (4, 'GitHub', 'https://github.com/sasin91', 0, 0);
             INSERT INTO matches (id, trongate_user_id, job_title, job_text, score, points, max_points, tag, created_at)
             VALUES (9, 3, 'PHP developer', 'post', 0.8, 8, 10, 'good', 5);
             INSERT INTO match_items (match_id, criterion, text, verdict, decided_by)
@@ -480,17 +490,42 @@ mod tests {
         .unwrap();
 
         migrate(&db).await.unwrap();
-        let kept: (i64, i64, String, String, String) = sqlx::query_as(
+        let kept: (i64, String, String, String, String) = sqlx::query_as(
             r#"SELECT (SELECT COUNT(*) FROM match_items WHERE match_id = 9),
-                      (SELECT COUNT(*) FROM candidate_profiles WHERE candidate_id = 4),
-                      (SELECT name FROM candidates WHERE id = 4),
-                      (SELECT key_hint FROM user_llm_keys WHERE provider = 'openai'),
-                      (SELECT model FROM user_llm_use_models WHERE use = 'judge')"#,
+                      (SELECT name || ', ' || title FROM profile WHERE id = 1),
+                      (SELECT group_concat(text, ', ') FROM profile_lines),
+                      (SELECT key_hint FROM llm_keys WHERE provider = 'openai'),
+                      (SELECT model FROM llm_task_models WHERE task = 'judge')"#,
         )
         .fetch_one(&db)
         .await
         .unwrap();
-        assert_eq!(kept, (1, 1, "Jonas".into(), "WXYZ".into(), "gpt-5.4-mini".into()));
+        assert_eq!(
+            kept,
+            (
+                1,
+                "Jonas, Developer".into(),
+                "Built it, PHP".into(),
+                "WXYZ".into(),
+                "gpt-5.4-mini".into()
+            )
+        );
+        let candidates_left: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM sqlite_schema WHERE name LIKE 'candidate%' OR sql LIKE '%candidate_id%'"#,
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(candidates_left, 0, "no table keeps candidates or candidate_id");
+        sqlx::query("DELETE FROM profile_entries WHERE id = 8")
+            .execute(&db)
+            .await
+            .unwrap();
+        let lines: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM profile_lines")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(lines, 1, "an entry's bullets go with it, the skills stay");
         let users_left: i64 =
             sqlx::query_scalar(r#"SELECT COUNT(*) FROM sqlite_schema WHERE sql LIKE '%trongate_user%'"#)
                 .fetch_one(&db)

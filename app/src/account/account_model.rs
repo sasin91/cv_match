@@ -1,4 +1,4 @@
-//! The user's own language model keys (user_llm_keys), one per provider, and which one each use
+//! The user's own language model keys (llm_keys), one per provider, and which one each use
 //! runs on (use_for_*: each use is on for one key at most). The keys themselves are in Windows
 //! Credential Manager (KeyVault); the table keeps each one's provider, model, last 4 characters
 //! and, for a local model, base_url. A plain key only leaves here through key_for() and
@@ -199,7 +199,7 @@ pub async fn save_uses(db: &SqlitePool, chosen: &UseChoices) -> sqlx::Result<()>
     let mut tx = crate::db::write_transaction(db).await?;
     sqlx::query!(
         r#"
-        UPDATE user_llm_keys
+        UPDATE llm_keys
         SET use_for_resume = provider IS ?1,
             use_for_application = provider IS ?2,
             use_for_job_evaluation = provider IS ?3
@@ -276,7 +276,7 @@ pub async fn delete_key(db: &SqlitePool, vault: &KeyVault, provider: &str) -> Re
         .filter(|use_| picked_for(&before, use_).is_some_and(|saved| saved.provider == provider))
         .collect();
     let mut tx = crate::db::write_transaction(db).await?;
-    sqlx::query!(r#"DELETE FROM user_llm_keys WHERE provider = ?1"#, provider)
+    sqlx::query!(r#"DELETE FROM llm_keys WHERE provider = ?1"#, provider)
         .execute(&mut *tx)
         .await?;
     task_model::forget_for_uses(&mut tx, &picked).await?;
