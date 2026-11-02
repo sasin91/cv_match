@@ -363,9 +363,9 @@ pub async fn reject(db: &SqlitePool, id: i64, now: i64) -> sqlx::Result<()> {
     Ok(())
 }
 
-/// A label's text changed to text. A learned label is changed where it is; a shipped one is
-/// rejected (so the shipped index doesn't bring it back) and its term gets text as a new active
-/// learned label. Err when the term already has that label.
+/// A label's text changed to text. An active or candidate learned label is changed where it is;
+/// a shipped or rejected one is kept rejected (so the shipped index doesn't bring its text back)
+/// and its term gets text as a new active learned label. Err when the term already has that label.
 pub async fn rename(db: &SqlitePool, id: i64, text: &str, now: i64) -> Result<(), String> {
     let text = text.trim();
     if text.is_empty() {
@@ -385,10 +385,16 @@ pub async fn rename(db: &SqlitePool, id: i64, text: &str, now: i64) -> Result<()
 
 async fn rename_in_database(db: &SqlitePool, id: i64, text: &str, now: i64) -> sqlx::Result<()> {
     let mut tx = db::write_transaction(db).await?;
-    let label = sqlx::query!(r#"SELECT term_id, lang, source FROM taxonomy_labels WHERE id = ?1"#, id)
-        .fetch_one(&mut *tx)
-        .await?;
-    if label.source == SHIPPED {
+    let label = sqlx::query!(
+        r#"SELECT term_id, lang, source, status FROM taxonomy_labels WHERE id = ?1"#,
+        id
+    )
+    .fetch_one(&mut *tx)
+    .await?;
+    // A shipped label, or a rejected one (which may be a rejected shipped label's tombstone),
+    // stays as a rejected row with its text, so writing the shipped index again can't bring the
+    // text back; the new text is a label of its own.
+    if label.source == SHIPPED || label.status == REJECTED {
         sqlx::query!(
             r#"UPDATE taxonomy_labels SET status = 'rejected', source = 'learned', preferred = 0, updated_at = ?2 WHERE id = ?1"#,
             id,
@@ -593,6 +599,25 @@ mod tests {
         let labels: Vec<&str> = reopened.terms[0].labels.iter().map(|l| l.text.as_str()).collect();
         assert!(!labels.contains(&label.as_str()), "{labels:?}");
         assert!(labels.contains(&"Et bedre navn"), "{labels:?}");
+    }
+
+    #[tokio::test]
+    async fn editing_a_rejected_shipped_label_keeps_it_out_and_the_edit_active() {
+        let (db, taxonomy) = opened().await;
+        let term = &taxonomy.terms[0];
+        let label = term.labels[0].text.clone();
+        let found = find_labels(&db, &label).await.unwrap();
+        let shipped = found.iter().find(|l| l.term_id == term.id && l.text == label).unwrap();
+        reject(&db, shipped.id, 5).await.unwrap();
+        rename(&db, shipped.id, "Et rettet navn", 6).await.unwrap();
+        sqlx::query("UPDATE taxonomy_shipped SET index_sha256 = 'old'")
+            .execute(&db)
+            .await
+            .unwrap();
+        let reopened = open(&db).await.unwrap();
+        let labels: Vec<&str> = reopened.terms[0].labels.iter().map(|l| l.text.as_str()).collect();
+        assert!(!labels.contains(&label.as_str()), "{labels:?}");
+        assert!(labels.contains(&"Et rettet navn"), "{labels:?}");
     }
 
     #[tokio::test]
