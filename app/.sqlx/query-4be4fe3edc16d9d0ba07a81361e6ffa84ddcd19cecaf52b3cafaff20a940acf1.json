@@ -1,0 +1,146 @@
+{
+  "db_name": "SQLite",
+  "query": "-- The matches that taught a label, oldest first, with where each was found (the saved match's\n-- post) and why: the match's item for the requirement the label is (its text, or its text with\n-- the \" (level)\" the matcher adds), whose verdict, evidence and reason the judge gave.\nSELECT\n  s.match_id AS \"match_id!\",\n  s.learned_from AS \"learned_from!\",\n  s.model AS \"model!\",\n  s.seen_at AS \"seen_at!\",\n  m.job_title AS \"job_title!\",\n  m.company AS \"company!\",\n  m.job_url AS \"job_url: String\",\n  i.verdict AS \"verdict: String\",\n  i.decided_by AS \"decided_by: String\",\n  i.evidence AS \"evidence: String\",\n  i.reason AS \"reason: String\"\nFROM taxonomy_label_sightings s\nJOIN taxonomy_labels l ON l.id = s.label_id\nJOIN matches m ON m.id = s.match_id\nLEFT JOIN match_items i ON i.id = (\n  SELECT i2.id FROM match_items i2\n  WHERE i2.match_id = s.match_id\n    AND (i2.text = l.text OR substr(i2.text, 1, length(l.text) + 2) = l.text || ' (')\n  ORDER BY i2.sort_order, i2.id LIMIT 1)\nWHERE s.label_id = ?1\nORDER BY s.seen_at, s.id\n",
+  "describe": {
+    "columns": [
+      {
+        "name": "match_id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_label_sightings",
+            "name": "match_id"
+          }
+        }
+      },
+      {
+        "name": "learned_from!",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_label_sightings",
+            "name": "learned_from"
+          }
+        }
+      },
+      {
+        "name": "model!",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_label_sightings",
+            "name": "model"
+          }
+        }
+      },
+      {
+        "name": "seen_at!",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_label_sightings",
+            "name": "seen_at"
+          }
+        }
+      },
+      {
+        "name": "job_title!",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "job_title"
+          }
+        }
+      },
+      {
+        "name": "company!",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "company"
+          }
+        }
+      },
+      {
+        "name": "job_url: String",
+        "ordinal": 6,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "matches",
+            "name": "job_url"
+          }
+        }
+      },
+      {
+        "name": "verdict: String",
+        "ordinal": 7,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "match_items",
+            "name": "verdict"
+          }
+        }
+      },
+      {
+        "name": "decided_by: String",
+        "ordinal": 8,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "match_items",
+            "name": "decided_by"
+          }
+        }
+      },
+      {
+        "name": "evidence: String",
+        "ordinal": 9,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "match_items",
+            "name": "evidence"
+          }
+        }
+      },
+      {
+        "name": "reason: String",
+        "ordinal": 10,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "match_items",
+            "name": "reason"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "4be4fe3edc16d9d0ba07a81361e6ffa84ddcd19cecaf52b3cafaff20a940acf1"
+}
