@@ -11,7 +11,7 @@ use indexmap::IndexMap;
 
 use super::apply_instructions::ApplyInstructions;
 use super::apply_notice::ApplyNotice;
-use super::location_notice::LocationNotice;
+use super::disqualifier_notice::DisqualifierNotice;
 use super::match_documents::MatchDocuments;
 use super::match_model::SavedMatch;
 use super::match_score::{self, MatchScore};
@@ -22,14 +22,16 @@ use super::{Job, Profile, dates};
 use crate::laya::laya_client::LayaReading;
 
 /// The groups' names, in the order a saved match's unknown criterion falls back from.
-pub const GROUP_NAMES: [(&str, &str); 5] = [
+pub const GROUP_NAMES: [(&str, &str); 6] = [
     ("requirements", "Requirements"),
     ("skills", "Nice to have"),
     ("title", "Job title"),
     ("responsibilities", "Responsibilities"),
     ("location", "Location"),
+    ("level", "Level"),
 ];
-pub const LOCATION_NOTE: &str = "not weighed · a miss caps the score";
+/// The note on a group that isn't weighed (matcher::DISQUALIFIERS).
+pub const UNWEIGHED_NOTE: &str = "not weighed · a miss caps the score";
 pub const FILTERS: [(&str, &str); 3] = [("missing", "Missing"), ("partial", "Partial"), ("met", "Met")];
 pub const ALL: &str = "All";
 /// Most CV terms the CV panel shows as chips.
@@ -112,7 +114,7 @@ pub struct MatchResult {
     pub parts: String,
     pub saved_at: String,
     pub reject: Option<RejectButton>,
-    pub location: Option<LocationNotice>,
+    pub disqualifier: Option<DisqualifierNotice>,
     pub apply: Option<ApplyNotice>,
     pub filters: Vec<Filter>,
     pub sections: Vec<Section>,
@@ -153,7 +155,7 @@ impl MatchResult {
             parts: parts(&fresh.score.parts),
             saved_at: String::new(),
             reject: RejectButton::from(fresh.saved_id, None),
-            location: LocationNotice::from(fresh.groups, fresh.verdicts),
+            disqualifier: DisqualifierNotice::from(fresh.groups, fresh.verdicts),
             apply: ApplyNotice::from(fresh.apply_instructions, writer),
             filters: filters(&sections),
             sections,
@@ -177,7 +179,7 @@ impl MatchResult {
             parts: format!("{}/{} points", found.points, found.max_points),
             saved_at: dates::iso(found.created_at),
             reject: RejectButton::from(Some(found.id), found.rejected_at.map(|_| found.rejections.as_slice())),
-            location: LocationNotice::from_saved(&found.items),
+            disqualifier: DisqualifierNotice::from_saved(&found.items),
             apply: ApplyNotice::from(found.apply_instructions.as_ref(), writer),
             filters: filters(&sections),
             sections,
@@ -260,7 +262,7 @@ fn sections(groups: &Groups, verdicts: &Verdicts, parts: &IndexMap<String, Part>
             heading: group_name(key).unwrap_or(key).to_string(),
             note: match parts.get(key) {
                 Some(part) => format!("{}% · weight {}", part.percentage, part.weight),
-                None => LOCATION_NOTE.to_string(),
+                None => UNWEIGHED_NOTE.to_string(),
             },
             rows: verdict_row::sorted(items.iter().map(|item| VerdictRow::from(item, verdicts)).collect()),
         })

@@ -5,7 +5,7 @@
 use serde::Deserialize;
 use serde_json::{Value, json};
 
-use super::{Job, Profile};
+use super::{Job, Profile, seniority};
 use crate::llm::{Effort, Llm, LlmException};
 
 const READ_JOB: &str = r#"You read job posts (often Danish) for a candidate and list what the employer asks for. Use only what the post says.
@@ -17,6 +17,8 @@ requirements is one list of what a candidate must or should have. Keep each entr
 - Alternatives share an alt_group label ("pædagog eller pædagogisk assistent": two entries, alt_group "a"; "uddannet kok eller 5 års erfaring": an education and an experience entry, alt_group "b"); alt_group is empty otherwise.
 - min_years: the years of experience asked for ("et par år" = 2, "flere års" = 3, none stated = 0).
 - min_level: the level asked for, in English, when the post states one ("flydende" = "fluent", "modersmål" = "native", "kandidat" = "master's degree", "senior"); empty otherwise.
+
+level: the career level the post is for, when it says so: "student" (studiejob, studentermedhjælper, elev, lærling), "intern" (praktik, internship), "graduate" (nyuddannet, trainee), "junior", "senior" or "lead" (lead, principal, teamleder); empty when it states none or several.
 
 responsibilities: at most 6, a few words each.
 job_title_en and english: the job title and each value in English (the same text when it already is English)."#;
@@ -79,7 +81,7 @@ struct Judgement {
     verdicts: Vec<Judged>,
 }
 
-/// A job post as { job_title, job_title_en, company, requirements, responsibilities }. The post
+/// A job post as { job_title, job_title_en, company, requirements, responsibilities, level }. The post
 /// isn't translated: written first, a translation turned the requirements' own words English.
 pub async fn read_job(llm: &Llm, text: &str) -> Result<Job, LlmException> {
     let answer = llm
@@ -172,15 +174,21 @@ fn job_schema() -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
-        "required": ["job_title", "job_title_en", "company", "requirements", "responsibilities"],
+        "required": ["job_title", "job_title_en", "company", "requirements", "responsibilities", "level"],
         "properties": {
             "job_title": { "type": "string" },
             "job_title_en": { "type": "string" },
             "company": { "type": "string" },
             "requirements": { "type": "array", "items": requirement },
             "responsibilities": strings(),
+            "level": { "type": "string", "enum": level_choices() },
         },
     })
+}
+
+/// What extract_job's level may be: one of seniority::LEVELS, or "" for none.
+fn level_choices() -> Vec<&'static str> {
+    std::iter::once("").chain(seniority::LEVELS).collect()
 }
 
 fn cv_schema() -> Value {

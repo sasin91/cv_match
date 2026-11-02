@@ -17,7 +17,7 @@ fixed snapshot of expected answers (tests/parity.rs).
 | `src/db.rs`, `migrations/`, `queries/` | the SQLite tables and the longer queries |
 | `src/server.rs`, `src/extension_api.rs` | the server on 127.0.0.1 and what the Jobnet extension asks it |
 | `src/matches/match_model.rs` | saved matches in the database |
-| `src/matches/match_result.rs`, `saved_match_row.rs`, `batch_row.rs`, `verdict_row.rs`, `location_notice.rs`, `apply_notice.rs`, `reject_button.rs`, `reject_reason.rs`, `match_documents.rs`, `document_box.rs`, `score_cursor.rs` | the view models the screens print |
+| `src/matches/match_result.rs`, `saved_match_row.rs`, `batch_row.rs`, `verdict_row.rs`, `disqualifier_notice.rs`, `apply_notice.rs`, `reject_button.rs`, `reject_reason.rs`, `match_documents.rs`, `document_box.rs`, `score_cursor.rs` | the view models the screens print |
 | `src/matches/apply_instructions.rs` | how a post asks to be applied to |
 | `src/profile.rs` | the profile as text |
 | `src/matches/joblog.rs`, `joblog_panel.rs` | the Jobnet joblog entry (with `assets/danish_postcodes.json`) and its panel |
