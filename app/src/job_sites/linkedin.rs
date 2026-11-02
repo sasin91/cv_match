@@ -84,13 +84,35 @@ const POST_LOCATION: [&str; 2] = [
     ".job-details-jobs-unified-top-card__primary-description-container",
     ".topcard__flavor--bullet",
 ];
-const POST_TEXT: [&str; 5] = [
+const POST_TEXT: [&str; 6] = [
+    ABOUT_THE_JOB,
     "#job-details",
     ".jobs-description__content",
     ".jobs-description-content__text",
     ".jobs-box__html-content",
     ".description__text",
 ];
+
+/// The post's description in LinkedIn's newer layout (from late 2026), whose class names are
+/// build hashes: its "About the job" box, with that heading (an h2) first.
+const ABOUT_THE_JOB: &str = r#"[data-view-name="job-details-about-the-job"]"#;
+
+/// A heading inside the post's description box, left out of its text.
+static HEADING: LazyLock<Selector> = LazyLock::new(|| Selector::parse("h2").expect("heading"));
+
+/// The page's own title: "{title} | {company} | LinkedIn" on a post's page, after "(3) " when
+/// the member has notifications. The newer layout has no h1 and no stable names for the post's
+/// title and company, so they are read from here.
+static PAGE_TITLE: LazyLock<Selector> = LazyLock::new(|| Selector::parse("head > title").expect("page title"));
+
+/// The unread-notifications count LinkedIn puts before a page's title, "(3) ".
+static NOTIFICATIONS: LazyLock<Regex> = LazyLock::new(|| Regex::new(r"^\(\d+\)\s*").expect("notifications"));
+
+/// What LinkedIn puts last in a page's title.
+const TITLE_SITE: &str = "LinkedIn";
+
+/// What separates the parts of a page's title.
+const TITLE_SEPARATOR: &str = " | ";
 
 /// The post's link as LinkedIn's posts are always written, when url is a LinkedIn post's.
 pub fn post_link(url: &str) -> Option<String> {
@@ -227,19 +249,64 @@ pub fn post_page(location: &str, html: &str) -> Seen<PageText> {
         None => {}
     }
     let page = Html::parse_document(html);
-    let Some(text) = page_reader::element_text(&page, &POST_TEXT).filter(|text| text.chars().count() >= MIN_POST_TEXT)
-    else {
+    let Some(text) = description(&page).filter(|text| text.chars().count() >= MIN_POST_TEXT) else {
         return Seen::NotYet;
     };
+    let (page_title, page_company) = title_parts(&page);
     let title = page_reader::element_text(&page, &POST_TITLE)
         .map(|title| first_line(&title))
+        .or(page_title)
         .unwrap_or_default();
-    let about: Vec<String> = [&POST_COMPANY[..], &POST_LOCATION[..]]
-        .iter()
-        .filter_map(|selectors| page_reader::element_text(&page, selectors))
+    let company = page_reader::element_text(&page, &POST_COMPANY).or(page_company);
+    let about: Vec<String> = [company, page_reader::element_text(&page, &POST_LOCATION)]
+        .into_iter()
+        .flatten()
         .collect();
     let text = about.into_iter().chain([text]).collect::<Vec<_>>().join("\n\n");
     Seen::Shown(PageText { title, text })
+}
+
+/// The post's description: the first of POST_TEXT's boxes with text, without its heading.
+fn description(page: &Html) -> Option<String> {
+    POST_TEXT.iter().find_map(|selector| {
+        let selector = Selector::parse(selector).ok()?;
+        page.select(&selector)
+            .map(|element| without_heading(element, page_reader::part_text(element)))
+            .find(|text| !text.is_empty())
+    })
+}
+
+/// text (box's) without the heading box starts with ("About the job", "Om jobbet").
+fn without_heading(element: scraper::ElementRef<'_>, text: String) -> String {
+    let Some(heading) = element.select(&HEADING).next().map(page_reader::part_text) else {
+        return text;
+    };
+    match text.strip_prefix(heading.as_str()) {
+        Some(rest) if !heading.is_empty() => rest.trim_start().to_string(),
+        _ => text,
+    }
+}
+
+/// The post's title and company as the page's own title has them, when it is a post's.
+fn title_parts(page: &Html) -> (Option<String>, Option<String>) {
+    let Some(whole) = page.select(&PAGE_TITLE).next().map(page_reader::part_text) else {
+        return (None, None);
+    };
+    let whole = NOTIFICATIONS.replace(&whole, "");
+    let mut parts: Vec<&str> = whole.split(TITLE_SEPARATOR).map(str::trim).collect();
+    if parts.last() == Some(&TITLE_SITE) {
+        parts.pop();
+    }
+    let part = |index: usize| {
+        parts
+            .get(index)
+            .filter(|part| !part.is_empty())
+            .map(|part| part.to_string())
+    };
+    match parts.len() {
+        0 | 1 => (None, None),
+        _ => (part(0), part(1)),
+    }
 }
 
 #[cfg(test)]
@@ -343,6 +410,31 @@ mod tests {
         assert_eq!(post.title, "PHP-udvikler");
         assert!(post.text.starts_with("Acme A/S\n\nVi søger"));
         let loading = r#"<html><body><h1>PHP-udvikler</h1><div id="job-details"></div></body></html>"#;
+        assert_eq!(
+            post_page("https://www.linkedin.com/jobs/view/4012345678/", loading),
+            Seen::NotYet
+        );
+    }
+
+    #[test]
+    fn a_post_page_in_the_newer_layout_is_read_by_its_view_name_and_title() {
+        let description = "Vi søger en erfaren PHP-udvikler til vores team i Odense. ".repeat(5);
+        let html = format!(
+            r#"<html><head><title>(3) PHP-udvikler (m/w/x) | Acme A/S | LinkedIn</title></head><body>
+              <p class="b6bk8d">PHP-udvikler (m/w/x)</p>
+              <div class="b6bax7" data-view-name="job-details-about-the-job"><div componentkey="x">
+                <div class="b6bayf"><h2 class="b6bk8d">Om jobbet</h2></div>
+                <div class="b6bk8d"><p>{description}</p></div>
+              </div></div>
+            </body></html>"#
+        );
+        let Seen::Shown(post) = post_page("https://www.linkedin.com/jobs/view/4012345678/", &html) else {
+            panic!("the post shows");
+        };
+        assert_eq!(post.title, "PHP-udvikler (m/w/x)");
+        assert!(post.text.starts_with("Acme A/S\n\nVi søger"), "{}", post.text);
+        let loading = r#"<html><head><title>LinkedIn</title></head><body>
+            <div data-view-name="job-details-about-the-job"><h2>Om jobbet</h2></div></body></html>"#;
         assert_eq!(
             post_page("https://www.linkedin.com/jobs/view/4012345678/", loading),
             Seen::NotYet

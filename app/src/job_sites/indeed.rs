@@ -1,7 +1,9 @@
 //! Indeed Denmark (dk.indeed.com), read in JobFinder's signed-in browser (signed_in): its search
 //! page, newest first, and its posts. Indeed needs no sign-in to search, but it shows its pages
-//! only to a browser that passes its bot check, which a headless one may not: a check is said,
-//! and the scan leaves Indeed alone until the user opens the sign-in window again. A post is
+//! only to a browser that passes its bot check, which a headless one may not: its Cloudflare
+//! answers a headless Edge with a block page ("Blocked - Indeed.com"), signed in or not. A check
+//! or a block is said at once, and the scan leaves Indeed alone until the user opens the sign-in
+//! window again. A post is
 //! always linked as https://{host}/viewjob?jk={id}, however it was found (a search page's vjk).
 //!
 //! What is read from a page is found by Indeed's own names, which it changes now and then.
@@ -42,6 +44,12 @@ static CHECK: LazyLock<Regex> = LazyLock::new(|| {
         r"(?i)challenges\.cloudflare\.com|cf-challenge|<title>[^<]*(?:just a moment|bare et øjeblik|security check)",
     )
     .expect("check")
+});
+
+/// What Indeed shows a browser it blocks outright: its "Blocked - Indeed.com" page (in Danish,
+/// "Anmodningen er blokeret"), or Cloudflare's own block page.
+static BLOCKED: LazyLock<Regex> = LazyLock::new(|| {
+    Regex::new(r"(?i)<title>[^<]*blocked - indeed|anmodningen er blokeret|cf-error-details").expect("blocked")
 });
 
 /// Indeed's sign-in pages.
@@ -104,12 +112,15 @@ fn search_url(term: &str, place: &str) -> String {
     format!("{SITE}/jobs?{}", query.finish())
 }
 
-/// Whether the page at location is Indeed asking to sign in or for a check.
-fn asks(location: &str, html: &str) -> Option<bool> {
+/// What the page at location shows instead of the one asked for: Indeed asking to sign in or
+/// for a check, or blocking the browser.
+fn asks<T>(location: &str, html: &str) -> Option<Seen<T>> {
     if SIGN_IN_PATH.is_match(location) {
-        Some(true)
+        Some(Seen::SignIn)
+    } else if BLOCKED.is_match(html) {
+        Some(Seen::Blocked)
     } else if CHECK.is_match(html) {
-        Some(false)
+        Some(Seen::Check)
     } else {
         None
     }
@@ -117,10 +128,8 @@ fn asks(location: &str, html: &str) -> Option<bool> {
 
 /// The search page's posts, once its list shows.
 pub fn listed(location: &str, html: &str) -> Seen<Vec<ListedPost>> {
-    match asks(location, html) {
-        Some(true) => return Seen::SignIn,
-        Some(false) => return Seen::Check,
-        None => {}
+    if let Some(instead) = asks(location, html) {
+        return instead;
     }
     let page = Html::parse_document(html);
     let mut posts: Vec<ListedPost> = Vec::new();
@@ -178,10 +187,8 @@ fn whole_card(element: scraper::ElementRef<'_>) -> scraper::ElementRef<'_> {
 /// The post a page shows (its own page, or a search page's post beside its list), once its
 /// text shows.
 pub fn post_page(location: &str, html: &str) -> Seen<PageText> {
-    match asks(location, html) {
-        Some(true) => return Seen::SignIn,
-        Some(false) => return Seen::Check,
-        None => {}
+    if let Some(instead) = asks(location, html) {
+        return instead;
     }
     let page = Html::parse_document(html);
     let Some(text) = page_reader::element_text(&page, &POST_TEXT).filter(|text| text.chars().count() >= MIN_POST_TEXT)
@@ -254,6 +261,16 @@ mod tests {
         assert_eq!(
             listed("https://dk.indeed.com/jobs?q=php", "<html><body></body></html>"),
             Seen::NotYet
+        );
+    }
+
+    #[test]
+    fn the_block_page_is_said_at_once() {
+        let blocked = "<html><head><title>Blocked - Indeed.com</title></head><body><h1>Anmodningen er blokeret.</h1><p>Du er blevet blokeret.</p></body></html>";
+        assert_eq!(listed("https://dk.indeed.com/jobs?q=php", blocked), Seen::Blocked);
+        assert_eq!(
+            post_page("https://dk.indeed.com/viewjob?jk=0123456789abcdef", blocked),
+            Seen::Blocked
         );
     }
 

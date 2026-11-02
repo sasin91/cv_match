@@ -4,8 +4,9 @@
 //! posts in it headless, one page at a time and PAUSE_BETWEEN_PAGES apart, through its DevTools
 //! (cdp), which give the page's HTML once its JavaScript has shown the posts.
 //!
-//! It does nothing to look like a person: a site that asks it to sign in again or to show it is
-//! a person gets no more pages. The scan leaves that site alone (a file in PAUSED_FOLDER says
+//! It does nothing to look like a person: a site that asks it to sign in again, to show it is
+//! a person, or blocks it outright (Indeed's Cloudflare blocks a headless browser, with or
+//! without the sign-in) gets no more pages. The scan leaves that site alone (a file in PAUSED_FOLDER says
 //! why) until the user opens the sign-in window again.
 //!
 //! The sites' terms forbid reading them with programs; the user chose this knowing that, for
@@ -66,6 +67,8 @@ pub enum Seen<T> {
     SignIn,
     /// The site asks the browser to show it is a person (a CAPTCHA or a security check).
     Check,
+    /// The site blocks the browser outright: a block page, with nothing to answer.
+    Blocked,
 }
 
 /// The signed-in browser of one data folder.
@@ -119,11 +122,16 @@ impl SignedInBrowser {
         std::fs::read_to_string(self.pause_file(domain)).ok()
     }
 
+    /// Whether the scan leaves domain alone (pause_of says why).
+    pub fn is_paused(&self, domain: &str) -> bool {
+        self.pause_file(domain).exists()
+    }
+
     /// Leaves domain alone from now on, saying why.
-    fn pause(&self, domain: &str, why: &str) -> String {
+    pub(crate) fn pause(&self, domain: &str, why: &str) -> String {
         let today = chrono::Local::now().format("%-d %B %Y");
         let said = format!(
-            "{why} ({today}). The scan leaves {domain} alone until you sign in again in JobFinder's browser (Job searches, “Sign in to job sites”)."
+            "{why} ({today}). The scan leaves {domain} alone until you open JobFinder's browser again (Job searches, “Sign in to job sites”)."
         );
         let file = self.pause_file(domain);
         let written = file
@@ -138,7 +146,8 @@ impl SignedInBrowser {
     }
 
     /// What judge reads from url, a page of domain, once it shows it. Err says why not: the site
-    /// is paused, asked to sign in or for a check (it is paused from now on), or didn't show it.
+    /// is paused, asked to sign in or for a check or blocked the browser (it is paused from now
+    /// on), or didn't show it.
     pub async fn read<T>(&self, domain: &str, url: &str, judge: impl Fn(&str, &str) -> Seen<T>) -> Result<T, String> {
         if let Some(paused) = self.pause_of(domain) {
             return Err(paused);
@@ -164,6 +173,7 @@ impl SignedInBrowser {
                 domain,
                 &format!("{domain} asked JobFinder's browser to show it is a person"),
             )),
+            Seen::Blocked => Err(self.pause(domain, &format!("{domain} blocks JobFinder's browser"))),
         }
     }
 
@@ -311,6 +321,8 @@ mod tests {
         let said = browser.pause("linkedin.com", "linkedin.com asked to sign in");
         assert_eq!(browser.pause_of("linkedin.com"), Some(said));
         assert_eq!(browser.pause_of("dk.indeed.com"), None);
+        assert!(browser.is_paused("linkedin.com"));
+        assert!(!browser.is_paused("dk.indeed.com"));
         let _ = std::fs::remove_dir_all(&folder);
     }
 }
