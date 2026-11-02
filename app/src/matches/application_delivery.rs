@@ -344,6 +344,7 @@ mod tests {
                 trap: true,
             }),
             earlier_versions: Vec::new(),
+            opening: Default::default(),
         }
     }
 

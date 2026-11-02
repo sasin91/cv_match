@@ -10,7 +10,7 @@ use serde_json::Value;
 
 use super::{ListedPost, first_of, text};
 use crate::matches::joblog;
-use crate::matches::page_reader::{self, Page, ReadWith, Wanted};
+use crate::matches::page_reader::{self, GONE_STATUSES, Got, Page, ReadWith, Wanted};
 
 /// The domain the sites box keeps for Jobnet.
 pub const DOMAIN: &str = "jobnet.dk";
@@ -100,23 +100,43 @@ pub fn post_id(url: &str) -> Option<String> {
 /// post. An ad Jobnet only lists from another site (isExternal) has no details (JobAdDetails
 /// answers 404), but its search result holds its text: it is read from a search for its id.
 pub async fn read_post(id: &str) -> Result<Page, String> {
+    find_post(id)
+        .await?
+        .ok_or_else(|| "Jobnet no longer has this post: it was taken down.".to_string())
+}
+
+/// The post as read_post reads it, or None when Jobnet no longer has it: its details answer 404
+/// or 410 and a search for its id doesn't list it either (the still-open check). Err is Jobnet
+/// not answering, or answering something else.
+pub async fn find_post(id: &str) -> Result<Option<Page>, String> {
     let url = format!("{API}/FindJob/JobAdDetails/{id}?incrementViews=false");
-    let details = match get_json(&url).await {
-        Ok(details) => details,
-        Err(why) => {
-            let Some(listed) = listed_ad(id).await? else {
-                return Err(why);
-            };
-            details_of_listed(&listed)
-        }
+    let (why, gone) = match page_reader::get_or_status(&url, &JSON).await {
+        Ok(Got::Page(fetched)) => match json_of(&fetched.body) {
+            Ok(details) => return post_page(id, &details).map(Some),
+            Err(why) => (why, false),
+        },
+        Ok(Got::Status { status, .. }) => (
+            format!("Jobnet answered HTTP {status}."),
+            GONE_STATUSES.contains(&status),
+        ),
+        Err(why) => (why, false),
     };
-    post_page(id, &details)
+    match listed_ad(id).await? {
+        Some(listed) => post_page(id, &details_of_listed(&listed)).map(Some),
+        None if gone => Ok(None),
+        None => Err(why),
+    }
 }
 
 /// The API's JSON answer at url.
 async fn get_json(url: &str) -> Result<Value, String> {
     let fetched = page_reader::get(url, &JSON).await?;
-    serde_json::from_slice(&fetched.body).map_err(|e| format!("Jobnet answered something else: {e}"))
+    json_of(&fetched.body)
+}
+
+/// An answer's body as JSON.
+fn json_of(body: &[u8]) -> Result<Value, String> {
+    serde_json::from_slice(body).map_err(|e| format!("Jobnet answered something else: {e}"))
 }
 
 /// The ad with id as a search for its id lists it, if it does.

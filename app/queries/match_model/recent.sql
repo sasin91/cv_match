@@ -34,7 +34,10 @@ SELECT
   ) AS location_missed,
   j.status AS "jobnet_status?",
   j.logged_at AS jobnet_logged_at,
-  m.rejected_at
+  m.rejected_at,
+  m.deadline,
+  m.closed_at,
+  m.closed_why
 FROM matches m
 LEFT JOIN match_integrations j ON j.match_id = m.id AND j.integration = ?2
 WHERE m.trongate_user_id IS ?1 AND m.rejected_at IS NULL

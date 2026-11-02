@@ -35,6 +35,7 @@ pub mod resume_comparison;
 pub mod saved_match_row;
 pub mod score_cursor;
 pub mod seniority;
+pub mod still_open;
 pub mod tailored_resume;
 pub mod taxonomy_lessons;
 pub mod verdict_row;
