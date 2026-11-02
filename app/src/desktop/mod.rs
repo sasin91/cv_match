@@ -7,6 +7,7 @@
 //! The window runs on the main thread, as the OS's windowing wants; the app's work runs on the
 //! tokio runtime the server runs on (on_runtime), since the database and HTTP clients need it.
 
+mod apply;
 mod documents;
 mod job_searches;
 mod language_models;

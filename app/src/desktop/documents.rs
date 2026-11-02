@@ -447,7 +447,7 @@ fn version_view<'a>(
 
 /// "2026-11-02 09:10" of an ISO 8601 time, in this computer's time zone; as it is when it can't
 /// be read.
-fn day_and_time(iso: &str) -> String {
+pub(super) fn day_and_time(iso: &str) -> String {
     chrono::DateTime::parse_from_rfc3339(iso).map_or_else(
         |_| iso.to_string(),
         |time| time.with_timezone(&chrono::Local).format("%Y-%m-%d %H:%M").to_string(),
