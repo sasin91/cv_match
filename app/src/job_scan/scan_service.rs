@@ -783,6 +783,8 @@ async fn read_sites(context: &Context, sites: &[JobSite], search: &model::JobSea
             terms.len()
         };
         for term in terms.into_iter().take(most) {
+            // Paused in the task manager: the next site or term waits until it is resumed.
+            running_work::until_resumed().await;
             let started = timeline.start(run_steps::SITE);
             let read = site.search(&term, place, signed_in).await;
             let said = site_text(site.domain(), &term, place, &read);
