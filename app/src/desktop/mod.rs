@@ -1,14 +1,16 @@
 //! The desktop window (iced): Match, the settings screens (Language models, Local model, Job
-//! searches), the Task manager and Settings, with a status line for Laya and the app's own
-//! model under them. Its screens print what the service layer gives the web pages (dashboard,
-//! setup_steps), so the two can't disagree; what the window can't do yet opens the web page for
-//! it in the browser, from the server that still runs beside it (for the Jobnet extension too).
+//! searches, Setup, the Jobnet extension), the Task manager and Settings, with a status line for
+//! Laya and the app's own model under them. Its screens print what the service layer gives the
+//! web pages (dashboard, setup_steps), so the two can't disagree. A link the service layer gives
+//! as a web page's path opens the screen for it (place_for); the server still runs beside the
+//! window, for the Jobnet extension.
 //!
 //! The window runs on the main thread, as the OS's windowing wants; the app's work runs on the
 //! tokio runtime the server runs on (on_runtime), since the database and HTTP clients need it.
 
 mod apply;
 mod documents;
+mod extension_screen;
 mod job_searches;
 mod language_models;
 mod learned_terms;
@@ -16,6 +18,7 @@ mod local_model;
 mod match_screen;
 mod matching;
 mod settings_screen;
+mod setup_screen;
 mod style;
 mod task_manager;
 mod widgets;
@@ -74,6 +77,8 @@ pub enum Screen {
     TaskManager,
     Settings,
     LearnedTerms,
+    Setup,
+    JoblogExtension,
 }
 
 /// What the Match screen shows, read together.
@@ -111,6 +116,8 @@ pub struct Shell {
     mode: Mode,
     task_manager: task_manager::State,
     learned_terms: learned_terms::State,
+    setup: setup_screen::State,
+    extension: extension_screen::State,
 }
 
 /// Clone, as iced's buttons need; a reload's answer is shared rather than copied.
@@ -133,6 +140,8 @@ pub enum Message {
     ThemeMode(Mode),
     TaskManager(task_manager::Msg),
     LearnedTerms(learned_terms::Msg),
+    Setup(setup_screen::Msg),
+    Extension(extension_screen::Msg),
 }
 
 /// Opens the window and runs until it is closed.
@@ -222,12 +231,15 @@ fn boot(launch: &Mutex<Option<Launch>>) -> (Shell, Task<Message>) {
         mode: Mode::Light,
         task_manager: task_manager::State::default(),
         learned_terms: learned_terms::State::default(),
+        setup: setup_screen::State::default(),
+        extension: extension_screen::State::default(),
     };
     let tasks = Task::batch([
         Task::done(Message::Reload),
         iced::system::theme().map(Message::ThemeMode),
         Task::run(received(front), |()| Message::Front),
         Task::run(received(ticks), |()| Message::Reload),
+        first_run(&shell),
     ]);
     (shell, tasks)
 }
@@ -405,6 +417,8 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
                     return Task::done(Message::TaskManager(task_manager::Msg::Load));
                 }
                 Screen::LearnedTerms => return Task::done(Message::LearnedTerms(learned_terms::Msg::Load)),
+                Screen::Setup => return Task::done(Message::Setup(setup_screen::Msg::Load)),
+                Screen::JoblogExtension => extension_screen::shown(&mut shell.extension),
                 Screen::Settings => {}
             }
         }
@@ -442,10 +456,7 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
             // As the web page goes on: to Setup while it is unfinished, else to where the
             // model's uses are picked, since the uses stay on the key they were on.
             if setup_unfinished {
-                return Task::batch([
-                    Task::done(Message::OpenPage("setup".to_string())),
-                    Task::done(Message::Said(message)),
-                ]);
+                return Task::done(Message::Show(Screen::Setup)).chain(Task::done(Message::Said(message)));
             }
             return Task::done(Message::Show(Screen::LanguageModels))
                 .chain(Task::done(Message::LanguageModels(language_models::Msg::Tell(message))));
@@ -469,7 +480,20 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
             shell.overview = Some(read.overview);
             shell.status = read.status;
         }
+        Message::Setup(setup_screen::Msg::ShowLanguageModels) => {
+            return Task::done(Message::Show(Screen::LanguageModels));
+        }
+        Message::Setup(setup_screen::Msg::ShowLocalModel) => return Task::done(Message::Show(Screen::LocalModel)),
+        Message::Setup(setup_screen::Msg::Finish) => return Task::done(Message::Show(Screen::Match)),
+        Message::Setup(msg) => {
+            let runner = shell.runner();
+            return setup_screen::update(&mut shell.setup, msg, &runner).map(Message::Setup);
+        }
+        Message::Extension(msg) => return extension_screen::update(&mut shell.extension, msg).map(Message::Extension),
         Message::OpenPage(path) => {
+            if let Some(place) = place_for(&path) {
+                return go_to(place);
+            }
             let url = format!("{}{path}", shell.address);
             if let Err(e) = webbrowser::open(&url) {
                 crate::log_line!("Couldn't open {url} in the browser: {e}");
@@ -495,6 +519,57 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
     Task::none()
 }
 
+/// Opens Setup when the app hasn't been set up yet (setup_steps::is_first_run).
+fn first_run(shell: &Shell) -> Task<Message> {
+    let context = Arc::clone(&shell.context);
+    on_runtime(
+        &shell.runtime,
+        async move { crate::setup::first_run_or_logged(&context).await },
+        |first| Message::Show(if first { Screen::Setup } else { Screen::Match }),
+    )
+}
+
+/// A place in the window that does what a web page does.
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Place {
+    Screen(Screen),
+    /// A saved match's result.
+    SavedMatch(i64),
+    /// The form for a new job search.
+    NewSearch,
+}
+
+/// The place for a web page: the service layer gives its links as the web pages' paths
+/// ("setup#cv", "match/12"). None for a page the window has no place for.
+fn place_for(path: &str) -> Option<Place> {
+    let path = path.trim_start_matches('/');
+    let page = path.split(['#', '?']).next().unwrap_or_default();
+    Some(match page {
+        "setup" => Place::Screen(Screen::Setup),
+        "account" => Place::Screen(Screen::LanguageModels),
+        "llama_setup" => Place::Screen(Screen::LocalModel),
+        "joblog_extension" => Place::Screen(Screen::JoblogExtension),
+        "job_scan" => Place::Screen(Screen::JobSearches),
+        "job_scan/create" => Place::NewSearch,
+        "" | "match" => Place::Screen(Screen::Match),
+        _ => Place::SavedMatch(page.strip_prefix("match/")?.parse().ok()?),
+    })
+}
+
+/// Goes to a place.
+fn go_to(place: Place) -> Task<Message> {
+    let show = |screen| Task::done(Message::Show(screen));
+    match place {
+        Place::Screen(screen) => show(screen),
+        Place::SavedMatch(id) => show(Screen::Match).chain(Task::done(Message::Matching(matching::Msg::Go(
+            matching::Page::Saved(id),
+        )))),
+        Place::NewSearch => show(Screen::JobSearches).chain(Task::done(Message::JobSearches(job_searches::Msg::Go(
+            job_searches::Page::Form(0),
+        )))),
+    }
+}
+
 fn view(shell: &Shell) -> Element<'_, Message> {
     let screen = match shell.screen {
         Screen::Match if shell.matching.page == matching::Page::Overview => match_screen::view(shell.overview.as_ref()),
@@ -505,6 +580,8 @@ fn view(shell: &Shell) -> Element<'_, Message> {
         Screen::TaskManager => task_manager::view(&shell.task_manager).map(Message::TaskManager),
         Screen::Settings => settings_screen::view(&shell.context),
         Screen::LearnedTerms => learned_terms::view(&shell.learned_terms).map(Message::LearnedTerms),
+        Screen::Setup => setup_screen::view(&shell.setup).map(Message::Setup),
+        Screen::JoblogExtension => extension_screen::view(&shell.extension, &shell.context).map(Message::Extension),
     };
     let mut page = Column::new().spacing(GAP).max_width(PAGE_MAX_WIDTH);
     if let Some(said) = &shell.said {
@@ -561,7 +638,7 @@ fn sidebar(current: Screen) -> Element<'static, Message> {
 }
 
 fn nav_item(label: &'static str, screen: Screen, current: Screen) -> Element<'static, Message> {
-    let selected = screen == current;
+    let selected = screen == current || (screen == Screen::Settings && opened_from_settings(current));
     let strip: Element<'static, Message> = if selected {
         container(space())
             .width(STRIP_SIZE.width)
@@ -580,6 +657,11 @@ fn nav_item(label: &'static str, screen: Screen, current: Screen) -> Element<'st
         .style(style::subtle_button(selected))
         .on_press(Message::Show(screen))
         .into()
+}
+
+/// The screens without a sidebar entry, opened from Settings, which stays marked for them.
+fn opened_from_settings(screen: Screen) -> bool {
+    matches!(screen, Screen::LearnedTerms | Screen::Setup | Screen::JoblogExtension)
 }
 
 /// Laya and the app's own model, as they stood at the last reload: a dot and a word each.
@@ -628,6 +710,17 @@ fn local_model_status(context: &Context) -> (Health, String) {
 mod tests {
     use super::*;
     use crate::account::key_vault::KeyVault;
+
+    #[test]
+    fn a_web_pages_link_opens_its_place_in_the_window() {
+        assert_eq!(place_for("setup#cv"), Some(Place::Screen(Screen::Setup)));
+        assert_eq!(place_for("/account"), Some(Place::Screen(Screen::LanguageModels)));
+        assert_eq!(place_for("job_scan/create"), Some(Place::NewSearch));
+        assert_eq!(place_for("match/12"), Some(Place::SavedMatch(12)));
+        assert_eq!(place_for("match"), Some(Place::Screen(Screen::Match)));
+        assert_eq!(place_for("match/history"), None);
+        assert_eq!(place_for("elsewhere"), None);
+    }
 
     #[test]
     fn a_screens_work_may_make_a_timer_from_a_thread_without_the_runtime() {

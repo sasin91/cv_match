@@ -101,3 +101,11 @@ pub fn errors<'a, M: 'a>(errors: &'a [String]) -> Element<'a, M> {
     .spacing(2)
     .into()
 }
+
+/// One line saying what is wrong, in the warning colour.
+pub fn errors_line<'a, M: 'a>(line: impl text::IntoFragment<'a>) -> Element<'a, M> {
+    text(line)
+        .size(style::CAPTION_SIZE)
+        .style(style::health_text(Health::Attention))
+        .into()
+}

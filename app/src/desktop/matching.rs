@@ -182,7 +182,7 @@ impl Default for State {
 }
 
 /// A file picked: its name and text; None when the dialog was closed.
-type Picked = Option<(String, String)>;
+pub(super) type Picked = Option<(String, String)>;
 
 #[derive(Clone)]
 pub enum Msg {
@@ -806,7 +806,7 @@ fn reject(state: &mut State, undo: bool, runner: &Runner) -> Task<Msg> {
 
 /// A CV or job post from a file: a PDF's text (read_pdf) or a text file's; None when the dialog
 /// was closed.
-async fn pick_file(context: Arc<Context>) -> Result<Picked, ServiceError> {
+pub(super) async fn pick_file(context: Arc<Context>) -> Result<Picked, ServiceError> {
     let Some(file) = rfd::AsyncFileDialog::new()
         .set_title("Choose a PDF or text file")
         .add_filter("PDF or text", &FILE_KINDS)
