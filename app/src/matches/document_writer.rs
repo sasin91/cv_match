@@ -17,6 +17,12 @@ use crate::profile;
 /// Longest notes the candidate can add for an application or résumé, in characters.
 pub const MAX_NOTES: usize = 2000;
 
+/// The longest answer each document may take, in tokens: about twice the longest a local model wrote
+/// in the model bake-off, so one that repeats itself stops in minutes, not at the call's time
+/// limit. The résumé holds the whole CV again, so it gets more.
+const APPLICATION_TOKENS: u32 = 4096;
+const RESUME_TOKENS: u32 = 8192;
+
 /// What the strengths list says when the CV meets nothing.
 const NO_STRENGTHS: &str = "- (none found)";
 /// What the gaps list says when the CV misses nothing.
@@ -119,7 +125,10 @@ Write in the job post's own language (post_language), whatever language the CV a
             "application": { "type": "string" },
         },
     });
-    let answer = llm.llm.structured(&system, &user, &schema, Effort::Medium).await?;
+    let answer = llm
+        .llm
+        .structured(&system, &user, &schema, Effort::Medium, APPLICATION_TOKENS)
+        .await?;
     let text = answer["application"].as_str().unwrap_or("").trim().to_string();
     if text.is_empty() {
         return Err(WriteError::Empty("The model returned an empty application. Try again."));
@@ -193,7 +202,10 @@ Write in the job post's own language (post_language), whatever language the CV a
             "resume": tailored_resume::schema(),
         },
     });
-    let answer = llm.llm.structured(&system, &user, &schema, Effort::Medium).await?;
+    let answer = llm
+        .llm
+        .structured(&system, &user, &schema, Effort::Medium, RESUME_TOKENS)
+        .await?;
     let Some(resume) = tailored_resume::clean(&answer["resume"]) else {
         return Err(WriteError::Empty("The model returned an empty résumé. Try again."));
     };

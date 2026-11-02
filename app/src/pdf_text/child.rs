@@ -9,6 +9,8 @@ use std::time::Duration;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::process::Command;
 
+use crate::task_manager::running_work::{self, Stopped, WorkKind};
+
 /// The subcommand the child runs.
 pub const SUBCOMMAND: &str = "read-pdf";
 
@@ -47,8 +49,18 @@ pub fn run() -> std::process::ExitCode {
     }
 }
 
-/// The PDF's text, read by `program read-pdf`.
+/// The PDF's text, read by `program read-pdf`, listed in the task manager while it reads.
 pub async fn text_of(program: &Path, bytes: Vec<u8>) -> Result<String, Failed> {
+    let what = format!("{} KB", bytes.len().div_ceil(KILOBYTE));
+    running_work::part(WorkKind::PdfReader, what, read_in_child(program, bytes))
+        .await
+        .unwrap_or_else(|Stopped| Err(Failed::Stopped(Stopped::SAID.to_string())))
+}
+
+/// Bytes in a kilobyte, which the task manager says a PDF's size in.
+const KILOBYTE: usize = 1024;
+
+async fn read_in_child(program: &Path, bytes: Vec<u8>) -> Result<String, Failed> {
     let mut command = Command::new(program);
     command
         .arg(SUBCOMMAND)
@@ -59,6 +71,7 @@ pub async fn text_of(program: &Path, bytes: Vec<u8>) -> Result<String, Failed> {
     let mut child = crate::no_window::hide(&mut command)
         .spawn()
         .map_err(|e| Failed::Stopped(format!("the PDF reader couldn't start: {e}")))?;
+    running_work::set_process(child.id());
     let (Some(mut stdin), Some(mut stdout), Some(mut stderr)) =
         (child.stdin.take(), child.stdout.take(), child.stderr.take())
     else {

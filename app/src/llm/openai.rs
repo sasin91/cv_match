@@ -64,8 +64,9 @@ impl Openai {
         user: &str,
         schema: &Value,
         effort: Effort,
+        max_tokens: u32,
     ) -> Result<Value, LlmException> {
-        let body = json!({
+        let mut body = json!({
             "model": self.model,
             "messages": [
                 { "role": "system", "content": system },
@@ -79,6 +80,12 @@ impl Openai {
                 "json_schema": { "name": SCHEMA_NAME, "strict": true, "schema": schema },
             },
         });
+        // A local model can repeat a list or a sentence until its context is full, which takes it
+        // up to LOCAL_CALL_SECONDS; capped, it fails in minutes as out of tokens and can be tried
+        // again. OpenAI's own cap counts its reasoning too, and CALL_SECONDS bounds its calls.
+        if self.name == LOCAL_NAME {
+            body["max_tokens"] = json!(max_tokens);
+        }
         let answer = self.post("/chat/completions", &body).await?;
 
         let choice = answer.json()["choices"][0].clone();

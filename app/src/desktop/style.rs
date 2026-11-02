@@ -1,9 +1,11 @@
-//! The window's look, after Windows 11's (Fluent): a light grey page, white cards with a hairline
-//! border and a soft shadow, Windows' blue as the accent, and status marks on soft tinted pills.
-//! Every colour and size the screens use is named here, so they stay one design.
+//! The window's look, after Windows 11's (Fluent): a grey page, cards with a hairline border and
+//! a soft shadow, Windows' blue as the accent, and status marks on soft tinted pills; light or
+//! dark as Windows is set (theme). Every colour and size the screens use is named here, so they
+//! stay one design.
 
 use iced::border::Radius;
 use iced::overlay::menu;
+use iced::theme::Mode;
 use iced::widget::{button, checkbox, container, pick_list, text, text_editor, text_input};
 use iced::{Background, Border, Color, Element, Font, Shadow, Theme, Vector, font};
 
@@ -18,41 +20,126 @@ const fn hex(rgb: u32) -> Color {
     )
 }
 
-/// The page behind the cards (Windows 11's Mica, light).
-pub const PAGE: Color = hex(0xF3F3F3);
-/// A card's face.
-pub const CARD: Color = hex(0xFFFFFF);
-/// A card's hairline border.
-pub const CARD_BORDER: Color = hex(0xE5E5E5);
-/// The line between rows inside a card.
-pub const DIVIDER: Color = hex(0xEDEDED);
-/// Body text.
-pub const TEXT: Color = hex(0x1A1A1A);
-/// Secondary text: notes, captions, paths.
-pub const TEXT_SECONDARY: Color = hex(0x5F5F5F);
-/// Windows' accent blue.
-pub const ACCENT: Color = hex(0x005FB8);
-/// The accent under the pointer.
-const ACCENT_HOVER: Color = hex(0x196EBF);
-/// The accent pressed.
-const ACCENT_PRESSED: Color = hex(0x3C82C9);
-/// A plain button's face under the pointer, and the selected sidebar item.
-const SUBTLE_HOVER: Color = hex(0xEAEAEA);
-/// A plain button pressed.
-const SUBTLE_PRESSED: Color = hex(0xE0E0E0);
+/// Every colour of one look, light or dark.
+pub struct Colors {
+    /// The page behind the cards (Windows 11's Mica).
+    pub page: Color,
+    /// A card's face, and a field's or a plain button's.
+    pub card: Color,
+    /// A card's hairline border.
+    pub card_border: Color,
+    /// The line between rows inside a card, and a progress bar's track.
+    pub divider: Color,
+    /// Body text.
+    pub text: Color,
+    /// Secondary text: notes, captions, paths.
+    pub text_secondary: Color,
+    /// Windows' accent blue.
+    pub accent: Color,
+    /// The accent under the pointer.
+    accent_hover: Color,
+    /// The accent pressed.
+    accent_pressed: Color,
+    /// Text on the accent.
+    on_accent: Color,
+    /// The accent's tint, behind a badge or a picked entry.
+    accent_tint: Color,
+    /// A plain button's face under the pointer, and the selected sidebar item.
+    subtle_hover: Color,
+    /// A plain button pressed, and a disabled main button.
+    subtle_pressed: Color,
+    /// A card's button or field under the pointer.
+    control_hover: Color,
+    /// A card's button pressed.
+    control_pressed: Color,
+    /// A field's border, darker than a card's, as Windows 11 draws its text boxes.
+    field_border: Color,
+    /// A field's text before anything is typed.
+    placeholder: Color,
+    /// How much a card's shadow darkens.
+    shadow: f32,
+    /// Ready: green on a green tint.
+    success: Color,
+    success_tint: Color,
+    /// Needs attention: amber on an amber tint, as Windows' warning bar.
+    warning: Color,
+    warning_tint: Color,
+    warning_border: Color,
+    /// Something failed.
+    danger: Color,
+    /// A note: grey on a grey tint.
+    neutral: Color,
+    neutral_tint: Color,
+}
 
-/// Ready: green text on a green tint.
-const SUCCESS: Color = hex(0x0F7B0F);
-const SUCCESS_TINT: Color = hex(0xDFF6DD);
-/// Needs attention: amber text on an amber tint, as Windows' warning bar.
-const WARNING: Color = hex(0x9D5D00);
-const WARNING_TINT: Color = hex(0xFFF4CE);
-const WARNING_BORDER: Color = hex(0xF2D27A);
-/// Something failed.
-const DANGER: Color = hex(0xC42B1C);
-/// A note: grey on a grey tint.
-const NEUTRAL: Color = hex(0x616161);
-const NEUTRAL_TINT: Color = hex(0xF0F0F0);
+/// Windows 11's light look.
+pub const LIGHT: Colors = Colors {
+    page: hex(0xF3F3F3),
+    card: hex(0xFFFFFF),
+    card_border: hex(0xE5E5E5),
+    divider: hex(0xEDEDED),
+    text: hex(0x1A1A1A),
+    text_secondary: hex(0x5F5F5F),
+    accent: hex(0x005FB8),
+    accent_hover: hex(0x196EBF),
+    accent_pressed: hex(0x3C82C9),
+    on_accent: Color::WHITE,
+    accent_tint: hex(0xE5EFF8),
+    subtle_hover: hex(0xEAEAEA),
+    subtle_pressed: hex(0xE0E0E0),
+    control_hover: hex(0xF9F9F9),
+    control_pressed: hex(0xF0F0F0),
+    field_border: hex(0xD1D1D1),
+    placeholder: hex(0x8A8A8A),
+    shadow: 0.06,
+    success: hex(0x0F7B0F),
+    success_tint: hex(0xDFF6DD),
+    warning: hex(0x9D5D00),
+    warning_tint: hex(0xFFF4CE),
+    warning_border: hex(0xF2D27A),
+    danger: hex(0xC42B1C),
+    neutral: hex(0x616161),
+    neutral_tint: hex(0xF0F0F0),
+};
+
+/// Windows 11's dark look.
+pub const DARK: Colors = Colors {
+    page: hex(0x202020),
+    card: hex(0x2B2B2B),
+    card_border: hex(0x3A3A3A),
+    divider: hex(0x353535),
+    text: hex(0xFFFFFF),
+    text_secondary: hex(0xC5C5C5),
+    accent: hex(0x60CDFF),
+    accent_hover: hex(0x5BBDEA),
+    accent_pressed: hex(0x56AED6),
+    on_accent: hex(0x000000),
+    accent_tint: hex(0x1F3A4D),
+    subtle_hover: hex(0x2D2D2D),
+    subtle_pressed: hex(0x292929),
+    control_hover: hex(0x323232),
+    control_pressed: hex(0x272727),
+    field_border: hex(0x4D4D4D),
+    placeholder: hex(0x9E9E9E),
+    shadow: 0.3,
+    success: hex(0x6CCB5F),
+    success_tint: hex(0x2A3A27),
+    warning: hex(0xFCE100),
+    warning_tint: hex(0x433519),
+    warning_border: hex(0x5C4A1A),
+    danger: hex(0xC42B1C),
+    neutral: hex(0xB4B4B4),
+    neutral_tint: hex(0x353535),
+};
+
+/// The look a theme is: dark or light.
+pub fn colors(theme: &Theme) -> &'static Colors {
+    if theme.extended_palette().is_dark {
+        &DARK
+    } else {
+        &LIGHT
+    }
+}
 
 /// Corner radius of cards and the warning bar.
 pub const CARD_RADIUS: f32 = 8.0;
@@ -70,17 +157,22 @@ pub const CAPTION_SIZE: f32 = 12.0;
 /// A big number on a stat tile.
 pub const STAT_SIZE: f32 = 24.0;
 
-/// The window's theme: its palette, which iced's own widgets (scrollbars, focus) take colours from.
-pub fn theme() -> Theme {
+/// The window's theme for Windows' light or dark mode (light when it doesn't say): its palette,
+/// which iced's own widgets (scrollbars, focus) take colours from.
+pub fn theme(mode: Mode) -> Theme {
+    let (name, c) = match mode {
+        Mode::Dark => ("JobFinder dark", &DARK),
+        Mode::Light | Mode::None => ("JobFinder", &LIGHT),
+    };
     Theme::custom(
-        "JobFinder",
+        name,
         iced::theme::Palette {
-            background: PAGE,
-            text: TEXT,
-            primary: ACCENT,
-            success: SUCCESS,
-            warning: WARNING,
-            danger: DANGER,
+            background: c.page,
+            text: c.text,
+            primary: c.accent,
+            success: c.success,
+            warning: c.warning,
+            danger: c.danger,
         },
     )
 }
@@ -103,17 +195,18 @@ pub fn semibold() -> Font {
 }
 
 /// A card: white, a hairline border, rounded, and a shadow just strong enough to lift it.
-pub fn card(_theme: &Theme) -> container::Style {
+pub fn card(theme: &Theme) -> container::Style {
+    let c = colors(theme);
     container::Style {
-        text_color: Some(TEXT),
-        background: Some(Background::Color(CARD)),
+        text_color: Some(c.text),
+        background: Some(Background::Color(c.card)),
         border: Border {
-            color: CARD_BORDER,
+            color: c.card_border,
             width: 1.0,
             radius: Radius::from(CARD_RADIUS),
         },
         shadow: Shadow {
-            color: Color::from_rgba(0.0, 0.0, 0.0, 0.06),
+            color: Color::from_rgba(0.0, 0.0, 0.0, c.shadow),
             offset: Vector::new(0.0, 2.0),
             blur_radius: 6.0,
         },
@@ -122,21 +215,23 @@ pub fn card(_theme: &Theme) -> container::Style {
 }
 
 /// The page itself.
-pub fn page(_theme: &Theme) -> container::Style {
+pub fn page(theme: &Theme) -> container::Style {
+    let c = colors(theme);
     container::Style {
-        text_color: Some(TEXT),
-        background: Some(Background::Color(PAGE)),
+        text_color: Some(c.text),
+        background: Some(Background::Color(c.page)),
         ..container::Style::default()
     }
 }
 
 /// Windows' warning bar: amber tint, amber hairline.
-pub fn warning_bar(_theme: &Theme) -> container::Style {
+pub fn warning_bar(theme: &Theme) -> container::Style {
+    let c = colors(theme);
     container::Style {
-        text_color: Some(TEXT),
-        background: Some(Background::Color(WARNING_TINT)),
+        text_color: Some(c.text),
+        background: Some(Background::Color(c.warning_tint)),
         border: Border {
-            color: WARNING_BORDER,
+            color: c.warning_border,
             width: 1.0,
             radius: Radius::from(CARD_RADIUS),
         },
@@ -145,17 +240,19 @@ pub fn warning_bar(_theme: &Theme) -> container::Style {
 }
 
 /// A one-pixel line between rows in a card.
-pub fn divider(_theme: &Theme) -> container::Style {
+pub fn divider(theme: &Theme) -> container::Style {
+    let c = colors(theme);
     container::Style {
-        background: Some(Background::Color(DIVIDER)),
+        background: Some(Background::Color(c.divider)),
         ..container::Style::default()
     }
 }
 
 /// The accent strip beside the selected sidebar item.
-pub fn selected_strip(_theme: &Theme) -> container::Style {
+pub fn selected_strip(theme: &Theme) -> container::Style {
+    let c = colors(theme);
     container::Style {
-        background: Some(Background::Color(ACCENT)),
+        background: Some(Background::Color(c.accent)),
         border: Border {
             radius: Radius::from(1.5),
             ..Border::default()
@@ -165,16 +262,21 @@ pub fn selected_strip(_theme: &Theme) -> container::Style {
 }
 
 /// The main action: accent blue, white text.
-pub fn primary_button(_theme: &Theme, status: button::Status) -> button::Style {
+pub fn primary_button(theme: &Theme, status: button::Status) -> button::Style {
+    let c = colors(theme);
     let background = match status {
-        button::Status::Hovered => ACCENT_HOVER,
-        button::Status::Pressed => ACCENT_PRESSED,
-        button::Status::Disabled => SUBTLE_PRESSED,
-        button::Status::Active => ACCENT,
+        button::Status::Hovered => c.accent_hover,
+        button::Status::Pressed => c.accent_pressed,
+        button::Status::Disabled => c.subtle_pressed,
+        button::Status::Active => c.accent,
     };
     button::Style {
         background: Some(Background::Color(background)),
-        text_color: Color::WHITE,
+        text_color: if status == button::Status::Disabled {
+            c.text_secondary
+        } else {
+            c.on_accent
+        },
         border: Border {
             color: Color::from_rgba(0.0, 0.0, 0.0, 0.1),
             width: 1.0,
@@ -186,12 +288,13 @@ pub fn primary_button(_theme: &Theme, status: button::Status) -> button::Style {
 }
 
 /// A button that deletes: Windows' red, white text.
-pub fn danger_button(_theme: &Theme, status: button::Status) -> button::Style {
+pub fn danger_button(theme: &Theme, status: button::Status) -> button::Style {
+    let c = colors(theme);
     let background = match status {
         button::Status::Hovered => hex(0xB02A1C),
         button::Status::Pressed => hex(0x9E2618),
-        button::Status::Disabled => SUBTLE_PRESSED,
-        button::Status::Active => DANGER,
+        button::Status::Disabled => c.subtle_pressed,
+        button::Status::Active => c.danger,
     };
     button::Style {
         background: Some(Background::Color(background)),
@@ -206,21 +309,22 @@ pub fn danger_button(_theme: &Theme, status: button::Status) -> button::Style {
 }
 
 /// Any other button: white with a hairline, grey under the pointer.
-pub fn standard_button(_theme: &Theme, status: button::Status) -> button::Style {
+pub fn standard_button(theme: &Theme, status: button::Status) -> button::Style {
+    let c = colors(theme);
     let background = match status {
-        button::Status::Hovered => hex(0xF9F9F9),
-        button::Status::Pressed => hex(0xF5F5F5),
-        button::Status::Active | button::Status::Disabled => CARD,
+        button::Status::Hovered => c.control_hover,
+        button::Status::Pressed => c.control_pressed,
+        button::Status::Active | button::Status::Disabled => c.card,
     };
     button::Style {
         background: Some(Background::Color(background)),
         text_color: if status == button::Status::Disabled {
-            TEXT_SECONDARY
+            c.text_secondary
         } else {
-            TEXT
+            c.text
         },
         border: Border {
-            color: CARD_BORDER,
+            color: c.card_border,
             width: 1.0,
             radius: Radius::from(CONTROL_RADIUS),
         },
@@ -235,16 +339,17 @@ pub fn standard_button(_theme: &Theme, status: button::Status) -> button::Style 
 
 /// A sidebar item, or a row that opens something: no face until the pointer is on it.
 pub fn subtle_button(selected: bool) -> impl Fn(&Theme, button::Status) -> button::Style {
-    move |_theme, status| {
+    move |theme, status| {
+        let c = colors(theme);
         let background = match status {
-            button::Status::Pressed => Some(SUBTLE_PRESSED),
-            button::Status::Hovered => Some(SUBTLE_HOVER),
-            _ if selected => Some(SUBTLE_HOVER),
+            button::Status::Pressed => Some(c.subtle_pressed),
+            button::Status::Hovered => Some(c.subtle_hover),
+            _ if selected => Some(c.subtle_hover),
             _ => None,
         };
         button::Style {
             background: background.map(Background::Color),
-            text_color: TEXT,
+            text_color: c.text,
             border: Border {
                 radius: Radius::from(CONTROL_RADIUS),
                 ..Border::default()
@@ -257,117 +362,120 @@ pub fn subtle_button(selected: bool) -> impl Fn(&Theme, button::Status) -> butto
 
 /// A row inside a card that opens something: a faint tint under the pointer, square, so it
 /// stays inside the card's rounded corners.
-pub fn row_button(_theme: &Theme, status: button::Status) -> button::Style {
+pub fn row_button(theme: &Theme, status: button::Status) -> button::Style {
+    let c = colors(theme);
     let background = match status {
-        button::Status::Pressed => Some(hex(0xF0F0F0)),
-        button::Status::Hovered => Some(hex(0xF7F7F7)),
+        button::Status::Pressed => Some(c.control_pressed),
+        button::Status::Hovered => Some(c.control_hover),
         _ => None,
     };
     button::Style {
         background: background.map(Background::Color),
-        text_color: TEXT,
+        text_color: c.text,
         border: Border::default(),
         shadow: Shadow::default(),
         snap: true,
     }
 }
 
-/// A field's bottom edge, darker, as Windows 11 draws its text boxes.
-const FIELD_BORDER: Color = hex(0xD1D1D1);
-
 /// A field's border: the accent when focused, else the hairline.
-fn field_border(focused: bool) -> Border {
+fn field_border(c: &Colors, focused: bool) -> Border {
     Border {
-        color: if focused { ACCENT } else { FIELD_BORDER },
+        color: if focused { c.accent } else { c.field_border },
         width: if focused { 1.5 } else { 1.0 },
         radius: Radius::from(CONTROL_RADIUS),
     }
 }
 
 /// A text box: white, a hairline, the accent around it while typing.
-pub fn text_field(_theme: &Theme, status: text_input::Status) -> text_input::Style {
+pub fn text_field(theme: &Theme, status: text_input::Status) -> text_input::Style {
+    let c = colors(theme);
     let focused = matches!(status, text_input::Status::Focused { .. });
     text_input::Style {
         background: Background::Color(if status == text_input::Status::Hovered {
-            hex(0xFDFDFD)
+            c.control_hover
         } else {
-            CARD
+            c.card
         }),
-        border: field_border(focused),
-        icon: TEXT_SECONDARY,
-        placeholder: hex(0x8A8A8A),
-        value: TEXT,
-        selection: Color { a: 0.3, ..ACCENT },
+        border: field_border(c, focused),
+        icon: c.text_secondary,
+        placeholder: c.placeholder,
+        value: c.text,
+        selection: Color { a: 0.3, ..c.accent },
     }
 }
 
 /// A text box of several lines, as text_field.
-pub fn text_area(_theme: &Theme, status: text_editor::Status) -> text_editor::Style {
+pub fn text_area(theme: &Theme, status: text_editor::Status) -> text_editor::Style {
+    let c = colors(theme);
     let focused = matches!(status, text_editor::Status::Focused { .. });
     text_editor::Style {
         background: Background::Color(if status == text_editor::Status::Hovered {
-            hex(0xFDFDFD)
+            c.control_hover
         } else {
-            CARD
+            c.card
         }),
-        border: field_border(focused),
-        placeholder: hex(0x8A8A8A),
-        value: TEXT,
-        selection: Color { a: 0.3, ..ACCENT },
+        border: field_border(c, focused),
+        placeholder: c.placeholder,
+        value: c.text,
+        selection: Color { a: 0.3, ..c.accent },
     }
 }
 
 /// A check box: white with a hairline, the accent with a white tick when ticked.
-pub fn check_box(_theme: &Theme, status: checkbox::Status) -> checkbox::Style {
+pub fn check_box(theme: &Theme, status: checkbox::Status) -> checkbox::Style {
+    let c = colors(theme);
     let (checked, hovered) = match status {
         checkbox::Status::Active { is_checked } | checkbox::Status::Disabled { is_checked } => (is_checked, false),
         checkbox::Status::Hovered { is_checked } => (is_checked, true),
     };
     let face = match (checked, hovered) {
-        (true, false) => ACCENT,
-        (true, true) => ACCENT_HOVER,
-        (false, false) => CARD,
-        (false, true) => hex(0xF9F9F9),
+        (true, false) => c.accent,
+        (true, true) => c.accent_hover,
+        (false, false) => c.card,
+        (false, true) => c.control_hover,
     };
     checkbox::Style {
         background: Background::Color(face),
-        icon_color: Color::WHITE,
+        icon_color: c.on_accent,
         border: Border {
-            color: if checked { face } else { FIELD_BORDER },
+            color: if checked { face } else { c.field_border },
             width: 1.0,
             radius: Radius::from(CONTROL_RADIUS),
         },
-        text_color: Some(TEXT),
+        text_color: Some(c.text),
     }
 }
 
 /// A list to pick from, looking like a text box with its arrow.
-pub fn pick_field(_theme: &Theme, status: pick_list::Status) -> pick_list::Style {
+pub fn pick_field(theme: &Theme, status: pick_list::Status) -> pick_list::Style {
+    let c = colors(theme);
     pick_list::Style {
-        text_color: TEXT,
-        placeholder_color: hex(0x8A8A8A),
-        handle_color: TEXT_SECONDARY,
+        text_color: c.text,
+        placeholder_color: c.placeholder,
+        handle_color: c.text_secondary,
         background: Background::Color(if status == pick_list::Status::Hovered {
-            hex(0xF9F9F9)
+            c.control_hover
         } else {
-            CARD
+            c.card
         }),
-        border: field_border(matches!(status, pick_list::Status::Opened { .. })),
+        border: field_border(c, matches!(status, pick_list::Status::Opened { .. })),
     }
 }
 
 /// A list's open menu: a white card, the picked entry on the accent's tint.
-pub fn pick_menu(_theme: &Theme) -> menu::Style {
+pub fn pick_menu(theme: &Theme) -> menu::Style {
+    let c = colors(theme);
     menu::Style {
-        background: Background::Color(CARD),
+        background: Background::Color(c.card),
         border: Border {
-            color: CARD_BORDER,
+            color: c.card_border,
             width: 1.0,
             radius: Radius::from(CONTROL_RADIUS),
         },
-        text_color: TEXT,
-        selected_text_color: TEXT,
-        selected_background: Background::Color(hex(0xE5EFF8)),
+        text_color: c.text,
+        selected_text_color: c.text,
+        selected_background: Background::Color(c.accent_tint),
         shadow: Shadow {
             color: Color::from_rgba(0.0, 0.0, 0.0, 0.14),
             offset: Vector::new(0.0, 4.0),
@@ -377,10 +485,11 @@ pub fn pick_menu(_theme: &Theme) -> menu::Style {
 }
 
 /// A progress bar: the accent on a grey track, rounded.
-pub fn progress(_theme: &Theme) -> iced::widget::progress_bar::Style {
+pub fn progress(theme: &Theme) -> iced::widget::progress_bar::Style {
+    let c = colors(theme);
     iced::widget::progress_bar::Style {
-        background: Background::Color(DIVIDER),
-        bar: Background::Color(ACCENT),
+        background: Background::Color(c.divider),
+        bar: Background::Color(c.accent),
         border: Border {
             radius: Radius::from(3.0),
             ..Border::default()
@@ -389,9 +498,10 @@ pub fn progress(_theme: &Theme) -> iced::widget::progress_bar::Style {
 }
 
 /// A small label on the accent's tint, like "Suggested".
-pub fn badge(_theme: &Theme) -> container::Style {
+pub fn badge(theme: &Theme) -> container::Style {
+    let c = colors(theme);
     container::Style {
-        background: Some(Background::Color(hex(0xE5EFF8))),
+        background: Some(Background::Color(c.accent_tint)),
         border: Border {
             radius: Radius::from(10.0),
             ..Border::default()
@@ -402,9 +512,9 @@ pub fn badge(_theme: &Theme) -> container::Style {
 
 /// A small pill in a health's colours, like a post's "Failed" or a search's "Paused".
 pub fn chip(health: Health) -> impl Fn(&Theme) -> container::Style {
-    move |_theme| container::Style {
-        background: Some(Background::Color(health_colors(health).1)),
-        text_color: Some(health_colors(health).0),
+    move |theme| container::Style {
+        background: Some(Background::Color(health_colors(colors(theme), health).1)),
+        text_color: Some(health_colors(colors(theme), health).0),
         border: Border {
             radius: Radius::from(10.0),
             ..Border::default()
@@ -413,26 +523,34 @@ pub fn chip(health: Health) -> impl Fn(&Theme) -> container::Style {
     }
 }
 
-/// Secondary text.
-pub fn secondary(_theme: &Theme) -> text::Style {
+/// Text in the accent colour.
+pub fn accent_text(theme: &Theme) -> text::Style {
     text::Style {
-        color: Some(TEXT_SECONDARY),
+        color: Some(colors(theme).accent),
+    }
+}
+
+/// Secondary text.
+pub fn secondary(theme: &Theme) -> text::Style {
+    let c = colors(theme);
+    text::Style {
+        color: Some(c.text_secondary),
     }
 }
 
 /// How a health reads: its colour, and the tint behind it.
-fn health_colors(health: Health) -> (Color, Color) {
+fn health_colors(c: &Colors, health: Health) -> (Color, Color) {
     match health {
-        Health::Ready => (SUCCESS, SUCCESS_TINT),
-        Health::Attention => (WARNING, WARNING_TINT),
-        Health::Neutral => (NEUTRAL, NEUTRAL_TINT),
+        Health::Ready => (c.success, c.success_tint),
+        Health::Attention => (c.warning, c.warning_tint),
+        Health::Neutral => (c.neutral, c.neutral_tint),
     }
 }
 
 /// Text in a health's colour.
 pub fn health_text(health: Health) -> impl Fn(&Theme) -> text::Style {
-    move |_theme| text::Style {
-        color: Some(health_colors(health).0),
+    move |theme| text::Style {
+        color: Some(health_colors(colors(theme), health).0),
     }
 }
 
@@ -449,11 +567,10 @@ pub fn mark<'a, Message: 'a>(health: Health) -> Element<'a, Message> {
         Health::Attention => "!",
         Health::Neutral => "•",
     };
-    let (color, tint) = health_colors(health);
-    container(text(glyph).font(semibold()).size(BODY_SIZE).color(color))
+    container(text(glyph).font(semibold()).size(BODY_SIZE).style(health_text(health)))
         .center(MARK_SIZE)
-        .style(move |_theme: &Theme| container::Style {
-            background: Some(Background::Color(tint)),
+        .style(move |theme: &Theme| container::Style {
+            background: Some(Background::Color(health_colors(colors(theme), health).1)),
             border: Border {
                 radius: Radius::from(MARK_SIZE / 2.0),
                 ..Border::default()
@@ -465,12 +582,11 @@ pub fn mark<'a, Message: 'a>(health: Health) -> Element<'a, Message> {
 
 /// The status line's dot in a health's colour.
 pub fn dot<'a, Message: 'a>(health: Health) -> Element<'a, Message> {
-    let color = health_colors(health).0;
     container(iced::widget::space())
         .width(DOT_SIZE)
         .height(DOT_SIZE)
-        .style(move |_theme: &Theme| container::Style {
-            background: Some(Background::Color(color)),
+        .style(move |theme: &Theme| container::Style {
+            background: Some(Background::Color(health_colors(colors(theme), health).0)),
             border: Border {
                 radius: Radius::from(DOT_SIZE / 2.0),
                 ..Border::default()

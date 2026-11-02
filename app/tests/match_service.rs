@@ -213,3 +213,15 @@ fn a_link_is_one_address_and_nothing_else() {
     assert!(!match_service::is_link("See https://example.com"));
     assert!(!match_service::is_link("Vi søger en udvikler"));
 }
+
+#[tokio::test]
+async fn writing_a_document_without_a_key_points_to_the_key_page_and_says_its_step() {
+    let context = Arc::new(context().await);
+    let said = std::sync::Mutex::new(Vec::new());
+    let say = |step: &str| said.lock().unwrap().push(step.to_string());
+    let error = match_service::write_document(context, 21, "", "resume", &say)
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, ErrorKind::NeedKey);
+    assert_eq!(*said.lock().unwrap(), ["Tailoring the résumé…"]);
+}

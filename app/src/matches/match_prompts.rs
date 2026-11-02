@@ -19,7 +19,6 @@ requirements is one list of what a candidate must or should have. Keep each entr
 - min_level: the level asked for, in English, when the post states one ("flydende" = "fluent", "modersmål" = "native", "kandidat" = "master's degree", "senior"); empty otherwise.
 
 responsibilities: at most 6, a few words each.
-text_en: the whole post as plain English text, translated if needed; keep every fact, drop layout.
 job_title_en and english: the job title and each value in English (the same text when it already is English)."#;
 
 const READ_CV: &str = r#"You read a CV and list what it shows the candidate can do. Use only what the CV says or directly shows: a bullet like "Upgraded Symfony from 6 to 7" shows Symfony and PHP.
@@ -27,7 +26,7 @@ const READ_CV: &str = r#"You read a CV and list what it shows the candidate can 
 Keep each skill atomic (one technology, tool, method or language per item) and name it as commonly written ("Laravel", "Kubernetes", "CI/CD").
 Name each list by the kind of term it holds: title (job titles held), skill, language, certificate (certifications), education.
 experience_years: total years of professional work, from the dates.
-location: where the candidate lives, as the CV gives it ("Slagelse, 4200"); empty when it doesn't say.
+location: where the candidate lives, as the CV gives it (town and postcode as written); empty when it doesn't say.
 Include the languages the CV is written in or names.
 text_en: the whole CV as plain English text, translated if it is in another language, otherwise as given; keep every fact, drop layout."#;
 
@@ -43,6 +42,14 @@ A location requirement is about where the candidate lives, against the place and
 Its reason names both places and the rough distance or commute.
 
 Be strict: a guess is "missing". evidence quotes the CV briefly, empty when missing. reason is one short sentence in English."#;
+
+/// The longest answer each read may write, in tokens: about twice the longest a local model wrote
+/// for it in the model bake-off, so one that repeats a list until its context is full stops in a
+/// few minutes instead of at the call's time limit.
+const READ_JOB_TOKENS: u32 = 4096;
+/// A CV's read holds its whole text again in English (text_en), so a long CV takes more.
+const READ_CV_TOKENS: u32 = 8192;
+const JUDGE_TOKENS: u32 = 4096;
 
 /// What judge() says where the CV doesn't say where the candidate lives.
 const LIVES_NOT_STATED: &str = "not stated";
@@ -72,10 +79,17 @@ struct Judgement {
     verdicts: Vec<Judged>,
 }
 
-/// A job post as { text_en, job_title, job_title_en, company, requirements, responsibilities }.
+/// A job post as { job_title, job_title_en, company, requirements, responsibilities }. The post
+/// isn't translated: written first, a translation turned the requirements' own words English.
 pub async fn read_job(llm: &Llm, text: &str) -> Result<Job, LlmException> {
     let answer = llm
-        .structured(READ_JOB, &format!("Job post:\n\n{text}"), &job_schema(), Effort::Low)
+        .structured(
+            READ_JOB,
+            &format!("Job post:\n\n{text}"),
+            &job_schema(),
+            Effort::Low,
+            READ_JOB_TOKENS,
+        )
         .await?;
     shaped(answer, "job post")
 }
@@ -84,7 +98,13 @@ pub async fn read_job(llm: &Llm, text: &str) -> Result<Job, LlmException> {
 /// experience_years, responsibilities, text_en }.
 pub async fn read_cv(llm: &Llm, text: &str) -> Result<Profile, LlmException> {
     let answer = llm
-        .structured(READ_CV, &format!("CV:\n\n{text}"), &cv_schema(), Effort::Low)
+        .structured(
+            READ_CV,
+            &format!("CV:\n\n{text}"),
+            &cv_schema(),
+            Effort::Low,
+            READ_CV_TOKENS,
+        )
         .await?;
     shaped(answer, "CV")
 }
@@ -110,7 +130,9 @@ pub async fn judge(
     };
     let user =
         format!("Job title: {job_title}\nThe candidate lives in: {lives}\n\nRequirements:\n{list}\n\nCV:\n\n{cv_text}");
-    let answer = llm.structured(JUDGE, &user, &judge_schema(), Effort::Medium).await?;
+    let answer = llm
+        .structured(JUDGE, &user, &judge_schema(), Effort::Medium, JUDGE_TOKENS)
+        .await?;
     Ok(shaped::<Judgement>(answer, "verdicts")?.verdicts)
 }
 
@@ -150,9 +172,8 @@ fn job_schema() -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
-        "required": ["text_en", "job_title", "job_title_en", "company", "requirements", "responsibilities"],
+        "required": ["job_title", "job_title_en", "company", "requirements", "responsibilities"],
         "properties": {
-            "text_en": { "type": "string" },
             "job_title": { "type": "string" },
             "job_title_en": { "type": "string" },
             "company": { "type": "string" },

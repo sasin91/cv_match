@@ -1,5 +1,5 @@
 //! The desktop window (iced): Match, the settings screens (Language models, Local model, Job
-//! searches) and Settings, with a status line for Laya and the app's own
+//! searches), the Task manager and Settings, with a status line for Laya and the app's own
 //! model under them. Its screens print what the service layer gives the web pages (dashboard,
 //! setup_steps), so the two can't disagree; what the window can't do yet opens the web page for
 //! it in the browser, from the server that still runs beside it (for the Jobnet extension too).
@@ -7,6 +7,7 @@
 //! The window runs on the main thread, as the OS's windowing wants; the app's work runs on the
 //! tokio runtime the server runs on (on_runtime), since the database and HTTP clients need it.
 
+mod documents;
 mod job_searches;
 mod language_models;
 mod local_model;
@@ -14,6 +15,7 @@ mod match_screen;
 mod matching;
 mod settings_screen;
 mod style;
+mod task_manager;
 mod widgets;
 
 use std::future::Future;
@@ -21,6 +23,7 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use iced::futures::Stream;
+use iced::theme::Mode;
 use iced::widget::scrollable::{Direction, Scrollbar};
 use iced::widget::{Column, Row, button, column, container, row, scrollable, space, text};
 use iced::{Center, Element, Fill, Size, Task};
@@ -66,6 +69,7 @@ pub enum Screen {
     LanguageModels,
     LocalModel,
     JobSearches,
+    TaskManager,
     Settings,
 }
 
@@ -100,6 +104,9 @@ pub struct Shell {
     local_model: local_model::State,
     job_searches: job_searches::State,
     matching: matching::State,
+    /// Windows' light or dark mode, which the window follows.
+    mode: Mode,
+    task_manager: task_manager::State,
 }
 
 /// Clone, as iced's buttons need; a reload's answer is shared rather than copied.
@@ -118,6 +125,9 @@ pub enum Message {
     LocalModel(local_model::Msg),
     JobSearches(job_searches::Msg),
     Matching(matching::Msg),
+    /// Windows' light or dark mode, read at the start and whenever it changes.
+    ThemeMode(Mode),
+    TaskManager(task_manager::Msg),
 }
 
 /// Opens the window and runs until it is closed.
@@ -129,7 +139,8 @@ pub fn run(launch: Launch) -> iced::Result {
         .title(TITLE)
         .window(window_settings())
         .default_font(style::font())
-        .theme(style::theme())
+        .theme(|shell: &Shell| style::theme(shell.mode))
+        .subscription(|_: &Shell| iced::system::theme_changes().map(Message::ThemeMode))
         .run()
 }
 
@@ -140,7 +151,7 @@ pub fn show_failure(why: String) -> iced::Result {
         .title(TITLE)
         .window_size(FAILURE_WINDOW_SIZE)
         .default_font(style::font())
-        .theme(style::theme())
+        .theme(style::theme(Mode::Light))
         .run()
 }
 
@@ -203,9 +214,12 @@ fn boot(launch: &Mutex<Option<Launch>>) -> (Shell, Task<Message>) {
         local_model: local_model::State::default(),
         job_searches: job_searches::State::default(),
         matching: matching::State::default(),
+        mode: Mode::Light,
+        task_manager: task_manager::State::default(),
     };
     let tasks = Task::batch([
         Task::done(Message::Reload),
+        iced::system::theme().map(Message::ThemeMode),
         Task::run(received(front), |()| Message::Front),
         Task::run(received(ticks), |()| Message::Reload),
     ]);
@@ -330,7 +344,8 @@ impl Runner {
     }
 }
 
-/// Calls work(context) on the runtime and runs what it gives there.
+/// Calls work(context) on the runtime and runs what it gives there, in the task manager's list
+/// (its model calls, say).
 fn spawn_work<T, F>(
     runtime: &Handle,
     context: Arc<Context>,
@@ -340,7 +355,10 @@ where
     F: Future<Output = T> + Send + 'static,
     T: Send + 'static,
 {
-    runtime.spawn(async move { work(context).await })
+    runtime.spawn(async move {
+        let running = Arc::clone(&context.running);
+        running.within(work(context)).await
+    })
 }
 
 /// The Match screen's status and saved matches, and the status line.
@@ -362,6 +380,7 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
         Message::Show(screen) => {
             shell.screen = screen;
             shell.said = None;
+            shell.task_manager.hide();
             // Each visit reads the screen's data again, so it shows what the browser changed.
             match screen {
                 Screen::LanguageModels => return Task::done(Message::LanguageModels(language_models::Msg::Load)),
@@ -375,11 +394,22 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
                     shell.matching.page = matching::Page::Overview;
                     return Task::done(Message::Reload);
                 }
+                Screen::TaskManager => {
+                    shell.task_manager.show();
+                    return Task::done(Message::TaskManager(task_manager::Msg::Load));
+                }
                 Screen::Settings => {}
             }
         }
+        Message::TaskManager(msg) => {
+            let runner = shell.runner();
+            return task_manager::update(&mut shell.task_manager, msg, &runner).map(Message::TaskManager);
+        }
         Message::Matching(matching::Msg::OpenPage(path)) => return Task::done(Message::OpenPage(path)),
         Message::Matching(matching::Msg::Changed) => return Task::done(Message::Reload),
+        Message::Matching(matching::Msg::ShowLanguageModels) => {
+            return Task::done(Message::Show(Screen::LanguageModels));
+        }
         Message::Matching(msg) => {
             let runner = shell.runner();
             return matching::update(&mut shell.matching, msg, &runner).map(Message::Matching);
@@ -443,6 +473,7 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
             .chain(Task::done(Message::Reload));
         }
         Message::Said(said) => shell.said = Some(said),
+        Message::ThemeMode(mode) => shell.mode = mode,
         Message::Front => {
             return iced::window::latest().and_then(|window| {
                 // Out of the taskbar first, when it was minimised there.
@@ -460,6 +491,7 @@ fn view(shell: &Shell) -> Element<'_, Message> {
         Screen::LanguageModels => language_models::view(&shell.language_models).map(Message::LanguageModels),
         Screen::LocalModel => local_model::view(&shell.local_model).map(Message::LocalModel),
         Screen::JobSearches => job_searches::view(&shell.job_searches).map(Message::JobSearches),
+        Screen::TaskManager => task_manager::view(&shell.task_manager).map(Message::TaskManager),
         Screen::Settings => settings_screen::view(&shell.context),
     };
     let mut page = Column::new().spacing(GAP).max_width(PAGE_MAX_WIDTH);
@@ -507,6 +539,7 @@ fn sidebar(current: Screen) -> Element<'static, Message> {
         nav_item("Language models", Screen::LanguageModels, current),
         nav_item("Local model", Screen::LocalModel, current),
         nav_item("Job searches", Screen::JobSearches, current),
+        nav_item("Task manager", Screen::TaskManager, current),
         nav_item("Settings", Screen::Settings, current),
     ]
     .spacing(4)
