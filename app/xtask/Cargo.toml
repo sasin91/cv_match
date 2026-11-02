@@ -3,6 +3,7 @@ name = "xtask"
 version = "0.1.0"
 edition = "2024"
 description = "The app's developer commands, run through cargo aliases (`cargo dev`)"
+license = "BSD-2-Clause"
 publish = false
 
 # Only the standard library, so `cargo dev` builds in a moment.

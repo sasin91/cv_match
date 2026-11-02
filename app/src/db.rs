@@ -34,6 +34,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0007_llm_use_models",
         include_str!("../migrations/0007_llm_use_models.sql"),
     ),
+    ("0008_still_open", include_str!("../migrations/0008_still_open.sql")),
     (
         "0010_one_local_user",
         include_str!("../migrations/0010_one_local_user.sql"),

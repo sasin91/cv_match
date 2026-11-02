@@ -37,13 +37,17 @@ SELECT
   ) AS location_missed,
   j.status AS "jobnet_status?",
   j.logged_at AS jobnet_logged_at,
-  m.rejected_at
+  m.rejected_at,
+  m.deadline,
+  m.closed_at,
+  m.closed_why
 FROM matches m
 LEFT JOIN match_integrations j ON j.match_id = m.id AND j.integration = ?1
 WHERE CASE ?2
-    -- The top and good ones not applied for yet.
+    -- The top and good ones not applied for yet, while they are open.
     WHEN 'shortlist' THEN
       m.rejected_at IS NULL
+      AND m.closed_at IS NULL
       AND m.tag IN ('top', 'good')
       AND (j.status IS NULL OR j.status NOT IN (SELECT value FROM json_each(?3)))
       AND j.logged_at IS NULL
@@ -56,12 +60,17 @@ WHERE CASE ?2
     WHEN 'joblogged' THEN
       m.rejected_at IS NULL
       AND j.logged_at IS NOT NULL
+    -- The jobs that no longer take applications (matches::still_open).
+    WHEN 'closed' THEN
+      m.rejected_at IS NULL
+      AND m.closed_at IS NOT NULL
     -- The ones the user rejected.
     WHEN 'rejected' THEN
       m.rejected_at IS NOT NULL
-    -- Every other list leaves the rejected ones out.
+    -- Every other list (All) leaves the rejected and the closed ones out.
     ELSE
       m.rejected_at IS NULL
+      AND m.closed_at IS NULL
   END
   AND (?4 IS NULL OR (m.score, m.created_at, m.id) < (?4, ?5, ?6))
 ORDER BY m.score DESC, m.created_at DESC, m.id DESC

@@ -21,7 +21,7 @@ use super::matcher::{self, Matcher, Verdict, Verdicts};
 use super::page_reader::{self, Page};
 use super::resume_comparison::ResumeComparison;
 use super::saved_match_row::{SavedMatchRow, TAILORED_CV};
-use super::{Job, Profile, apply_instructions, match_prompts, pdf_writer, reject_reason, taxonomy_lessons};
+use super::{Job, Profile, apply_instructions, match_prompts, pdf_writer, reject_reason, seniority, taxonomy_lessons};
 use crate::account::account_model::JOB_EVALUATION;
 use crate::account::task_model;
 use crate::context::Context;
@@ -121,7 +121,7 @@ pub async fn quick_match(context: &Context, job_text: &str, cv_text: &str) -> Re
     let taxonomy = context.taxonomy();
     let taxonomy = taxonomy.as_ref();
     let mut reader = FreeReader::new(taxonomy, this_month());
-    let job = reader.job(job_text);
+    let job = seniority::with_level(reader.job(job_text));
     let profile = reader.cv(cv_text);
     let matcher = Matcher::new(taxonomy, profile.clone(), reader.known.clone());
     let groups = matcher::criteria(&job);
@@ -457,11 +457,14 @@ pub async fn read_pdf(context: &Context, bytes: Vec<u8>) -> Result<String, Servi
 /// key is off for evaluating job posts.
 pub async fn extract_job(context: &Context, text: &str) -> Result<Job, ServiceError> {
     if llm_key::llm_settings(context, JOB_EVALUATION).await?.is_none() {
-        return Ok(FreeReader::new(&context.taxonomy(), this_month()).job(text));
+        return Ok(seniority::with_level(
+            FreeReader::new(&context.taxonomy(), this_month()).job(text),
+        ));
     }
     let keyed = llm_key::llm(context, &task_model::READ_JOB).await?;
     match_prompts::read_job(&keyed.llm, text)
         .await
+        .map(seniority::with_level)
         .map_err(|e| ServiceError::llm("match/extract_job", &e))
 }
 

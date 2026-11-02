@@ -12,7 +12,10 @@ SELECT
   m.max_points,
   m.tag,
   m.rejected_at,
-  m.created_at
+  m.created_at,
+  m.deadline,
+  m.closed_at,
+  m.closed_why
 FROM matches m
 LEFT JOIN (
   SELECT md.match_id, d.name, d.text

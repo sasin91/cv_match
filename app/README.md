@@ -149,7 +149,7 @@ The app keeps its data in one SQLite file, `%APPDATA%\JobFinder\jobfinder.sqlite
 Its tables are cv_match's MariaDB tables (`migrations/`, applied in order at start-up and
 recorded in `schema_migrations`) without the `cv_match` prefix, since the whole app is the
 match: `cv_matches` is `matches`, `cv_match_id` is `match_id`, `cv_match_items` is
-`match_items`, and so on. Besides the names, there are five changes:
+`match_items`, and so on. Besides the names, there are six changes:
 
 - There is no `trongate_users`: the app has one local user, so no table has a
   `trongate_user_id` (migration `0010_one_local_user`), and `candidates` drops the login columns.
@@ -166,6 +166,10 @@ match: `cv_matches` is `matches`, `cv_match_id` is `match_id`, `cv_match_items` 
   `matches.cv_name` and `cv_text`. `match_documents` says which match uses which document, so
   a CV is kept once however many matches are made with it; a document no match uses any more
   is deleted with the last one (migration 0004).
+- `matches` has four more columns for the still-open check (`matches::still_open`, migration
+  0008): the post's application `deadline`, when its page was last read for it
+  (`still_open_checked_at`), and when and why the job was found closed (`closed_at`,
+  `closed_why`). A closed job leaves the Shortlist and All for the "No longer open" list.
 
 While the app is new, `migrations/0001_schema.sql` is changed in place instead of getting new
 migrations. A database made from an older version of it is refused at start with a message

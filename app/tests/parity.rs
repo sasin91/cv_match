@@ -313,6 +313,7 @@ fn saved_match(case: &Value) -> SavedMatch {
         apply_instructions: apply_instructions::read(&job_text),
         job_text,
         earlier_versions: Vec::new(),
+        opening: Default::default(),
     }
 }
 

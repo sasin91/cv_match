@@ -4,17 +4,19 @@
 SELECT
   COALESCE(SUM(
     m.rejected_at IS NULL
+    AND m.closed_at IS NULL
     AND m.tag IN ('top', 'good')
     AND (j.status IS NULL OR j.status NOT IN (SELECT value FROM json_each(?2)))
     AND j.logged_at IS NULL
   ), 0) AS "shortlist!: i64",
-  COALESCE(SUM(m.rejected_at IS NULL), 0) AS "every!: i64",
+  COALESCE(SUM(m.rejected_at IS NULL AND m.closed_at IS NULL), 0) AS "every!: i64",
   COALESCE(SUM(
     m.rejected_at IS NULL
     AND j.status IN (SELECT value FROM json_each(?2))
     AND j.logged_at IS NULL
   ), 0) AS "not_joblogged!: i64",
   COALESCE(SUM(m.rejected_at IS NULL AND j.logged_at IS NOT NULL), 0) AS "joblogged!: i64",
+  COALESCE(SUM(m.rejected_at IS NULL AND m.closed_at IS NOT NULL), 0) AS "closed!: i64",
   COALESCE(SUM(m.rejected_at IS NOT NULL), 0) AS "rejected!: i64"
 FROM matches m
 LEFT JOIN match_integrations j ON j.match_id = m.id AND j.integration = ?1

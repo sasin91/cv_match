@@ -51,7 +51,9 @@ pub const APPLIED_STATUSES: [&str; 2] = ["Soegt", "Samtale"];
 /// has none: the shortlist (top matches not applied for yet), all of them, applied for but not
 /// on Jobnet yet, on Jobnet, and rejected.
 pub const SHORTLIST: &str = "shortlist";
-pub const LISTS: [(&str, &str, &str); 5] = [
+/// The list of jobs that no longer take applications (still_open).
+pub const CLOSED: &str = "closed";
+pub const LISTS: [(&str, &str, &str); 6] = [
     (
         SHORTLIST,
         "Shortlist",
@@ -67,6 +69,11 @@ pub const LISTS: [(&str, &str, &str); 5] = [
         "joblogged",
         "On Jobnet",
         "Nothing on Jobnet yet: tick \"entered on Jobnet\" in a match's joblog panel once you have logged it there.",
+    ),
+    (
+        CLOSED,
+        "No longer open",
+        "None of your saved jobs has closed: after each scan JobFinder checks whether they still take applications.",
     ),
     (
         "rejected",
@@ -127,6 +134,29 @@ pub struct NewMatch<'a> {
     pub cv_text: &'a str,
 }
 
+/// Whether a saved match's job still takes applications, as the still-open check (still_open)
+/// last found it: matches.deadline, closed_at and closed_why.
+#[derive(Debug, Clone, Default, PartialEq, Serialize)]
+pub struct Opening {
+    /// The application deadline the post gives, yyyy-mm-dd.
+    pub deadline: Option<String>,
+    /// When the job was found closed; None while it is open.
+    pub closed_at: Option<i64>,
+    /// What gave it away (still_open::Closed), or still_open::BY_HAND_OPEN.
+    pub closed_why: String,
+}
+
+/// A saved match the still-open check looks at (queries/match_model/open_to_check.sql).
+#[derive(Debug, Clone, PartialEq)]
+pub struct OpenToCheck {
+    pub id: i64,
+    pub job_url: Option<String>,
+    pub job_text: String,
+    pub created_at: i64,
+    pub deadline: Option<String>,
+    pub still_open_checked_at: Option<i64>,
+}
+
 /// A saved match with everything the page shows of it.
 #[derive(Debug, Clone, PartialEq, Serialize)]
 pub struct SavedMatch {
@@ -157,6 +187,7 @@ pub struct SavedMatch {
     pub apply_instructions: Option<ApplyInstructions>,
     /// The application's and résumé's versions before the newest, newest first.
     pub earlier_versions: Vec<Version>,
+    pub opening: Opening,
 }
 
 /// A saved match as a list shows it (and the Jobnet extension lists it, as JSON).
@@ -182,6 +213,8 @@ pub struct ListedMatch {
     pub rejected_at: Option<i64>,
     #[serde(skip)]
     pub rejections: Vec<Rejection>,
+    #[serde(skip)]
+    pub opening: Opening,
 }
 
 /// A batch of a list, and the cursor of the batch after it (None at the end).
@@ -209,6 +242,9 @@ struct ListedRow {
     jobnet_status: Option<String>,
     jobnet_logged_at: Option<i64>,
     rejected_at: Option<i64>,
+    deadline: Option<String>,
+    closed_at: Option<i64>,
+    closed_why: String,
 }
 
 impl From<ListedRow> for ListedMatch {
@@ -231,6 +267,11 @@ impl From<ListedRow> for ListedMatch {
             jobnet_logged_at: row.jobnet_logged_at,
             rejected_at: row.rejected_at,
             rejections: Vec::new(),
+            opening: Opening {
+                deadline: row.deadline,
+                closed_at: row.closed_at,
+                closed_why: row.closed_why,
+            },
         }
     }
 }
@@ -249,6 +290,7 @@ pub async fn save(
     let company = cut(&new.job.company, lengths::NAME);
     let job_url = (!new.job_url.is_empty()).then(|| cut(new.job_url, lengths::JOB_URL));
     let cv_name = cut(new.cv_name, lengths::NAME);
+    let deadline = super::still_open::deadline_of(new.job_text, now);
     let index = match_score::round_to(score.index, SCORE_DECIMALS);
     let mut tx = crate::db::write_transaction(db).await?;
     let id = sqlx::query_file!(
@@ -261,7 +303,8 @@ pub async fn save(
         score.rank,
         score.total,
         score.tag,
-        now
+        now,
+        deadline
     )
     .execute(&mut *tx)
     .await?
@@ -391,19 +434,76 @@ pub async fn best_first(db: &SqlitePool, limit: usize, after: &str, list: &str) 
     Ok(Batch { rows, next })
 }
 
-/// APPLIED_STATUSES as the JSON array the queries read with json_each.
 /// How many matches each list (LISTS) holds, in LISTS's order, as (list, count).
 pub async fn list_counts(db: &SqlitePool) -> sqlx::Result<Vec<(&'static str, i64)>> {
     let applied = applied_statuses_json();
     let row = sqlx::query_file!("queries/match_model/list_counts.sql", JOBNET_JOBLOG, applied)
         .fetch_one(db)
         .await?;
-    let counts = [row.shortlist, row.every, row.not_joblogged, row.joblogged, row.rejected];
+    let counts = [
+        row.shortlist,
+        row.every,
+        row.not_joblogged,
+        row.joblogged,
+        row.closed,
+        row.rejected,
+    ];
     Ok(LISTS.iter().map(|(list, ..)| *list).zip(counts).collect())
 }
 
+/// APPLIED_STATUSES as the JSON array the queries read with json_each.
 fn applied_statuses_json() -> String {
     serde_json::to_string(&APPLIED_STATUSES).expect("a list of strings is JSON")
+}
+
+/// The user's saved matches the still-open check looks at, newest first; by_hand_open is what
+/// closed_why says when the user said a job is still open.
+pub async fn open_to_check(db: &SqlitePool, by_hand_open: &str) -> sqlx::Result<Vec<OpenToCheck>> {
+    sqlx::query_file_as!(OpenToCheck, "queries/match_model/open_to_check.sql", by_hand_open)
+        .fetch_all(db)
+        .await
+}
+
+/// Keeps the application deadline read from match id's post.
+pub async fn save_deadline(db: &SqlitePool, id: i64, deadline: &str) -> sqlx::Result<()> {
+    sqlx::query!("UPDATE matches SET deadline = ?2 WHERE id = ?1", id, deadline)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
+/// Notes that match id's post was read by the still-open check at `at`.
+pub async fn mark_open_checked(db: &SqlitePool, id: i64, at: i64) -> sqlx::Result<()> {
+    sqlx::query!("UPDATE matches SET still_open_checked_at = ?2 WHERE id = ?1", id, at)
+        .execute(db)
+        .await?;
+    Ok(())
+}
+
+/// Marks match id's job closed at `at`, for why (still_open::Closed), unless it is already.
+pub async fn close(db: &SqlitePool, id: i64, why: &str, at: i64) -> sqlx::Result<()> {
+    sqlx::query!(
+        "UPDATE matches SET closed_at = ?3, closed_why = ?2 WHERE id = ?1 AND closed_at IS NULL",
+        id,
+        why,
+        at
+    )
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
+/// Marks match id open again, with closed_why by_hand_open so the check leaves it alone; false
+/// when there is no such match.
+pub async fn keep_open(db: &SqlitePool, id: i64, by_hand_open: &str) -> sqlx::Result<bool> {
+    let done = sqlx::query!(
+        "UPDATE matches SET closed_at = NULL, closed_why = ?2 WHERE id = ?1",
+        id,
+        by_hand_open
+    )
+    .execute(db)
+    .await?;
+    Ok(done.rows_affected() > 0)
 }
 
 /// Why matches `ids` were rejected, by match id, in the order ticked.
@@ -545,6 +645,11 @@ pub async fn find(db: &SqlitePool, id: i64) -> sqlx::Result<Option<SavedMatch>> 
         apply_instructions: apply_instructions::read(&row.job_text),
         job_text: row.job_text,
         earlier_versions: earlier_versions(db, id).await?,
+        opening: Opening {
+            deadline: row.deadline,
+            closed_at: row.closed_at,
+            closed_why: row.closed_why,
+        },
     }))
 }
 

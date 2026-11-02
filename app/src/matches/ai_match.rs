@@ -87,7 +87,10 @@ pub async fn ai_match(
             };
             let judged =
                 match_prompts::judge(llm, &job.job_title, &undecided, cv_text, profile.location.trim()).await?;
-            for verdict in judged {
+            // Only the requirements it was asked about: an id it made up, or one the taxonomy
+            // decided, would put its verdict on the wrong requirement.
+            let asked = |verdict: &match_prompts::Judged| undecided.iter().any(|unit| unit.id == verdict.id);
+            for verdict in judged.into_iter().filter(asked) {
                 verdicts.insert(
                     verdict.id,
                     Verdict {

@@ -247,6 +247,8 @@ impl<'a> FreeReader<'a> {
             company: String::new(),
             requirements,
             responsibilities: Vec::new(),
+            // Read from the title by seniority::with_level, as for a model's read.
+            level: String::new(),
         }
     }
 

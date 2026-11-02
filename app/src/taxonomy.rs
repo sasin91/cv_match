@@ -53,6 +53,9 @@ const WHOLE_QUERY_FACTOR: f64 = 2.0;
 /// Word lengths, in characters, from which a word may carry one or two typos.
 const ONE_TYPO_FROM: usize = 5;
 const TWO_TYPOS_FROM: usize = 9;
+/// The shortest word stem two words must share to count as the same word in other forms
+/// ("datamatiker" in "datamatikeruddannelse"), in characters.
+const MIN_SHARED_STEM_CHARS: usize = 4;
 
 /// Words that say nothing about which term a phrase is about. Kept short on purpose: a word
 /// missing from here only adds a little noise, while a skill word wrongly listed here could never
@@ -357,6 +360,19 @@ impl Taxonomy {
         out
     }
 
+    /// Whether phrase shares a word with one of term_id's labels, as it is or as the start of a
+    /// longer word ("datamatiker" and "Datamatikeruddannelse"); stopwords, qualifiers and words
+    /// shorter than MIN_SHARED_STEM_CHARS don't count. false for a term not in the taxonomy.
+    pub fn shares_word_stem(&self, phrase: &str, term_id: i64) -> bool {
+        let Some(term) = self.terms.iter().find(|term| term.id == term_id) else {
+            return false;
+        };
+        let phrase_words = self.content_words(phrase);
+        phrase_words
+            .iter()
+            .any(|word| term.keywords.iter().any(|label_word| same_stem(word, label_word)))
+    }
+
     /// Index words within the typo budget of `word`, for words the index does not contain as
     /// they are. Each comes with its distance.
     pub fn typo_neighbours(&self, word: &str) -> Vec<Candidate> {
@@ -501,6 +517,17 @@ impl Taxonomy {
             (n / df as f64).ln() / n.ln()
         }
     }
+}
+
+/// Whether two lowercase words are one word in two forms: the shorter, of at least
+/// MIN_SHARED_STEM_CHARS, starts the longer.
+fn same_stem(a: &str, b: &str) -> bool {
+    let (shorter, longer) = if a.chars().count() <= b.chars().count() {
+        (a, b)
+    } else {
+        (b, a)
+    };
+    shorter.chars().count() >= MIN_SHARED_STEM_CHARS && longer.starts_with(shorter)
 }
 
 /// Lowercase runs of letters and digits, æøå kept, NFC first.

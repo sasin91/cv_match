@@ -11,13 +11,13 @@ pub mod batch_row;
 pub mod cv_links;
 pub mod cvr;
 pub mod dates;
+pub mod disqualifier_notice;
 pub mod document_box;
 pub mod document_writer;
 pub mod free_reader;
 pub mod joblog;
 pub mod joblog_panel;
 pub mod llm_key;
-pub mod location_notice;
 pub mod match_documents;
 pub mod match_model;
 pub mod match_prompts;
@@ -34,6 +34,8 @@ pub mod reject_reason;
 pub mod resume_comparison;
 pub mod saved_match_row;
 pub mod score_cursor;
+pub mod seniority;
+pub mod still_open;
 pub mod tailored_resume;
 pub mod taxonomy_lessons;
 pub mod verdict_row;
@@ -55,6 +57,10 @@ pub struct Job {
     pub company: String,
     pub requirements: Vec<Requirement>,
     pub responsibilities: Vec<String>,
+    /// The career level the post states, one of seniority::LEVELS ("student", "senior"), or ""
+    /// when it states none (seniority::level_of).
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub level: String,
 }
 
 /// One thing a job post asks for. Requirements sharing an `alt_group` are alternatives

@@ -12,8 +12,8 @@ CREATE TABLE one_local_user_check (users INTEGER NOT NULL CHECK (users <= 1));
 INSERT INTO one_local_user_check (users) SELECT COUNT(*) FROM trongate_users;
 DROP TABLE one_local_user_check;
 
--- A saved match: the job post, its score and when it was rejected. Rows without a user (none
--- the app made) are kept too.
+-- A saved match: the job post, its score, when it was rejected, and whether its job is still
+-- open (0008_still_open). Rows without a user (none the app made) are kept too.
 CREATE TABLE matches_of_the_local_user (
   id INTEGER PRIMARY KEY,
   job_title TEXT NOT NULL,
@@ -25,11 +25,17 @@ CREATE TABLE matches_of_the_local_user (
   max_points INTEGER NOT NULL,
   tag TEXT NOT NULL,
   rejected_at INTEGER DEFAULT NULL,
-  created_at INTEGER NOT NULL
+  created_at INTEGER NOT NULL,
+  deadline TEXT DEFAULT NULL,
+  still_open_checked_at INTEGER DEFAULT NULL,
+  closed_at INTEGER DEFAULT NULL,
+  closed_why TEXT NOT NULL DEFAULT ''
 );
 INSERT INTO matches_of_the_local_user
-  (id, job_title, company, job_url, job_text, score, points, max_points, tag, rejected_at, created_at)
-SELECT id, job_title, company, job_url, job_text, score, points, max_points, tag, rejected_at, created_at
+  (id, job_title, company, job_url, job_text, score, points, max_points, tag, rejected_at, created_at,
+   deadline, still_open_checked_at, closed_at, closed_why)
+SELECT id, job_title, company, job_url, job_text, score, points, max_points, tag, rejected_at, created_at,
+       deadline, still_open_checked_at, closed_at, closed_why
 FROM matches;
 DROP TABLE matches;
 ALTER TABLE matches_of_the_local_user RENAME TO matches;

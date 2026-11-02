@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE matches SET deadline = ?2 WHERE id = ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "039376be34470a8ee0b656e08aebca6ceb31c05056dbaeda4e7ae349610015e8"
+}
