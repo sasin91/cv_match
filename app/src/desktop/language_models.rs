@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use iced::widget::{Column, button, column, container, pick_list, row, text, text_input};
+use iced::widget::{Column, button, checkbox, column, container, pick_list, row, text, text_input};
 use iced::{Center, Element, Fill, Task};
 
 use super::style;
@@ -13,6 +13,7 @@ use super::widgets::{self, CARD_PADDING, ROW_PADDING};
 use super::{GAP, Runner};
 use crate::account::account_model::{APPLICATION, JOB_EVALUATION, PROVIDERS, RESUME, USES, UseChoices};
 use crate::account::account_service::{self, AccountView, KeyForm, SaveKey};
+use crate::account::gaming_mode::GamingModeView;
 use crate::account::saved_key::{KeyChoice, KeyUse, SavedKey};
 use crate::account::task_model_row::TaskModelRow;
 use crate::dashboard::Health;
@@ -102,6 +103,8 @@ pub enum Msg {
         said: Result<String, String>,
         reload: bool,
     },
+    /// Gaming mode turned on or off; saved at once.
+    GamingMode(bool),
     /// Goes to the Local model screen.
     ShowLocalModel,
     /// What another screen's work came to, said here (a local model saved: pick its uses).
@@ -188,6 +191,17 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             let chosen = use_choices(&state.uses);
             return runner.run(
                 move |context| async move { account_service::save_uses(&context, &chosen).await.map(str::to_string) },
+                said(true),
+            );
+        }
+        Msg::GamingMode(on) => {
+            state.busy = true;
+            return runner.run(
+                move |context| async move {
+                    account_service::save_gaming_mode(&context, on)
+                        .await
+                        .map(str::to_string)
+                },
                 said(true),
             );
         }
@@ -383,10 +397,31 @@ pub fn view(state: &State) -> Element<'_, Msg> {
     if !view.key_uses.is_empty() {
         screen = screen.push(widgets::section("What the AI runs on", runs_on_card(view, state)));
     }
+    if let Some(gaming_mode) = &view.gaming_mode {
+        screen = screen.push(widgets::section("Gaming mode", gaming_mode_card(gaming_mode, state)));
+    }
     if view.saved.is_empty() || state.adding_key {
         screen = screen.push(widgets::section("Add a key", key_form(view, state)));
     }
     screen.into()
+}
+
+/// Gaming mode's switch, and what it does with the keys saved.
+fn gaming_mode_card<'a>(gaming_mode: &'a GamingModeView, state: &'a State) -> Element<'a, Msg> {
+    let switch = checkbox(gaming_mode.on)
+        .label("While I play a game, run the AI on my cloud key")
+        .on_toggle_maybe((!state.busy).then_some(Msg::GamingMode))
+        .size(16)
+        .text_size(style::BODY_SIZE)
+        .style(style::check_box);
+    let what = match &gaming_mode.cloud_key {
+        Some(cloud_key) => format!(
+            "While a game runs, the model on this computer lets go of the graphics card, and the AI's work (a job scan's posts too) goes to your {cloud_key} key, on its own model. Once the game ends, it runs here again."
+        ),
+        None => "Add an OpenAI or Claude key for it. Until then, a job scan waits while a game runs.".to_string(),
+    };
+    let body = column![switch, widgets::caption(what)].spacing(8);
+    widgets::card(container(body).padding(CARD_PADDING).into())
 }
 
 /// Which model to run the AI on, while no key is saved (model_advice).

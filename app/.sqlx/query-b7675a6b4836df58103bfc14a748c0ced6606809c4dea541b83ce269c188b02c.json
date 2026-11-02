@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO user_gaming_mode (trongate_user_id, offload) VALUES (?1, ?2)\n        ON CONFLICT (trongate_user_id) DO UPDATE SET offload = excluded.offload\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "b7675a6b4836df58103bfc14a748c0ced6606809c4dea541b83ce269c188b02c"
+}

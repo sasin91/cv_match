@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT offload FROM user_gaming_mode WHERE trongate_user_id = ?1",
+  "describe": {
+    "columns": [
+      {
+        "name": "offload",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "user_gaming_mode",
+            "name": "offload"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "8370e465d40049eedecbfaae54cdbde3a27e4fcbe10c4434c227d8b625fc40c0"
+}

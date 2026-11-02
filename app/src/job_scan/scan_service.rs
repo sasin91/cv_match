@@ -14,7 +14,8 @@
 //! dialog.
 //!
 //! It matches the posts as background work should: with a pause between two (each keeps the
-//! model busy for minutes), and waiting while the user plays a full-screen game (user_busy).
+//! model busy for minutes), and waiting while the user plays a game (user_busy), or going on with
+//! their cloud key meanwhile (gaming_mode).
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -28,7 +29,8 @@ use super::job_search_rules;
 use super::run_steps::{self, NewStep};
 use super::scan_lock;
 use super::search_service;
-use crate::account::account_model::{APPLICATION, JOB_EVALUATION, RESUME};
+use crate::account::account_model::{self, APPLICATION, JOB_EVALUATION, RESUME};
+use crate::account::gaming_mode::{self, StandIn};
 use crate::account::task_model;
 use crate::context::Context;
 use crate::job_sites::{JobSite, ListedPost};
@@ -40,6 +42,7 @@ use crate::matches::{Profile, llm_key, match_model, page_reader};
 use crate::profile;
 use crate::service_error::{ErrorKind, ServiceError};
 use crate::task_manager::running_work::{self, Stopped, WorkKind};
+use crate::user_busy;
 
 /// Search terms of a search read on each signed-in site (LinkedIn, Indeed) in one scan, at
 /// most: each is a page in JobFinder's signed-in browser, and those sites get few.
@@ -416,6 +419,8 @@ async fn scan_searches(context: &Arc<Context>, started: Started) -> Result<ScanR
 struct Matching {
     cv: Option<ProfileCv>,
     started_one: bool,
+    /// Gaming mode moved the posts to the cloud key for the game under way (said once per game).
+    in_the_cloud: bool,
     began: Instant,
     time_limit: Duration,
 }
@@ -425,6 +430,7 @@ impl Matching {
         Matching {
             cv: None,
             started_one: false,
+            in_the_cloud: false,
             began: Instant::now(),
             time_limit: started.time_limit(),
         }
@@ -436,7 +442,7 @@ impl Matching {
     async fn match_posts(&mut self, context: &Arc<Context>, post_ids: Vec<i64>, report: &mut ScanReport) -> bool {
         let count = post_ids.len();
         for (index, post_id) in post_ids.into_iter().enumerate() {
-            if let Err(why) = self.make_way().await {
+            if let Err(why) = self.make_way(context).await {
                 crate::say!("job_scan: {why}");
                 report.stopped = Some(why);
                 return false;
@@ -467,10 +473,11 @@ impl Matching {
     }
 
     /// Waits PAUSE_BETWEEN_POSTS after a post, then while the user is busy (user_busy), for at
-    /// most BUSY_GIVE_UP and never past the scan's time limit. Err says why the scan stops: out
-    /// of time (looked at before and after the waits), asked to stop (the task manager; at once),
-    /// or the user stayed busy.
-    async fn make_way(&mut self) -> Result<(), String> {
+    /// most BUSY_GIVE_UP and never past the scan's time limit; unless gaming mode moves the work
+    /// to the cloud key meanwhile, which goes on at once. Err says why the scan stops: out of time
+    /// (looked at before and after the waits), asked to stop (the task manager; at once), or the
+    /// user stayed busy.
+    async fn make_way(&mut self, context: &Context) -> Result<(), String> {
         let stopped = || Err(STOPPED_SCAN.to_string());
         if running_work::stop_asked() {
             return stopped();
@@ -484,11 +491,36 @@ impl Matching {
         }
         self.started_one = true;
         let left = self.time_left()?;
+        if self.goes_on_in_the_cloud(context).await {
+            return Ok(());
+        }
         tokio::select! {
-            free = crate::user_busy::wait_until_free(BUSY_GIVE_UP.min(left)) => free?,
+            free = user_busy::wait_until_free(BUSY_GIVE_UP.min(left)) => free?,
             () = running_work::until_stop_asked() => return stopped(),
         }
         self.time_left().map(|_| ())
+    }
+
+    /// Whether the user plays and gaming mode moves the posts to their cloud key, so the scan
+    /// needn't wait; said once per game. When that can't be told (logged), the scan waits.
+    async fn goes_on_in_the_cloud(&mut self, context: &Context) -> bool {
+        let stand_in = gaming_mode::stand_in_now(context).await.unwrap_or_else(|e| {
+            crate::log_line!("job_scan: gaming mode couldn't be looked up: {}", e.message);
+            None
+        });
+        let Some(StandIn { key, busy }) = stand_in else {
+            self.in_the_cloud = false;
+            return false;
+        };
+        if !self.in_the_cloud {
+            crate::say!(
+                "job_scan: {}, so the scan goes on with your {} key (gaming mode).",
+                user_busy::capitalized(&busy),
+                account_model::provider_label(&key.provider)
+            );
+        }
+        self.in_the_cloud = true;
+        true
     }
 
     /// The scan's time left, or Err (out_of_time) when there is none.
@@ -1676,15 +1708,19 @@ mod tests {
             time_limit: Duration::ZERO,
             ..Matching::new(Started::ByHand)
         };
-        let why = out_of_time.make_way().await.unwrap_err();
+        let db = crate::db::open_in_memory().await.unwrap();
+        let user_id = crate::server::local_user(&db).await.unwrap();
+        let taxonomy = Arc::new(crate::taxonomy::Taxonomy::load());
+        let context = Context::new(db, taxonomy, user_id, crate::account::key_vault::KeyVault::in_memory());
+        let why = out_of_time.make_way(&context).await.unwrap_err();
         assert!(why.starts_with("The scan ran for 0 minutes, its limit"), "{why}");
         let mut in_time = Matching::new(Started::ByHand);
-        assert_eq!(in_time.make_way().await, Ok(()));
+        assert_eq!(in_time.make_way(&context).await, Ok(()));
     }
 
     #[test]
     fn a_scan_stopped_for_a_game_says_so_whenever_it_stopped() {
-        let busy = "A full-screen app or game ran for 60 minutes, so the scan stopped.".to_string();
+        let busy = "A game or full-screen app ran for 60 minutes, so the scan stopped.".to_string();
         let before_searches = ScanReport {
             matched: 2,
             stopped: Some(busy.clone()),
