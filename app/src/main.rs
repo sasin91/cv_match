@@ -168,7 +168,8 @@ fn run_scan(args: &[String]) -> ExitCode {
             return ExitCode::FAILURE;
         }
     };
-    match runtime.block_on(scan_service::scan(Arc::new(context))) {
+    let started = runtime.block_on(scheduled_or_by_hand(&context));
+    match runtime.block_on(scan_service::scan(Arc::new(context), started)) {
         Ok(report) => {
             jobfinder::say!("{}", report.summary());
             ExitCode::SUCCESS
@@ -176,6 +177,21 @@ fn run_scan(args: &[String]) -> ExitCode {
         Err(e) => {
             jobfinder::log_line!("The job scan couldn't run: {}", e.message);
             ExitCode::FAILURE
+        }
+    }
+}
+
+/// Who `jobfinder scan` runs for: the schedule while its task is registered (the task runs it),
+/// so a search scanned by hand since the schedule's last scan waits for its next; else by hand.
+async fn scheduled_or_by_hand(context: &Context) -> scan_service::Started {
+    match context.scan_schedule.interval_hours().await {
+        Ok(Some(every_hours)) => scan_service::Started::BySchedule { every_hours },
+        Ok(None) => scan_service::Started::ByHand,
+        Err(why) => {
+            jobfinder::log_line!(
+                "The job scan's schedule couldn't be read ({why}), so searches scanned within the hour are skipped."
+            );
+            scan_service::Started::ByHand
         }
     }
 }
