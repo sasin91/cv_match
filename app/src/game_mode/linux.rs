@@ -6,7 +6,7 @@ use zbus::blocking::fdo::DBusProxy;
 use zbus::blocking::{Connection, Proxy};
 use zbus::names::BusName;
 
-use super::{Busy, steam};
+use super::{Playing, steam};
 
 /// Where Steam keeps registry.vdf under the home folder: installed from the distribution's
 /// packages, as a Flatpak, and as a Snap.
@@ -24,7 +24,7 @@ const GAME_MODE_PATH: &str = "/com/feralinteractive/GameMode";
 const GAME_MODE_INTERFACE: &str = "com.feralinteractive.GameMode";
 
 /// The game Steam runs, by the first registry.vdf that names one; none without Steam.
-pub fn steam_game() -> Result<Option<Busy>, String> {
+pub fn steam_game() -> Result<Option<Playing>, String> {
     let Some(home) = std::env::var_os("HOME").map(PathBuf::from) else {
         return Ok(None);
     };
@@ -32,8 +32,8 @@ pub fn steam_game() -> Result<Option<Busy>, String> {
         let Ok(vdf) = std::fs::read_to_string(&file) else {
             continue;
         };
-        if let Some(busy) = steam::running_app_id(&vdf).and_then(steam::busy_for) {
-            return Ok(Some(busy));
+        if let Some(playing) = steam::running_app_id(&vdf).and_then(steam::playing_for) {
+            return Ok(Some(playing));
         }
     }
     Ok(None)
@@ -42,7 +42,7 @@ pub fn steam_game() -> Result<Option<Busy>, String> {
 /// The games gamemode runs for; none when it isn't running, or there's no session bus (a
 /// scheduled scan without a desktop). gamemoded is started by D-Bus when it's called, so it is
 /// only asked once it is there.
-pub fn game_mode() -> Result<Option<Busy>, String> {
+pub fn feral_game_mode() -> Result<Option<Playing>, String> {
     let Ok(connection) = Connection::session() else {
         return Ok(None);
     };
@@ -54,7 +54,7 @@ pub fn game_mode() -> Result<Option<Busy>, String> {
     let games: i32 = proxy
         .get_property("ClientCount")
         .map_err(|e| format!("gamemode didn't say how many games it runs: {e}"))?;
-    Ok((games > 0).then_some(Busy::GameMode { games }))
+    Ok((games > 0).then_some(Playing::GameMode { games }))
 }
 
 /// Whether gamemoded is on the session bus now.

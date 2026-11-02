@@ -8,13 +8,13 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::account_model::{self, PROVIDERS, Saved, UseChoices};
-use super::gaming_mode::{self, GamingModeView};
 use super::llama_panel::LlamaPanel;
 use super::model_advice::ModelAdvice;
 use super::saved_key::{self, KeyUse, SavedKey};
 use super::task_model::{self, KEYS_OWN_MODEL, TASKS};
 use super::task_model_row::{self, TaskModelRow};
 use crate::context::Context;
+use crate::game_mode::stand_in::{self, WhilePlaying};
 use crate::llama;
 use crate::llm::{self, ANTHROPIC, Effort, LLAMA_CPP, LOCAL, OPENAI};
 use crate::service_error::{ErrorKind, ServiceError};
@@ -88,8 +88,8 @@ pub struct AccountView {
     pub advice: ModelAdvice,
     /// The setup wizard isn't finished, so the page links back to it.
     pub setup_unfinished: bool,
-    /// Gaming mode, when a saved key runs on this computer.
-    pub gaming_mode: Option<GamingModeView>,
+    /// What happens while a game runs, when a saved key runs on this computer.
+    pub while_playing: Option<WhilePlaying>,
 }
 
 /// What came of the key form.
@@ -157,23 +157,6 @@ pub async fn save_uses(context: &Context, chosen: &UseChoices) -> Result<&'stati
             )
         })?;
     Ok("Saved which key each use runs on.")
-}
-
-/// Turns gaming mode on or off, and says so.
-pub async fn save_gaming_mode(context: &Context, on: bool) -> Result<&'static str, ServiceError> {
-    gaming_mode::set_on(context.db(), context.user_id, on)
-        .await
-        .map_err(|e| {
-            ServiceError::internal(
-                "account/save_gaming_mode",
-                format!("Gaming mode couldn't be saved: {e}"),
-            )
-        })?;
-    Ok(if on {
-        "Gaming mode is on: while you play, the AI's work goes to your cloud key."
-    } else {
-        "Gaming mode is off: while you play, a job scan waits until the game ends."
-    })
 }
 
 /// Runs each (task, model) chosen (a task's name in task_model::TASKS, and a model name or file;
@@ -267,7 +250,7 @@ pub async fn account_view(context: &Context, typed: Option<&KeyForm>) -> Result<
     let saved_models = task_model::saved(context.db(), context.user_id).await?;
     let downloaded = llama::model_files(context.llama.as_ref());
     let setup_unfinished = setup::first_run_or_logged(context).await;
-    let gaming_mode = gaming_mode::view(&saved, gaming_mode::is_on(context.db(), context.user_id).await?);
+    let while_playing = stand_in::while_playing(&saved);
     let advice = ModelAdvice::from(context.llama.as_ref());
     let provider = typed
         .map(|form| form.provider.as_str())
@@ -299,7 +282,7 @@ pub async fn account_view(context: &Context, typed: Option<&KeyForm>) -> Result<
         llama: context.llama.as_ref().map(|server| LlamaPanel::from(server.overview())),
         advice,
         setup_unfinished,
-        gaming_mode,
+        while_playing,
     })
 }
 

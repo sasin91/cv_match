@@ -3,16 +3,16 @@
 //! gets its model from llm() here; only the API key page's Check runs on a key's own model. The
 //! desktop app has no server key to fall back to, so without a key for that use the page is told
 //! why and pointed to the API key page. While the user plays, a task that would run on this
-//! computer runs on their cloud key instead (gaming_mode).
+//! computer runs on their cloud key instead (game_mode::stand_in).
 
 use std::time::Duration;
 
 use super::match_documents::Uses;
 use crate::account::account_model::{self, APPLICATION, JOB_EVALUATION, KeyFor, RESUME, USES};
-use crate::account::gaming_mode::{self, StandIn};
 use crate::account::llama_setup_service;
 use crate::account::task_model::{self, Task};
 use crate::context::Context;
+use crate::game_mode::stand_in::{self, StandIn};
 use crate::llama;
 use crate::llm::{LLAMA_CPP, Llm};
 use crate::service_error::{ErrorKind, ServiceError};
@@ -45,7 +45,7 @@ pub async fn llm(context: &Context, task: &Task) -> Result<KeyedLlm, ServiceErro
     let Some(key) = llm_settings(context, use_).await? else {
         return Err(ServiceError::need_key(missing_key_message(context, use_).await?));
     };
-    let key = match gaming_mode::stand_in_for(context, &key).await? {
+    let key = match stand_in::for_key(context, &key).await? {
         Some(stand_in) => moved_while_gaming(context, task, stand_in).await,
         None => KeyFor {
             model: task_model_of(context, task, &key).await?,
@@ -62,13 +62,13 @@ pub async fn llm(context: &Context, task: &Task) -> Result<KeyedLlm, ServiceErro
     Ok(KeyedLlm { llm, written_by })
 }
 
-/// The cloud key task runs on while the user plays (gaming_mode), on that key's own model: the
+/// The cloud key task runs on while a game runs (game_mode::stand_in), on that key's own model: the
 /// models saved for the task are this computer's key's. llama-server is stopped when no call
 /// needs it anymore, so the game gets the graphics card back.
 async fn moved_while_gaming(context: &Context, task: &Task, stand_in: StandIn) -> KeyFor {
-    let StandIn { key, busy } = stand_in;
+    let StandIn { key, playing } = stand_in;
     crate::log_line!(
-        "gaming mode: {busy}, so {} runs on {}/{}.",
+        "game mode: {playing}, so {} runs on {}/{}.",
         lowercase_first(task.label),
         key.provider,
         key.model
@@ -76,7 +76,7 @@ async fn moved_while_gaming(context: &Context, task: &Task, stand_in: StandIn) -
     if let Some(llama) = &context.llama
         && let Some(model) = llama.stop_if_idle(Duration::ZERO).await
     {
-        crate::say!("gaming mode: llama-server stopped ({model}), so the game has the graphics card.");
+        crate::say!("game mode: llama-server stopped ({model}), so the game has the graphics card.");
     }
     key
 }

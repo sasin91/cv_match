@@ -2,7 +2,7 @@
 //! in the registry (windows), Linux in Steam's registry.vdf (linux reads the file, running_app_id
 //! reads the number from it).
 
-use super::Busy;
+use super::Playing;
 
 /// Steam's app ID while no game runs.
 const NO_APP: u32 = 0;
@@ -11,10 +11,10 @@ const NO_APP: u32 = 0;
 /// Wallpaper Engine (431960), which draws the desktop background.
 const NOT_GAMES: [u32; 1] = [431_960];
 
-/// The Busy app_id says: None for NO_APP and NOT_GAMES.
-pub fn busy_for(app_id: u32) -> Option<Busy> {
+/// The Playing app_id says: None for NO_APP and NOT_GAMES.
+pub fn playing_for(app_id: u32) -> Option<Playing> {
     let gaming = app_id != NO_APP && !NOT_GAMES.contains(&app_id);
-    gaming.then_some(Busy::Steam { app_id })
+    gaming.then_some(Playing::Steam { app_id })
 }
 
 /// The RunningAppID in a registry.vdf's text (`"RunningAppID" "570"`, tabs between), or None
@@ -64,8 +64,8 @@ mod tests {
 
     #[test]
     fn only_a_game_counts() {
-        assert_eq!(busy_for(570), Some(Busy::Steam { app_id: 570 }));
-        assert_eq!(busy_for(NO_APP), None);
-        assert_eq!(busy_for(431_960), None);
+        assert_eq!(playing_for(570), Some(Playing::Steam { app_id: 570 }));
+        assert_eq!(playing_for(NO_APP), None);
+        assert_eq!(playing_for(431_960), None);
     }
 }

@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use sqlx::SqlitePool;
 
 use crate::account::key_vault::KeyVault;
+use crate::game_mode::GameMode;
 use crate::job_sites::signed_in::SignedInBrowser;
 use crate::laya::laya_client::LayaClient;
 use crate::llama::llama_server::LlamaServer;
@@ -52,6 +53,8 @@ pub struct Context {
     pub signed_in: Option<SignedInBrowser>,
     /// The work running now, for the task manager (task_manager::running_work).
     pub running: Arc<RunningWork>,
+    /// Whether a game runs, as last looked (game_mode).
+    pub game_mode: GameMode,
 }
 
 /// The database file the app runs on.
@@ -80,6 +83,7 @@ impl Context {
             scan_in_memory: AtomicBool::new(false),
             signed_in: None,
             running: Arc::default(),
+            game_mode: GameMode::default(),
         }
     }
 

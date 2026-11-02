@@ -17,7 +17,7 @@ use windows::Win32::UI::Shell::{
 use windows::Win32::UI::WindowsAndMessaging::{GetForegroundWindow, GetWindowThreadProcessId};
 use windows::core::{HSTRING, PCWSTR, PWSTR};
 
-use super::{Busy, steam};
+use super::{Playing, steam};
 
 /// The Game Bar's games, one key each, under the user's registry.
 const GAME_BAR_GAMES: &str = r"System\GameConfigStore\Children";
@@ -33,32 +33,32 @@ const LONGEST_PATH: usize = 32_768;
 const LONGEST_KEY_NAME: usize = 256;
 
 /// Whether Windows holds back notifications for a full-screen game, presentation or app.
-pub fn full_screen() -> Result<Option<Busy>, String> {
+pub fn full_screen() -> Result<Option<Playing>, String> {
     // SAFETY: takes nothing and returns the state by value.
     let state = unsafe { SHQueryUserNotificationState() }.map_err(|e| e.to_string())?;
     let busy = [QUNS_BUSY, QUNS_RUNNING_D3D_FULL_SCREEN, QUNS_PRESENTATION_MODE].contains(&state);
-    Ok(busy.then_some(Busy::FullScreen))
+    Ok(busy.then_some(Playing::FullScreen))
 }
 
 /// Whether the app in front is one of the Game Bar's games; none without a window in front, or
 /// one whose program can't be read (another user's, or the system's).
-pub fn known_game_in_front() -> Result<Option<Busy>, String> {
+pub fn known_game_in_front() -> Result<Option<Playing>, String> {
     let Some(program) = program_in_front() else {
         return Ok(None);
     };
     let known = game_bar_programs()?
         .iter()
         .any(|game| game.eq_ignore_ascii_case(&program));
-    Ok(known.then(|| Busy::KnownGame {
+    Ok(known.then(|| Playing::KnownGame {
         program: file_name(&program),
     }))
 }
 
 /// The game Steam runs, by its RunningAppID; none without Steam.
-pub fn steam_game() -> Result<Option<Busy>, String> {
+pub fn steam_game() -> Result<Option<Playing>, String> {
     let app_id = read_dword(HKEY_CURRENT_USER, STEAM_KEY, STEAM_RUNNING_APP)
         .map_err(|e| format!("Steam's RunningAppID couldn't be read: {}", described(e)))?;
-    Ok(app_id.and_then(steam::busy_for))
+    Ok(app_id.and_then(steam::playing_for))
 }
 
 /// The program file of the window in front.

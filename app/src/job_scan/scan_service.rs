@@ -14,8 +14,8 @@
 //! dialog.
 //!
 //! It matches the posts as background work should: with a pause between two (each keeps the
-//! model busy for minutes), and waiting while the user plays a game (user_busy), or going on with
-//! their cloud key meanwhile (gaming_mode).
+//! model busy for minutes), and waiting while a game runs (game_mode), or going on with their cloud
+//! key meanwhile (game_mode::stand_in).
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -30,9 +30,12 @@ use super::run_steps::{self, NewStep};
 use super::scan_lock;
 use super::search_service;
 use crate::account::account_model::{self, APPLICATION, JOB_EVALUATION, RESUME};
-use crate::account::gaming_mode::{self, StandIn};
 use crate::account::task_model;
 use crate::context::Context;
+use crate::game_mode::{
+    self,
+    stand_in::{self, StandIn},
+};
 use crate::job_sites::{JobSite, ListedPost};
 use crate::llm::transcript::{self, Exchange};
 use crate::llm::{Effort, OPENAI};
@@ -42,7 +45,6 @@ use crate::matches::{Profile, llm_key, match_model, page_reader};
 use crate::profile;
 use crate::service_error::{ErrorKind, ServiceError};
 use crate::task_manager::running_work::{self, Stopped, WorkKind};
-use crate::user_busy;
 
 /// Search terms of a search read on each signed-in site (LinkedIn, Indeed) in one scan, at
 /// most: each is a page in JobFinder's signed-in browser, and those sites get few.
@@ -419,7 +421,7 @@ async fn scan_searches(context: &Arc<Context>, started: Started) -> Result<ScanR
 struct Matching {
     cv: Option<ProfileCv>,
     started_one: bool,
-    /// Gaming mode moved the posts to the cloud key for the game under way (said once per game).
+    /// The cloud key stands in for the game under way (said once per game).
     in_the_cloud: bool,
     began: Instant,
     time_limit: Duration,
@@ -472,9 +474,9 @@ impl Matching {
         true
     }
 
-    /// Waits PAUSE_BETWEEN_POSTS after a post, then while the user is busy (user_busy), for at
-    /// most BUSY_GIVE_UP and never past the scan's time limit; unless gaming mode moves the work
-    /// to the cloud key meanwhile, which goes on at once. Err says why the scan stops: out of time
+    /// Waits PAUSE_BETWEEN_POSTS after a post, then while a game runs (game_mode), for at
+    /// most BUSY_GIVE_UP and never past the scan's time limit; unless the cloud key stands in
+    /// meanwhile (stand_in), which goes on at once. Err says why the scan stops: out of time
     /// (looked at before and after the waits), asked to stop (the task manager; at once), or the
     /// user stayed busy.
     async fn make_way(&mut self, context: &Context) -> Result<(), String> {
@@ -495,27 +497,27 @@ impl Matching {
             return Ok(());
         }
         tokio::select! {
-            free = user_busy::wait_until_free(BUSY_GIVE_UP.min(left)) => free?,
+            free = context.game_mode.wait_until_over(BUSY_GIVE_UP.min(left)) => free?,
             () = running_work::until_stop_asked() => return stopped(),
         }
         self.time_left().map(|_| ())
     }
 
-    /// Whether the user plays and gaming mode moves the posts to their cloud key, so the scan
+    /// Whether a game runs and the cloud key stands in (stand_in), so the scan
     /// needn't wait; said once per game. When that can't be told (logged), the scan waits.
     async fn goes_on_in_the_cloud(&mut self, context: &Context) -> bool {
-        let stand_in = gaming_mode::stand_in_now(context).await.unwrap_or_else(|e| {
-            crate::log_line!("job_scan: gaming mode couldn't be looked up: {}", e.message);
+        let stand_in = stand_in::now(context).await.unwrap_or_else(|e| {
+            crate::log_line!("job_scan: the cloud key for games couldn't be looked up: {}", e.message);
             None
         });
-        let Some(StandIn { key, busy }) = stand_in else {
+        let Some(StandIn { key, playing }) = stand_in else {
             self.in_the_cloud = false;
             return false;
         };
         if !self.in_the_cloud {
             crate::say!(
-                "job_scan: {}, so the scan goes on with your {} key (gaming mode).",
-                user_busy::capitalized(&busy),
+                "job_scan: {}, so the scan goes on with your {} key.",
+                game_mode::capitalized(&playing),
                 account_model::provider_label(&key.provider)
             );
         }

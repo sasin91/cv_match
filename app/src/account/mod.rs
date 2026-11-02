@@ -11,7 +11,6 @@
 
 pub mod account_model;
 pub mod account_service;
-pub mod gaming_mode;
 pub mod key_vault;
 pub mod llama_panel;
 pub mod llama_setup;
@@ -179,8 +178,8 @@ async fn page(state: &AppState, typed: Option<&KeyForm>, errors: Vec<String>) ->
         llama,
         advice,
         setup_unfinished,
-        // The window's Language models screen has the switch; the web pages are going.
-        gaming_mode: _,
+        // Only the window's Language models screen says it; the web pages are going.
+        while_playing: _,
     } = view;
     let page = AccountPage {
         flash: state.take_flash(),
