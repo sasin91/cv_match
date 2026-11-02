@@ -921,14 +921,18 @@ fn applying(state: &mut State, id: i64, view: u64, msg: ApplyMsg, runner: &Runne
     task.map(move |msg| Msg::Apply(id, view, msg))
 }
 
-/// The results on screen of saved match id: the last match's, and the one open on its page.
+/// The results of saved match id the window holds: the last match's, the one open on its page,
+/// and the ranked rows kept while another is open, so an answer to a read or save that one
+/// started still reaches it.
 fn results_of(state: &mut State, id: i64) -> impl Iterator<Item = &mut Shown> {
     let saved = state.saved.as_mut().and_then(|saved| saved.as_mut().ok());
+    let kept = state.ranked_shown.iter_mut().flatten();
     state
         .fresh
         .as_mut()
         .into_iter()
         .chain(saved)
+        .chain(kept)
         .filter(move |shown| shown.result.saved_id == Some(id))
 }
 
