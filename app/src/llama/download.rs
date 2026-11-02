@@ -429,10 +429,12 @@ async fn download_file(client: &reqwest::Client, url: &str, to: &Path, downloads
     if running_work::stop_asked() {
         return Err(Stopped::SAID.to_string());
     }
-    let Some(mut response) = get_from(client, url, 0).await? else {
+    let Some(mut response) = get_from(client, url, 0, None).await? else {
         return Err(format!("{url} couldn't be downloaded: the server sent nothing."));
     };
     let mut total = response.content_length();
+    // What the server says this version of the file is, so a resume gets the rest of this one.
+    let mut version = version_of(&response);
     let part = part_path(to);
     let mut file = tokio::fs::File::create(&part)
         .await
@@ -448,7 +450,7 @@ async fn download_file(client: &reqwest::Client, url: &str, to: &Path, downloads
             if running_work::stop_asked() {
                 return Err(Stopped::SAID.to_string());
             }
-            let Some(rest) = get_from(client, url, done).await? else {
+            let Some(rest) = get_from(client, url, done, version.as_ref()).await? else {
                 // Nothing after done: it all came before the pause.
                 break;
             };
@@ -461,6 +463,7 @@ async fn download_file(client: &reqwest::Client, url: &str, to: &Path, downloads
                     .map_err(|e| format!("Couldn't write {}: {e}", part.display()))?;
                 done = 0;
                 total = response.content_length();
+                version = version_of(&response);
                 downloads.set_bytes(done, total);
             }
         }
@@ -489,12 +492,35 @@ async fn download_file(client: &reqwest::Client, url: &str, to: &Path, downloads
         .map_err(|e| format!("Couldn't move {} to {}: {e}", part.display(), to.display()))
 }
 
+/// What a response says its file's version is, for If-Range: its ETag when that is a strong one,
+/// else when it was last modified. None when it says neither.
+fn version_of(response: &reqwest::Response) -> Option<reqwest::header::HeaderValue> {
+    let headers = response.headers();
+    let strong_etag = headers
+        .get(reqwest::header::ETAG)
+        .filter(|etag| !etag.as_bytes().starts_with(b"W/"));
+    strong_etag
+        .or_else(|| headers.get(reqwest::header::LAST_MODIFIED))
+        .cloned()
+}
+
 /// The answer to a GET of url, from byte from on (the whole of it from 0); None when there is
-/// nothing from there on (416, the file ends at from).
-async fn get_from(client: &reqwest::Client, url: &str, from: u64) -> Result<Option<reqwest::Response>, String> {
+/// nothing from there on (416, the file ends at from). From a byte on only while the file is
+/// still version (If-Range): a file changed meanwhile (a model updated on Hugging Face) comes
+/// whole (200), so its new end isn't added to the old start. Without a version it comes whole.
+async fn get_from(
+    client: &reqwest::Client,
+    url: &str,
+    from: u64,
+    version: Option<&reqwest::header::HeaderValue>,
+) -> Result<Option<reqwest::Response>, String> {
     let mut request = client.get(url);
-    if from > 0 {
-        request = request.header(reqwest::header::RANGE, format!("bytes={from}-"));
+    if from > 0
+        && let Some(version) = version
+    {
+        request = request
+            .header(reqwest::header::RANGE, format!("bytes={from}-"))
+            .header(reqwest::header::IF_RANGE, version.clone());
     }
     let response = request
         .send()
