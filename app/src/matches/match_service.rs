@@ -611,6 +611,54 @@ pub struct MatchAsk<'a> {
     pub read_cv: Option<&'a ReadCv>,
 }
 
+/// Most job posts compared against one CV in one go (match_jobs, and the match page).
+pub const MAX_JOBS: usize = 10;
+
+/// A job post of several matched with one CV: its text or a link to it, and a link to it.
+pub struct JobAsk {
+    pub job_text: String,
+    pub job_url: String,
+}
+
+/// Matches each of jobs with one CV in turn (match_job), saying "Job 2 of 3: …" for each step.
+/// The CV is read once, for the first post that gets that far. A post that fails gives its
+/// error, and the rest carry on.
+pub async fn match_jobs(
+    context: &Context,
+    jobs: &[JobAsk],
+    cv_text: &str,
+    read_cv: Option<ReadCv>,
+    say: Say<'_>,
+) -> Result<Vec<Result<MatchAnswer, ServiceError>>, ServiceError> {
+    if jobs.len() > MAX_JOBS {
+        return Err(ServiceError::new(
+            ErrorKind::Invalid,
+            format!("Compare up to {MAX_JOBS} job posts at a time."),
+        ));
+    }
+    let mut read_cv = read_cv;
+    let mut answers = Vec::with_capacity(jobs.len());
+    for (index, job) in jobs.iter().enumerate() {
+        let step = format!("Job {} of {}: ", index + 1, jobs.len());
+        let say_step = |line: &str| say(&format!("{step}{line}"));
+        let ask = MatchAsk {
+            job_text: &job.job_text,
+            job_url: &job.job_url,
+            cv_text,
+            read_cv: read_cv.as_ref(),
+        };
+        let answer = match_job(context, ask, &say_step).await;
+        if let Ok(MatchAnswer {
+            read_cv: Some(read), ..
+        }) = &answer
+        {
+            read_cv = Some(read.clone());
+        }
+        answers.push(answer);
+    }
+    Ok(answers)
+}
+
 /// What match_job came to.
 #[derive(Debug)]
 pub struct MatchAnswer {

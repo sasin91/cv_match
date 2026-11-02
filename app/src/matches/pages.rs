@@ -29,9 +29,6 @@ use crate::dashboard::{self, Dashboard, Findings};
 use crate::profile;
 use crate::server::AppState;
 
-/// Most job posts the page compares against one CV in one go.
-const MAX_JOBS: usize = 10;
-
 type Answer = Result<Response, PageError>;
 
 fn html(page: impl Template) -> Answer {
@@ -210,7 +207,7 @@ async fn match_page(state: &AppState, query: &ListQuery, open_id: Option<i64>) -
         ai_uses_json:
             json!({ "resume": uses.resume, "application": uses.application, "job_evaluation": uses.job_evaluation })
                 .to_string(),
-        max_jobs: MAX_JOBS,
+        max_jobs: match_service::MAX_JOBS,
         open_id_json: json!(open_id).to_string(),
         profile_text: profile::text_for_user(context.db(), context.user_id).await?,
         list_tabs: list_tabs(saved.list),
