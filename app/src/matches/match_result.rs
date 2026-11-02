@@ -1,4 +1,4 @@
-//! A match as the page prints its result (templates/match/result.html): the score in its ring, the
+//! A match as the Match screen prints its result: the score in its ring, the
 //! job, how the score is made up, a location the candidate likely misses, what the post asks of
 //! applicants, the Reject button of a saved match, the requirements by group with their verdicts
 //! and a filter by verdict, the soft skills, Laya's reading and, for a saved match, the application

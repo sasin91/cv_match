@@ -12,7 +12,7 @@ One folder for Chrome, Edge and Firefox (Manifest V3). No build step.
 
 It talks to the JobFinder desktop app (`app/` in this repo) on this computer,
 http://127.0.0.1:8765/, which ships this folder: the app's "Jobnet extension"
-page says where it wrote it and how to load it in Edge or Chrome ("Load
+screen (under Settings) says where it wrote it and how to load it in Edge or Chrome ("Load
 unpacked"). The `key` in manifest.json fixes the extension's ID
 (jijhihfppobcoconjjllmffbohpffbll), which is how the app knows the changes it
 sends come from this extension. Firefox gives each install its own ID, so it
@@ -66,7 +66,7 @@ extension's toolbar button: the popup names the page, lets you pick the job
 search to add it to (the last one picked comes first; with one search there is
 nothing to pick) and Send adds it, from the page's HTML as your browser shows it
 (`job_scan/submit_page`). JobFinder matches it like a post its scan found, and
-it shows on that search's page. The extension reads the page only when you
+it shows under that search on the Job searches screen. The extension reads the page only when you
 press the button (activeTab), and puts nothing into the sites' pages.
 
 ## How it works

@@ -1,4 +1,4 @@
-//! A job search as a card of the list of searches (templates/job_scan/index.html), as
+//! A job search as a card of the list of searches (the Job searches screen), as
 //! recruiter's Job_search_card shapes it.
 
 use super::job_scan_model::ListedSearch;

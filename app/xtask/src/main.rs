@@ -1,21 +1,18 @@
 //! The app's developer commands, run through the aliases in app/.cargo/config.toml.
 //!
 //!   cargo dev [jobfinder options]
-//!       builds the app and starts it with --dev under watchexec, which rebuilds and restarts it
-//!       on every change to its code, templates, queries, assets or extension. The window opens
-//!       again with each restart, and a web page open in the browser reloads itself
-//!       (src/dev_reload.rs). With --no-browser only the server runs, for work on the pages.
-//!       Ctrl+C stops it.
+//!       builds the app and starts it under watchexec, which rebuilds and restarts it on every
+//!       change to its code, queries, assets or extension. The window opens again with each
+//!       restart. Ctrl+C stops it.
 
 use std::path::{Path, PathBuf};
 use std::process::{Command, ExitCode};
 
-const USAGE: &str = "usage: cargo dev [jobfinder options, such as --database <file> or --no-browser]";
+const USAGE: &str = "usage: cargo dev [jobfinder options, such as --database <file>]";
 
 /// What restarts the app when it changes, relative to app/.
 const WATCHED: &[&str] = &[
     "src",
-    "templates",
     "queries",
     "migrations",
     ".sqlx",
@@ -64,14 +61,14 @@ fn app_folder() -> PathBuf {
     Path::new(env!("CARGO_MANIFEST_DIR")).join("..")
 }
 
-/// watchexec's arguments: restart on any change to WATCHED, running the app's debug build with
-/// --dev (its window, unless the options say --no-browser or --browser) and the given options (no shell, so they reach it as they are).
+/// watchexec's arguments: restart on any change to WATCHED, running the app's debug build with the
+/// given options (no shell, so they reach it as they are).
 fn watchexec_args(app_args: &[String]) -> Vec<String> {
     let mut args = vec!["--restart".to_string(), "--shell=none".to_string()];
     for path in WATCHED {
         args.extend(["--watch".to_string(), path.to_string()]);
     }
-    args.extend(["--", "cargo", "run", "--", "--dev"].map(str::to_string));
+    args.extend(["--", "cargo", "run", "--"].map(str::to_string));
     args.extend(app_args.iter().cloned());
     args
 }
@@ -85,9 +82,9 @@ mod tests {
     }
 
     #[test]
-    fn the_app_options_go_on_after_dev() {
+    fn the_app_options_go_on_after_cargo_run() {
         let args = watchexec_args(&strings(&["--database", "dev.sqlite"]));
-        let tail = &args[args.len() - 3..];
-        assert_eq!(tail, strings(&["--dev", "--database", "dev.sqlite"]));
+        let tail = &args[args.len() - 4..];
+        assert_eq!(tail, strings(&["run", "--", "--database", "dev.sqlite"]));
     }
 }

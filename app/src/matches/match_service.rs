@@ -54,8 +54,6 @@ const HISTORY_SIZE: usize = 50;
 /// A batch of a list's saved matches, best first.
 pub struct SavedMatchList {
     pub matches: Vec<SavedMatchRow>,
-    /// The list shown (match_model::LISTS), the shortlist when the one asked for isn't known.
-    pub list: &'static str,
     /// The cursor of the next batch, when there is one.
     pub next_after: Option<String>,
 }
@@ -71,7 +69,6 @@ pub async fn saved_matches(context: &Context, list: Option<&str>, after: &str) -
     let found = match_model::best_first(context.db(), context.user_id, PER_PAGE, after, list).await?;
     Ok(SavedMatchList {
         matches: found.rows.iter().map(SavedMatchRow::from).collect(),
-        list,
         next_after: found.next,
     })
 }
