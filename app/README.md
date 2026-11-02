@@ -85,8 +85,8 @@ no Laya service or Python is needed. It needs the exported English checkpoint in
 
 that is, the checkpoint folder and the two files `export.py` writes (see
 `../laya-server/README.md`, "One-time: export the model"). Without `laya.onnx` there, the app
-says so at start and the matches go on without a Laya line. The model loads in the background at start (a few seconds, about 1.5 GB of memory); a match made
-before then waits for it. When it can't load or answer, the result says why under the score and
+says so at start and the matches go on without a Laya line. The model loads with the first match that needs it (a few seconds, about 1.5 GB of memory), and
+is let go again after five minutes unused, so the app left open holds no model. When it can't load or answer, the result says why under the score and
 the log has it too; the score doesn't depend on it. There is no per-visitor limit: the model
 answers only you.
 
@@ -209,3 +209,17 @@ fetched, and requests from other sites. `tests/llm.rs` calls each adapter agains
 127.0.0.1 and checks the request it sends and how it reads the answers and failures.
 
 CI (`.github/workflows/app.yml`) runs fmt, clippy and the tests on Windows, and checks `.sqlx/` is what the queries are.
+
+## Running in the background
+
+JobFinder is meant to sit in the background without getting in the way:
+
+- llama-server starts on the first call that needs the local model and stops after five minutes
+  unused; Laya's model loads and unloads the same way (`src/idle.rs`).
+- llama-server runs at below-normal priority on half the processor's cores, one request at a
+  time, and llama.cpp puts as many layers on the graphics card as fit in its free memory, so the
+  model isn't spilled into shared memory. The headless browser of the job scan runs at
+  below-normal priority too, and the scheduled scan runs below normal anyway.
+- The job scan pauses ten seconds between posts, and waits while a full-screen game or
+  presentation runs (Windows' "do not disturb" state, `src/user_busy.rs`). After an hour of that
+  it stops, and the next scan matches the posts left.

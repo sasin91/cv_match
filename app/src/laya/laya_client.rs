@@ -11,16 +11,21 @@
 //! laya.onnx.data. Without laya.onnx there, from_folder() gives None and the match goes on
 //! without Laya.
 //!
+//! The model is loaded by the first match that needs it, and let go again once it has sat unused
+//! for a while (unload_if_idle, which crate::idle calls), so the app holds its 1.7 GB of weights
+//! only while it matches.
+//!
 //! Laya_limit isn't ported: it kept one visitor from queueing everyone else behind the shared
 //! Laya pod, and here the model answers only its own user.
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
+use std::time::{Duration, Instant};
 
 use laya_server::agent::{Laya, PredictError};
 use serde::Serialize;
 use serde_json::{Map, Value, json};
-use tokio::sync::OnceCell;
+use tokio::sync::Mutex;
 
 use crate::matches::match_score;
 
@@ -62,18 +67,29 @@ pub struct LayaReading {
 /// Where loading Laya's model stands.
 #[derive(Debug, Clone, PartialEq)]
 pub enum LayaState {
-    /// Not loaded yet: loading in the background, or waiting for the first match.
+    /// Not in memory: the next match that needs it loads it.
+    Unloaded,
     Loading,
     Loaded,
     /// It couldn't be loaded, and why.
     Failed(String),
 }
 
-/// The model in its folder, loaded once: in the background at start (load()), or by the first
-/// match that needs it, which then waits for it.
+/// The model as the client holds it.
+enum Held {
+    Unloaded,
+    Loaded(Arc<Laya>),
+    Failed(String),
+}
+
+/// The model in its folder, loaded by the first match that needs it (which waits for it) and let
+/// go after it sat unused.
 pub struct LayaClient {
     folder: PathBuf,
-    loaded: OnceCell<Result<Arc<Laya>, String>>,
+    /// Locked while the model loads.
+    held: Mutex<Held>,
+    /// When the model was last loaded or answered.
+    last_used: std::sync::Mutex<Instant>,
 }
 
 impl LayaClient {
@@ -81,7 +97,8 @@ impl LayaClient {
     pub fn from_folder(folder: &Path) -> Option<Self> {
         folder.join(ONNX_FILE).is_file().then(|| Self {
             folder: folder.to_path_buf(),
-            loaded: OnceCell::new(),
+            held: Mutex::new(Held::Unloaded),
+            last_used: std::sync::Mutex::new(Instant::now()),
         })
     }
 
@@ -89,28 +106,77 @@ impl LayaClient {
         &self.folder
     }
 
-    /// The model, loading it the first time (a few seconds: its weights are 1.7 GB). A load
-    /// that failed stays failed until the app starts again, and every match says why.
+    /// The model, loading it when it isn't in memory (a few seconds: its weights are 1.7 GB). A
+    /// load that failed stays failed until the app starts again, and every match says why.
     pub async fn load(&self) -> Result<Arc<Laya>, String> {
-        self.loaded
-            .get_or_init(|| async {
-                let folder = self.folder.clone();
-                let loading = tokio::task::spawn_blocking(move || {
-                    Laya::load(&folder, &folder.join(ONNX_FILE), None).map(Arc::new)
-                });
-                let loaded = loading.await.unwrap_or_else(|e| Err(e.to_string()));
-                loaded.map_err(|e| format!("Laya couldn't load its model from {}: {e}", self.folder.display()))
-            })
-            .await
-            .clone()
+        let mut held = self.held.lock().await;
+        let laya = match &*held {
+            Held::Loaded(laya) => Arc::clone(laya),
+            Held::Failed(why) => return Err(why.clone()),
+            Held::Unloaded => {
+                let started = Instant::now();
+                match self.load_from_folder().await {
+                    Ok(laya) => {
+                        crate::say!(
+                            "Laya is loaded from {} ({:.1} s).",
+                            self.folder.display(),
+                            started.elapsed().as_secs_f64()
+                        );
+                        *held = Held::Loaded(Arc::clone(&laya));
+                        laya
+                    }
+                    Err(why) => {
+                        crate::log_line!("{why}");
+                        *held = Held::Failed(why.clone());
+                        return Err(why);
+                    }
+                }
+            }
+        };
+        self.used_now();
+        Ok(laya)
+    }
+
+    async fn load_from_folder(&self) -> Result<Arc<Laya>, String> {
+        let folder = self.folder.clone();
+        let loading =
+            tokio::task::spawn_blocking(move || Laya::load(&folder, &folder.join(ONNX_FILE), None).map(Arc::new));
+        let loaded = loading.await.unwrap_or_else(|e| Err(e.to_string()));
+        loaded.map_err(|e| format!("Laya couldn't load its model from {}: {e}", self.folder.display()))
+    }
+
+    fn used_now(&self) {
+        *self.last_used.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Instant::now();
+    }
+
+    /// Lets the model go when it is loaded, no match is asking it, and it was last used idle_for
+    /// ago or more; true when it did. A load under way is left alone.
+    pub fn unload_if_idle(&self, idle_for: Duration) -> bool {
+        let Ok(mut held) = self.held.try_lock() else {
+            return false;
+        };
+        let Held::Loaded(laya) = &*held else {
+            return false;
+        };
+        // Held only here: no match is asking it now.
+        let asked = Arc::strong_count(laya) > 1;
+        let last_used = *self.last_used.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+        if asked || last_used.elapsed() < idle_for {
+            return false;
+        }
+        *held = Held::Unloaded;
+        true
     }
 
     /// How far loading the model has come, for the window's status line.
     pub fn state(&self) -> LayaState {
-        match self.loaded.get() {
-            None => LayaState::Loading,
-            Some(Ok(_)) => LayaState::Loaded,
-            Some(Err(why)) => LayaState::Failed(why.clone()),
+        let Ok(held) = self.held.try_lock() else {
+            return LayaState::Loading;
+        };
+        match &*held {
+            Held::Unloaded => LayaState::Unloaded,
+            Held::Loaded(_) => LayaState::Loaded,
+            Held::Failed(why) => LayaState::Failed(why.clone()),
         }
     }
 
@@ -119,7 +185,9 @@ impl LayaClient {
         let laya = self.load().await?;
         let state = Value::from(state);
         let answering = tokio::task::spawn_blocking(move || laya.predict(&state, &questions()));
-        let response = match answering.await {
+        let answered = answering.await;
+        self.used_now();
+        let response = match answered {
             Ok(Ok(response)) => response,
             Ok(Err(PredictError::Invalid(detail) | PredictError::Failed(detail))) => {
                 return Err(format!("Laya failed: {detail}"));

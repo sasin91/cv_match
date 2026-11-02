@@ -179,7 +179,7 @@ impl SignedInBrowser {
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
             .kill_on_drop(true);
-        crate::no_window::hide(&mut command);
+        crate::no_window::in_background(&mut command);
         let mut child = command
             .spawn()
             .map_err(|e| format!("{} didn't start: {e}", program.display()))?;

@@ -146,7 +146,7 @@ async fn run_printing(browser: &Path, url: &str, profile: &Path, pdf: &Path) -> 
         .stdout(std::process::Stdio::null())
         .stderr(std::process::Stdio::null())
         .kill_on_drop(true);
-    crate::no_window::hide(&mut command);
+    crate::no_window::in_background(&mut command);
     let status = tokio::time::timeout(Duration::from_secs(BROWSER_SECONDS), command.status())
         .await
         .map_err(|_| format!("it took more than {BROWSER_SECONDS} seconds"))?

@@ -12,8 +12,12 @@
 //! (match_service), saved as a match, and from the search's tailor_from_score up its tailored
 //! résumé and application are written right away, so both are ready in the match's Apply
 //! dialog.
+//!
+//! It matches the posts as background work should: with a pause between two (each keeps the
+//! model busy for minutes), and waiting while the user plays a full-screen game (user_busy).
 
 use std::sync::Arc;
+use std::time::Duration;
 
 use serde_json::{Value, json};
 
@@ -41,6 +45,14 @@ const SIGNED_IN_TERMS: usize = 2;
 
 /// New posts one scan of a search adds (and matches), at most; the rest wait for the next.
 pub const POSTS_PER_SCAN: usize = 15;
+
+/// The pause between two posts' matches (ten seconds), so the graphics card and processor rest
+/// between long model calls instead of running flat out for the whole scan.
+const PAUSE_BETWEEN_POSTS: Duration = Duration::from_secs(10);
+
+/// How long a scan waits for a full-screen app or game to end before it stops (an hour); the
+/// posts left are matched by the next scan.
+const BUSY_GIVE_UP: Duration = Duration::from_secs(3600);
 
 /// The found posts of a search the scan is told about, to skip them.
 const RECENT_POSTS_SKIPPED: i64 = 40;
@@ -75,11 +87,35 @@ pub struct ScanReport {
     pub matched: usize,
     /// Why a search's scan or a post's match failed, in words to show.
     pub problems: Vec<String>,
+    /// Why the scan stopped before it was done (the user stayed busy), in words to show.
+    pub stopped: Option<String>,
 }
 
 impl ScanReport {
-    /// "Scanned 2 searches: 14 posts found, 5 new, 4 matched." and what went wrong.
+    /// "Scanned 2 searches: 14 posts found, 5 new, 4 matched." and what went wrong, also when no
+    /// search was scanned (posts an earlier scan left may have been matched, or have failed).
     pub fn summary(&self) -> String {
+        let mut said = match &self.stopped {
+            // Stopped before any search: "no active search" would be wrong.
+            Some(why) if self.scanned == 0 => why.clone(),
+            _ => self.searches_text(),
+        };
+        if self.scanned == 0 && self.matched > 0 {
+            said.push_str(&format!(" {} post(s) an earlier scan left were matched.", self.matched));
+        }
+        for problem in &self.problems {
+            said.push(' ');
+            said.push_str(problem);
+        }
+        if let Some(why) = self.stopped.as_ref().filter(|_| self.scanned > 0) {
+            said.push(' ');
+            said.push_str(why);
+        }
+        said
+    }
+
+    /// What the scan did with the searches.
+    fn searches_text(&self) -> String {
         if self.scanned == 0 {
             return if self.skipped > 0 {
                 "Every search was scanned less than an hour ago. Scan again a little later.".to_string()
@@ -88,15 +124,10 @@ impl ScanReport {
             };
         }
         let searches = if self.scanned == 1 { "search" } else { "searches" };
-        let mut said = format!(
+        format!(
             "Scanned {} {searches}: {} posts found, {} new, {} matched.",
             self.scanned, self.posts_found, self.posts_new, self.matched
-        );
-        for problem in &self.problems {
-            said.push(' ');
-            said.push_str(problem);
-        }
-        said
+        )
     }
 }
 
@@ -250,16 +281,13 @@ pub async fn scan(context: Arc<Context>) -> Result<ScanReport, ServiceError> {
         None
     };
     // Read when the first post needs it: a scan that finds nothing to match costs no call for it.
-    let mut cv: Option<ProfileCv> = None;
+    let mut matching = Matching::default();
     let mut report = ScanReport::default();
     // What an earlier scan found but didn't get to match, before it stopped.
     let stopped_before = chrono::Utc::now().timestamp() - RUN_GIVE_UP_SECONDS;
-    for post_id in model::unfinished_posts(db, stopped_before).await? {
-        match match_post_once_read(&context, post_id, &mut cv).await {
-            Ok(true) => report.matched += 1,
-            Ok(false) => {}
-            Err(e) => report.problems.push(e.message),
-        }
+    let unfinished = model::unfinished_posts(db, stopped_before).await?;
+    if !matching.match_posts(&context, unfinished, &mut report).await {
+        return Ok(report);
     }
     for search_id in model::scannable(db).await? {
         let now = chrono::Utc::now().timestamp();
@@ -283,15 +311,48 @@ pub async fn scan(context: Arc<Context>) -> Result<ScanReport, ServiceError> {
         if let Some(problem) = found.problem {
             report.problems.push(format!("{}: {problem}", search.name));
         }
-        for post_id in found.new_posts {
-            match match_post_once_read(&context, post_id, &mut cv).await {
+        if !matching.match_posts(&context, found.new_posts, &mut report).await {
+            break;
+        }
+    }
+    Ok(report)
+}
+
+/// A scan's matching of posts, one after another: the profile, read for the first post and kept
+/// for the rest, and whether a post was taken up yet (the pause comes between two).
+#[derive(Default)]
+struct Matching {
+    cv: Option<ProfileCv>,
+    started_one: bool,
+}
+
+impl Matching {
+    /// Matches posts into report, each after make_way. False when the scan should stop (the
+    /// user stayed busy; report.stopped says so), the posts left waiting for the next scan.
+    async fn match_posts(&mut self, context: &Arc<Context>, post_ids: Vec<i64>, report: &mut ScanReport) -> bool {
+        for post_id in post_ids {
+            if let Err(why) = self.make_way().await {
+                report.stopped = Some(why);
+                return false;
+            }
+            match match_post_once_read(context, post_id, &mut self.cv).await {
                 Ok(true) => report.matched += 1,
                 Ok(false) => {}
                 Err(e) => report.problems.push(e.message),
             }
         }
+        true
     }
-    Ok(report)
+
+    /// Waits PAUSE_BETWEEN_POSTS after a post, then while the user is busy (user_busy), for at
+    /// most BUSY_GIVE_UP. Err says why the scan stops.
+    async fn make_way(&mut self) -> Result<(), String> {
+        if self.started_one {
+            tokio::time::sleep(PAUSE_BETWEEN_POSTS).await;
+        }
+        self.started_one = true;
+        crate::user_busy::wait_until_free(BUSY_GIVE_UP).await
+    }
 }
 
 /// The profile, as the CV posts are matched with: its text, and read as the match reads a CV.
@@ -1367,6 +1428,32 @@ mod tests {
         assert_eq!(
             ScanReport::default().summary(),
             "There is no active job search to scan."
+        );
+    }
+
+    #[test]
+    fn a_scan_stopped_for_a_game_says_so_whenever_it_stopped() {
+        let busy = "A full-screen app or game ran for 60 minutes, so the scan stopped.".to_string();
+        let before_searches = ScanReport {
+            matched: 2,
+            stopped: Some(busy.clone()),
+            ..ScanReport::default()
+        };
+        assert_eq!(
+            before_searches.summary(),
+            format!("{busy} 2 post(s) an earlier scan left were matched.")
+        );
+        let during_a_search = ScanReport {
+            scanned: 1,
+            posts_found: 3,
+            posts_new: 3,
+            matched: 1,
+            stopped: Some(busy.clone()),
+            ..ScanReport::default()
+        };
+        assert_eq!(
+            during_a_search.summary(),
+            format!("Scanned 1 search: 3 posts found, 3 new, 1 matched. {busy}")
         );
     }
 }
