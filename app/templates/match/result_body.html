@@ -1,15 +1,15 @@
-{#- The body of a match's result, under its score: a location the candidate
-    likely misses, what the post asks of applicants, the requirements with their verdicts and a
+{#- The body of a match's result, under its score: the likely disqualifiers (a location the candidate
+    likely misses, a level that doesn't fit), what the post asks of applicants, the requirements with their verdicts and a
     filter by verdict, and the soft skills. Printed by result.html and batch_row.html. -#}
-{%- if let Some(location) = result.location %}
-<section class="location-notice">
-    <h3>{{ location.heading }}</h3>
+{%- if let Some(disqualifier) = result.disqualifier %}
+<section class="disqualifier-notice">
+    <h3>{{ disqualifier.heading }}</h3>
     <ul>
-        {%- for line in location.lines %}
+        {%- for line in disqualifier.lines %}
             <li><strong>{{ line.text }}</strong>{% if !line.reason.is_empty() %} · {{ line.reason }}{% endif %}</li>
         {%- endfor %}
     </ul>
-    <p class="muted">{{ location.note }}</p>
+    <p class="muted">{{ disqualifier.note }}</p>
 </section>
 {%- endif %}
 {%- if let Some(apply) = result.apply %}
