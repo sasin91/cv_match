@@ -1,7 +1,7 @@
-//! A saved match's Jobnet joblog entry (joblog::read) as the panel under its application and résumé
-//! prints it (templates/match/joblog_panel.html): Jobnet's sections with each field to copy, a
-//! choice with its options and the one to pick, the three PDFs, the "Fill it in with an AI" prompt
-//! and whether the candidate has entered it in their joblog (joblog_logged.html).
+//! A saved match's Jobnet joblog entry (joblog::read) as the Apply screen prints it: Jobnet's
+//! sections with each field to copy, a choice with its options and the one to pick, the three
+//! PDFs, the "Fill it in with an AI" prompt and whether the candidate has entered it in their
+//! joblog.
 //!
 //! Each option carries what the AI prompt says for it; js/app.js reads typed values from the
 //! inputs, edits included.

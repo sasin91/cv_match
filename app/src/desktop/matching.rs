@@ -284,8 +284,6 @@ pub enum Msg {
     PdfSaved(Result<Option<String>, String>),
     /// For the shell: go to Language models.
     ShowLanguageModels,
-    /// For the shell: a web page to open in the browser.
-    OpenPage(String),
     /// For the shell: a match was saved or rejected, so the overview is read again.
     Changed,
 }
@@ -592,7 +590,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                 Err(why) => state.said = Some((Health::Attention, why)),
             }
         }
-        Msg::OpenPage(_) | Msg::Changed | Msg::ShowLanguageModels => {}
+        Msg::Changed | Msg::ShowLanguageModels => {}
     }
     Task::none()
 }

@@ -1,8 +1,8 @@
-//! An error the match page shows: JSON {error} with its status, plus need_key when the user has no
-//! key to use for it and retryable when the language model may answer if asked again. The work's
-//! own errors (service_error) come in with the status their kind answers with; failures that
-//! aren't the user's input were written to the log when they were made, so they can be found
-//! after the page is closed.
+//! An error the server answers the Jobnet extension with: JSON {error} with its status, plus
+//! need_key when the user has no key to use for it and retryable when the language model may
+//! answer if asked again. The work's own errors (service_error) come in with the status their
+//! kind answers with; failures that aren't the user's input were written to the log when they
+//! were made, so they can be found after the browser tab is closed.
 
 use axum::Json;
 use axum::http::StatusCode;
@@ -12,16 +12,16 @@ use serde_json::{Map, Value, json};
 use crate::service_error::{ErrorKind, ServiceError};
 
 #[derive(Debug)]
-pub struct PageError {
+pub struct ApiError {
     pub status: StatusCode,
     pub message: String,
     /// More fields of the JSON answer: need_key, retryable.
     pub extra: Map<String, Value>,
 }
 
-impl PageError {
+impl ApiError {
     pub fn new(status: StatusCode, message: impl Into<String>) -> Self {
-        PageError {
+        ApiError {
             status,
             message: message.into(),
             extra: Map::new(),
@@ -29,7 +29,7 @@ impl PageError {
     }
 }
 
-impl IntoResponse for PageError {
+impl IntoResponse for ApiError {
     fn into_response(self) -> Response {
         let mut body = self.extra;
         body.insert("error".to_string(), json!(self.message));
@@ -37,9 +37,9 @@ impl IntoResponse for PageError {
     }
 }
 
-impl From<sqlx::Error> for PageError {
+impl From<sqlx::Error> for ApiError {
     fn from(e: sqlx::Error) -> Self {
-        crate::log_line!("match: {e}");
+        crate::log_line!("extension_api: {e}");
         Self::new(
             StatusCode::INTERNAL_SERVER_ERROR,
             format!("The database couldn't answer: {e}"),
@@ -47,17 +47,7 @@ impl From<sqlx::Error> for PageError {
     }
 }
 
-impl From<askama::Error> for PageError {
-    fn from(e: askama::Error) -> Self {
-        crate::log_line!("match: {e}");
-        Self::new(
-            StatusCode::INTERNAL_SERVER_ERROR,
-            format!("The page couldn't be printed: {e}"),
-        )
-    }
-}
-
-impl From<ServiceError> for PageError {
+impl From<ServiceError> for ApiError {
     /// The work's error with the status its kind answers with; it was logged when it was made.
     fn from(e: ServiceError) -> Self {
         let status = match e.kind {

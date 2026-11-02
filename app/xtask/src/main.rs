@@ -1,11 +1,9 @@
 //! The app's developer commands, run through the aliases in app/.cargo/config.toml.
 //!
 //!   cargo dev [jobfinder options]
-//!       builds the app and starts it with --dev under watchexec, which rebuilds and restarts it
-//!       on every change to its code, templates, queries, assets or extension. The window opens
-//!       again with each restart, and a web page open in the browser reloads itself
-//!       (src/dev_reload.rs). With --no-browser only the server runs, for work on the pages.
-//!       Ctrl+C stops it.
+//!       builds the app and starts it under watchexec, which rebuilds and restarts it on every
+//!       change to its code, queries, assets or extension. The window opens again with each
+//!       restart. Ctrl+C stops it.
 //!
 //!   cargo dev runs the app through `xtask run-app`, not cargo directly: on Windows, an app that
 //!   crashes (a stack overflow, an access violation) ends with an exception code, and watchexec
@@ -25,12 +23,11 @@ const CRASHED_EXIT_CODE: u8 = 1;
 /// Windows process that ends with a code from here up was ended by an exception.
 const FIRST_EXCEPTION_CODE: u32 = 0xC000_0000;
 
-const USAGE: &str = "usage: cargo dev [jobfinder options, such as --database <file> or --no-browser]";
+const USAGE: &str = "usage: cargo dev [jobfinder options, such as --database <file>]";
 
 /// What restarts the app when it changes, relative to app/.
 const WATCHED: &[&str] = &[
     "src",
-    "templates",
     "queries",
     "migrations",
     ".sqlx",
@@ -103,13 +100,12 @@ fn watchexec_args(this_program: &Path, app_args: &[String]) -> Vec<String> {
     args
 }
 
-/// Builds and runs the app's debug build with --dev (its window, unless the options say
-/// --no-browser or --browser) and the given options, and ends as it ended; an exception (a
+/// Builds and runs the app's debug build with the given options, and ends as it ended; an exception (a
 /// crash on Windows) is said, and ends as an error code watchexec can take.
 fn run_app(app_args: &[String]) -> ExitCode {
     let status = Command::new("cargo")
         .current_dir(app_folder())
-        .args(["run", "--", "--dev"])
+        .args(["run", "--"])
         .args(app_args)
         .status();
     let code = match status {

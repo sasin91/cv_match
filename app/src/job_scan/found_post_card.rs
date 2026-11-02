@@ -1,4 +1,4 @@
-//! A post a job search found as a card of the search's list (templates/job_scan/posts.html):
+//! A post a job search found as a card of the search's list (the Job searches screen):
 //! what it is, how it matched, and its buttons, as recruiter's Found_post_card shapes it.
 
 use super::job_scan_model::{DISMISSED, FAILED, FoundPost, MATCHED, MATCHING, NEW, NOT_A_JOB};
