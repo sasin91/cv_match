@@ -6,7 +6,7 @@
 //!
 //! ```ignore
 //! let llm = Llm::use_key("openai", &api_key, "", "")?;
-//! let answer = llm.structured(system, text, &schema, Effort::Low).await?;
+//! let answer = llm.structured(system, text, &schema, Effort::Low, 4096).await?;
 //! ```
 //!
 //! A new provider is one more adapter and one more arm in Adapter.
@@ -124,19 +124,21 @@ impl Llm {
     }
 
     /// One JSON answer that follows `schema` (objects closed with additionalProperties: false,
-    /// every property required), from the key's provider.
+    /// every property required), from the key's provider. max_tokens: the longest answer the call
+    /// may write; a local model is stopped there (see Openai::structured).
     pub async fn structured(
         &self,
         system: &str,
         user: &str,
         schema: &Value,
         effort: Effort,
+        max_tokens: u32,
     ) -> Result<Value, LlmException> {
         let call = transcript::call(system, user);
         let asking = async {
             match &self.adapter {
-                Adapter::Openai(openai) => openai.structured(system, user, schema, effort).await,
-                Adapter::Anthropic(anthropic) => anthropic.structured(system, user, schema, effort).await,
+                Adapter::Openai(openai) => openai.structured(system, user, schema, effort, max_tokens).await,
+                Adapter::Anthropic(anthropic) => anthropic.structured(system, user, schema, effort, max_tokens).await,
             }
         };
         let answer = self.listed(asking).await;

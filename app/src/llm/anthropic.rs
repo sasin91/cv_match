@@ -43,12 +43,15 @@ impl Anthropic {
         })
     }
 
+    /// _max_tokens is for a local model; Claude's thinking counts against max_tokens, so it keeps
+    /// MAX_TOKENS.
     pub async fn structured(
         &self,
         system: &str,
         user: &str,
         schema: &Value,
         effort: Effort,
+        _max_tokens: u32,
     ) -> Result<Value, LlmException> {
         if self.api_key.is_empty() {
             return Err(LlmException::new(

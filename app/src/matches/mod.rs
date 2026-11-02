@@ -44,6 +44,8 @@ use crate::taxonomy::Method;
 #[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Job {
+    /// The post in English. The free reader keeps the post's own text here; a model's read leaves
+    /// it empty.
     pub text_en: String,
     pub job_title: String,
     pub job_title_en: String,

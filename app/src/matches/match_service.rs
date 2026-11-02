@@ -541,7 +541,13 @@ pub async fn ai_match_result(
         saved_id: found.saved_id,
         laya: &found.laya_reading,
     };
-    let laya_input = ai_match::laya_input(&request.job, &request.profile, &request.cv_text, &found.laya_summary);
+    let laya_input = ai_match::laya_input(
+        &request.job,
+        &request.job_text,
+        &request.profile,
+        &request.cv_text,
+        &found.laya_summary,
+    );
     Ok(MatchResult::from(&fresh, true, Some(documents), &laya_input))
 }
 

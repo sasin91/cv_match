@@ -19,7 +19,7 @@ pub const MAX_CV_LENGTH: usize = 60_000;
 const READ_CV_SYSTEM: &str = r#"You read a candidate's CV into their profile, which their job applications and résumés will be written from. Copy what the CV says; never add, improve or guess anything.
 
 - name, email and phone: the candidate's, as the CV gives them; empty when it doesn't.
-- title: their professional title as the CV gives it; location: where they live, as written ("Slagelse, 4200").
+- title: their professional title as the CV gives it; location: where they live, as written (town and postcode).
 - about: the CV's own profile or summary paragraphs, word for word; empty when it has none.
 - entries: every job (section experience), every project or product of the candidate's own, side projects and open source included (section project), and every education (section education), in the CV's order.
   - title: the job title, the project's name or the education; organisation: the employer or school, empty for an own project; location as written; url: a project's link if the CV gives one.
@@ -28,6 +28,10 @@ const READ_CV_SYSTEM: &str = r#"You read a candidate's CV into their profile, wh
 - skills, languages and certificates: as the CV lists them, one item each.
 Keep the CV's language."#;
 
+/// The longest answer the read may write, in tokens: the CV's entries with their bullets word for
+/// word, as long as a tailored résumé's.
+const READ_CV_TOKENS: u32 = 8192;
+
 /// The CV as the model reads it, before profile_fields::from_cv cleans it.
 async fn read_cv(llm: &Llm, cv: &str) -> Result<serde_json::Value, LlmException> {
     llm.structured(
@@ -35,6 +39,7 @@ async fn read_cv(llm: &Llm, cv: &str) -> Result<serde_json::Value, LlmException>
         &format!("CV:\n\n{cv}"),
         &profile_fields::schema(),
         Effort::Low,
+        READ_CV_TOKENS,
     )
     .await
 }

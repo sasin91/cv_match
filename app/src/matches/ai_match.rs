@@ -183,9 +183,10 @@ fn unweighed_location() -> Verdict {
     }
 }
 
-/// What Laya's English checkpoint reads, shown under the AI match: both texts in English and the
-/// verdicts, in the saved order, pretty-printed with four spaces.
-pub fn laya_input(job: &Job, profile: &Profile, cv_text: &str, summary: &str) -> String {
+/// What Laya's English checkpoint reads, shown under the AI match: both texts and the verdicts, in
+/// the saved order, pretty-printed with four spaces. The post is in its own language when it
+/// wasn't translated (a model's read no longer is).
+pub fn laya_input(job: &Job, job_text: &str, profile: &Profile, cv_text: &str, summary: &str) -> String {
     let cv = if profile.text_en.is_empty() {
         cv_text
     } else {
@@ -194,7 +195,7 @@ pub fn laya_input(job: &Job, profile: &Profile, cv_text: &str, summary: &str) ->
     let quoted = |text: &str| serde_json::Value::from(text).to_string();
     format!(
         "{{\n    \"job\": {},\n    \"cv\": {},\n    \"summary\": {}\n}}",
-        quoted(&job.text_en),
+        quoted(if job.text_en.is_empty() { job_text } else { &job.text_en }),
         quoted(cv),
         quoted(summary)
     )
