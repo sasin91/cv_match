@@ -722,6 +722,24 @@ fn save_pdf(
 /// A click in saved match id's Apply or Jobnet joblog: a PDF is saved here, with the text as
 /// edited in its box; the rest is the sections' own.
 fn applying(state: &mut State, id: i64, msg: ApplyMsg, runner: &Runner) -> Task<Msg> {
+    // An answer goes to every result of the match, whichever page is open now, so a section
+    // left while it read or saved isn't left waiting.
+    if msg.is_answer() {
+        let mut tasks = Vec::new();
+        let mut said = None;
+        for shown in results_of(state, id) {
+            let application = shown.docs.as_ref().and_then(|docs| docs.text_of(APPLICATION, None));
+            if let Some(sections) = shown.applying.as_mut() {
+                let (task, says) = sections.update(msg.clone(), runner, application);
+                tasks.push(task.map(move |msg| Msg::Apply(id, msg)));
+                said = said.or(says);
+            }
+        }
+        if said.is_some() {
+            state.said = said;
+        }
+        return Task::batch(tasks);
+    }
     let Some(shown) = shown_mut(state).filter(|shown| shown.applying.as_ref().is_some_and(|a| a.id() == id)) else {
         return Task::none();
     };

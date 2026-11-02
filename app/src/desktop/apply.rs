@@ -119,6 +119,16 @@ pub enum ApplyMsg {
     Prompt(text_editor::Action),
 }
 
+impl ApplyMsg {
+    /// An answer to a read or a save, rather than a click.
+    pub fn is_answer(&self) -> bool {
+        matches!(
+            self,
+            ApplyMsg::Delivered(_) | ApplyMsg::JoblogRead(_) | ApplyMsg::Saved { .. }
+        )
+    }
+}
+
 /// What an update says on the screen's message bar.
 pub type Said = Option<(Health, String)>;
 
@@ -184,6 +194,12 @@ impl Applying {
                 self.apply_open = !self.apply_open;
                 if self.apply_open && self.apply.is_none() {
                     return (self.read_delivery(runner), None);
+                }
+                // The application may have been edited in its box while this was hidden.
+                if self.apply_open
+                    && let Some(delivery) = self.delivery_mut()
+                {
+                    delivery.with_application(application);
                 }
             }
             ApplyMsg::Delivered(read) => {
@@ -361,15 +377,23 @@ impl Delivery {
         let values = delivery
             .fields
             .iter()
-            .map(|field| {
-                // The body is the application as edited in its box.
-                let edited = application
-                    .as_deref()
-                    .filter(|edited| field.multiline && !edited.trim().is_empty());
-                Value::new(edited.unwrap_or(&field.value), field.multiline)
-            })
+            .map(|field| Value::new(&field.value, field.multiline))
             .collect();
-        Delivery { delivery, values }
+        let mut shown = Delivery { delivery, values };
+        shown.with_application(application);
+        shown
+    }
+
+    /// The body (the one long field) as the application is edited in its box.
+    fn with_application(&mut self, application: Option<String>) {
+        let Some(edited) = application.filter(|edited| !edited.trim().is_empty()) else {
+            return;
+        };
+        for (field, value) in self.delivery.fields.iter().zip(&mut self.values) {
+            if field.multiline {
+                *value = Value::new(&edited, true);
+            }
+        }
     }
 }
 
@@ -878,5 +902,39 @@ mod tests {
         assert!(prompt.contains("- name: Firma"));
         assert!(prompt.contains("- postalCodeAndCity: leave empty"));
         assert!(prompt.contains("choose \"Ikke søgt\""));
+    }
+
+    #[test]
+    fn the_body_follows_the_application_as_edited() {
+        use crate::matches::application_delivery::{FORM, Field};
+        let field = |id: &str, multiline| Field {
+            id: id.to_string(),
+            label: id.to_string(),
+            value: "Saved".to_string(),
+            hint: String::new(),
+            multiline,
+        };
+        let delivery = ApplicationDelivery {
+            id: 21,
+            by: FORM,
+            heading: "Apply on the employer's site",
+            intro: String::new(),
+            fields: vec![field("delivery-subject", false), field("delivery-body", true)],
+            asks: String::new(),
+            files_heading: "Files to upload",
+            files: Vec::new(),
+            missing: Vec::new(),
+            open: None,
+            links_heading: "Your profile links",
+            links: Vec::new(),
+            links_hint: "",
+        };
+        let mut shown = Delivery::new(delivery, Some("Edited".into()));
+        assert_eq!(shown.values[0].text(), "Saved");
+        assert_eq!(shown.values[1].text(), "Edited");
+        shown.with_application(Some("Edited again".into()));
+        assert_eq!(shown.values[1].text(), "Edited again");
+        shown.with_application(None);
+        assert_eq!(shown.values[1].text(), "Edited again");
     }
 }
