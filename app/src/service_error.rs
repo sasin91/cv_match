@@ -1,5 +1,5 @@
 //! Why the app's work (matches::match_service, account::account_service and the others) couldn't
-//! be done, in words to show the user, with what kind of failure it is. The web server answers it with a status (matches::page_error); a
+//! be done, in words to show the user, with what kind of failure it is. The web server answers it with a status (api_error); a
 //! desktop window shows the message. Failures that aren't the user's input are written to the
 //! log when they are made, so they can be found after the page or window is closed.
 

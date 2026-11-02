@@ -1,4 +1,4 @@
-//! The top of a job search's page (templates/job_scan/search.html): what it looks for, and how
+//! The top of a job search on the Job searches screen: what it looks for, and how
 //! its last scan went, as recruiter's Job_search_summary shapes it.
 
 use super::job_scan_model::{JobSearch, Run, TokenUse};

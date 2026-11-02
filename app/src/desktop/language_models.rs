@@ -1,7 +1,7 @@
-//! The Language models screen: the API key page (account) in the window. The saved keys with
+//! The Language models screen: the API keys (account) in the window. The saved keys with
 //! Check and Delete and an Add a key button that opens the form, and one list of what the AI
 //! does: per use the key it runs on, and under it per task the model, each saved as it is picked,
-//! all through account_service, the functions the web page uses.
+//! all through account_service.
 
 use std::sync::Arc;
 
@@ -163,7 +163,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                 state.api_key.clear();
                 state.adding_key = false;
                 state.busy = false;
-                // As the web page goes on: back to the wizard while it is unfinished.
+                // Back to the wizard while it is unfinished.
                 if *setup_unfinished {
                     return Task::done(Msg::BackToSetup(message.clone()));
                 }

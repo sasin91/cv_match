@@ -2,14 +2,15 @@
 //! against the fixed expected answers in tests/fixtures/parity.json.
 
 pub mod account;
+pub mod api_error;
 pub mod app_log;
 pub mod cleanup;
 pub mod context;
 pub mod dashboard;
 pub mod db;
 pub mod desktop;
-pub mod dev_reload;
 pub mod extension;
+pub mod extension_api;
 pub mod from_recruiter;
 pub mod idle;
 pub mod instance;

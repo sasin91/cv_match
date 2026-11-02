@@ -8,17 +8,13 @@ use super::saved_key::KeyChoice;
 use super::task_model::{KEYS_OWN_MODEL, TASKS, Task};
 use crate::llm::{self, LLAMA_CPP};
 
-/// A task's row: its form field, what the page calls it and the key it runs on, and its model.
+/// A task's row: what the screen calls it, and its model.
 pub struct TaskModelRow {
     /// The task's name, as the desktop screen sends it back.
     pub task: &'static str,
     /// The use (account_model::USES) whose key it runs on.
     pub use_: &'static str,
-    /// Its form field: model_for_{task}.
-    pub field: String,
     pub label: &'static str,
-    /// What the page calls the key it runs on.
-    pub key: String,
     /// Picked from the models folder's files (this app's own model), not typed.
     pub picks_a_file: bool,
     /// For a picked one: the key's own model, the task's default when it has one, then each
@@ -29,11 +25,6 @@ pub struct TaskModelRow {
     /// The key's own model, as the list's first entry and the typed field's grey hint: "Same as
     /// the key (gpt-5.4-mini)".
     pub keys_own: String,
-}
-
-/// The model field of task: model_for_{name}.
-pub fn field(task: &Task) -> String {
-    format!("model_for_{}", task.name)
 }
 
 /// A row per task whose use runs on one of saved, with the models saved per task (as
@@ -59,9 +50,7 @@ fn row(task: &'static Task, key: &Saved, model: String, downloaded: &[String]) -
     TaskModelRow {
         task: task.name,
         use_: task.use_,
-        field: field(task),
         label: task.label,
-        key: account_model::provider_label(&key.provider).to_string(),
         picks_a_file,
         choices: if picks_a_file {
             file_choices(task, &keys_own, &model, downloaded)
@@ -188,7 +177,6 @@ mod tests {
         assert_eq!(tasks, ["read_job", "read_cv", "judge", "application", "resume"]);
         let read_job = &rows[0];
         assert!(read_job.picks_a_file);
-        assert_eq!(read_job.field, "model_for_read_job");
         let labels: Vec<&str> = read_job.choices.iter().map(|choice| choice.label.as_str()).collect();
         assert_eq!(
             labels,

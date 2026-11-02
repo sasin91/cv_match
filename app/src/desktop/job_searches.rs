@@ -1,6 +1,6 @@
-//! The Job searches screen: the job scan's pages (job_scan) in the window. The list of searches,
+//! The Job searches screen: the job scan's searches (job_scan) in the window. The list of searches,
 //! a search with the posts it found, and the form that makes or edits one, all through
-//! search_service and scan_service, the functions the web pages use.
+//! search_service and scan_service.
 
 use std::collections::BTreeMap;
 use std::sync::Arc;
@@ -200,7 +200,7 @@ pub enum Msg {
     },
     /// A job post's own page, in the browser.
     OpenPost(String),
-    /// One of the web pages (a match, setup); the shell opens it.
+    /// A place in the window by its path (a match, setup); the shell goes there.
     OpenPage(String),
     /// What a click came to; then the page goes to (and reads) then.
     Said {
@@ -433,7 +433,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                 ));
             }
         }
-        // The shell opens it.
+        // The shell goes there.
         Msg::OpenPage(_) => {}
         Msg::ToggleStep(step) => {
             if state.opened.remove(&step).is_none() {
