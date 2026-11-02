@@ -192,6 +192,42 @@ fn file(file: &File) -> PanelFile {
     }
 }
 
+/// What the AI prompt starts with: what to fill in, and how Jobnet's fields want it.
+const PROMPT_START: [&str; 3] = [
+    "Fill in a new entry in my joblog on Jobnet (jobnet.dk, \"Opret joblog\"). I am signed in. Use exactly these values, field by field, in Jobnet's order.",
+    "Stilling eller arbejdsområde, Virksomhedens navn and Postnummer og by only keep a value picked from Jobnet's suggestions; typed text is cleared. Type the value and pick the matching suggestion; if none shows, search for a shorter part (\"Backend\" for \"Backend-udvikler\" finds \"Softwareudvikler, backend\"), pick the closest and tell me which you picked.",
+    "Antal timer pr. uge only shows for Deltid. Ansøgningsfrist is typed as dd-mm-yyyy.",
+];
+/// What the AI prompt ends with: the PDFs are the candidate's, and it stops before saving.
+const PROMPT_END: &str = "Don't upload any files: I'll add the application, CV and job ad PDFs myself. Don't press Gem: stop when the form is filled and tell me what you couldn't fill.";
+
+/// The prompt for an AI that drives the browser (Claude in Chrome and the like): every value as
+/// the panel shows it now, edits included, by section: (heading, [(label, value)]), where a
+/// choice's value is what its chosen option says to do (PanelOption::prompt). It stops before
+/// saving and leaves the PDFs to the candidate, since such an agent can't pick files on the
+/// computer.
+pub fn ai_prompt(sections: &[(&str, Vec<(&str, String)>)]) -> String {
+    let mut lines: Vec<String> = PROMPT_START.iter().map(|line| line.to_string()).collect();
+    for (heading, fields) in sections.iter().filter(|(_, fields)| !fields.is_empty()) {
+        lines.push(String::new());
+        lines.push(format!("{heading}:"));
+        for (label, value) in fields {
+            let value = value.trim();
+            if value.is_empty() {
+                lines.push(format!("- {label}: leave empty"));
+            } else if value.contains('\n') {
+                lines.push(format!("- {label}:"));
+                lines.extend(value.split('\n').map(|line| format!("    {line}")));
+            } else {
+                lines.push(format!("- {label}: {value}"));
+            }
+        }
+    }
+    lines.push(String::new());
+    lines.push(PROMPT_END.to_string());
+    lines.join("\n")
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -207,5 +243,25 @@ mod tests {
             }
         );
         assert!(!Logged::from(None, String::new()).checked);
+    }
+
+    #[test]
+    fn the_prompt_lists_each_value_and_says_what_is_empty() {
+        let prompt = ai_prompt(&[
+            (
+                "Job",
+                vec![
+                    ("Stilling", "Backend".to_string()),
+                    ("Adresse", " ".to_string()),
+                    ("Noter", "Score 80\nPHP".to_string()),
+                ],
+            ),
+            ("Empty", Vec::new()),
+        ]);
+        assert!(
+            prompt.contains("\nJob:\n- Stilling: Backend\n- Adresse: leave empty\n- Noter:\n    Score 80\n    PHP\n")
+        );
+        assert!(!prompt.contains("Empty:"));
+        assert!(prompt.ends_with(PROMPT_END));
     }
 }

@@ -11,12 +11,14 @@ use std::sync::Arc;
 use iced::widget::{Column, Row, button, checkbox, column, container, row, text, text_editor, text_input};
 use iced::{Center, Element, Fill, Task};
 
+use super::apply::{self, ApplyMsg, Applying};
 use super::documents::{self, DocMsg, Docs};
 use super::style;
 use super::widgets::{self, CARD_PADDING, ROW_PADDING};
 use super::{GAP, Runner, Step};
 use crate::context::Context;
 use crate::dashboard::Health;
+use crate::matches::document_box::APPLICATION;
 use crate::matches::match_model::LISTS;
 use crate::matches::match_result::{MatchResult, Section};
 use crate::matches::match_service::{self, MatchAnswer, MatchAsk, ReadCv, RejectOutcome, SavedMatchList, WriteAnswer};
@@ -76,12 +78,15 @@ struct Shown {
     problem: Option<String>,
     /// The application and résumé, for a saved match.
     docs: Option<Docs>,
+    /// Its Apply and Jobnet joblog sections.
+    applying: Option<Applying>,
 }
 
 impl Shown {
     fn new(result: MatchResult) -> Self {
         Shown {
             docs: result.documents.as_ref().map(Docs::new),
+            applying: result.saved_id.map(Applying::new),
             result,
             filter: ALL,
             rejecting: false,
@@ -230,6 +235,8 @@ pub enum Msg {
         id: i64,
         result: Result<Arc<MatchResult>, String>,
     },
+    /// The Apply and Jobnet joblog sections of saved match id.
+    Apply(i64, ApplyMsg),
     /// Where a PDF was saved; None when the dialog was closed.
     PdfSaved(Result<Option<String>, String>),
     /// For the shell: go to Language models.
@@ -422,13 +429,18 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
         }
         // The shell's.
         Msg::Doc(id, msg) => return document(state, id, msg, runner),
+        Msg::Apply(id, msg) => return applying(state, id, msg, runner),
         Msg::Wrote { id, answer } => {
             state.busy = false;
             match answer.as_ref() {
                 Ok(answer) => {
+                    let mut read_again = Vec::new();
                     for shown in results_of(state, id) {
                         if let Some(docs) = shown.docs.as_mut() {
                             docs.written(answer);
+                        }
+                        if let Some(applying) = shown.applying.as_mut() {
+                            read_again.push(applying.written(runner).map(move |msg| Msg::Apply(id, msg)));
                         }
                     }
                     state.said = Some(match &answer.problem {
@@ -436,7 +448,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                         None => (Health::Ready, format!("{}.", answer.done)),
                     });
                     state.list.read = None;
-                    return Task::done(Msg::Changed);
+                    return Task::batch(read_again).chain(Task::done(Msg::Changed));
                 }
                 Err(why) => state.said = Some((Health::Attention, why.clone())),
             }
@@ -465,6 +477,7 @@ fn starts_work(msg: &Msg) -> bool {
             | Msg::Reject
             | Msg::BringBack
             | Msg::Doc(_, DocMsg::Write(_) | DocMsg::SavePdf(..))
+            | Msg::Apply(_, ApplyMsg::SavePdf(_))
     )
 }
 
@@ -672,17 +685,7 @@ fn document(state: &mut State, id: i64, msg: DocMsg, runner: &Runner) -> Task<Ms
         },
         DocMsg::SavePdf(kind, version) => {
             let edited = docs.text_of(kind, None).unwrap_or_default();
-            state.busy = true;
-            runner.run(
-                move |context| async move { documents::save_pdf(context, id, kind, edited, version).await },
-                |saved| {
-                    Msg::PdfSaved(saved.and_then(|saved| {
-                        saved
-                            .map(|path| path.map(|path| path.display().to_string()))
-                            .map_err(|e| e.message)
-                    }))
-                },
-            )
+            save_pdf(state, id, kind, edited, version, runner)
         }
         DocMsg::Open(match_id) => go(state, Page::Saved(match_id), runner),
         DocMsg::OpenLanguageModels => Task::done(Msg::ShowLanguageModels),
@@ -691,6 +694,55 @@ fn document(state: &mut State, id: i64, msg: DocMsg, runner: &Runner) -> Task<Ms
             Task::none()
         }
     }
+}
+
+/// Saved match id's kind as a PDF, edited being its text as shown (empty: the saved text), or its
+/// earlier version.
+fn save_pdf(
+    state: &mut State,
+    id: i64,
+    kind: &'static str,
+    edited: String,
+    version: Option<i64>,
+    runner: &Runner,
+) -> Task<Msg> {
+    state.busy = true;
+    runner.run(
+        move |context| async move { documents::save_pdf(context, id, kind, edited, version).await },
+        |saved| {
+            Msg::PdfSaved(saved.and_then(|saved| {
+                saved
+                    .map(|path| path.map(|path| path.display().to_string()))
+                    .map_err(|e| e.message)
+            }))
+        },
+    )
+}
+
+/// A click in saved match id's Apply or Jobnet joblog: a PDF is saved here, with the text as
+/// edited in its box; the rest is the sections' own.
+fn applying(state: &mut State, id: i64, msg: ApplyMsg, runner: &Runner) -> Task<Msg> {
+    let Some(shown) = shown_mut(state).filter(|shown| shown.applying.as_ref().is_some_and(|a| a.id() == id)) else {
+        return Task::none();
+    };
+    let edited = |kind: &str| shown.docs.as_ref().and_then(|docs| docs.text_of(kind, None));
+    if let ApplyMsg::SavePdf(kind) = msg {
+        let text = if apply::is_written(kind) {
+            edited(kind).unwrap_or_default()
+        } else {
+            String::new()
+        };
+        return save_pdf(state, id, kind, text, None, runner);
+    }
+    let application = edited(APPLICATION);
+    let Some(sections) = shown.applying.as_mut() else {
+        return Task::none();
+    };
+    let (task, said) = sections.update(msg, runner, application);
+    if said.is_some() {
+        state.said = said;
+    }
+    task.map(move |msg| Msg::Apply(id, msg))
 }
 
 /// The results on screen of saved match id: the last match's, and the one open on its page.
@@ -1137,19 +1189,10 @@ fn result_view(shown: &Shown, busy: bool) -> Element<'_, Msg> {
             "Application and résumé",
             documents::view(docs, busy).map(move |msg| Msg::Doc(id, msg)),
         ));
-        view = view.push(
-            row![
-                text("Apply and the Jobnet joblog are still on the match's web page.")
-                    .size(style::CAPTION_SIZE)
-                    .style(style::secondary)
-                    .width(Fill),
-                button(text("Open in the browser").size(style::BODY_SIZE))
-                    .style(style::standard_button)
-                    .on_press(Msg::OpenPage(format!("match/{id}"))),
-            ]
-            .spacing(14)
-            .align_y(Center),
-        );
+    }
+    if let Some(applying) = &shown.applying {
+        let id = applying.id();
+        view = view.push(apply::view(applying, busy).map(move |msg| Msg::Apply(id, msg)));
     }
     view.into()
 }
