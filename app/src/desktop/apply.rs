@@ -12,6 +12,7 @@
 //! application and résumé as edited in their boxes.
 
 use std::sync::Arc;
+use std::sync::atomic::{AtomicU64, Ordering};
 
 use iced::widget::{Column, button, checkbox, column, container, row, text, text_editor, text_input};
 use iced::{Center, Element, Fill, Task};
@@ -44,9 +45,15 @@ const SUBJECT: &str = "delivery-subject";
 /// The joblog's date field, which follows the status when it is saved.
 const APPLIED_ON: &str = "submissionDate";
 
+/// The number the next Applying is known by.
+static NEXT_VIEW: AtomicU64 = AtomicU64::new(1);
+
 /// A saved match's Apply and Jobnet joblog sections.
 pub struct Applying {
     id: i64,
+    /// This one's number: the match may show on two pages, each with its own sections, and an
+    /// answer goes to the one that asked.
+    view: u64,
     apply_open: bool,
     apply: Option<Result<Delivery, String>>,
     /// The number of the newest read of Apply, and whether it is running: an older answer is
@@ -135,16 +142,6 @@ pub enum ApplyMsg {
     Prompt(text_editor::Action),
 }
 
-impl ApplyMsg {
-    /// An answer to a read or a save, rather than a click.
-    pub fn is_answer(&self) -> bool {
-        matches!(
-            self,
-            ApplyMsg::Delivered { .. } | ApplyMsg::JoblogRead(_) | ApplyMsg::JoblogFiles(_) | ApplyMsg::Saved { .. }
-        )
-    }
-}
-
 /// What an update says on the screen's message bar.
 pub type Said = Option<(Health, String)>;
 
@@ -152,6 +149,7 @@ impl Applying {
     pub fn new(id: i64) -> Self {
         Applying {
             id,
+            view: NEXT_VIEW.fetch_add(1, Ordering::Relaxed),
             apply_open: false,
             apply: None,
             apply_read: 0,
@@ -164,6 +162,10 @@ impl Applying {
 
     pub fn id(&self) -> i64 {
         self.id
+    }
+
+    pub fn view(&self) -> u64 {
+        self.view
     }
 
     /// A document was written: the PDFs and the application to send are read again when next

@@ -235,8 +235,9 @@ pub enum Msg {
         id: i64,
         result: Result<Arc<MatchResult>, String>,
     },
-    /// The Apply and Jobnet joblog sections of saved match id.
-    Apply(i64, ApplyMsg),
+    /// The Apply and Jobnet joblog sections of saved match id, as one result shows them
+    /// (Applying::view): a click there, or the answer to its read or save.
+    Apply(i64, u64, ApplyMsg),
     /// Where a PDF was saved; None when the dialog was closed.
     PdfSaved(Result<Option<String>, String>),
     /// For the shell: go to Language models.
@@ -429,7 +430,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
         }
         // The shell's.
         Msg::Doc(id, msg) => return document(state, id, msg, runner),
-        Msg::Apply(id, msg) => return applying(state, id, msg, runner),
+        Msg::Apply(id, view, msg) => return applying(state, id, view, msg, runner),
         Msg::Wrote { id, answer } => {
             state.busy = false;
             match answer.as_ref() {
@@ -440,7 +441,8 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                             docs.written(answer);
                         }
                         if let Some(applying) = shown.applying.as_mut() {
-                            read_again.push(applying.written(runner).map(move |msg| Msg::Apply(id, msg)));
+                            let view = applying.view();
+                            read_again.push(applying.written(runner).map(move |msg| Msg::Apply(id, view, msg)));
                         }
                     }
                     state.said = Some(match &answer.problem {
@@ -477,7 +479,7 @@ fn starts_work(msg: &Msg) -> bool {
             | Msg::Reject
             | Msg::BringBack
             | Msg::Doc(_, DocMsg::Write(_) | DocMsg::SavePdf(..))
-            | Msg::Apply(_, ApplyMsg::SavePdf(_))
+            | Msg::Apply(_, _, ApplyMsg::SavePdf(_))
     )
 }
 
@@ -721,26 +723,11 @@ fn save_pdf(
 
 /// A click in saved match id's Apply or Jobnet joblog: a PDF is saved here, with the text as
 /// edited in its box; the rest is the sections' own.
-fn applying(state: &mut State, id: i64, msg: ApplyMsg, runner: &Runner) -> Task<Msg> {
-    // An answer goes to every result of the match, whichever page is open now, so a section
-    // left while it read or saved isn't left waiting.
-    if msg.is_answer() {
-        let mut tasks = Vec::new();
-        let mut said = None;
-        for shown in results_of(state, id) {
-            let application = shown.docs.as_ref().and_then(|docs| docs.text_of(APPLICATION, None));
-            if let Some(sections) = shown.applying.as_mut() {
-                let (task, says) = sections.update(msg.clone(), runner, application);
-                tasks.push(task.map(move |msg| Msg::Apply(id, msg)));
-                said = said.or(says);
-            }
-        }
-        if said.is_some() {
-            state.said = said;
-        }
-        return Task::batch(tasks);
-    }
-    let Some(shown) = shown_mut(state).filter(|shown| shown.applying.as_ref().is_some_and(|a| a.id() == id)) else {
+fn applying(state: &mut State, id: i64, view: u64, msg: ApplyMsg, runner: &Runner) -> Task<Msg> {
+    // The result whose sections it came from, whichever page is open now, so an answer to a
+    // section left while it read or saved still reaches it, and no other.
+    let Some(shown) = results_of(state, id).find(|shown| shown.applying.as_ref().is_some_and(|a| a.view() == view))
+    else {
         return Task::none();
     };
     let edited = |kind: &str| shown.docs.as_ref().and_then(|docs| docs.text_of(kind, None));
@@ -760,7 +747,7 @@ fn applying(state: &mut State, id: i64, msg: ApplyMsg, runner: &Runner) -> Task<
     if said.is_some() {
         state.said = said;
     }
-    task.map(move |msg| Msg::Apply(id, msg))
+    task.map(move |msg| Msg::Apply(id, view, msg))
 }
 
 /// The results on screen of saved match id: the last match's, and the one open on its page.
@@ -1210,7 +1197,8 @@ fn result_view(shown: &Shown, busy: bool) -> Element<'_, Msg> {
     }
     if let Some(applying) = &shown.applying {
         let id = applying.id();
-        view = view.push(apply::view(applying, busy).map(move |msg| Msg::Apply(id, msg)));
+        let sections = applying.view();
+        view = view.push(apply::view(applying, busy).map(move |msg| Msg::Apply(id, sections, msg)));
     }
     view.into()
 }
