@@ -260,9 +260,8 @@ mod tests {
 
     async fn context() -> Arc<Context> {
         let db = crate::db::open_in_memory().await.unwrap();
-        let user_id = crate::server::local_user(&db).await.unwrap();
         let taxonomy = Arc::new(crate::taxonomy::Taxonomy::load());
-        Arc::new(Context::new(db, taxonomy, user_id, KeyVault::in_memory()))
+        Arc::new(Context::new(db, taxonomy, KeyVault::in_memory()))
     }
 
     #[tokio::test]

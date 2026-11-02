@@ -206,10 +206,10 @@ fn run_cleanup(args: &[String]) -> ExitCode {
     // The keys' credentials are named by the database's full path, so it is read before the
     // database is gone.
     let vault = KeyVault::credential_manager(db::full_path(&database));
-    let user_id = runtime.block_on(user_id_in(&database));
+    let former_user_id = runtime.block_on(former_user_id_in(&database));
     let schedule = scan_schedule(&database);
-    runtime.block_on(take_over_from_recruiter(&database, &vault, user_id, &schedule));
-    let found = runtime.block_on(cleanup::find(&database, &schedule, &vault, user_id));
+    runtime.block_on(take_over_kept_elsewhere(&database, &vault, former_user_id, &schedule));
+    let found = runtime.block_on(cleanup::find(&database, &schedule, &vault));
 
     println!("JobFinder's cleanup, for {}:", database.display());
     match (found.schedule, &found.schedule_error) {
@@ -230,7 +230,7 @@ fn run_cleanup(args: &[String]) -> ExitCode {
     if !found.anything_besides_the_database() {
         println!("No schedule, keys or downloads to remove.");
     } else if ask("Remove these?") {
-        failed.extend(runtime.block_on(cleanup::remove_besides_the_database(&found, &schedule, &vault, user_id)));
+        failed.extend(runtime.block_on(cleanup::remove_besides_the_database(&found, &schedule, &vault)));
     } else {
         println!("Nothing was removed.");
         return ended_by_hand(ExitCode::SUCCESS);
@@ -291,25 +291,26 @@ fn ask(question: &str) -> bool {
     matches!(answer.trim().to_ascii_lowercase().as_str(), "y" | "yes")
 }
 
-/// The local user's id in database, read without changing the file; 1 (the first user) when it
-/// can't be read.
-async fn user_id_in(database: &std::path::Path) -> i64 {
+/// The local user's trongate_users id in database, read without changing the file, while the
+/// database still has that table (before migration 0010_one_local_user): the API keys' former
+/// credential names have it in them. None once the table is gone, or when it can't be read.
+///
+/// Not checked at compile time: the database the checks run against has no trongate_users.
+async fn former_user_id_in(database: &std::path::Path) -> Option<i64> {
     if !database.exists() {
-        return 1;
+        return None;
     }
     let options = sqlx::sqlite::SqliteConnectOptions::new()
         .filename(database)
         .read_only(true);
-    let Ok(pool) = sqlx::SqlitePool::connect_with(options).await else {
-        return 1;
-    };
+    let pool = sqlx::SqlitePool::connect_with(options).await.ok()?;
     let id: Option<i64> = sqlx::query_scalar("SELECT MIN(id) FROM trongate_users")
         .fetch_one(&pool)
         .await
         .ok()
         .flatten();
     pool.close().await;
-    id.unwrap_or(1)
+    id
 }
 
 fn run_server(args: &[String]) -> ExitCode {
@@ -477,12 +478,11 @@ fn app_context(
     llama_folder: Option<PathBuf>,
 ) -> Result<Context, String> {
     let made_now = !database.exists();
+    // Read before db::open's migrations drop trongate_users.
+    let former_user_id = runtime.block_on(former_user_id_in(database));
     let db = runtime
         .block_on(db::open(database))
         .map_err(|e| format!("Couldn't open {}: {e}", database.display()))?;
-    let user_id = runtime
-        .block_on(server::local_user(&db))
-        .map_err(|e| format!("Couldn't read the local user: {e}"))?;
     let taxonomy = runtime.block_on(taxonomy_store::open(&db)).unwrap_or_else(|why| {
         // Matching still works on the shipped index alone; only the learned labels are missing.
         jobfinder::log_line!("{why} Matching uses the shipped taxonomy without the learned labels.");
@@ -491,7 +491,6 @@ fn app_context(
     let mut context = Context::new(
         db,
         Arc::new(taxonomy),
-        user_id,
         KeyVault::credential_manager(db::full_path(database)),
     );
     context.database = DatabaseFile {
@@ -499,10 +498,10 @@ fn app_context(
         made_now,
     };
     context.scan_schedule = scan_schedule(database);
-    runtime.block_on(take_over_from_recruiter(
+    runtime.block_on(take_over_kept_elsewhere(
         database,
         &context.key_vault,
-        user_id,
+        former_user_id,
         &context.scan_schedule,
     ));
     let data_folder = database.parent().unwrap_or(std::path::Path::new("."));
@@ -544,19 +543,37 @@ fn said_move(moved: Result<Moved, String>) -> Result<(), String> {
     Ok(())
 }
 
-/// Moves what the app kept outside the database while it was called Recruiter: the API keys,
-/// and on the default database the job scan's schedule. What failed is logged; the app goes on.
-async fn take_over_from_recruiter(database: &std::path::Path, vault: &KeyVault, user_id: i64, schedule: &ScanSchedule) {
+/// Moves what the app kept outside the database under former names: the API keys named by the
+/// local user's id (former_user_id, while the database had trongate_users), and what it kept
+/// while it was called Recruiter: the API keys, and on the default database the job scan's
+/// schedule. What failed is logged; the app goes on.
+async fn take_over_kept_elsewhere(
+    database: &std::path::Path,
+    vault: &KeyVault,
+    former_user_id: Option<i64>,
+    schedule: &ScanSchedule,
+) {
+    if let Some(user_id) = former_user_id {
+        match vault.take_over_keys_named_by_user(user_id) {
+            Ok(0) => {}
+            Ok(moved) => jobfinder::say!("Moved {moved} API key(s) to their names without the user id."),
+            Err(why) => jobfinder::log_line!("The API keys kept under the user's id couldn't be moved: {why}"),
+        }
+    }
     if from_recruiter::former_left_in_place(database) {
         // Its keys and schedule stay with the former database (said at the move).
         return;
     }
-    match vault.take_over_former_keys(&from_recruiter::former_key_database(database), user_id) {
-        Ok(0) => {}
-        Ok(moved) => {
-            jobfinder::say!("Moved {moved} API key(s) from Recruiter's name in Credential Manager to JobFinder's.")
+    // Recruiter's keys were named by the local user's id; a database without trongate_users
+    // was opened by JobFinder already, which took them over then.
+    if let Some(user_id) = former_user_id {
+        match vault.take_over_former_keys(&from_recruiter::former_key_database(database), user_id) {
+            Ok(0) => {}
+            Ok(moved) => {
+                jobfinder::say!("Moved {moved} API key(s) from Recruiter's name in Credential Manager to JobFinder's.")
+            }
+            Err(why) => jobfinder::log_line!("The API keys kept under Recruiter's name couldn't be moved: {why}"),
         }
-        Err(why) => jobfinder::log_line!("The API keys kept under Recruiter's name couldn't be moved: {why}"),
     }
     if !from_recruiter::is_default(database) {
         return;

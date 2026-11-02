@@ -255,7 +255,7 @@ pub async fn check(context: &Context, pause: Duration) -> Result<CheckReport, Se
     let mut report = CheckReport::default();
     let today = today();
     let mut read_one = false;
-    for saved in match_model::open_to_check(db, context.user_id, BY_HAND_OPEN).await? {
+    for saved in match_model::open_to_check(db, BY_HAND_OPEN).await? {
         // Paused in the task manager: the next check waits until it is resumed.
         running_work::until_resumed().await;
         if running_work::stop_asked() {
@@ -339,7 +339,7 @@ pub async fn check_now(context: &Context) -> Result<String, ServiceError> {
 /// The user saying saved match id's job is still open: it leaves the No longer open list, and
 /// the check leaves it alone.
 pub async fn keep_open(context: &Context, id: i64) -> Result<(), ServiceError> {
-    if match_model::keep_open(context.db(), id, context.user_id, BY_HAND_OPEN).await? {
+    if match_model::keep_open(context.db(), id, BY_HAND_OPEN).await? {
         Ok(())
     } else {
         Err(ServiceError::new(
@@ -515,11 +515,10 @@ mod tests {
 
     /// Two matches without links: one whose deadline passed, one whose deadline is to come.
     const SEED: &str = r#"
-        INSERT INTO trongate_users (id) VALUES (1);
-        INSERT INTO matches (id, trongate_user_id, job_title, job_text, score, points, max_points, tag, created_at)
-        VALUES (1, 1, 'Passed', 'Ansøgningsfrist: 2020-01-15', 0.9, 9, 10, 'top', 1577836800),
-               (2, 1, 'To come', 'Ansøgningsfrist: 2999-01-15', 0.8, 8, 10, 'top', 1577836800),
-               (3, 1, 'Rejected', 'Ansøgningsfrist: 2020-01-15', 0.7, 7, 10, 'top', 1577836800);
+        INSERT INTO matches (id, job_title, job_text, score, points, max_points, tag, created_at)
+        VALUES (1, 'Passed', 'Ansøgningsfrist: 2020-01-15', 0.9, 9, 10, 'top', 1577836800),
+               (2, 'To come', 'Ansøgningsfrist: 2999-01-15', 0.8, 8, 10, 'top', 1577836800),
+               (3, 'Rejected', 'Ansøgningsfrist: 2020-01-15', 0.7, 7, 10, 'top', 1577836800);
         UPDATE matches SET rejected_at = 1 WHERE id = 3;
     "#;
 
@@ -530,7 +529,6 @@ mod tests {
         let context = Context::new(
             pool.clone(),
             std::sync::Arc::new(crate::taxonomy::Taxonomy::load()),
-            1,
             crate::account::key_vault::KeyVault::in_memory(),
         );
         let report = check(&context, Duration::ZERO).await.unwrap();
@@ -541,18 +539,18 @@ mod tests {
                 ..CheckReport::default()
             }
         );
-        let closed = match_model::best_first(&pool, 1, 10, "", match_model::CLOSED)
+        let closed = match_model::best_first(&pool, 10, "", match_model::CLOSED)
             .await
             .unwrap();
         assert_eq!(closed.rows.iter().map(|row| row.id).collect::<Vec<_>>(), vec![1]);
         assert_eq!(closed.rows[0].opening.closed_why, "deadline");
-        let all = match_model::best_first(&pool, 1, 10, "", "all").await.unwrap();
+        let all = match_model::best_first(&pool, 10, "", "all").await.unwrap();
         assert_eq!(all.rows.iter().map(|row| row.id).collect::<Vec<_>>(), vec![2]);
         assert_eq!(all.rows[0].opening.deadline.as_deref(), Some("2999-01-15"));
         // Said to be open by hand: back in All, and left alone by the next check.
         keep_open(&context, 1).await.unwrap();
         assert_eq!(check(&context, Duration::ZERO).await.unwrap(), CheckReport::default());
-        let all = match_model::best_first(&pool, 1, 10, "", "all").await.unwrap();
+        let all = match_model::best_first(&pool, 10, "", "all").await.unwrap();
         assert_eq!(all.rows.len(), 2);
     }
 }

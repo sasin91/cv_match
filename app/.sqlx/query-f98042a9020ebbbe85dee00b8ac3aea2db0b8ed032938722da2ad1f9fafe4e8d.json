@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT label, url FROM profile_links ORDER BY position, id",
+  "describe": {
+    "columns": [
+      {
+        "name": "label",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "profile_links",
+            "name": "label"
+          }
+        }
+      },
+      {
+        "name": "url",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "profile_links",
+            "name": "url"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "f98042a9020ebbbe85dee00b8ac3aea2db0b8ed032938722da2ad1f9fafe4e8d"
+}

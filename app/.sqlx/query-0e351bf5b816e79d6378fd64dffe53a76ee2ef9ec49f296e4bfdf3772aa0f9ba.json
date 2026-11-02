@@ -1,0 +1,110 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT provider, model, base_url, key_hint,\n       use_for_resume, use_for_application, use_for_job_evaluation,\n       updated_at\nFROM llm_keys\nORDER BY created_at, id\n",
+  "describe": {
+    "columns": [
+      {
+        "name": "provider",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "llm_keys",
+            "name": "provider"
+          }
+        }
+      },
+      {
+        "name": "model",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "llm_keys",
+            "name": "model"
+          }
+        }
+      },
+      {
+        "name": "base_url",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "llm_keys",
+            "name": "base_url"
+          }
+        }
+      },
+      {
+        "name": "key_hint",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "llm_keys",
+            "name": "key_hint"
+          }
+        }
+      },
+      {
+        "name": "use_for_resume",
+        "ordinal": 4,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "llm_keys",
+            "name": "use_for_resume"
+          }
+        }
+      },
+      {
+        "name": "use_for_application",
+        "ordinal": 5,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "llm_keys",
+            "name": "use_for_application"
+          }
+        }
+      },
+      {
+        "name": "use_for_job_evaluation",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "llm_keys",
+            "name": "use_for_job_evaluation"
+          }
+        }
+      },
+      {
+        "name": "updated_at",
+        "ordinal": 7,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "llm_keys",
+            "name": "updated_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0e351bf5b816e79d6378fd64dffe53a76ee2ef9ec49f296e4bfdf3772aa0f9ba"
+}

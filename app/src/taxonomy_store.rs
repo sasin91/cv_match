@@ -545,12 +545,10 @@ mod tests {
 
     /// A saved match to sight a label in.
     async fn a_match(db: &SqlitePool, job_text: &str) -> i64 {
-        let user_id = crate::server::local_user(db).await.unwrap();
         sqlx::query_scalar(
-            r#"INSERT INTO matches (trongate_user_id, job_title, job_text, score, points, max_points, tag, created_at)
-               VALUES (?1, 'job', ?2, 0, 0, 0, '', 0) RETURNING id"#,
+            r#"INSERT INTO matches (job_title, job_text, score, points, max_points, tag, created_at)
+               VALUES ('job', ?1, 0, 0, 0, '', 0) RETURNING id"#,
         )
-        .bind(user_id)
         .bind(job_text)
         .fetch_one(db)
         .await

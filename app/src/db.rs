@@ -35,6 +35,14 @@ const MIGRATIONS: &[(&str, &str)] = &[
         include_str!("../migrations/0007_llm_use_models.sql"),
     ),
     ("0008_still_open", include_str!("../migrations/0008_still_open.sql")),
+    (
+        "0010_one_local_user",
+        include_str!("../migrations/0010_one_local_user.sql"),
+    ),
+    (
+        "0011_one_user_schema",
+        include_str!("../migrations/0011_one_user_schema.sql"),
+    ),
 ];
 
 /// How long a write waits for another connection's write to finish, in milliseconds.
@@ -292,10 +300,8 @@ mod tests {
         let db = open_in_memory().await.unwrap();
         db.execute(sqlx::raw_sql(
             r#"
-            INSERT INTO trongate_users (id) VALUES (1);
-            INSERT INTO matches (id, trongate_user_id, job_title, job_text, score, points,
-                                    max_points, tag, created_at)
-            VALUES (7, 1, 'PHP developer', 'post', 0.81, 8, 10, 'good', 0);
+            INSERT INTO matches (id, job_title, job_text, score, points, max_points, tag, created_at)
+            VALUES (7, 'PHP developer', 'post', 0.81, 8, 10, 'good', 0);
             INSERT INTO documents (id, kind, text, written_at) VALUES (1, 'cv', 'cv', 0);
             INSERT INTO match_documents (match_id, document_id) VALUES (7, 1);
             INSERT INTO match_items (match_id, criterion, text, verdict, decided_by)
@@ -343,18 +349,15 @@ mod tests {
 
         migrate(&db).await.unwrap();
         let kept: (String, String, i64, i64) =
-            sqlx::query_as(r#"SELECT provider, key_hint, use_for_resume, use_for_application FROM user_llm_keys"#)
+            sqlx::query_as(r#"SELECT provider, key_hint, use_for_resume, use_for_application FROM llm_keys"#)
                 .fetch_one(&db)
                 .await
                 .unwrap();
         assert_eq!(kept, ("openai".to_string(), "65sA".to_string(), 0, 1));
-        sqlx::query(
-            r#"INSERT INTO user_llm_keys (trongate_user_id, provider, created_at, updated_at)
-               VALUES (1, 'anthropic', 7, 7)"#,
-        )
-        .execute(&db)
-        .await
-        .unwrap();
+        sqlx::query(r#"INSERT INTO llm_keys (provider, created_at, updated_at) VALUES ('anthropic', 7, 7)"#)
+            .execute(&db)
+            .await
+            .unwrap();
     }
 
     /// An in-memory database with the migrations before `upto` applied and recorded.
@@ -451,5 +454,113 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(left.0, 1);
+    }
+
+    /// The index of migration name in MIGRATIONS.
+    fn position_of(name: &str) -> usize {
+        MIGRATIONS.iter().position(|(each, _)| *each == name).unwrap()
+    }
+
+    #[tokio::test]
+    async fn the_one_local_users_rows_stay_when_trongate_users_and_candidates_go() {
+        let db = migrated_before(position_of("0010_one_local_user")).await;
+        db.execute(sqlx::raw_sql(
+            r#"
+            INSERT INTO trongate_users (id) VALUES (3);
+            INSERT INTO candidates (id, trongate_user_id, name, email, created_at, updated_at)
+            VALUES (4, 3, 'Jonas', 'me@example.com', 0, 0);
+            INSERT INTO candidate_profiles (candidate_id, title, location, about, created_at, updated_at)
+            VALUES (4, 'Developer', 'Slagelse', '', 0, 0);
+            INSERT INTO candidate_profile_entries (id, candidate_id, section, title, created_at, updated_at)
+            VALUES (8, 4, 'experience', 'Lead', 0, 0);
+            INSERT INTO candidate_profile_lines (candidate_id, entry_id, kind, text)
+            VALUES (4, 8, 'bullet', 'Built it'), (4, NULL, 'skill', 'PHP');
+            INSERT INTO candidate_profile_links (candidate_id, label, url, created_at, updated_at)
+            VALUES (4, 'GitHub', 'https://github.com/sasin91', 0, 0);
+            INSERT INTO matches (id, trongate_user_id, job_title, job_text, score, points, max_points, tag, created_at)
+            VALUES (9, 3, 'PHP developer', 'post', 0.8, 8, 10, 'good', 5);
+            INSERT INTO match_items (match_id, criterion, text, verdict, decided_by)
+            VALUES (9, 'skills', 'PHP', 'met', 'exact');
+            INSERT INTO user_llm_keys (trongate_user_id, provider, key_hint, created_at, updated_at)
+            VALUES (3, 'openai', 'WXYZ', 0, 0);
+            INSERT INTO user_llm_use_models (trongate_user_id, use, model) VALUES (3, 'judge', 'gpt-5.4-mini');
+            "#,
+        ))
+        .await
+        .unwrap();
+
+        migrate(&db).await.unwrap();
+        let kept: (i64, String, String, String, String) = sqlx::query_as(
+            r#"SELECT (SELECT COUNT(*) FROM match_items WHERE match_id = 9),
+                      (SELECT name || ', ' || title FROM profile WHERE id = 1),
+                      (SELECT group_concat(text, ', ') FROM profile_lines),
+                      (SELECT key_hint FROM llm_keys WHERE provider = 'openai'),
+                      (SELECT model FROM llm_task_models WHERE task = 'judge')"#,
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(
+            kept,
+            (
+                1,
+                "Jonas, Developer".into(),
+                "Built it, PHP".into(),
+                "WXYZ".into(),
+                "gpt-5.4-mini".into()
+            )
+        );
+        let candidates_left: i64 = sqlx::query_scalar(
+            r#"SELECT COUNT(*) FROM sqlite_schema WHERE name LIKE 'candidate%' OR sql LIKE '%candidate_id%'"#,
+        )
+        .fetch_one(&db)
+        .await
+        .unwrap();
+        assert_eq!(candidates_left, 0, "no table keeps candidates or candidate_id");
+        sqlx::query("DELETE FROM profile_entries WHERE id = 8")
+            .execute(&db)
+            .await
+            .unwrap();
+        let lines: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM profile_lines")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(lines, 1, "an entry's bullets go with it, the skills stay");
+        let users_left: i64 =
+            sqlx::query_scalar(r#"SELECT COUNT(*) FROM sqlite_schema WHERE sql LIKE '%trongate_user%'"#)
+                .fetch_one(&db)
+                .await
+                .unwrap();
+        assert_eq!(users_left, 0, "no table keeps trongate_users or trongate_user_id");
+        sqlx::query("DELETE FROM matches WHERE id = 9")
+            .execute(&db)
+            .await
+            .unwrap();
+        let items: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM match_items")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(items, 0, "what hangs on a match still goes with it");
+    }
+
+    #[tokio::test]
+    async fn a_database_with_two_users_is_refused_as_it_was() {
+        let db = migrated_before(position_of("0010_one_local_user")).await;
+        db.execute(sqlx::raw_sql(
+            r#"
+            INSERT INTO trongate_users (id) VALUES (1), (2);
+            INSERT INTO matches (id, trongate_user_id, job_title, job_text, score, points, max_points, tag, created_at)
+            VALUES (1, 1, 'A', 'post', 0.8, 8, 10, 'good', 5), (2, 2, 'B', 'post', 0.7, 7, 10, 'good', 6);
+            "#,
+        ))
+        .await
+        .unwrap();
+
+        assert!(refusal(&db).await.contains("users <= 1"));
+        let users: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM trongate_users")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert_eq!(users, 2, "rolled back, so the database stays as it was");
     }
 }

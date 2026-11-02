@@ -1,9 +1,10 @@
 //! Writing the candidate's profile, ported from modules/profile/Profile_model.php: the whole
 //! profile replaced with what was read from a CV, all or nothing. The desktop app has no account
-//! that makes the candidates row, so the first fill makes it, from the CV's name and email.
+//! that makes the profile row, so the first fill makes it, from the CV's name and email.
 
 use sqlx::SqlitePool;
 
+use super::PROFILE_ID;
 use super::profile_fields::ProfileFromCv;
 
 /// Longest CV file name kept, in characters (the VARCHAR(255) column).
@@ -20,18 +21,10 @@ pub struct FilledFrom {
 }
 
 /// The user's profile header, when they have one.
-pub async fn filled_from(db: &SqlitePool, user_id: i64) -> sqlx::Result<Option<FilledFrom>> {
-    let row = sqlx::query!(
-        r#"
-        SELECT candidates.name, candidate_profiles.filled_from_cv_name, candidate_profiles.filled_from_cv_at
-        FROM candidates
-        JOIN candidate_profiles ON candidate_profiles.candidate_id = candidates.id
-        WHERE candidates.trongate_user_id = ?1
-        "#,
-        user_id
-    )
-    .fetch_optional(db)
-    .await?;
+pub async fn filled_from(db: &SqlitePool) -> sqlx::Result<Option<FilledFrom>> {
+    let row = sqlx::query!(r#"SELECT name, filled_from_cv_name, filled_from_cv_at FROM profile"#)
+        .fetch_optional(db)
+        .await?;
     Ok(row.map(|row| FilledFrom {
         name: row.name,
         cv_name: row.filled_from_cv_name,
@@ -40,58 +33,28 @@ pub async fn filled_from(db: &SqlitePool, user_id: i64) -> sqlx::Result<Option<F
 }
 
 /// Replaces the user's whole profile with what was read from a CV (profile_fields::from_cv),
-/// making the candidate when there is none. The name, email and phone are only changed where
-/// the CV has them.
-pub async fn replace_from_cv(
-    db: &SqlitePool,
-    user_id: i64,
-    profile: &ProfileFromCv,
-    cv_name: &str,
-) -> sqlx::Result<()> {
+/// making it when there is none. The name, email and phone are only changed where the CV has
+/// them.
+pub async fn replace_from_cv(db: &SqlitePool, profile: &ProfileFromCv, cv_name: &str) -> sqlx::Result<()> {
     let now = chrono::Utc::now().timestamp();
     let cv_name: String = cv_name.trim().chars().take(CV_NAME_LENGTH).collect();
     let mut tx = crate::db::write_transaction(db).await?;
-    let candidate_id = sqlx::query_scalar!(
-        r#"
-        INSERT INTO candidates (trongate_user_id, name, email, phone, created_at, updated_at)
-        VALUES (?1, ?2, ?3, NULLIF(?4, ''), ?5, ?5)
-        ON CONFLICT (trongate_user_id) DO UPDATE SET
-          name = CASE WHEN excluded.name <> '' THEN excluded.name ELSE candidates.name END,
-          email = CASE WHEN excluded.email <> '' THEN excluded.email ELSE candidates.email END,
-          phone = COALESCE(excluded.phone, candidates.phone),
-          updated_at = excluded.updated_at
-        RETURNING id AS "id!: i64"
-        "#,
-        user_id,
-        profile.name,
-        profile.email,
-        profile.phone,
-        now
-    )
-    .fetch_one(&mut *tx)
-    .await?;
-    sqlx::query!(
-        r#"DELETE FROM candidate_profile_entries WHERE candidate_id = ?1"#,
-        candidate_id
-    )
-    .execute(&mut *tx)
-    .await?;
-    sqlx::query!(
-        r#"DELETE FROM candidate_profile_lines WHERE candidate_id = ?1"#,
-        candidate_id
-    )
-    .execute(&mut *tx)
-    .await?;
     sqlx::query!(
         r#"
-        INSERT INTO candidate_profiles (candidate_id, title, location, about, filled_from_cv_name, filled_from_cv_at, created_at, updated_at)
-        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?6, ?6)
-        ON CONFLICT (candidate_id) DO UPDATE SET
+        INSERT INTO profile (id, name, email, phone, title, location, about, filled_from_cv_name, filled_from_cv_at, created_at, updated_at)
+        VALUES (?1, ?2, ?3, NULLIF(?4, ''), ?5, ?6, ?7, ?8, ?9, ?9, ?9)
+        ON CONFLICT (id) DO UPDATE SET
+          name = CASE WHEN excluded.name <> '' THEN excluded.name ELSE profile.name END,
+          email = CASE WHEN excluded.email <> '' THEN excluded.email ELSE profile.email END,
+          phone = COALESCE(excluded.phone, profile.phone),
           title = excluded.title, location = excluded.location, about = excluded.about,
           filled_from_cv_name = excluded.filled_from_cv_name, filled_from_cv_at = excluded.filled_from_cv_at,
           updated_at = excluded.updated_at
         "#,
-        candidate_id,
+        PROFILE_ID,
+        profile.name,
+        profile.email,
+        profile.phone,
         profile.title,
         profile.location,
         profile.about,
@@ -100,15 +63,17 @@ pub async fn replace_from_cv(
     )
     .execute(&mut *tx)
     .await?;
+    // The lines go with their entries (ON DELETE CASCADE); the skills and the like by hand.
+    sqlx::query!(r#"DELETE FROM profile_entries"#).execute(&mut *tx).await?;
+    sqlx::query!(r#"DELETE FROM profile_lines"#).execute(&mut *tx).await?;
     for (sort_order, entry) in (0_i64..).zip(&profile.entries) {
         let entry_id = sqlx::query_scalar!(
             r#"
-            INSERT INTO candidate_profile_entries
-              (candidate_id, section, title, organisation, location, url, started_on, ended_on, summary, note, sort_order, created_at, updated_at)
-            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?12)
+            INSERT INTO profile_entries
+              (section, title, organisation, location, url, started_on, ended_on, summary, note, sort_order, created_at, updated_at)
+            VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?11)
             RETURNING id AS "id!: i64"
             "#,
-            candidate_id,
             entry.section,
             entry.title,
             entry.organisation,
@@ -123,28 +88,23 @@ pub async fn replace_from_cv(
         )
         .fetch_one(&mut *tx)
         .await?;
-        insert_lines(&mut tx, candidate_id, Some(entry_id), "bullet", &entry.bullets).await?;
+        insert_lines(&mut tx, Some(entry_id), "bullet", &entry.bullets).await?;
     }
     for (kind, items) in &profile.lines {
-        insert_lines(&mut tx, candidate_id, None, kind, items).await?;
+        insert_lines(&mut tx, None, kind, items).await?;
     }
     tx.commit().await
 }
 
 async fn insert_lines(
     tx: &mut sqlx::Transaction<'_, sqlx::Sqlite>,
-    candidate_id: i64,
     entry_id: Option<i64>,
     kind: &str,
     items: &[String],
 ) -> sqlx::Result<()> {
     for (sort_order, text) in (0_i64..).zip(items) {
         sqlx::query!(
-            r#"
-            INSERT INTO candidate_profile_lines (candidate_id, entry_id, kind, text, sort_order)
-            VALUES (?1, ?2, ?3, ?4, ?5)
-            "#,
-            candidate_id,
+            r#"INSERT INTO profile_lines (entry_id, kind, text, sort_order) VALUES (?1, ?2, ?3, ?4)"#,
             entry_id,
             kind,
             text,
@@ -195,17 +155,14 @@ mod tests {
     #[tokio::test]
     async fn a_cv_makes_the_candidate_and_their_profile() {
         let db = db::open_in_memory().await.unwrap();
-        db.execute(sqlx::raw_sql("INSERT INTO trongate_users (id) VALUES (1)"))
-            .await
-            .unwrap();
-        assert_eq!(filled_from(&db, 1).await.unwrap(), None);
-        replace_from_cv(&db, 1, &read(), "cv.pdf").await.unwrap();
+        assert_eq!(filled_from(&db).await.unwrap(), None);
+        replace_from_cv(&db, &read(), "cv.pdf").await.unwrap();
         assert_eq!(
-            text_for_user(&db, 1).await.unwrap().unwrap(),
+            text_for_user(&db).await.unwrap().unwrap(),
             "Mette Sørensen\nUdvikler\nSlagelse · mette@example.com\n\nJeg bygger ting.\n\n\
              Experience\n\nUdvikler · Firma\nJanuary 2017 – now\n- Byggede en API\n\nSkills\n- PHP"
         );
-        let filled = filled_from(&db, 1).await.unwrap().unwrap();
+        let filled = filled_from(&db).await.unwrap().unwrap();
         assert_eq!(
             (filled.name.as_str(), filled.cv_name.as_str()),
             ("Mette Sørensen", "cv.pdf")
@@ -217,18 +174,17 @@ mod tests {
     async fn filling_again_replaces_the_profile_and_keeps_what_the_cv_leaves_out() {
         let db = db::open_in_memory().await.unwrap();
         db.execute(sqlx::raw_sql(
-            "INSERT INTO trongate_users (id) VALUES (1);
-             INSERT INTO candidates (id, trongate_user_id, name, email, phone, created_at, updated_at)
-             VALUES (4, 1, 'Mette', 'old@example.com', '12345678', 0, 0);",
+            "INSERT INTO profile (id, name, email, phone, created_at, updated_at)
+             VALUES (1, 'Mette', 'old@example.com', '12345678', 0, 0);",
         ))
         .await
         .unwrap();
-        replace_from_cv(&db, 1, &read(), "").await.unwrap();
+        replace_from_cv(&db, &read(), "").await.unwrap();
         let mut again = read();
         again.email = String::new();
         again.entries[0].title = "Lead".to_string();
-        replace_from_cv(&db, 1, &again, "new.pdf").await.unwrap();
-        let text = text_for_user(&db, 1).await.unwrap().unwrap();
+        replace_from_cv(&db, &again, "new.pdf").await.unwrap();
+        let text = text_for_user(&db).await.unwrap().unwrap();
         assert!(text.contains("12345678 · mette@example.com"), "{text}");
         assert!(
             text.contains("Lead · Firma") && !text.contains("Udvikler · Firma"),

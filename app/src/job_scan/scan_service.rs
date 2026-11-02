@@ -205,7 +205,7 @@ pub async fn scan_problem(context: &Context) -> Result<Option<String>, ServiceEr
                 .to_string(),
         ));
     }
-    if profile::text_for_user(context.db(), context.user_id).await?.is_none() {
+    if profile::text_for_user(context.db()).await?.is_none() {
         return Ok(Some(
             "Every post is matched with your profile, and there is none yet. Read your CV in setup first.".to_string(),
         ));
@@ -584,7 +584,7 @@ async fn match_post_once_read(
 
 /// The profile read once for a whole scan, rather than once per post.
 async fn profile_cv(context: &Context) -> Result<ProfileCv, ServiceError> {
-    let Some(text) = profile::text_for_user(context.db(), context.user_id).await? else {
+    let Some(text) = profile::text_for_user(context.db()).await? else {
         return Err(ServiceError::need_key(
             "Every post is matched with your profile, and there is none yet. Read your CV in setup first.",
         ));
@@ -1196,7 +1196,7 @@ async fn match_claimed(
         }
         Matched::Saved(match_id, found) => (match_id, found),
     };
-    let Some(saved) = match_model::find(db, match_id, context.user_id).await? else {
+    let Some(saved) = match_model::find(db, match_id).await? else {
         set(FAILED, "The match wasn't saved.".to_string(), None, found).await?;
         return Ok(false);
     };
@@ -1252,7 +1252,7 @@ async fn dismissed_meanwhile(context: &Context, post_id: i64, match_id: i64) -> 
         .is_some_and(|(_, status)| status == DISMISSED);
     if dismissed {
         let now = chrono::Utc::now().timestamp();
-        match_model::reject(db, match_id, context.user_id, &[], now).await?;
+        match_model::reject(db, match_id, &[], now).await?;
     }
     Ok(dismissed)
 }

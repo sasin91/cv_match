@@ -299,10 +299,10 @@ pub async fn dismiss(context: &Context, post_id: i64, undo: bool) -> Result<i64,
     };
     if let Some(match_id) = match_id {
         if undo {
-            match_model::bring_back(db, match_id, context.user_id).await?;
+            match_model::bring_back(db, match_id).await?;
         } else {
             let now = chrono::Utc::now().timestamp();
-            match_model::reject(db, match_id, context.user_id, &[], now).await?;
+            match_model::reject(db, match_id, &[], now).await?;
         }
         // Another search's post of the same job shares the match, and says the same.
         model::follow_match(db, match_id, undo).await?;
@@ -312,7 +312,7 @@ pub async fn dismiss(context: &Context, post_id: i64, undo: bool) -> Result<i64,
 
 /// Whether there is a profile to match with, for the form.
 pub async fn has_profile(context: &Context) -> Result<bool, ServiceError> {
-    Ok(profile::text_for_user(context.db(), context.user_id).await?.is_some())
+    Ok(profile::text_for_user(context.db()).await?.is_some())
 }
 
 #[cfg(test)]

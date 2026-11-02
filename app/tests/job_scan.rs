@@ -6,7 +6,6 @@ use jobfinder::account::key_vault::KeyVault;
 use jobfinder::context::Context;
 use jobfinder::db;
 use jobfinder::job_scan::scan_service::{self, Started};
-use jobfinder::server;
 use jobfinder::taxonomy::Taxonomy;
 
 /// A quarter of a tokio worker's own stack (2 MiB). Before the scan's work went on the heap
@@ -23,13 +22,7 @@ fn a_scan_started_as_scan_now_starts_it_fits_on_a_small_stack() {
         .unwrap();
     let answer = runtime.block_on(async {
         let db = db::open_in_memory().await.unwrap();
-        let user_id = server::local_user(&db).await.unwrap();
-        let context = Arc::new(Context::new(
-            db,
-            Arc::new(Taxonomy::load()),
-            user_id,
-            KeyVault::in_memory(),
-        ));
+        let context = Arc::new(Context::new(db, Arc::new(Taxonomy::load()), KeyVault::in_memory()));
         // As scan_now spawns it: polled on the worker, not on this thread.
         context
             .running

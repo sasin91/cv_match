@@ -16,7 +16,6 @@ use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use sqlx::SqlitePool;
 
 use crate::context::Context;
 use crate::extension;
@@ -50,21 +49,6 @@ impl AppState {
             front: None,
         }
     }
-}
-
-/// The local user: the one imported, or a new one on a fresh database.
-pub async fn local_user(db: &SqlitePool) -> sqlx::Result<i64> {
-    sqlx::query!(
-        r#"
-        INSERT INTO trongate_users (id)
-        SELECT 1 WHERE NOT EXISTS (SELECT 1 FROM trongate_users)
-        "#
-    )
-    .execute(db)
-    .await?;
-    sqlx::query_scalar!(r#"SELECT MIN(id) AS "id!: i64" FROM trongate_users"#)
-        .fetch_one(db)
-        .await
 }
 
 pub fn router(state: Arc<AppState>) -> Router {

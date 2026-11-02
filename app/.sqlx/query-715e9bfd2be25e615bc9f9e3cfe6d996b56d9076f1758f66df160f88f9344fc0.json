@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO llm_task_models (task, model) VALUES (?1, ?2)\n            ON CONFLICT (task) DO UPDATE SET model = excluded.model\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "715e9bfd2be25e615bc9f9e3cfe6d996b56d9076f1758f66df160f88f9344fc0"
+}

@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            SELECT text\n            FROM profile_lines\n            WHERE entry_id = ?1 AND kind = 'bullet'\n            ORDER BY sort_order, id\n            ",
+  "describe": {
+    "columns": [
+      {
+        "name": "text",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "profile_lines",
+            "name": "text"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "6c6cee8a463e214be318b62cc2173462ff0ee1f3f3315e84d6f53d537fa73849"
+}

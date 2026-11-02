@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT task AS \"task!\", model FROM llm_task_models WHERE model != ''",
+  "describe": {
+    "columns": [
+      {
+        "name": "task!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "llm_task_models",
+            "name": "task"
+          }
+        }
+      },
+      {
+        "name": "model",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "llm_task_models",
+            "name": "model"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true,
+      false
+    ]
+  },
+  "hash": "fe50b890b3fe584dc50ff5e8813b1274a6e7d84e3830e970b88473bf172f2c70"
+}
