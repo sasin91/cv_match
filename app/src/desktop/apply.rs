@@ -60,6 +60,9 @@ pub struct Applying {
     /// dropped, and showing the section again doesn't read it twice.
     apply_read: u64,
     apply_reading: bool,
+    /// The one-line values as edited before a document was written, by field id, for the read
+    /// after it.
+    apply_lines_kept: Vec<(String, String)>,
     joblog_open: bool,
     joblog: Option<Result<Joblog, String>>,
     /// The joblog's first read is running.
@@ -138,10 +141,8 @@ pub enum ApplyMsg {
     /// How far the candidate is: a status from joblog::SEARCH_STATUSES.
     Status(&'static str),
     Logged(bool),
-    Saved {
-        status: &'static str,
-        logged: Result<Logged, String>,
-    },
+    /// The status saved, and whether it is in the joblog.
+    Saved(Result<(&'static str, Logged), String>),
     CopyPrompt,
     Prompt(text_editor::Action),
 }
@@ -158,6 +159,7 @@ impl Applying {
             apply: None,
             apply_read: 0,
             apply_reading: false,
+            apply_lines_kept: Vec::new(),
             joblog_open: false,
             joblog: None,
             joblog_reading: false,
@@ -177,6 +179,10 @@ impl Applying {
     /// A document was written: the PDFs and the application to send are read again when next
     /// shown.
     pub fn written(&mut self, runner: &Runner) -> Task<ApplyMsg> {
+        // The one-line values edited (To, Subject) stay: only a document changed.
+        if let Some(delivery) = self.delivery_mut() {
+            self.apply_lines_kept = delivery.lines();
+        }
         self.apply = None;
         // A read from before the writing is out of date.
         self.apply_read += 1;
@@ -257,8 +263,13 @@ impl Applying {
                     return (Task::none(), None);
                 }
                 self.apply_reading = false;
+                let kept = std::mem::take(&mut self.apply_lines_kept);
                 self.apply = Some(match answer.as_ref() {
-                    Ok(delivery) => Ok(Delivery::new(delivery.clone(), application)),
+                    Ok(delivery) => {
+                        let mut shown = Delivery::new(delivery.clone(), application);
+                        shown.with_lines(kept);
+                        Ok(shown)
+                    }
                     Err(why) => Err(why.clone()),
                 });
             }
@@ -368,23 +379,15 @@ impl Applying {
                     return copied(value.text());
                 }
             }
-            ApplyMsg::Status(status) => {
-                let logged = self.joblog_mut().is_some_and(|joblog| joblog.panel.logged.checked);
-                return (self.save(status, logged, runner), None);
-            }
-            ApplyMsg::Logged(logged) => {
-                let status = self
-                    .joblog_mut()
-                    .map_or(joblog::SEARCH_STATUSES[0].0, |joblog| joblog.status());
-                return (self.save(status, logged, runner), None);
-            }
-            ApplyMsg::Saved { status, logged } => {
+            ApplyMsg::Status(status) => return (self.save(Change::Status(status), runner), None),
+            ApplyMsg::Logged(logged) => return (self.save(Change::Logged(logged), runner), None),
+            ApplyMsg::Saved(saved) => {
                 let Some(joblog) = self.joblog_mut() else {
                     return (Task::none(), None);
                 };
                 joblog.saving = false;
-                match logged {
-                    Ok(logged) => {
+                match saved {
+                    Ok((status, logged)) => {
                         joblog.saved(status, logged);
                         return (Task::none(), Some((Health::Ready, "Saved with the match.".to_string())));
                     }
@@ -416,18 +419,15 @@ impl Applying {
         (Task::none(), None)
     }
 
-    fn save(&mut self, status: &'static str, logged: bool, runner: &Runner) -> Task<ApplyMsg> {
+    fn save(&mut self, change: Change, runner: &Runner) -> Task<ApplyMsg> {
         let Some(joblog) = self.joblog_mut().filter(|joblog| !joblog.saving) else {
             return Task::none();
         };
         joblog.saving = true;
         let id = self.id;
         runner.run(
-            move |context| async move { match_service::save_joblog_status(&context, id, status, logged).await },
-            move |saved| ApplyMsg::Saved {
-                status,
-                logged: saved.and_then(|saved| saved.map_err(|e| e.message)),
-            },
+            move |context| async move { save_change(&context, id, change).await },
+            |saved| ApplyMsg::Saved(saved.and_then(|saved| saved)),
         )
     }
 
@@ -442,6 +442,43 @@ impl Applying {
     fn joblog_value(&mut self, section: usize, field: usize) -> Option<&mut Value> {
         self.joblog_mut()?.values.get_mut(section)?.get_mut(field)
     }
+}
+
+/// What the candidate changed in the joblog: how far they are, or whether it is in their joblog.
+#[derive(Debug, Clone, Copy)]
+enum Change {
+    Status(&'static str),
+    Logged(bool),
+}
+
+/// Saves change; the other value is the one saved with the match now, not the one shown, which
+/// may be older (the match may be open on another page too).
+async fn save_change(
+    context: &crate::context::Context,
+    id: i64,
+    change: Change,
+) -> Result<(&'static str, Logged), String> {
+    let saved = match_service::joblog_panel(context, id).await.map_err(|e| e.message)?;
+    let (status, logged) = match change {
+        Change::Status(status) => (status, saved.logged.checked),
+        Change::Logged(logged) => (saved_status(&saved), logged),
+    };
+    let logged = match_service::save_joblog_status(context, id, status, logged)
+        .await
+        .map_err(|e| e.message)?;
+    Ok((status, logged))
+}
+
+/// The status a joblog entry has, as read.
+fn saved_status(panel: &JoblogPanel) -> &'static str {
+    panel
+        .sections
+        .iter()
+        .flat_map(|section| &section.fields)
+        .find(|field| field.choose)
+        .map(chosen)
+        .filter(|status| !status.is_empty())
+        .unwrap_or(joblog::SEARCH_STATUSES[0].0)
 }
 
 /// The joblog entry, and the CVR register's address when the post names no postcode and town.
@@ -491,6 +528,26 @@ impl Delivery {
         application_delivery::mailto(&value(TO), &value(SUBJECT))
     }
 
+    /// The one-line values as edited, by field id.
+    fn lines(&self) -> Vec<(String, String)> {
+        self.delivery
+            .fields
+            .iter()
+            .zip(&self.values)
+            .filter(|(field, _)| !field.multiline)
+            .map(|(field, value)| (field.id.clone(), value.text()))
+            .collect()
+    }
+
+    /// Puts back one-line values kept by field id.
+    fn with_lines(&mut self, kept: Vec<(String, String)>) {
+        for (field, value) in self.delivery.fields.iter().zip(&mut self.values) {
+            if let Some((_, line)) = kept.iter().find(|(id, _)| *id == field.id && !field.multiline) {
+                *value = Value::Line(line.clone());
+            }
+        }
+    }
+
     /// The body (the one long field) as the application is edited in its box.
     fn with_application(&mut self, application: Option<String>) {
         let Some(edited) = application.filter(|edited| !edited.trim().is_empty()) else {
@@ -533,21 +590,6 @@ impl Joblog {
             prompt: None,
             saving: false,
         }
-    }
-
-    /// The status picked now.
-    fn status(&self) -> &'static str {
-        self.choose_field()
-            .and_then(|(field, value)| field.options.iter().find(|option| option.value == value.text()))
-            .map_or(joblog::SEARCH_STATUSES[0].0, |option| option.value)
-    }
-
-    fn choose_field(&self) -> Option<(&PanelField, &Value)> {
-        self.panel
-            .sections
-            .iter()
-            .zip(&self.values)
-            .find_map(|(section, values)| section.fields.iter().zip(values).find(|(field, _)| field.choose))
     }
 
     /// Saved: the status picked, whether it is in the joblog, and the day applied in the date
@@ -1006,9 +1048,9 @@ mod tests {
     #[test]
     fn saving_the_status_picks_it_and_dates_the_application() {
         let mut joblog = Joblog::new(panel(), None);
-        assert_eq!(joblog.status(), "IkkeSoegt");
+        assert_eq!(joblog.values[0][4].text(), "IkkeSoegt");
         joblog.saved("Soegt", Logged::from(Some(1_760_000_000), "09-10-2025".to_string()));
-        assert_eq!(joblog.status(), "Soegt");
+        assert_eq!(joblog.values[0][4].text(), "Soegt");
         assert_eq!(joblog.values[0][3].text(), "09-10-2025");
         assert!(joblog.panel.logged.checked);
     }
@@ -1057,6 +1099,12 @@ mod tests {
         assert_eq!(shown.values[1].text(), "Edited again");
         shown.values[0] = Value::Line("Ny overskrift".into());
         assert_eq!(shown.mailto(), "mailto:?subject=Ny%20overskrift");
+        // Read again after writing: the subject as edited stays.
+        let kept = shown.lines();
+        let mut again = Delivery::new(shown.delivery.clone(), None);
+        again.with_lines(kept);
+        assert_eq!(again.values[0].text(), "Ny overskrift");
+        assert_eq!(again.values[1].text(), "Saved");
     }
 
     #[test]
@@ -1064,5 +1112,10 @@ mod tests {
         let mut area = text_editor::Content::with_text(&"x".repeat(joblog::MAX_NOTES + 5));
         cut_to(&mut area, joblog::MAX_NOTES);
         assert_eq!(area.text().chars().count(), joblog::MAX_NOTES);
+    }
+
+    #[test]
+    fn the_saved_status_is_read_from_the_entry() {
+        assert_eq!(saved_status(&panel()), "IkkeSoegt");
     }
 }

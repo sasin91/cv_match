@@ -724,6 +724,15 @@ fn save_pdf(
 /// A click in saved match id's Apply or Jobnet joblog: a PDF is saved here, with the text as
 /// edited in its box; the rest is the sections' own.
 fn applying(state: &mut State, id: i64, view: u64, msg: ApplyMsg, runner: &Runner) -> Task<Msg> {
+    // A status saved is the match's: every other result of it shows it too, even when the one
+    // that saved it has gone since.
+    if let ApplyMsg::Saved(Ok((status, logged))) = &msg {
+        for other in results_of(state, id) {
+            if let Some(sections) = other.applying.as_mut().filter(|a| a.view() != view) {
+                sections.joblog_saved(status, logged);
+            }
+        }
+    }
     // The result whose sections it came from, whichever page is open now, so an answer to a
     // section left while it read or saved still reaches it, and no other.
     let Some(shown) = results_of(state, id).find(|shown| shown.applying.as_ref().is_some_and(|a| a.view() == view))
@@ -743,24 +752,9 @@ fn applying(state: &mut State, id: i64, view: u64, msg: ApplyMsg, runner: &Runne
     let Some(sections) = shown.applying.as_mut() else {
         return Task::none();
     };
-    // A status saved here is the match's: the same match on the other page shows it too.
-    let saved = match &msg {
-        ApplyMsg::Saved {
-            status,
-            logged: Ok(logged),
-        } => Some((*status, logged.clone())),
-        _ => None,
-    };
     let (task, said) = sections.update(msg, runner, application);
     if said.is_some() {
         state.said = said;
-    }
-    if let Some((status, logged)) = saved {
-        for other in results_of(state, id) {
-            if let Some(sections) = other.applying.as_mut().filter(|a| a.view() != view) {
-                sections.joblog_saved(status, &logged);
-            }
-        }
     }
     task.map(move |msg| Msg::Apply(id, view, msg))
 }
