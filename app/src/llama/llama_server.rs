@@ -24,11 +24,12 @@ use std::time::{Duration, Instant};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
-use super::download::Downloads;
+use super::download::{Downloads, Progress};
 use super::gguf::{self, GgufFile};
 use super::hardware::Inventory;
 use super::model_choice::{self, Fit};
 use super::model_gate::{Entry, ModelGate, Ticket};
+use super::models_folder;
 
 /// The llama.cpp program in the llama folder.
 #[cfg(windows)]
@@ -36,7 +37,8 @@ pub const SERVER_FILE: &str = "llama-server.exe";
 #[cfg(not(windows))]
 pub const SERVER_FILE: &str = "llama-server";
 
-/// The folder of GGUF models inside the llama folder.
+/// The folder of GGUF models inside the llama folder, unless another was picked
+/// (models_folder).
 pub const MODELS_FOLDER: &str = "models";
 
 /// llama-server's output, in the llama folder.
@@ -116,6 +118,7 @@ impl std::fmt::Debug for InUse {
 /// with how it fits.
 pub struct Overview {
     pub folder: PathBuf,
+    pub models_folder: PathBuf,
     /// The llama-server that runs, when there is one.
     pub server: Option<PathBuf>,
     pub inventory: Inventory,
@@ -130,6 +133,8 @@ pub struct Overview {
 /// started.
 pub struct LlamaServer {
     folder: PathBuf,
+    /// Where the models are (models_folder::read), changed by move_models.
+    models_folder: std::sync::RwLock<PathBuf>,
     inventory: Inventory,
     running: Mutex<Option<Running>>,
     /// The calls on the running server and the model they run on (model_gate), which start waits
@@ -146,8 +151,10 @@ impl LlamaServer {
     /// The server for folder, made absolute: llama-server runs inside the folder, where a relative
     /// path to itself or its model would point somewhere else.
     pub fn new(folder: &Path, inventory: Inventory) -> Self {
+        let folder = std::path::absolute(folder).unwrap_or_else(|_| folder.to_path_buf());
         LlamaServer {
-            folder: std::path::absolute(folder).unwrap_or_else(|_| folder.to_path_buf()),
+            models_folder: std::sync::RwLock::new(models_folder::read(&folder)),
+            folder,
             inventory,
             running: Mutex::new(None),
             calls: Arc::default(),
@@ -161,7 +168,35 @@ impl LlamaServer {
     }
 
     pub fn models_folder(&self) -> PathBuf {
-        self.folder.join(MODELS_FOLDER)
+        self.models_folder
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    /// Moves the models to the folder to and runs them from there from now on; says how many
+    /// moved. Not while a model downloads; the server is stopped first, as a running model's
+    /// file can't be moved on Windows (the next call starts it again).
+    pub async fn move_models(&self, to: PathBuf) -> Result<usize, String> {
+        let _no_task_download = self.fetching.lock().await;
+        if let Progress::Running { what, .. } = self.downloads.progress() {
+            return Err(format!("{what} is still downloading. Move the models once it is done."));
+        }
+        let from = self.models_folder();
+        if from == to {
+            return Ok(0);
+        }
+        self.stop_now().await;
+        let llama_folder = self.folder.clone();
+        let target = to.clone();
+        let moved = tokio::task::spawn_blocking(move || models_folder::move_to(&llama_folder, &from, &target))
+            .await
+            .map_err(|e| format!("Moving the models stopped: {e}"))??;
+        *self
+            .models_folder
+            .write()
+            .unwrap_or_else(|poisoned| poisoned.into_inner()) = to;
+        Ok(moved)
     }
 
     pub fn inventory(&self) -> &Inventory {
@@ -203,6 +238,7 @@ impl LlamaServer {
             model_choice::choose(&models, "", &self.inventory, card_usable).map(|(model, _)| model.name.clone());
         Overview {
             folder: self.folder.clone(),
+            models_folder: self.models_folder(),
             server: self.server_path(),
             inventory: self.inventory.clone(),
             card_problem: card.err(),

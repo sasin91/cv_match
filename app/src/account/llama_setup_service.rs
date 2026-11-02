@@ -164,6 +164,21 @@ pub async fn download_if_missing(context: &Context, file: &str) -> Result<(), Se
     outcome.map_err(|why| ServiceError::new(ErrorKind::Internal, format!("{file} couldn't be downloaded: {why}")))
 }
 
+/// Moves the models to the folder to (a bigger disk, say) and keeps them there from now on;
+/// says how it went.
+pub async fn move_models(context: &Context, to: std::path::PathBuf) -> Result<String, ServiceError> {
+    let server = server_of(context)?;
+    let moved = server
+        .move_models(to.clone())
+        .await
+        .map_err(|why| ServiceError::internal("llama_setup (move models)", why))?;
+    let models = if moved == 1 { "model" } else { "models" };
+    Ok(format!(
+        "Moved {moved} {models}. Models are kept in {} from now on.",
+        to.display()
+    ))
+}
+
 /// Saves the downloaded model file as this app's own model.
 pub async fn use_model(context: &Context, file: &str) -> Result<ModelSaved, ServiceError> {
     let server = server_of(context)?;
