@@ -11,7 +11,7 @@ use super::account_model::{self, PROVIDERS, Saved, UseChoices};
 use super::llama_panel::LlamaPanel;
 use super::model_advice::ModelAdvice;
 use super::saved_key::{self, KeyUse, SavedKey};
-use super::task_model::{self, TASKS};
+use super::task_model::{self, KEYS_OWN_MODEL, TASKS};
 use super::task_model_row::{self, TaskModelRow};
 use crate::context::Context;
 use crate::llama;
@@ -157,7 +157,7 @@ pub async fn save_uses(context: &Context, chosen: &UseChoices) -> Result<&'stati
 }
 
 /// Runs each (task, model) chosen (a task's name in task_model::TASKS, and a model name or file;
-/// "" for its default) on that model, when its use runs on a key; Err with what's wrong, and
+/// "" for its default, task_model::KEYS_OWN_MODEL for the key's own) on that model, when its use runs on a key; Err with what's wrong, and
 /// nothing saved, when one of them can't run there.
 pub async fn save_task_models(context: &Context, chosen: &[(String, String)]) -> Result<&'static str, ServiceError> {
     let saved = account_model::saved(context.db(), context.user_id).await?;
@@ -172,7 +172,9 @@ pub async fn save_task_models(context: &Context, chosen: &[(String, String)]) ->
             continue;
         };
         let model = model.trim().to_string();
-        let wrong = if key.provider == LLAMA_CPP {
+        let wrong = if model == KEYS_OWN_MODEL {
+            Vec::new()
+        } else if key.provider == LLAMA_CPP {
             llama_file_errors(context, &model, &downloaded)
         } else {
             model_name_errors(&model)

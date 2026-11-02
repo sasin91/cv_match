@@ -7,7 +7,8 @@
 //! computer's card (download), and a model from the catalog that fits it.
 //!
 //! hardware reads the computer's memory and graphics card, model_choice weighs each model
-//! against them, and llama_server starts the server with the chosen model. Its API is then the
+//! against them, and llama_server starts the server with the chosen model, switching to another
+//! model only once the calls under way have finished (model_gate). Its API is then the
 //! openai adapter's local server, so every AI feature runs on it through the one code path.
 
 pub mod catalog;
@@ -16,6 +17,7 @@ pub mod gguf;
 pub mod hardware;
 pub mod llama_server;
 pub mod model_choice;
+pub mod model_gate;
 
 use std::sync::Arc;
 

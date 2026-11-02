@@ -478,7 +478,7 @@ fn task_models_card<'a>(view: &'a AccountView, state: &'a State) -> Element<'a, 
                 .width(PICK_WIDTH)
                 .into()
         } else {
-            text_input(&task.unpicked, model)
+            text_input(&task.keys_own, model)
                 .on_input(move |typed| Msg::TaskModel(index, typed))
                 .size(style::BODY_SIZE)
                 .padding(8)

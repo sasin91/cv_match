@@ -21,6 +21,11 @@ use super::account_model::{APPLICATION, JOB_EVALUATION, RESUME};
 use crate::llama::catalog::{GEMMA_4_E4B, QWEN3_4B};
 use crate::llm::LLAMA_CPP;
 
+/// What a task saves to run on its key's own model even when it has a default: not a model name
+/// (names are letters, digits and . _ : / -, account_service), so never mistaken for one, and not
+/// "" (nothing saved, which runs the default).
+pub const KEYS_OWN_MODEL: &str = "=key";
+
 /// Something the AI does, on its own model.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct Task {
@@ -83,9 +88,12 @@ pub fn writing(kind: &str) -> &'static Task {
 }
 
 /// The model the task runs on, on a key of provider whose own model is key_model: saved (""
-/// when none is), else the task's default for this app's own model when downloaded (the models
-/// folder's file names) has it, else the key's model.
+/// when none is; KEYS_OWN_MODEL is the key's model), else the task's default for this app's own
+/// model when downloaded (the models folder's file names) has it, else the key's model.
 pub fn model_for(task: &Task, provider: &str, key_model: &str, saved: &str, downloaded: &[String]) -> String {
+    if saved == KEYS_OWN_MODEL {
+        return key_model.to_string();
+    }
     if !saved.is_empty() {
         return saved.to_string();
     }
@@ -199,6 +207,18 @@ mod tests {
             key_model
         );
         assert_eq!(model_for(&RESUME_TASK, LLAMA_CPP, "", "", &downloaded), "");
+    }
+
+    #[test]
+    fn the_keys_own_model_turns_a_downloaded_default_off() {
+        let downloaded = files(&[GEMMA_4_E4B, QWEN3_4B]);
+        let key_model = "Qwen3-8B-Q4_K_M.gguf";
+        assert_eq!(
+            model_for(&READ_JOB, LLAMA_CPP, key_model, KEYS_OWN_MODEL, &downloaded),
+            key_model
+        );
+        assert_eq!(model_for(&JUDGE, LLAMA_CPP, "", KEYS_OWN_MODEL, &downloaded), "");
+        assert_eq!(model_for(&READ_JOB, LLAMA_CPP, key_model, "", &downloaded), GEMMA_4_E4B);
     }
 
     #[test]

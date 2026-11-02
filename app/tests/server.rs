@@ -838,7 +838,7 @@ async fn a_task_runs_on_the_model_picked_for_it() {
     let (_, page) = send_to(&app, get("/account")).await;
     assert!(page.contains("A model per task"), "{page}");
     assert!(
-        page.contains(r#"name="model_for_application" id="model_for_application" value="" placeholder="The key&#39;s model (stand-in)""#),
+        page.contains(r#"name="model_for_application" id="model_for_application" value="" placeholder="The key&#39;s own model (stand-in)""#),
         "{page}"
     );
 
