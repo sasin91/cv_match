@@ -28,6 +28,9 @@ pub struct Entry {
 struct Matched {
     row: BatchRow,
     result: MatchResult,
+    /// Why the match couldn't be saved, when it couldn't: it is shown, but gone when the app
+    /// closes.
+    save_error: Option<String>,
 }
 
 /// The batch's results, ranked.
@@ -66,6 +69,7 @@ impl Batch {
                         Ok(Matched {
                             row: BatchRow::from(&answer.result, url),
                             result: answer.result.clone(),
+                            save_error: answer.save_error.clone(),
                         })
                     }
                     Err(why) => Err(why.clone()),
@@ -95,6 +99,15 @@ impl Batch {
         }
         if failed > 0 {
             note.push_str(&format!(", {failed} couldn't be matched"));
+        }
+        let unsaved = self
+            .entries
+            .iter()
+            .filter(|entry| entry.outcome.as_ref().is_ok_and(|matched| matched.save_error.is_some()))
+            .count();
+        if unsaved > 0 {
+            let were = if unsaved == 1 { "wasn't" } else { "weren't" };
+            note.push_str(&format!(", {unsaved} {were} saved"));
         }
         note.push('.');
         note
@@ -189,6 +202,9 @@ fn entry_row(index: usize, entry: &Entry, open: bool) -> Element<'_, Msg> {
     if !row_.line.is_empty() {
         lines = lines.push(widgets::caption(row_.line.as_str()));
     }
+    if let Some(why) = &matched.save_error {
+        lines = lines.push(widgets::errors_line(format!("Not saved: {why}")));
+    }
     let health = tag_health(&row_.tag);
     button(
         row![
@@ -253,7 +269,10 @@ mod tests {
             answer(40, Some(1), false),
             Err("The link couldn't be read.".to_string()),
             answer(81, Some(2), true),
-            answer(60, None, false),
+            answer(60, None, false).map(|answer| MatchAnswer {
+                save_error: Some("The database is locked.".to_string()),
+                ..answer
+            }),
         ];
         let batch = Batch::new(&typed, &answers);
         let ranked: Vec<_> = batch
@@ -266,7 +285,7 @@ mod tests {
         assert_eq!(batch.saved_now, 1);
         assert_eq!(
             batch.note(),
-            "3 of 4 matched (1 matched before, shown from your saved matches), 1 couldn't be matched."
+            "3 of 4 matched (1 matched before, shown from your saved matches), 1 couldn't be matched, 1 wasn't saved."
         );
         assert_eq!(batch.result(0).map(|result| result.saved_id), Some(Some(2)));
     }
