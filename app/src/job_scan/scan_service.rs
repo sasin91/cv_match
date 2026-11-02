@@ -17,7 +17,7 @@
 //! model busy for minutes), and waiting while the user plays a full-screen game (user_busy).
 
 use std::sync::Arc;
-use std::time::Duration;
+use std::time::{Duration, Instant};
 
 use serde_json::{Value, json};
 
@@ -63,6 +63,55 @@ const RECENT_POSTS_SKIPPED: i64 = 40;
 /// after the schedule's scan, or two clicks, can't run up the bill.
 pub const MIN_SECONDS_BETWEEN_SCANS: i64 = 3600;
 
+/// How much sooner than its interval the schedule may find a search scanned and still scan it
+/// (ten minutes): a search's scan is stamped when it starts, which is a little after the task
+/// started, so the last scheduled scan of it is a bit less than one interval ago.
+const SCHEDULE_SLACK_SECONDS: i64 = 600;
+
+/// How long one post's match may take, read, extracted, matched and its documents written
+/// (half an hour): a model call may take LOCAL_CALL_SECONDS, but a post that needs more than
+/// this is stuck. It stays claimed, and a later scan tries it again (RUN_GIVE_UP_SECONDS).
+const POST_TIME_LIMIT: Duration = Duration::from_secs(1800);
+
+/// How long a scan started by hand may run before it stops taking up posts (two hours).
+const BY_HAND_TIME_LIMIT: Duration = Duration::from_secs(7200);
+
+/// Seconds in an hour.
+const SECONDS_PER_HOUR: i64 = 3600;
+
+/// Who started a scan, which says how recently a search may have been scanned for it to be
+/// scanned again.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Started {
+    /// Scan now, or a search's own Scan now: a search scanned within the hour is skipped.
+    ByHand,
+    /// The schedule (`jobfinder scan` while the task is registered): a search scanned since the
+    /// last scheduled scan, by hand say, is skipped until the next, so the two don't overlap.
+    BySchedule { every_hours: u32 },
+}
+
+impl Started {
+    /// How long the scan may go on taking up posts: by hand BY_HAND_TIME_LIMIT; on the schedule
+    /// until a little before its next scan is due, so two never pile up.
+    pub fn time_limit(self) -> Duration {
+        match self {
+            Started::ByHand => BY_HAND_TIME_LIMIT,
+            Started::BySchedule { .. } => Duration::from_secs(self.min_seconds_between_scans().unsigned_abs()),
+        }
+    }
+
+    /// A search scanned less than this many seconds ago is skipped.
+    pub fn min_seconds_between_scans(self) -> i64 {
+        match self {
+            Started::ByHand => MIN_SECONDS_BETWEEN_SCANS,
+            Started::BySchedule { every_hours } => {
+                let interval = i64::from(every_hours) * SECONDS_PER_HOUR;
+                (interval - SCHEDULE_SLACK_SECONDS).max(MIN_SECONDS_BETWEEN_SCANS)
+            }
+        }
+    }
+}
+
 /// A post claimed for matching this many seconds ago and not matched was left by a match that
 /// stopped without saying so (the program was closed): another may take it (half an hour).
 pub const RUN_GIVE_UP_SECONDS: i64 = 1800;
@@ -81,7 +130,8 @@ pub const PROFILE_CV_NAME: &str = "Your profile";
 pub struct ScanReport {
     /// Searches scanned.
     pub scanned: usize,
-    /// Searches skipped: scanned less than MIN_SECONDS_BETWEEN_SCANS ago, or by another scan.
+    /// Searches skipped: scanned too recently (Started::min_seconds_between_scans), or by
+    /// another scan.
     pub skipped: usize,
     pub posts_found: i64,
     pub posts_new: i64,
@@ -120,7 +170,8 @@ impl ScanReport {
     fn searches_text(&self) -> String {
         if self.scanned == 0 {
             return if self.skipped > 0 {
-                "Every search was scanned less than an hour ago. Scan again a little later.".to_string()
+                "Every search was scanned a short while ago, so none was scanned again. Scan again a little later."
+                    .to_string()
             } else {
                 "There is no active job search to scan.".to_string()
             };
@@ -260,15 +311,19 @@ fn lock_failed(e: &std::io::Error) -> ServiceError {
 /// What a scan stopped in the task manager says.
 const STOPPED_SCAN: &str = "The scan was stopped in the task manager.";
 
-/// Scans every active search that isn't paused and wasn't scanned in the last
-/// MIN_SECONDS_BETWEEN_SCANS, and matches the new posts it finds. The one scan behind
+/// Scans every active search that isn't paused and wasn't scanned too recently for who started
+/// it (Started), and matches the new posts it finds. The one scan behind
 /// `jobfinder scan`, Scan now and a desktop window. It is listed in the task manager while it
 /// runs, and stops when asked there (also from another JobFinder's window: scan_lock's stop
 /// file), after the post it is on is marked failed.
-pub async fn scan(context: Arc<Context>) -> Result<ScanReport, ServiceError> {
+pub async fn scan(context: Arc<Context>, started: Started) -> Result<ScanReport, ServiceError> {
     let list = Arc::clone(&context.running);
     match list
-        .run(WorkKind::Scan, "Every active search", scan_holding_lock(context))
+        .run(
+            WorkKind::Scan,
+            "Every active search",
+            scan_holding_lock(context, started),
+        )
         .await
     {
         Ok(scanned) => scanned,
@@ -279,7 +334,7 @@ pub async fn scan(context: Arc<Context>) -> Result<ScanReport, ServiceError> {
     }
 }
 
-async fn scan_holding_lock(context: Arc<Context>) -> Result<ScanReport, ServiceError> {
+async fn scan_holding_lock(context: Arc<Context>, started: Started) -> Result<ScanReport, ServiceError> {
     let Some(_held) = scan_lock::hold(&context).await.map_err(|e| lock_failed(&e))? else {
         let running = running_scan(&context).await?;
         return Err(ServiceError::new(ErrorKind::TooMany, running_text(running.as_ref())));
@@ -287,13 +342,13 @@ async fn scan_holding_lock(context: Arc<Context>) -> Result<ScanReport, ServiceE
     // Asked before this scan held the lock: meant for one that ended already.
     scan_lock::forget_stop_request(&context);
     tokio::select! {
-        scanned = scan_searches(&context) => scanned,
+        scanned = scan_searches(&context, started) => scanned,
         never = scan_lock::stop_when_asked(&context) => match never {},
     }
 }
 
 /// The scan itself, holding the lock.
-async fn scan_searches(context: &Arc<Context>) -> Result<ScanReport, ServiceError> {
+async fn scan_searches(context: &Arc<Context>, started: Started) -> Result<ScanReport, ServiceError> {
     let context = Arc::clone(context);
     let db = context.db();
     // Holding the lock, no other scan runs: one not finished was cut off.
@@ -313,7 +368,7 @@ async fn scan_searches(context: &Arc<Context>) -> Result<ScanReport, ServiceErro
         None
     };
     // Read when the first post needs it: a scan that finds nothing to match costs no call for it.
-    let mut matching = Matching::default();
+    let mut matching = Matching::new(started);
     let mut report = ScanReport::default();
     // What an earlier scan found but didn't get to match, before it stopped.
     let stopped_before = chrono::Utc::now().timestamp() - RUN_GIVE_UP_SECONDS;
@@ -327,7 +382,8 @@ async fn scan_searches(context: &Arc<Context>) -> Result<ScanReport, ServiceErro
             break;
         }
         let now = chrono::Utc::now().timestamp();
-        let Some(run_id) = model::start_run(db, search_id, now - MIN_SECONDS_BETWEEN_SCANS, now).await? else {
+        let scanned_before = now - started.min_seconds_between_scans();
+        let Some(run_id) = model::start_run(db, search_id, scanned_before, now).await? else {
             report.skipped += 1;
             continue;
         };
@@ -355,51 +411,109 @@ async fn scan_searches(context: &Arc<Context>) -> Result<ScanReport, ServiceErro
 }
 
 /// A scan's matching of posts, one after another: the profile, read for the first post and kept
-/// for the rest, and whether a post was taken up yet (the pause comes between two).
-#[derive(Default)]
+/// for the rest, whether a post was taken up yet (the pause comes between two), and until when
+/// posts are taken up (Started::time_limit).
 struct Matching {
     cv: Option<ProfileCv>,
     started_one: bool,
+    began: Instant,
+    time_limit: Duration,
 }
 
 impl Matching {
-    /// Matches posts into report, each after make_way. False when the scan should stop (the
-    /// user stayed busy; report.stopped says so), the posts left waiting for the next scan.
+    fn new(started: Started) -> Self {
+        Matching {
+            cv: None,
+            started_one: false,
+            began: Instant::now(),
+            time_limit: started.time_limit(),
+        }
+    }
+
+    /// Matches posts into report, each after make_way and within POST_TIME_LIMIT, saying each
+    /// one's start and end in the log. False when the scan should stop (out of time, or the user
+    /// stayed busy; report.stopped says so), the posts left waiting for the next scan.
     async fn match_posts(&mut self, context: &Arc<Context>, post_ids: Vec<i64>, report: &mut ScanReport) -> bool {
-        for post_id in post_ids {
+        let count = post_ids.len();
+        for (index, post_id) in post_ids.into_iter().enumerate() {
             if let Err(why) = self.make_way().await {
+                crate::say!("job_scan: {why}");
                 report.stopped = Some(why);
                 return false;
             }
-            match match_post_once_read(context, post_id, &mut self.cv).await {
-                Ok(true) => report.matched += 1,
-                Ok(false) => {}
-                Err(e) => report.problems.push(e.message),
+            crate::say!("job_scan: post {post_id} ({} of {count}): matching.", index + 1);
+            let began = Instant::now();
+            let matched =
+                tokio::time::timeout(POST_TIME_LIMIT, match_post_once_read(context, post_id, &mut self.cv)).await;
+            let minutes = began.elapsed().as_secs_f64() / 60.0;
+            match matched {
+                Ok(Ok(true)) => {
+                    crate::say!("job_scan: post {post_id}: matched ({minutes:.1} min).");
+                    report.matched += 1;
+                }
+                Ok(Ok(false)) => crate::say!("job_scan: post {post_id}: nothing to match ({minutes:.1} min)."),
+                Ok(Err(e)) => {
+                    crate::log_line!("job_scan: post {post_id}: failed ({minutes:.1} min): {}", e.message);
+                    report.problems.push(e.message);
+                }
+                Err(_) => {
+                    let why = post_took_too_long(post_id);
+                    crate::log_line!("job_scan: {why}");
+                    report.problems.push(why);
+                }
             }
         }
         true
     }
 
     /// Waits PAUSE_BETWEEN_POSTS after a post, then while the user is busy (user_busy), for at
-    /// most BUSY_GIVE_UP. Err says why the scan stops.
-    /// Stops at once when the scan is asked to stop (the task manager).
+    /// most BUSY_GIVE_UP and never past the scan's time limit. Err says why the scan stops: out
+    /// of time (looked at before and after the waits), asked to stop (the task manager; at once),
+    /// or the user stayed busy.
     async fn make_way(&mut self) -> Result<(), String> {
         let stopped = || Err(STOPPED_SCAN.to_string());
         if running_work::stop_asked() {
             return stopped();
         }
+        let left = self.time_left()?;
         if self.started_one {
             tokio::select! {
-                () = tokio::time::sleep(PAUSE_BETWEEN_POSTS) => {}
+                () = tokio::time::sleep(PAUSE_BETWEEN_POSTS.min(left)) => {}
                 () = running_work::until_stop_asked() => return stopped(),
             }
         }
         self.started_one = true;
+        let left = self.time_left()?;
         tokio::select! {
-            free = crate::user_busy::wait_until_free(BUSY_GIVE_UP) => free,
-            () = running_work::until_stop_asked() => stopped(),
+            free = crate::user_busy::wait_until_free(BUSY_GIVE_UP.min(left)) => free?,
+            () = running_work::until_stop_asked() => return stopped(),
+        }
+        self.time_left().map(|_| ())
+    }
+
+    /// The scan's time left, or Err (out_of_time) when there is none.
+    fn time_left(&self) -> Result<Duration, String> {
+        match self.time_limit.checked_sub(self.began.elapsed()) {
+            Some(left) if !left.is_zero() => Ok(left),
+            _ => Err(out_of_time(self.time_limit)),
         }
     }
+}
+
+/// What a post whose match ran past POST_TIME_LIMIT says.
+fn post_took_too_long(post_id: i64) -> String {
+    format!(
+        "Post {post_id} took more than {} minutes to match, so it was left; a later scan tries it again.",
+        POST_TIME_LIMIT.as_secs() / 60
+    )
+}
+
+/// What a scan that ran for time_limit says.
+fn out_of_time(time_limit: Duration) -> String {
+    format!(
+        "The scan ran for {} minutes, its limit, so it stopped; the posts left are matched by the next scan.",
+        time_limit.as_secs() / 60
+    )
 }
 
 /// The profile, as the CV posts are matched with: its text, and read as the match reads a CV.
@@ -1209,7 +1323,14 @@ async fn write_document(
         Err(e) => return Some(e.message),
     }
     let started = timeline.start(run_steps::WRITE);
-    let (written, calls) = transcript::recording(match_service::write(Arc::clone(context), saved.id, "", kind)).await;
+    let (written, calls) = transcript::recording(match_service::write(
+        Arc::clone(context),
+        saved.id,
+        "",
+        kind,
+        match_service::WhenAbandoned::StopWriting,
+    ))
+    .await;
     let what = if kind == RESUME {
         "The tailored résumé"
     } else {
@@ -1238,7 +1359,7 @@ pub async fn scan_now(context: Arc<Context>) -> Result<&'static str, ServiceErro
         return Err(ServiceError::new(ErrorKind::TooMany, running_text(Some(&running))));
     }
     context.running.clone().spawn(async move {
-        match scan(context).await {
+        match scan(context, Started::ByHand).await {
             Ok(report) => crate::say!("job_scan: {}", report.summary()),
             Err(e) => crate::log_line!("job_scan: the scan failed: {}", e.message),
         }
@@ -1521,12 +1642,44 @@ mod tests {
         assert!(
             skipped
                 .summary()
-                .starts_with("Every search was scanned less than an hour ago.")
+                .starts_with("Every search was scanned a short while ago")
         );
         assert_eq!(
             ScanReport::default().summary(),
             "There is no active job search to scan."
         );
+    }
+
+    #[test]
+    fn the_schedule_skips_a_search_scanned_since_its_last_scan() {
+        assert_eq!(Started::ByHand.min_seconds_between_scans(), MIN_SECONDS_BETWEEN_SCANS);
+        // Every 2 hours: a search scanned 1 h 51 min ago (by hand) waits for the next one.
+        assert_eq!(
+            Started::BySchedule { every_hours: 2 }.min_seconds_between_scans(),
+            2 * 3600 - 600
+        );
+        assert_eq!(
+            Started::BySchedule { every_hours: 2 }.time_limit(),
+            Duration::from_secs(2 * 3600 - 600)
+        );
+        assert_eq!(Started::ByHand.time_limit(), BY_HAND_TIME_LIMIT);
+        // Every hour: never less than the hour anyone waits.
+        assert_eq!(
+            Started::BySchedule { every_hours: 1 }.min_seconds_between_scans(),
+            MIN_SECONDS_BETWEEN_SCANS
+        );
+    }
+
+    #[tokio::test]
+    async fn no_post_is_taken_up_past_the_scan_time_limit() {
+        let mut out_of_time = Matching {
+            time_limit: Duration::ZERO,
+            ..Matching::new(Started::ByHand)
+        };
+        let why = out_of_time.make_way().await.unwrap_err();
+        assert!(why.starts_with("The scan ran for 0 minutes, its limit"), "{why}");
+        let mut in_time = Matching::new(Started::ByHand);
+        assert_eq!(in_time.make_way().await, Ok(()));
     }
 
     #[test]

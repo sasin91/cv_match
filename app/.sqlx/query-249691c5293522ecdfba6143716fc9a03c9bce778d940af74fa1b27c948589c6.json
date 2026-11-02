@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO taxonomy_shipped (id, index_sha256, written_at) VALUES (1, ?1, ?2)\n           ON CONFLICT (id) DO UPDATE SET index_sha256 = excluded.index_sha256, written_at = excluded.written_at",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "249691c5293522ecdfba6143716fc9a03c9bce778d940af74fa1b27c948589c6"
+}

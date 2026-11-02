@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT index_sha256 FROM taxonomy_shipped WHERE id = 1",
+  "describe": {
+    "columns": [
+      {
+        "name": "index_sha256",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_shipped",
+            "name": "index_sha256"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "cc86ddca319ca98a3138c1e59d24be3ca85a89a9532fa816fde80ee548da7681"
+}

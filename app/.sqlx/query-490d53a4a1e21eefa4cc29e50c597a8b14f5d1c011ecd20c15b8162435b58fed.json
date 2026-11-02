@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO taxonomy_terms (id, kind, parent_id, definition, source)\n               VALUES (?1, ?2, ?3, ?4, 'shipped')\n               ON CONFLICT (id) DO UPDATE SET kind = excluded.kind, parent_id = excluded.parent_id,\n                 definition = excluded.definition, source = 'shipped'",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "490d53a4a1e21eefa4cc29e50c597a8b14f5d1c011ecd20c15b8162435b58fed"
+}

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO taxonomy_labels (term_id, text, lang, preferred, source, status, created_at, updated_at)\n               VALUES (?1, ?2, ?3, 0, 'learned', 'active', ?4, ?4)",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "2ce0d6373ae1782f251a5bfb04d6f2b3475b753f0e2b4786f4e3e9f4dfc6ede4"
+}

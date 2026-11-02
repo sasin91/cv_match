@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO taxonomy_label_sightings (label_id, match_id, learned_from, model, seen_at)\n               VALUES (?1, ?2, ?3, ?4, ?5)\n               ON CONFLICT (label_id, match_id) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "239032b6017fd902bc6ce1f76bc60c6b48c395aa6476108b462e23e626fdc26f"
+}

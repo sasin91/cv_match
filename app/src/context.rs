@@ -8,7 +8,7 @@
 
 use std::path::PathBuf;
 use std::sync::atomic::AtomicBool;
-use std::sync::{Arc, Mutex};
+use std::sync::{Arc, Mutex, RwLock};
 
 use sqlx::SqlitePool;
 
@@ -24,7 +24,9 @@ use crate::taxonomy::Taxonomy;
 
 pub struct Context {
     db: SqlitePool,
-    pub taxonomy: Arc<Taxonomy>,
+    /// The taxonomy every lookup uses, swapped whole when a learned label turns active
+    /// (taxonomy_store::reload); a lookup keeps the one it took for as long as it runs.
+    taxonomy: RwLock<Arc<Taxonomy>>,
     pub user_id: i64,
     pub key_vault: KeyVault,
     /// When the pages fetch_job read in its window were fetched, oldest first (unix seconds).
@@ -65,7 +67,7 @@ impl Context {
     pub fn new(db: SqlitePool, taxonomy: Arc<Taxonomy>, user_id: i64, key_vault: KeyVault) -> Self {
         Context {
             db,
-            taxonomy,
+            taxonomy: RwLock::new(taxonomy),
             user_id,
             key_vault,
             fetches: Mutex::new(Vec::new()),
@@ -91,6 +93,19 @@ impl Context {
 
     pub fn db(&self) -> &SqlitePool {
         &self.db
+    }
+
+    /// The taxonomy now.
+    pub fn taxonomy(&self) -> Arc<Taxonomy> {
+        self.taxonomy
+            .read()
+            .unwrap_or_else(|poisoned| poisoned.into_inner())
+            .clone()
+    }
+
+    /// Puts taxonomy in place of the one lookups take from now on.
+    pub fn replace_taxonomy(&self, taxonomy: Taxonomy) {
+        *self.taxonomy.write().unwrap_or_else(|poisoned| poisoned.into_inner()) = Arc::new(taxonomy);
     }
 
     /// Counts a page fetch at now, or says in how many minutes the next one may go, when

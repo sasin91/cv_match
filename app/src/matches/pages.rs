@@ -655,7 +655,14 @@ pub async fn tailor_resume(State(state): State<Arc<AppState>>, Json(input): Json
 /// finishes and is saved even when the page drops the connection meanwhile (a laptop asleep, a tab
 /// reloaded); the page picks it up from the saved match when it's back.
 async fn write(state: Arc<AppState>, input: WriteInput, kind: &'static str) -> Answer {
-    let doc = match_service::write(state.context.clone(), id_in_body(&input.id), &input.notes, kind).await?;
+    let doc = match_service::write(
+        state.context.clone(),
+        id_in_body(&input.id),
+        &input.notes,
+        kind,
+        match_service::WhenAbandoned::KeepWriting,
+    )
+    .await?;
     html(DocumentBoxView { doc })
 }
 

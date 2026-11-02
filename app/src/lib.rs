@@ -29,4 +29,5 @@ pub mod service_error;
 pub mod setup;
 pub mod task_manager;
 pub mod taxonomy;
+pub mod taxonomy_store;
 pub mod user_busy;

@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "UPDATE taxonomy_labels SET status = 'rejected', source = 'learned', preferred = 0, updated_at = ?2 WHERE id = ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "1257a4fb12b687dfbdbe7812abeac4df35b385163b6891d4e68ce887b8a18881"
+}
