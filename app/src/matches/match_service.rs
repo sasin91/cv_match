@@ -8,7 +8,7 @@ use std::sync::Arc;
 use super::ai_match::{self, AiMatch, Matching};
 use super::application_delivery::ApplicationDelivery;
 use super::cv_links::CvLink;
-use super::document_box::{DocumentBox, RESUME};
+use super::document_box::{self, DocumentBox, RESUME};
 use super::document_writer::{self, WriteError};
 use super::free_reader::{FreeReader, YearMonth};
 use super::joblog::{self, Entry};
@@ -20,7 +20,7 @@ use super::match_result::{Fresh, MatchResult};
 use super::matcher::{self, Matcher, Verdict, Verdicts};
 use super::page_reader::{self, Page};
 use super::resume_comparison::ResumeComparison;
-use super::saved_match_row::SavedMatchRow;
+use super::saved_match_row::{SavedMatchRow, TAILORED_CV};
 use super::{Job, Profile, apply_instructions, match_prompts, pdf_writer, reject_reason};
 use crate::account::account_model::JOB_EVALUATION;
 use crate::context::Context;
@@ -741,6 +741,124 @@ pub async fn write(
         found.apply_instructions.as_ref(),
     )
     .with_keywords(keywords, &left_out))
+}
+
+/// What write_document came to: the boxes as they are now, and the tailored résumé's own match.
+#[derive(Debug)]
+pub struct WriteAnswer {
+    /// The application and résumé boxes, in document_box::KINDS's order; the one just tailored
+    /// with the keywords it took over.
+    pub boxes: Vec<DocumentBox>,
+    /// The tailored résumé matched against the post, next to the CV's score; Err says why it
+    /// couldn't be. None when no résumé was tailored.
+    pub comparison: Option<Result<ResumeComparison, String>>,
+    /// What was done, to say: "Résumé tailored and application written".
+    pub done: &'static str,
+    /// The application written with the résumé failed, and why.
+    pub problem: Option<String>,
+}
+
+/// Writes kind for saved match id, as the match page does: tailoring the résumé writes the
+/// application too when there is none yet and the key may write it, and then matches the
+/// résumé against the post (compare_resume). Each of those runs when the other fails, so
+/// neither has to be written again to get it.
+pub async fn write_document(
+    context: Arc<Context>,
+    id: i64,
+    notes: &str,
+    kind: &'static str,
+    say: Say<'_>,
+) -> Result<WriteAnswer, ServiceError> {
+    say(if kind == RESUME {
+        "Tailoring the résumé…"
+    } else {
+        "Writing the application…"
+    });
+    let written = write(Arc::clone(&context), id, notes, kind).await?;
+    if kind != RESUME {
+        return Ok(WriteAnswer {
+            boxes: boxes_with(&context, id, written).await?,
+            comparison: None,
+            done: "Application written",
+            problem: None,
+        });
+    }
+    let found = saved_match(&context, id).await?;
+    let application_too =
+        found.application_text.is_none() && llm_key::ai_uses(&context).await?.of(document_box::APPLICATION);
+    let mut problem = None;
+    if application_too {
+        say("Writing the application…");
+        if let Err(e) = write(Arc::clone(&context), id, notes, document_box::APPLICATION).await {
+            problem = Some(format!("The application wasn't written: {}", e.message));
+        }
+    }
+    say("Matching the tailored résumé against the post…");
+    let comparison = compare_resume(&context, id, &written.text).await.map_err(|e| e.message);
+    Ok(WriteAnswer {
+        boxes: boxes_with(&context, id, written).await?,
+        comparison: Some(comparison),
+        done: if application_too && problem.is_none() {
+            "Résumé tailored and application written"
+        } else {
+            "Résumé tailored"
+        },
+        problem,
+    })
+}
+
+/// The saved match's boxes as they are now, with written in place of its kind's.
+async fn boxes_with(context: &Context, id: i64, written: DocumentBox) -> Result<Vec<DocumentBox>, ServiceError> {
+    let documents = saved_result(context, id).await?.documents;
+    Ok(documents
+        .map(|documents| documents.boxes)
+        .unwrap_or_default()
+        .into_iter()
+        .map(|current| {
+            if current.kind == written.kind {
+                written.clone()
+            } else {
+                current
+            }
+        })
+        .collect())
+}
+
+/// The tailored résumé resume_text matched against saved match id's post as a match of its
+/// own (named after the CV, ending saved_match_row::TAILORED_CV), next to the CV's score. A
+/// résumé matched before with this post is that match.
+pub async fn compare_resume(context: &Context, id: i64, resume_text: &str) -> Result<ResumeComparison, ServiceError> {
+    let found = saved_match(context, id).await?;
+    let resume_id = match already_matched(context, resume_text, &found.job_text).await? {
+        Some(resume_id) => resume_id,
+        None => {
+            let job = extract_job(context, &found.job_text).await?;
+            let mut profile = extract_cv(context, resume_text).await?;
+            let name = [profile.name.as_str(), found.cv_name.as_str()]
+                .into_iter()
+                .find(|name| !name.is_empty())
+                .unwrap_or("CV");
+            profile.name = format!("{name} {TAILORED_CV}");
+            let request = MatchRequest {
+                job,
+                cv_name: profile.name.clone(),
+                profile,
+                job_text: found.job_text.clone(),
+                job_url: found.job_url.clone().unwrap_or_default(),
+                cv_text: resume_text.trim().to_string(),
+            };
+            let matched = ai_match(context, &request).await?;
+            matched.saved_id.ok_or_else(|| {
+                ServiceError::failed(
+                    "match/compare_resume",
+                    matched
+                        .save_error
+                        .unwrap_or_else(|| "The tailored résumé was matched, but its match wasn't saved.".to_string()),
+                )
+            })?
+        }
+    };
+    resume_comparison(context, id, resume_id).await
 }
 
 /// The tailored résumé's saved match (resume_id) against the CV's (id).
