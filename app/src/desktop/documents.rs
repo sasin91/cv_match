@@ -121,7 +121,26 @@ impl Docs {
 
     /// What writing answered: the boxes as they are now, and the résumé's comparison.
     pub fn written(&mut self, answer: &WriteAnswer) {
-        self.boxes = answer.boxes.iter().cloned().map(DocBox::new).collect();
+        let mut before = std::mem::take(&mut self.boxes);
+        self.boxes = answer
+            .boxes
+            .iter()
+            .cloned()
+            .map(|doc| {
+                let kept = before
+                    .iter_mut()
+                    .find(|old| old.doc.kind == doc.kind && old.doc.written_at == doc.written_at);
+                match kept {
+                    // Not written again: its edits stay, as only the box holds them.
+                    Some(old) => DocBox {
+                        text: std::mem::take(&mut old.text),
+                        versions_open: old.versions_open,
+                        doc,
+                    },
+                    None => DocBox::new(doc),
+                }
+            })
+            .collect();
         if let Some(comparison) = &answer.comparison {
             self.comparison = Some(comparison.clone());
         }
@@ -468,6 +487,27 @@ mod tests {
             text_editor::Action::Edit(text_editor::Edit::Insert('!')),
         ));
         assert_eq!(written.text_of(APPLICATION, None).as_deref(), Some("Kære Firma!"));
+    }
+
+    #[test]
+    fn writing_one_document_keeps_the_edits_of_the_other() {
+        let mut panel = docs("Kære Firma");
+        panel.update(DocMsg::Text(
+            APPLICATION,
+            text_editor::Action::Edit(text_editor::Edit::Insert('!')),
+        ));
+        let mut boxes: Vec<DocumentBox> = panel.boxes.iter().map(|doc| doc.doc.clone()).collect();
+        // The résumé written now; the application as it was.
+        boxes[1].text = "Résumé".to_string();
+        boxes[1].written_at = "1762000000".to_string();
+        panel.written(&WriteAnswer {
+            boxes,
+            comparison: None,
+            done: "Résumé tailored",
+            problem: None,
+        });
+        assert_eq!(panel.text_of(APPLICATION, None).as_deref(), Some("!Kære Firma"));
+        assert_eq!(panel.text_of(RESUME, None).as_deref(), Some("Résumé"));
     }
 
     #[test]
