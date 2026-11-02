@@ -64,6 +64,8 @@ pub struct Applying {
     joblog: Option<Result<Joblog, String>>,
     /// The joblog's first read is running.
     joblog_reading: bool,
+    /// A document was written while that read ran: its PDFs are read again once it answers.
+    joblog_files_stale: bool,
 }
 
 struct Delivery {
@@ -157,6 +159,7 @@ impl Applying {
             joblog_open: false,
             joblog: None,
             joblog_reading: false,
+            joblog_files_stale: false,
         }
     }
 
@@ -181,16 +184,28 @@ impl Applying {
             Task::none()
         };
         // The joblog's status, edits and address stay; only its PDFs are read again.
-        let id = self.id;
         let joblog = if matches!(self.joblog, Some(Ok(_))) {
-            runner.run(
-                move |context| async move { match_service::joblog_panel(&context, id).await },
-                |read| ApplyMsg::JoblogFiles(Arc::new(read.and_then(|read| read.map_err(|e| e.message)))),
-            )
+            self.read_joblog_files(runner)
         } else {
+            self.joblog_files_stale = self.joblog_reading;
             Task::none()
         };
         Task::batch([delivery, joblog])
+    }
+
+    fn read_joblog_files(&self, runner: &Runner) -> Task<ApplyMsg> {
+        let id = self.id;
+        runner.run(
+            move |context| async move { match_service::joblog_panel(&context, id).await },
+            |read| ApplyMsg::JoblogFiles(Arc::new(read.and_then(|read| read.map_err(|e| e.message)))),
+        )
+    }
+
+    /// The joblog's status, saved from another page showing the same match.
+    pub fn joblog_saved(&mut self, status: &'static str, logged: &Logged) {
+        if let Some(joblog) = self.joblog_mut() {
+            joblog.saved(status, logged.clone());
+        }
     }
 
     fn read_delivery(&mut self, runner: &Runner) -> Task<ApplyMsg> {
@@ -299,6 +314,9 @@ impl Applying {
                         Ok((panel, address)) => Ok(Joblog::new(panel.clone(), address.as_ref())),
                         Err(why) => Err(why.clone()),
                     });
+                }
+                if std::mem::take(&mut self.joblog_files_stale) {
+                    return (self.read_joblog_files(runner), None);
                 }
             }
             ApplyMsg::JoblogFiles(read) => match (read.as_ref(), self.joblog_mut()) {

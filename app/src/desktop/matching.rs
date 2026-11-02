@@ -743,9 +743,24 @@ fn applying(state: &mut State, id: i64, view: u64, msg: ApplyMsg, runner: &Runne
     let Some(sections) = shown.applying.as_mut() else {
         return Task::none();
     };
+    // A status saved here is the match's: the same match on the other page shows it too.
+    let saved = match &msg {
+        ApplyMsg::Saved {
+            status,
+            logged: Ok(logged),
+        } => Some((*status, logged.clone())),
+        _ => None,
+    };
     let (task, said) = sections.update(msg, runner, application);
     if said.is_some() {
         state.said = said;
+    }
+    if let Some((status, logged)) = saved {
+        for other in results_of(state, id) {
+            if let Some(sections) = other.applying.as_mut().filter(|a| a.view() != view) {
+                sections.joblog_saved(status, &logged);
+            }
+        }
     }
     task.map(move |msg| Msg::Apply(id, view, msg))
 }
