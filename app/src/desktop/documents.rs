@@ -95,6 +95,16 @@ impl Docs {
         self.boxes.iter_mut().find(|doc| doc.doc.kind == kind)
     }
 
+    /// Whether each document can be written now, as boxes (read again) say; the texts stay.
+    pub fn availability(&mut self, boxes: &[DocumentBox]) {
+        for now in boxes {
+            if let Some(doc) = self.box_of_mut(now.kind) {
+                doc.doc.off = now.off;
+                doc.doc.off_note = now.off_note.clone();
+            }
+        }
+    }
+
     /// The notes for the AI, cut to the panel's most.
     pub fn notes(&self) -> String {
         self.notes.text().trim().chars().take(self.notes_max).collect()
@@ -535,6 +545,21 @@ mod tests {
             panel.boxes[1].doc.left_out,
             "Left out, since your CV doesn't show it: Go"
         );
+    }
+
+    #[test]
+    fn a_key_set_while_away_turns_writing_on_and_keeps_the_edits() {
+        let mut panel = docs("Kære Firma");
+        panel.boxes[0].doc.off = true;
+        panel.update(DocMsg::Text(
+            APPLICATION,
+            text_editor::Action::Edit(text_editor::Edit::Insert('!')),
+        ));
+        let mut now: Vec<DocumentBox> = panel.boxes.iter().map(|doc| doc.doc.clone()).collect();
+        now[0].off = false;
+        panel.availability(&now);
+        assert!(!panel.boxes[0].doc.off);
+        assert_eq!(panel.text_of(APPLICATION, None).as_deref(), Some("!Kære Firma"));
     }
 
     #[test]

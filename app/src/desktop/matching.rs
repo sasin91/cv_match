@@ -225,6 +225,11 @@ pub enum Msg {
         id: i64,
         answer: Arc<Result<WriteAnswer, String>>,
     },
+    /// The just matched job's documents read again: whether each can be written now.
+    Availability {
+        id: i64,
+        result: Result<Arc<MatchResult>, String>,
+    },
     /// Where a PDF was saved; None when the dialog was closed.
     PdfSaved(Result<Option<String>, String>),
     /// For the shell: go to Language models.
@@ -339,6 +344,21 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
         Msg::SavedLoaded { result, .. } => {
             state.saved = Some(result.map(|result| Shown::new(Arc::unwrap_or_clone(result))));
         }
+        Msg::Availability { id, result } => match result {
+            Ok(read) => {
+                let docs = state.fresh.as_mut().and_then(|shown| shown.docs.as_mut());
+                if let (Some(docs), Some(now)) = (docs.filter(|docs| docs.id == Some(id)), &read.documents) {
+                    docs.availability(&now.boxes);
+                }
+            }
+            Err(error) => {
+                crate::app_log::error(&format!("Could not read the match's documents again: {error}"));
+                state.said = Some((
+                    Health::Attention,
+                    format!("The documents couldn't be read again: {error}"),
+                ));
+            }
+        },
         Msg::Filter(key) => {
             if let Some(shown) = shown_mut(state) {
                 shown.filter = key;
@@ -456,6 +476,26 @@ fn is_stale(request: u64, msg: &Msg) -> bool {
     }
 }
 
+/// Reads the just matched job's documents again, since a key may have been set or turned off
+/// on Language models while away; their texts stay as they are.
+fn refresh_availability(state: &State, runner: &Runner) -> Task<Msg> {
+    let Some(id) = state
+        .fresh
+        .as_ref()
+        .and_then(|shown| shown.docs.as_ref())
+        .and_then(|docs| docs.id)
+    else {
+        return Task::none();
+    };
+    runner.run(
+        move |context| async move { match_service::saved_result(&context, id).await.map(Arc::new) },
+        move |result| Msg::Availability {
+            id,
+            result: result.and_then(|result| result.map_err(|e| e.message)),
+        },
+    )
+}
+
 fn go(state: &mut State, page: Page, runner: &Runner) -> Task<Msg> {
     if !state.busy {
         state.said = None;
@@ -467,10 +507,13 @@ fn go(state: &mut State, page: Page, runner: &Runner) -> Task<Msg> {
     match page {
         Page::Overview => Task::none(),
         // Read on every visit, so a CV read again in setup is the one matched.
-        Page::New => runner.run(
-            |context| async move { profile::text_for_user(context.db(), context.user_id).await },
-            |read| Msg::ProfileRead(read.and_then(|read| read.map_err(|e| e.to_string()))),
-        ),
+        Page::New => Task::batch([
+            runner.run(
+                |context| async move { profile::text_for_user(context.db(), context.user_id).await },
+                |read| Msg::ProfileRead(read.and_then(|read| read.map_err(|e| e.to_string()))),
+            ),
+            refresh_availability(state, runner),
+        ]),
         Page::List(list) => {
             state.list.empty = LISTS
                 .iter()
