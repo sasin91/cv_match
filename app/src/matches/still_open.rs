@@ -256,6 +256,8 @@ pub async fn check(context: &Context, pause: Duration) -> Result<CheckReport, Se
     let today = today();
     let mut read_one = false;
     for saved in match_model::open_to_check(db, context.user_id, BY_HAND_OPEN).await? {
+        // Paused in the task manager: the next check waits until it is resumed.
+        running_work::until_resumed().await;
         if running_work::stop_asked() {
             report.stopped = true;
             break;
@@ -279,7 +281,8 @@ pub async fn check(context: &Context, pause: Duration) -> Result<CheckReport, Se
             }
         }
         read_one = true;
-        let finding = tokio::time::timeout(READ_TIME_LIMIT, read_post(url, context.readers()))
+        // The time it is paused in the task manager doesn't count toward the read's limit.
+        let finding = running_work::timeout_unpaused(READ_TIME_LIMIT, read_post(url, context.readers()))
             .await
             .unwrap_or_else(|_| Finding::Unknown(format!("It took over {} s to read.", READ_TIME_LIMIT.as_secs())));
         match_model::mark_open_checked(db, saved.id, now).await?;
