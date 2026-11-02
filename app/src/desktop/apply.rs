@@ -66,6 +66,8 @@ pub struct Applying {
     joblog_reading: bool,
     /// A document was written while that read ran: its PDFs are read again once it answers.
     joblog_files_stale: bool,
+    /// A status saved from another page while that read ran: newer than what it read.
+    joblog_saved_meanwhile: Option<(&'static str, Logged)>,
 }
 
 struct Delivery {
@@ -160,6 +162,7 @@ impl Applying {
             joblog: None,
             joblog_reading: false,
             joblog_files_stale: false,
+            joblog_saved_meanwhile: None,
         }
     }
 
@@ -203,7 +206,9 @@ impl Applying {
 
     /// The joblog's status, saved from another page showing the same match.
     pub fn joblog_saved(&mut self, status: &'static str, logged: &Logged) {
-        if let Some(joblog) = self.joblog_mut() {
+        if self.joblog_reading {
+            self.joblog_saved_meanwhile = Some((status, logged.clone()));
+        } else if let Some(joblog) = self.joblog_mut() {
             joblog.saved(status, logged.clone());
         }
     }
@@ -314,6 +319,11 @@ impl Applying {
                         Ok((panel, address)) => Ok(Joblog::new(panel.clone(), address.as_ref())),
                         Err(why) => Err(why.clone()),
                     });
+                }
+                if let Some((status, logged)) = self.joblog_saved_meanwhile.take()
+                    && let Some(joblog) = self.joblog_mut()
+                {
+                    joblog.saved(status, logged);
                 }
                 if std::mem::take(&mut self.joblog_files_stale) {
                     return (self.read_joblog_files(runner), None);
