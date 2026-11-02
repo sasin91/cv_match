@@ -833,6 +833,51 @@ async fn writing_again_keeps_the_version_before_in_its_list() {
 }
 
 #[tokio::test]
+async fn a_task_runs_on_the_model_picked_for_it() {
+    let (app, _, _) = app_with_model().await;
+    let (_, page) = send_to(&app, get("/account")).await;
+    assert!(page.contains("A model per task"), "{page}");
+    assert!(
+        page.contains(r#"name="model_for_application" id="model_for_application" value="" placeholder="The key&#39;s own model (stand-in)""#),
+        "{page}"
+    );
+
+    let page = followed(
+        &app,
+        post_form("/account/submit_task_models", "model_for_application=writer+model"),
+    )
+    .await;
+    assert!(
+        page.contains("Writing job applications: A model name is letters"),
+        "{page}"
+    );
+
+    let page = followed(
+        &app,
+        post_form("/account/submit_task_models", "model_for_application=writer-model"),
+    )
+    .await;
+    assert!(page.contains("Saved which model each task runs on."), "{page}");
+    assert!(page.contains(r#"value="writer-model""#), "{page}");
+
+    let (status, written) = send_to(
+        &app,
+        post_json("/match/write_application", r#"{"id": 21, "notes": ""}"#),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{written}");
+    let (_, again) = send_to(
+        &app,
+        post_json("/match/write_application", r#"{"id": 21, "notes": ""}"#),
+    )
+    .await;
+    assert!(
+        again.contains("by local/writer-model"),
+        "the document names the model it ran on: {again}"
+    );
+}
+
+#[tokio::test]
 async fn a_tailored_resume_comes_back_with_its_keywords_and_compares() {
     let (app, db, _) = app_with_model().await;
     let (status, resume) = send_to(&app, post_json("/match/tailor_resume", r#"{"id": 21}"#)).await;

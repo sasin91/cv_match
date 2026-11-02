@@ -1,0 +1,38 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT use AS \"task!\", model FROM user_llm_use_models WHERE trongate_user_id = ?1 AND model != ''",
+  "describe": {
+    "columns": [
+      {
+        "name": "task!",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_llm_use_models",
+            "name": "use"
+          }
+        }
+      },
+      {
+        "name": "model",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_llm_use_models",
+            "name": "model"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false
+    ]
+  },
+  "hash": "3ea7af0f3c371a2b91cfff7590c8f9d79a7153a0b08d2d4518d4caaef702dc39"
+}

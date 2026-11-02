@@ -28,6 +28,7 @@ use super::download::Downloads;
 use super::gguf::{self, GgufFile};
 use super::hardware::Inventory;
 use super::model_choice::{self, Fit};
+use super::model_gate::{Entry, ModelGate, Ticket};
 
 /// The llama.cpp program in the llama folder.
 #[cfg(windows)]
@@ -97,38 +98,17 @@ struct Running {
     started_at: i64,
 }
 
-/// Calls on the server: how many are under way, and when the last one ended.
-#[derive(Debug, Default)]
-struct Calls {
-    under_way: usize,
-    last_ended: Option<Instant>,
-}
-
-impl Calls {
-    /// Whether no call is under way and none ended in the last idle_for.
-    fn idle_for(&self, idle_for: Duration) -> bool {
-        self.under_way == 0 && self.last_ended.is_none_or(|ended| ended.elapsed() >= idle_for)
-    }
-}
-
-/// The running server, kept from stopping for being idle until this is dropped: what start()
-/// gives each caller, held for as long as its calls go on (crate::llm::Llm keeps it).
+/// The running server, kept from stopping for being idle, and from switching to another model,
+/// until this is dropped: what start() gives each caller, held for as long as its calls go on
+/// (crate::llm::Llm keeps it).
 pub struct InUse {
     pub endpoint: Endpoint,
-    calls: Arc<std::sync::Mutex<Calls>>,
+    _ticket: Ticket,
 }
 
 impl std::fmt::Debug for InUse {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         f.debug_struct("InUse").field("endpoint", &self.endpoint).finish()
-    }
-}
-
-impl Drop for InUse {
-    fn drop(&mut self) {
-        let mut calls = self.calls.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        calls.under_way = calls.under_way.saturating_sub(1);
-        calls.last_ended = Some(Instant::now());
     }
 }
 
@@ -152,8 +132,9 @@ pub struct LlamaServer {
     folder: PathBuf,
     inventory: Inventory,
     running: Mutex<Option<Running>>,
-    /// The calls on the running server, which stop_if_idle reads.
-    calls: Arc<std::sync::Mutex<Calls>>,
+    /// The calls on the running server and the model they run on (model_gate), which start waits
+    /// on before switching models and stop_if_idle reads.
+    calls: Arc<ModelGate>,
     /// The setup wizard's download.
     pub downloads: Downloads,
 }
@@ -258,6 +239,10 @@ impl LlamaServer {
     /// The server running named (a file in the models folder, or "" for the one that fits best),
     /// started or restarted with it when needed, and kept running while the answer is held. Err
     /// says what's missing or why it didn't start.
+    ///
+    /// Another model than the running one waits its turn (model_gate): until the calls under way
+    /// have finished, so switching never cuts one off. The wait holds neither the server's lock
+    /// nor anything a call under way needs.
     pub async fn start(&self, named: &str) -> Result<InUse, String> {
         let Some(server) = self.server_path() else {
             return Err(format!(
@@ -268,31 +253,24 @@ impl LlamaServer {
         let card = self.card_usable()?;
         let models = self.models();
         let (model, fit) = model_choice::choose(&models, named, &self.inventory, card)?;
+        // Counted as under way from here, so stop_if_idle leaves the server running for it.
+        let turn = self.calls.enter(&model.path).await;
         let mut running = self.running.lock().await;
         if let Some(current) = running.as_mut()
             && current.model == model.path
             && matches!(current.child.try_wait(), Ok(None))
         {
-            return Ok(self.in_use(current.endpoint.clone()));
+            return Ok(in_use(current.endpoint.clone(), turn, &model.path));
         }
+        // Not running, ended, or (on a switch's turn) another model. A failed start drops the
+        // turn, which says nothing runs.
         if let Some(mut previous) = running.take() {
             stop(&mut previous).await;
         }
         let started = self.spawn(&server, model, fit).await?;
         let endpoint = started.endpoint.clone();
         *running = Some(started);
-        Ok(self.in_use(endpoint))
-    }
-
-    /// One more call under way on endpoint. Called with the server's lock held, so stop_if_idle
-    /// (which holds it too) sees the call.
-    fn in_use(&self, endpoint: Endpoint) -> InUse {
-        let mut calls = self.calls.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
-        calls.under_way += 1;
-        InUse {
-            endpoint,
-            calls: Arc::clone(&self.calls),
-        }
+        Ok(in_use(endpoint, turn, &model.path))
     }
 
     /// Stops the server when it runs, no call is under way and none ended in the last idle_for,
@@ -300,11 +278,7 @@ impl LlamaServer {
     /// (which holds its lock) is left alone; the next check sees it.
     pub async fn stop_if_idle(&self, idle_for: Duration) -> Option<String> {
         let mut running = self.running.try_lock().ok()?;
-        let idle = self
-            .calls
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .idle_for(idle_for);
+        let idle = self.calls.idle_for(idle_for);
         if !idle {
             return None;
         }
@@ -362,6 +336,19 @@ impl LlamaServer {
                 model: alias,
             },
         })
+    }
+}
+
+/// The server at endpoint, running model, in use for the call whose turn it is: a call that
+/// joined has its ticket; a switch's turn is over now that model runs.
+fn in_use(endpoint: Endpoint, turn: Entry<'_>, model: &Path) -> InUse {
+    let ticket = match turn {
+        Entry::Join(ticket) => ticket,
+        Entry::Switch(turn) => turn.started(model),
+    };
+    InUse {
+        endpoint,
+        _ticket: ticket,
     }
 }
 
@@ -609,23 +596,26 @@ mod tests {
         assert!(background_threads() >= 1);
     }
 
-    #[test]
-    fn the_server_is_idle_only_with_no_call_under_way_for_long_enough() {
-        let calls = Arc::new(std::sync::Mutex::new(Calls::default()));
+    #[tokio::test]
+    async fn the_server_is_idle_only_with_no_call_under_way_for_long_enough() {
+        let calls = Arc::new(ModelGate::default());
         let idle = Duration::from_secs(300);
-        assert!(calls.lock().unwrap().idle_for(idle));
+        assert!(calls.idle_for(idle));
+        let model = model().path;
         let held = InUse {
             endpoint: Endpoint {
                 base_url: "http://127.0.0.1:1/v1".to_string(),
                 model: "m".to_string(),
             },
-            calls: Arc::clone(&calls),
+            _ticket: match calls.enter(&model).await {
+                Entry::Join(ticket) => ticket,
+                Entry::Switch(turn) => turn.started(&model),
+            },
         };
-        calls.lock().unwrap().under_way += 1;
-        assert!(!calls.lock().unwrap().idle_for(Duration::ZERO));
+        assert!(!calls.idle_for(Duration::ZERO));
         drop(held);
-        assert!(calls.lock().unwrap().idle_for(Duration::ZERO));
-        assert!(!calls.lock().unwrap().idle_for(idle), "a call just ended");
+        assert!(calls.idle_for(Duration::ZERO));
+        assert!(!calls.idle_for(idle), "a call just ended");
     }
 
     #[tokio::test]

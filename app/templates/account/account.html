@@ -71,6 +71,27 @@
         </fieldset>
         <button type="submit">Save</button>
     </form>
+    {%- if !task_models.is_empty() %}
+    <form method="post" action="account/submit_task_models" class="stack key-uses">
+        <fieldset>
+            <legend>A model per task</legend>
+            {%- for task_model in task_models %}
+            <label for="{{ task_model.field }}">{{ task_model.label }} <span class="muted small">(on {{ task_model.key }})</span></label>
+            {%- if task_model.picks_a_file %}
+            <select name="{{ task_model.field }}" id="{{ task_model.field }}">
+                {%- for choice in task_model.choices %}
+                <option value="{{ choice.value }}"{% if choice.selected %} selected{% endif %}>{{ choice.label }}</option>
+                {%- endfor %}
+            </select>
+            {%- else %}
+            <input type="text" name="{{ task_model.field }}" id="{{ task_model.field }}" value="{{ task_model.model }}" placeholder="{{ task_model.keys_own }}">
+            {%- endif %}
+            {%- endfor %}
+            <span class="muted small">Each task runs on the key picked for its use above, on the model picked here. This app's own model starts again with another model when the next task needs another.</span>
+        </fieldset>
+        <button type="submit">Save</button>
+    </form>
+    {%- endif %}
     <h2>Add a key</h2>
     <p class="muted small">One key is kept per provider: saving a key for a provider that has one replaces only that one.</p>
     {%- endif %}

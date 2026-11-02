@@ -30,6 +30,10 @@ const MIGRATIONS: &[(&str, &str)] = &[
         include_str!("../migrations/0005_job_search_run_steps.sql"),
     ),
     ("0006_taxonomy", include_str!("../migrations/0006_taxonomy.sql")),
+    (
+        "0007_llm_use_models",
+        include_str!("../migrations/0007_llm_use_models.sql"),
+    ),
 ];
 
 /// How long a write waits for another connection's write to finish, in milliseconds.

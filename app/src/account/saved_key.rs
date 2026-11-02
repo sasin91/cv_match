@@ -37,7 +37,8 @@ impl SavedKey {
     }
 }
 
-/// An entry in a use's list: a saved key's provider, or "" for no key.
+/// An entry in a list: a use's (a saved key's provider, or "" for no key), or a task's
+/// (task_model_row: a model file, or "" for what runs when none is picked).
 pub struct KeyChoice {
     pub value: String,
     pub label: String,

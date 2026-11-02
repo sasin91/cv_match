@@ -1,13 +1,15 @@
-//! Which language model a match endpoint runs on: the user's own key from the API key page,
-//! picked for the use (account_model::USES). The desktop app has no server key to
-//! fall back to, so without a key for that use the page is told why and pointed to the API key
-//! page.
+//! Which language model a task runs on: the user's own key from the API key page, picked for the
+//! task's use (account_model::USES), on the task's model (task_model::model_for). Every task
+//! gets its model from llm() here; only the API key page's Check runs on a key's own model. The
+//! desktop app has no server key to fall back to, so without a key for that use the page is told
+//! why and pointed to the API key page.
 
 use super::match_documents::Uses;
 use crate::account::account_model::{self, APPLICATION, JOB_EVALUATION, KeyFor, RESUME, USES};
+use crate::account::task_model::{self, Task};
 use crate::context::Context;
 use crate::llama;
-use crate::llm::Llm;
+use crate::llm::{LLAMA_CPP, Llm};
 use crate::service_error::{ErrorKind, ServiceError};
 
 /// A model to call, and who it is as the documents it writes record it ("openai/gpt-5.4-mini").
@@ -30,17 +32,49 @@ pub async fn ai_uses(context: &Context) -> Result<Uses, ServiceError> {
     })
 }
 
-/// The model on the user's key for use, or the 402 the page answers with a link to the API key
-/// page.
-pub async fn llm(context: &Context, use_: &str) -> Result<KeyedLlm, ServiceError> {
+/// The model task runs on, on the user's key for its use, or the 402 the page answers with a link
+/// to the API key page. For this app's own model, llama-server is started (or restarted) with
+/// the task's model file.
+pub async fn llm(context: &Context, task: &Task) -> Result<KeyedLlm, ServiceError> {
+    let use_ = task.use_;
     let Some(key) = llm_settings(context, use_).await? else {
         return Err(ServiceError::need_key(missing_key_message(context, use_).await?));
     };
+    let key = KeyFor {
+        model: task_model_of(context, task, &key).await?,
+        ..key
+    };
     let llm = llama::use_key(context.llama.as_ref(), &key)
         .await
-        .map_err(|e| ServiceError::llm(&format!("llm ({use_})"), &e))?;
+        .map_err(|e| ServiceError::llm(&format!("llm ({})", task.name), &e))?;
     let written_by = format!("{}/{}", key.provider, llm.model());
     Ok(KeyedLlm { llm, written_by })
+}
+
+/// The model task runs on, on key: the one saved for it, its default, or the key's own.
+async fn task_model_of(context: &Context, task: &Task, key: &KeyFor) -> Result<String, ServiceError> {
+    let saved = task_model::saved_for(context.db(), context.user_id, task)
+        .await
+        .map_err(|e| {
+            let what = lowercase_first(task.label);
+            ServiceError::internal(
+                "llm (task model)",
+                format!("The model for {what} couldn't be read: {e}"),
+            )
+        })?;
+    // Only this app's own model has a models folder to look in.
+    let downloaded = if key.provider == LLAMA_CPP {
+        llama::model_files(context.llama.as_ref())
+    } else {
+        Vec::new()
+    };
+    Ok(task_model::model_for(
+        task,
+        &key.provider,
+        &key.model,
+        &saved,
+        &downloaded,
+    ))
 }
 
 /// Why there's no key to use: none picked for this use, the picked one no longer in Windows

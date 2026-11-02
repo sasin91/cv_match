@@ -29,6 +29,7 @@ use super::run_steps::{self, NewStep};
 use super::scan_lock;
 use super::search_service;
 use crate::account::account_model::{APPLICATION, JOB_EVALUATION, RESUME};
+use crate::account::task_model;
 use crate::context::Context;
 use crate::job_sites::{JobSite, ListedPost};
 use crate::llm::transcript::{self, Exchange};
@@ -362,7 +363,7 @@ async fn scan_searches(context: &Arc<Context>, started: Started) -> Result<ScanR
     // The model only searches when it searches the web; every post is matched on it too
     // (match_service), which asks for it there.
     let web = if searches_the_web(&context).await? {
-        Some(llm_key::llm(&context, JOB_EVALUATION).await?.llm)
+        Some(llm_key::llm(&context, &task_model::READ_JOB).await?.llm)
     } else {
         None
     };
