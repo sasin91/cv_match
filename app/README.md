@@ -37,7 +37,9 @@ index and the Danish postcodes); the Jobnet extension lives in `../extension/job
     cargo run --release
 
 opens the app's window (`src/desktop/`): Match, with the dashboard's status rows and your
-best matches, and Settings, with a status line for Laya and the local model under both. The
+best matches, the Task manager (what JobFinder runs now and for how long: scans, matches, model
+calls, browsers, PDF readers, downloads, llama-server and Laya; right-click a row to stop it),
+and Settings, with a status line for Laya and the local model under both. The
 app is also served on http://127.0.0.1:8765/match, for the Jobnet extension and for what the
 window can't do yet, which its buttons open in your default browser. Starting it again on the
 same database brings the window to the front.

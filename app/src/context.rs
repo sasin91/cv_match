@@ -19,6 +19,7 @@ use crate::llama::llama_server::LlamaServer;
 use crate::matches::match_service;
 use crate::matches::page_reader::Readers;
 use crate::scan_schedule::ScanSchedule;
+use crate::task_manager::running_work::RunningWork;
 use crate::taxonomy::Taxonomy;
 
 pub struct Context {
@@ -47,6 +48,8 @@ pub struct Context {
     /// JobFinder's signed-in browser, which reads LinkedIn and Indeed (None: not here, as in
     /// tests).
     pub signed_in: Option<SignedInBrowser>,
+    /// The work running now, for the task manager (task_manager::running_work).
+    pub running: Arc<RunningWork>,
 }
 
 /// The database file the app runs on.
@@ -74,6 +77,7 @@ impl Context {
             pdf_reader: std::env::current_exe().ok(),
             scan_in_memory: AtomicBool::new(false),
             signed_in: None,
+            running: Arc::default(),
         }
     }
 

@@ -78,7 +78,8 @@ pub enum LayaState {
 /// The model as the client holds it.
 enum Held {
     Unloaded,
-    Loaded(Arc<Laya>),
+    /// The model, and when it was loaded (unix seconds).
+    Loaded(Arc<Laya>, i64),
     Failed(String),
 }
 
@@ -111,7 +112,7 @@ impl LayaClient {
     pub async fn load(&self) -> Result<Arc<Laya>, String> {
         let mut held = self.held.lock().await;
         let laya = match &*held {
-            Held::Loaded(laya) => Arc::clone(laya),
+            Held::Loaded(laya, _) => Arc::clone(laya),
             Held::Failed(why) => return Err(why.clone()),
             Held::Unloaded => {
                 let started = Instant::now();
@@ -122,7 +123,7 @@ impl LayaClient {
                             self.folder.display(),
                             started.elapsed().as_secs_f64()
                         );
-                        *held = Held::Loaded(Arc::clone(&laya));
+                        *held = Held::Loaded(Arc::clone(&laya), chrono::Utc::now().timestamp());
                         laya
                     }
                     Err(why) => {
@@ -155,7 +156,7 @@ impl LayaClient {
         let Ok(mut held) = self.held.try_lock() else {
             return false;
         };
-        let Held::Loaded(laya) = &*held else {
+        let Held::Loaded(laya, _) = &*held else {
             return false;
         };
         // Held only here: no match is asking it now.
@@ -168,6 +169,15 @@ impl LayaClient {
         true
     }
 
+    /// When the model in memory was loaded (unix seconds), for the task manager; None when it
+    /// isn't loaded, or is loading.
+    pub fn loaded_at(&self) -> Option<i64> {
+        match &*self.held.try_lock().ok()? {
+            Held::Loaded(_, loaded_at) => Some(*loaded_at),
+            _ => None,
+        }
+    }
+
     /// How far loading the model has come, for the window's status line.
     pub fn state(&self) -> LayaState {
         let Ok(held) = self.held.try_lock() else {
@@ -175,7 +185,7 @@ impl LayaClient {
         };
         match &*held {
             Held::Unloaded => LayaState::Unloaded,
-            Held::Loaded(_) => LayaState::Loaded,
+            Held::Loaded(..) => LayaState::Loaded,
             Held::Failed(why) => LayaState::Failed(why.clone()),
         }
     }
