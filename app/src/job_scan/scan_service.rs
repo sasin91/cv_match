@@ -426,17 +426,26 @@ impl Matching {
         true
     }
 
-    /// Stops when the scan is out of time, else waits PAUSE_BETWEEN_POSTS after a post, then
-    /// while the user is busy (user_busy), for at most BUSY_GIVE_UP. Err says why the scan stops.
+    /// Waits PAUSE_BETWEEN_POSTS after a post, then while the user is busy (user_busy), for at
+    /// most BUSY_GIVE_UP and never past the scan's time limit. Err says why the scan stops: out
+    /// of time (looked at before and after the waits), or the user stayed busy.
     async fn make_way(&mut self) -> Result<(), String> {
-        if self.began.elapsed() >= self.time_limit {
-            return Err(out_of_time(self.time_limit));
-        }
+        let left = self.time_left()?;
         if self.started_one {
-            tokio::time::sleep(PAUSE_BETWEEN_POSTS).await;
+            tokio::time::sleep(PAUSE_BETWEEN_POSTS.min(left)).await;
         }
         self.started_one = true;
-        crate::user_busy::wait_until_free(BUSY_GIVE_UP).await
+        let left = self.time_left()?;
+        crate::user_busy::wait_until_free(BUSY_GIVE_UP.min(left)).await?;
+        self.time_left().map(|_| ())
+    }
+
+    /// The scan's time left, or Err (out_of_time) when there is none.
+    fn time_left(&self) -> Result<Duration, String> {
+        match self.time_limit.checked_sub(self.began.elapsed()) {
+            Some(left) if !left.is_zero() => Ok(left),
+            _ => Err(out_of_time(self.time_limit)),
+        }
     }
 }
 
@@ -1212,7 +1221,14 @@ async fn write_document(
         Err(e) => return Some(e.message),
     }
     let started = timeline.start(run_steps::WRITE);
-    let (written, calls) = transcript::recording(match_service::write(Arc::clone(context), saved.id, "", kind)).await;
+    let (written, calls) = transcript::recording(match_service::write(
+        Arc::clone(context),
+        saved.id,
+        "",
+        kind,
+        match_service::WhenAbandoned::StopWriting,
+    ))
+    .await;
     let what = if kind == RESUME {
         "The tailored résumé"
     } else {
@@ -1550,6 +1566,18 @@ mod tests {
             Started::BySchedule { every_hours: 1 }.min_seconds_between_scans(),
             MIN_SECONDS_BETWEEN_SCANS
         );
+    }
+
+    #[tokio::test]
+    async fn no_post_is_taken_up_past_the_scan_time_limit() {
+        let mut out_of_time = Matching {
+            time_limit: Duration::ZERO,
+            ..Matching::new(Started::ByHand)
+        };
+        let why = out_of_time.make_way().await.unwrap_err();
+        assert!(why.starts_with("The scan ran for 0 minutes, its limit"), "{why}");
+        let mut in_time = Matching::new(Started::ByHand);
+        assert_eq!(in_time.make_way().await, Ok(()));
     }
 
     #[test]

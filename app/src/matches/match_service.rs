@@ -686,15 +686,35 @@ pub async fn match_job(context: &Context, ask: MatchAsk<'_>, say: Say<'_>) -> Re
     })
 }
 
+/// What a writing does when the one who asked for it stops waiting.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum WhenAbandoned {
+    /// Finishes and is saved: a page reloaded or a window closed still gets its document.
+    KeepWriting,
+    /// Stops with the waiter: the job scan, which gives up on a post past its time limit and
+    /// must not leave the model writing behind it.
+    StopWriting,
+}
+
+/// Ends a task when dropped.
+struct AbortOnDrop(tokio::task::AbortHandle);
+
+impl Drop for AbortOnDrop {
+    fn drop(&mut self) {
+        self.0.abort();
+    }
+}
+
 /// Writes kind (document_box::APPLICATION or RESUME) for a saved match from its CV and post, with
 /// the candidate's notes, keeps it as the match's newest version, and answers its box. The
-/// writing runs as its own task, so it finishes and is saved even when the one who asked stops
-/// waiting (a page reloaded, a window closed); the saved match has it afterwards.
+/// writing runs as its own task, which abandoned says the fate of when the one who asked stops
+/// waiting.
 pub async fn write(
     context: Arc<Context>,
     id: i64,
     notes: &str,
     kind: &'static str,
+    abandoned: WhenAbandoned,
 ) -> Result<DocumentBox, ServiceError> {
     let found = saved_match(&context, id).await?;
     let keyed = llm_key::llm(&context, kind).await?;
@@ -715,6 +735,7 @@ pub async fn write(
                 .map(|_| (Vec::new(), Vec::new()))
         }
     }));
+    let _stopped_with_waiter = (abandoned == WhenAbandoned::StopWriting).then(|| AbortOnDrop(writing.abort_handle()));
     let work = if kind == RESUME {
         "match/tailor_resume"
     } else {

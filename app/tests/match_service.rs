@@ -129,7 +129,15 @@ async fn link_fetches_stop_after_the_limit() {
 #[tokio::test]
 async fn writing_without_a_key_points_to_the_key_page() {
     let context = Arc::new(context().await);
-    let error = match_service::write(context, 21, "", "application").await.unwrap_err();
+    let error = match_service::write(
+        context,
+        21,
+        "",
+        "application",
+        match_service::WhenAbandoned::KeepWriting,
+    )
+    .await
+    .unwrap_err();
     assert_eq!(error.kind, ErrorKind::NeedKey);
 }
 
