@@ -94,6 +94,8 @@ pub enum Msg {
     ShowLocalModel,
     /// For the shell: go to the Match screen.
     Finish,
+    /// What another screen's work came to, said here (a key saved during setup).
+    Tell(String),
 }
 
 pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
@@ -123,8 +125,8 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             if let Err(why) = &steps {
                 crate::log_line!("setup: the steps couldn't be read: {why}");
             }
+            // A read or the scheduler may still be running: its own answer frees the buttons.
             state.steps = Some(steps);
-            state.busy = false;
         }
         Msg::ChooseCv => {
             state.busy = true;
@@ -158,6 +160,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             );
         }
         Msg::CvRead(Ok(said)) => {
+            state.busy = false;
             state.cv_text = text_editor::Content::new();
             state.cv_name.clear();
             state.said = Some((Health::Ready, said));
@@ -187,6 +190,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             );
         }
         Msg::Scheduled(said) => {
+            state.busy = false;
             state.said = Some(match said {
                 Ok(said) => (Health::Ready, said),
                 Err(why) => (Health::Attention, why),
@@ -194,6 +198,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             return Task::done(Msg::Load);
         }
         // The shell changes screens.
+        Msg::Tell(said) => state.said = Some((Health::Ready, said)),
         Msg::ShowLanguageModels | Msg::ShowLocalModel | Msg::Finish => {}
     }
     Task::none()

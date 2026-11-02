@@ -440,6 +440,10 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
             let runner = shell.runner();
             return matching::update(&mut shell.matching, msg, &runner).map(Message::Matching);
         }
+        Message::LanguageModels(language_models::Msg::BackToSetup(message)) => {
+            return Task::done(Message::Show(Screen::Setup))
+                .chain(Task::done(Message::Setup(setup_screen::Msg::Tell(message))));
+        }
         Message::LanguageModels(language_models::Msg::ShowLocalModel) => {
             return Task::done(Message::Show(Screen::LocalModel));
         }
@@ -457,7 +461,8 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
             // As the web page goes on: to Setup while it is unfinished, else to where the
             // model's uses are picked, since the uses stay on the key they were on.
             if setup_unfinished {
-                return Task::done(Message::Show(Screen::Setup)).chain(Task::done(Message::Said(message)));
+                return Task::done(Message::Show(Screen::Setup))
+                    .chain(Task::done(Message::Setup(setup_screen::Msg::Tell(message))));
             }
             return Task::done(Message::Show(Screen::LanguageModels))
                 .chain(Task::done(Message::LanguageModels(language_models::Msg::Tell(message))));

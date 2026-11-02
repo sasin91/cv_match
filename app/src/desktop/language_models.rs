@@ -86,6 +86,9 @@ pub enum Msg {
     ShowLocalModel,
     /// What another screen's work came to, said here (a local model saved: pick its uses).
     Tell(String),
+    /// For the shell: a key was saved while setup is unfinished, so it goes back to Setup,
+    /// saying this.
+    BackToSetup(String),
 }
 
 pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
@@ -127,9 +130,17 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                 state.errors = errors.clone();
                 state.busy = false;
             }
-            SaveKey::Saved { message, .. } => {
+            SaveKey::Saved {
+                message,
+                setup_unfinished,
+            } => {
                 state.errors.clear();
                 state.api_key.clear();
+                state.busy = false;
+                // As the web page goes on: back to the wizard while it is unfinished.
+                if *setup_unfinished {
+                    return Task::done(Msg::BackToSetup(message.clone()));
+                }
                 state.said = Some((Health::Ready, message.clone()));
                 return Task::done(Msg::Load);
             }
@@ -209,7 +220,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             }
         }
         // The shell changes screens.
-        Msg::ShowLocalModel => {}
+        Msg::ShowLocalModel | Msg::BackToSetup(_) => {}
         Msg::Tell(said) => {
             state.said = Some((Health::Ready, said));
             return Task::done(Msg::Load);
