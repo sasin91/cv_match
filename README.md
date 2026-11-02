@@ -290,3 +290,8 @@ The parity tests compare the matching with a fixed snapshot of expected answers
 snapshot in the same commit.
 
 `app/README.md` has more on the tests.
+
+## Licence
+
+BSD 2-Clause: see [LICENSE](LICENSE). `laya-server/` is Apache-2.0, as the laya code it ports;
+[THIRD_PARTY.md](THIRD_PARTY.md) lists every part with a licence of its own.

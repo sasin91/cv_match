@@ -1,11 +1,12 @@
 //! JobFinder's own signed-in browser: Edge (or Chrome, or Chromium) on a profile of the app's
 //! own, in the data folder, never the user's. The user signs in to LinkedIn and Indeed in it once
 //! (open_sign_in shows it as a window); the job scan then reads those sites' search pages and
-//! posts in it headless, one page at a time and PAUSE_BETWEEN_PAGES apart, through its DevTools
+//! posts in it, headless or as a window as the site needs (Showing), one page at a time and PAUSE_BETWEEN_PAGES apart, through its DevTools
 //! (cdp), which give the page's HTML once its JavaScript has shown the posts.
 //!
-//! It does nothing to look like a person: a site that asks it to sign in again or to show it is
-//! a person gets no more pages. The scan leaves that site alone (a file in PAUSED_FOLDER says
+//! It does nothing to look like a person: a site that asks it to sign in again, to show it is
+//! a person, or blocks it outright (Indeed's Cloudflare blocks a headless browser, with or
+//! without the sign-in) gets no more pages. The scan leaves that site alone (a file in PAUSED_FOLDER says
 //! why) until the user opens the sign-in window again.
 //!
 //! The sites' terms forbid reading them with programs; the user chose this knowing that, for
@@ -55,6 +56,17 @@ pub const PAUSE_BETWEEN_PAGES: u64 = 10;
 /// The browser's window size while headless: wide enough for the sites' desktop layout.
 const WINDOW_SIZE: &str = "1280,1600";
 
+/// How the browser is shown while it reads a site's page.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum Showing {
+    /// Headless: no window (LinkedIn).
+    Headless,
+    /// As a normal window on the user's screen, for the page's time: for a site that blocks a
+    /// headless browser (Indeed's Cloudflare does). It is the same browser, not disguised: it
+    /// says what it is, it just isn't headless.
+    Window,
+}
+
 /// What a site's page shows, as one of its readers (linkedin, indeed) sees it.
 #[derive(Debug, Clone, PartialEq)]
 pub enum Seen<T> {
@@ -66,6 +78,8 @@ pub enum Seen<T> {
     SignIn,
     /// The site asks the browser to show it is a person (a CAPTCHA or a security check).
     Check,
+    /// The site blocks the browser outright: a block page, with nothing to answer.
+    Blocked,
 }
 
 /// The signed-in browser of one data folder.
@@ -119,11 +133,16 @@ impl SignedInBrowser {
         std::fs::read_to_string(self.pause_file(domain)).ok()
     }
 
+    /// Whether the scan leaves domain alone (pause_of says why).
+    pub fn is_paused(&self, domain: &str) -> bool {
+        self.pause_file(domain).exists()
+    }
+
     /// Leaves domain alone from now on, saying why.
-    fn pause(&self, domain: &str, why: &str) -> String {
+    pub(crate) fn pause(&self, domain: &str, why: &str) -> String {
         let today = chrono::Local::now().format("%-d %B %Y");
         let said = format!(
-            "{why} ({today}). The scan leaves {domain} alone until you sign in again in JobFinder's browser (Job searches, “Sign in to job sites”)."
+            "{why} ({today}). The scan leaves {domain} alone until you open JobFinder's browser again (Job searches, “Sign in to job sites”)."
         );
         let file = self.pause_file(domain);
         let written = file
@@ -138,8 +157,15 @@ impl SignedInBrowser {
     }
 
     /// What judge reads from url, a page of domain, once it shows it. Err says why not: the site
-    /// is paused, asked to sign in or for a check (it is paused from now on), or didn't show it.
-    pub async fn read<T>(&self, domain: &str, url: &str, judge: impl Fn(&str, &str) -> Seen<T>) -> Result<T, String> {
+    /// is paused, asked to sign in or for a check or blocked the browser (it is paused from now
+    /// on), or didn't show it.
+    pub async fn read<T>(
+        &self,
+        domain: &str,
+        url: &str,
+        showing: Showing,
+        judge: impl Fn(&str, &str) -> Seen<T>,
+    ) -> Result<T, String> {
         if let Some(paused) = self.pause_of(domain) {
             return Err(paused);
         }
@@ -150,7 +176,8 @@ impl SignedInBrowser {
         }
         // The time limit starts when the read does: a read started in a paused scan waits in
         // running_work first, and that wait isn't the browser's.
-        let looking = async { tokio::time::timeout(Duration::from_secs(PAGE_SECONDS), self.look(url, &judge)).await };
+        let looking =
+            async { tokio::time::timeout(Duration::from_secs(PAGE_SECONDS), self.look(url, showing, &judge)).await };
         let seen = running_work::part(WorkKind::Browser, format!("Signed in, reading {url}"), looking).await;
         *last_page = Some(Instant::now());
         let seen = seen
@@ -166,11 +193,18 @@ impl SignedInBrowser {
                 domain,
                 &format!("{domain} asked JobFinder's browser to show it is a person"),
             )),
+            Seen::Blocked => Err(self.pause(domain, &format!("{domain} blocks JobFinder's browser"))),
         }
     }
 
-    /// Starts the browser headless, opens url and looks at it until judge sees something.
-    async fn look<T>(&self, url: &str, judge: &impl Fn(&str, &str) -> Seen<T>) -> Result<Seen<T>, String> {
+    /// Starts the browser (shown as showing says), opens url and looks at it until judge sees
+    /// something.
+    async fn look<T>(
+        &self,
+        url: &str,
+        showing: Showing,
+        judge: &impl Fn(&str, &str) -> Seen<T>,
+    ) -> Result<Seen<T>, String> {
         let program = browser::find().ok_or("There is no Edge, Chrome or Chromium on this computer.")?;
         let profile = self.profile();
         tokio::fs::create_dir_all(&profile)
@@ -180,7 +214,7 @@ impl SignedInBrowser {
         let _ = tokio::fs::remove_file(&port_file).await;
         let mut command = tokio::process::Command::new(&program);
         command
-            .args(headless_arguments(&profile))
+            .args(reading_arguments(&profile, showing))
             .stdin(std::process::Stdio::null())
             .stdout(std::process::Stdio::null())
             .stderr(std::process::Stdio::null())
@@ -243,17 +277,20 @@ async fn look_through<T>(
         tokio::time::sleep(Duration::from_millis(LOOK_EVERY_MS)).await;
         let (location, html) = devtools.location_and_html().await?;
         let seen = judge(&location, &html);
-        if !seen.is_not_yet() || started.elapsed() >= Duration::from_secs(SHOWN_SECONDS) {
+        if !seen.is_passing() || started.elapsed() >= Duration::from_secs(SHOWN_SECONDS) {
             return Ok(seen);
         }
     }
 }
 
-/// The arguments that start the browser headless on profile, its DevTools on a port it picks.
-fn headless_arguments(profile: &Path) -> Vec<String> {
-    vec![
-        "--headless=new".to_string(),
-        "--disable-gpu".to_string(),
+/// The arguments that start the browser to read a page on profile, shown as showing says, its
+/// DevTools on a port it picks.
+fn reading_arguments(profile: &Path, showing: Showing) -> Vec<String> {
+    let shown = match showing {
+        Showing::Headless => vec!["--headless=new".to_string(), "--disable-gpu".to_string()],
+        Showing::Window => Vec::new(),
+    };
+    let common = [
         "--no-first-run".to_string(),
         "--no-default-browser-check".to_string(),
         "--disable-sync".to_string(),
@@ -262,7 +299,8 @@ fn headless_arguments(profile: &Path) -> Vec<String> {
         format!("--user-data-dir={}", profile.display()),
         "--remote-debugging-port=0".to_string(),
         "about:blank".to_string(),
-    ]
+    ];
+    shown.into_iter().chain(common).collect()
 }
 
 /// The arguments that open the browser as a window on profile, showing pages.
@@ -277,9 +315,11 @@ fn window_arguments(profile: &Path, pages: &[&str]) -> Vec<String> {
 }
 
 impl<T> Seen<T> {
-    /// Whether the page doesn't show anything to read yet.
-    fn is_not_yet(&self) -> bool {
-        matches!(self, Seen::NotYet)
+    /// Whether the page may still change to what is read: it shows nothing to read yet, or a
+    /// check that may pass by itself (Indeed's "Security Check" does, in a window, in about 7
+    /// seconds). A check still shown after SHOWN_SECONDS is said as one.
+    fn is_passing(&self) -> bool {
+        matches!(self, Seen::NotYet | Seen::Check)
     }
 }
 
@@ -289,8 +329,17 @@ mod tests {
 
     #[test]
     fn headless_runs_on_the_apps_own_profile_with_devtools() {
-        let arguments = headless_arguments(Path::new("profile"));
+        let arguments = reading_arguments(Path::new("profile"), Showing::Headless);
         assert_eq!(arguments.first().map(String::as_str), Some("--headless=new"));
+        assert!(arguments.contains(&"--user-data-dir=profile".to_string()));
+        assert!(arguments.contains(&"--remote-debugging-port=0".to_string()));
+    }
+
+    #[test]
+    fn a_window_reads_with_devtools_but_not_headless() {
+        let arguments = reading_arguments(Path::new("profile"), Showing::Window);
+        assert!(!arguments.iter().any(|argument| argument.starts_with("--headless")));
+        assert!(!arguments.contains(&"--disable-gpu".to_string()));
         assert!(arguments.contains(&"--user-data-dir=profile".to_string()));
         assert!(arguments.contains(&"--remote-debugging-port=0".to_string()));
     }
@@ -313,6 +362,8 @@ mod tests {
         let said = browser.pause("linkedin.com", "linkedin.com asked to sign in");
         assert_eq!(browser.pause_of("linkedin.com"), Some(said));
         assert_eq!(browser.pause_of("dk.indeed.com"), None);
+        assert!(browser.is_paused("linkedin.com"));
+        assert!(!browser.is_paused("dk.indeed.com"));
         let _ = std::fs::remove_dir_all(&folder);
     }
 }
@@ -329,7 +380,7 @@ mod in_a_browser {
         let browser = SignedInBrowser::new(folder.clone());
         let page = "data:text/html,<body><script>setTimeout(()=>{document.body.innerHTML='<p id=x>shown</p>'},2000)</script></body>";
         let read = browser
-            .read("example.com", page, |_, html| {
+            .read("example.com", page, Showing::Headless, |_, html| {
                 if html.contains("<p id=\"x\">shown</p>") {
                     Seen::Shown(html.len())
                 } else {
