@@ -137,6 +137,9 @@ pub struct LlamaServer {
     calls: Arc<ModelGate>,
     /// The setup wizard's download.
     pub downloads: Downloads,
+    /// Held while a task's model is downloaded because the task needs it, so two tasks that need
+    /// the same file download it once (llama_setup_service::download_if_missing).
+    pub fetching: tokio::sync::Mutex<()>,
 }
 
 impl LlamaServer {
@@ -149,6 +152,7 @@ impl LlamaServer {
             running: Mutex::new(None),
             calls: Arc::default(),
             downloads: Downloads::default(),
+            fetching: tokio::sync::Mutex::new(()),
         }
     }
 

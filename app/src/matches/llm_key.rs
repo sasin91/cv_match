@@ -6,6 +6,7 @@
 
 use super::match_documents::Uses;
 use crate::account::account_model::{self, APPLICATION, JOB_EVALUATION, KeyFor, RESUME, USES};
+use crate::account::llama_setup_service;
 use crate::account::task_model::{self, Task};
 use crate::context::Context;
 use crate::llama;
@@ -44,6 +45,9 @@ pub async fn llm(context: &Context, task: &Task) -> Result<KeyedLlm, ServiceErro
         model: task_model_of(context, task, &key).await?,
         ..key
     };
+    if key.provider == LLAMA_CPP {
+        llama_setup_service::download_if_missing(context, &key.model).await?;
+    }
     let llm = llama::use_key(context.llama.as_ref(), &key)
         .await
         .map_err(|e| ServiceError::llm(&format!("llm ({})", task.name), &e))?;
@@ -62,19 +66,7 @@ async fn task_model_of(context: &Context, task: &Task, key: &KeyFor) -> Result<S
                 format!("The model for {what} couldn't be read: {e}"),
             )
         })?;
-    // Only this app's own model has a models folder to look in.
-    let downloaded = if key.provider == LLAMA_CPP {
-        llama::model_files(context.llama.as_ref())
-    } else {
-        Vec::new()
-    };
-    Ok(task_model::model_for(
-        task,
-        &key.provider,
-        &key.model,
-        &saved,
-        &downloaded,
-    ))
+    Ok(task_model::model_for(task, &key.provider, &key.model, &saved))
 }
 
 /// Why there's no key to use: none picked for this use, the picked one no longer in Windows

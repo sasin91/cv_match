@@ -1,7 +1,7 @@
 //! The models the setup wizard offers to download: Qwen's own GGUF builds of Qwen3, from small to
-//! large, as penny offers qwen3:4b and qwen3:8b by the card's memory, and two picked by hand for
-//! a task (account::task_model): Gemma 4 E4B for reading Danish job posts, and Munin, a
-//! Danish-tuned Qwen3.5. Each is weighed with model_choice before it is downloaded, by the size
+//! large, and two picked by hand for a task (account::task_model): Gemma 4 E4B for reading Danish
+//! job posts, and Munin, a Danish-tuned Qwen3.5. The model bake-off (2026-11-02) found Qwen3 4B
+//! reads CVs and judges as well as the bigger ones, so it is the one suggested. Each is weighed with model_choice before it is downloaded, by the size
 //! Hugging Face lists for it.
 
 use std::path::Path;
@@ -66,7 +66,7 @@ pub const MODELS: [CatalogModel; 6] = [
     CatalogModel {
         repo: "Qwen/Qwen3-4B-GGUF",
         file: QWEN3_4B,
-        label: "Qwen3 4B: penny's pick for a card with 6 GB",
+        label: "Qwen3 4B: reads CVs and judges the match; the one to take",
         // 2.5 GB.
         bytes: 25 * GB / 10,
         layers: 36,
@@ -75,7 +75,7 @@ pub const MODELS: [CatalogModel; 6] = [
     CatalogModel {
         repo: "unsloth/gemma-4-E4B-it-GGUF",
         file: GEMMA_4_E4B,
-        label: "Gemma 4 E4B: reads Danish job posts best, for reading job posts on a card with 8 GB",
+        label: "Gemma 4 E4B: reads Danish job posts best; downloaded when a job post is first read",
         // 4.98 GB.
         bytes: 4_977_171_584,
         layers: 42,
@@ -84,7 +84,7 @@ pub const MODELS: [CatalogModel; 6] = [
     CatalogModel {
         repo: "Qwen/Qwen3-8B-GGUF",
         file: "Qwen3-8B-Q4_K_M.gguf",
-        label: "Qwen3 8B: penny's pick for a card with 12 GB, and the best that fits 8 GB",
+        label: "Qwen3 8B: bigger and slower than Qwen3 4B, and no better in the bake-off",
         // 5.03 GB.
         bytes: 503 * GB / 100,
         layers: 36,

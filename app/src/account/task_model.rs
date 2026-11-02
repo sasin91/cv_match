@@ -1,6 +1,7 @@
 //! The model each task runs on (user_llm_use_models). A task runs on the key its use picks
 //! (account_model::USES), on the model saved for the task, else on the task's default for this
-//! app's own model when that file is in the models folder, else on the key's own model.
+//! app's own model (downloaded when the task first needs it, matches::llm_key), else on the key's
+//! own model.
 //!
 //! Which use each task belongs to:
 //! - read_job: reading a job post (match_service::extract_job), and the job scan's web search;
@@ -35,8 +36,8 @@ pub struct Task {
     pub use_: &'static str,
     /// What the pages call it.
     pub label: &'static str,
-    /// The model file it runs on with this app's own model when the user saved none, when that
-    /// file is in the models folder.
+    /// The model file it runs on with this app's own model when the user saved none; downloaded
+    /// when the task first needs it.
     pub llama_default: Option<&'static str>,
 }
 
@@ -89,8 +90,8 @@ pub fn writing(kind: &str) -> &'static Task {
 
 /// The model the task runs on, on a key of provider whose own model is key_model: saved (""
 /// when none is; KEYS_OWN_MODEL is the key's model), else the task's default for this app's own
-/// model when downloaded (the models folder's file names) has it, else the key's model.
-pub fn model_for(task: &Task, provider: &str, key_model: &str, saved: &str, downloaded: &[String]) -> String {
+/// model, else the key's model.
+pub fn model_for(task: &Task, provider: &str, key_model: &str, saved: &str) -> String {
     if saved == KEYS_OWN_MODEL {
         return key_model.to_string();
     }
@@ -98,14 +99,9 @@ pub fn model_for(task: &Task, provider: &str, key_model: &str, saved: &str, down
         return saved.to_string();
     }
     match task.llama_default {
-        Some(default) if provider == LLAMA_CPP && is_downloaded(default, downloaded) => default.to_string(),
+        Some(default) if provider == LLAMA_CPP => default.to_string(),
         _ => key_model.to_string(),
     }
-}
-
-/// Whether file is one of the models folder's files, as llama_server names them (case aside).
-fn is_downloaded(file: &str, downloaded: &[String]) -> bool {
-    downloaded.iter().any(|name| name.eq_ignore_ascii_case(file))
 }
 
 /// The model saved for each task, as (task, model); a task without one isn't listed.
@@ -181,54 +177,35 @@ mod tests {
         db
     }
 
-    fn files(names: &[&str]) -> Vec<String> {
-        names.iter().map(|name| name.to_string()).collect()
-    }
-
     #[test]
     fn a_saved_model_runs_before_any_default() {
-        let downloaded = files(&[GEMMA_4_E4B]);
         assert_eq!(
-            model_for(&READ_JOB, LLAMA_CPP, "", "Qwen3-8B-Q4_K_M.gguf", &downloaded),
+            model_for(&READ_JOB, LLAMA_CPP, "", "Qwen3-8B-Q4_K_M.gguf"),
             "Qwen3-8B-Q4_K_M.gguf"
         );
-        assert_eq!(model_for(&READ_JOB, OPENAI, "gpt-5.4-mini", "gpt-5.4", &[]), "gpt-5.4");
+        assert_eq!(model_for(&READ_JOB, OPENAI, "gpt-5.4-mini", "gpt-5.4"), "gpt-5.4");
     }
 
     #[test]
-    fn this_apps_own_model_reads_job_posts_on_gemma_and_judges_on_qwen3_4b_when_downloaded() {
-        let downloaded = files(&["GEMMA-4-E4B-it-Q4_K_M.gguf", QWEN3_4B, "Qwen3-8B-Q4_K_M.gguf"]);
+    fn this_apps_own_model_reads_job_posts_on_gemma_and_judges_on_qwen3_4b() {
         let key_model = "Qwen3-8B-Q4_K_M.gguf";
-        assert_eq!(model_for(&READ_JOB, LLAMA_CPP, key_model, "", &downloaded), GEMMA_4_E4B);
-        assert_eq!(model_for(&READ_CV, LLAMA_CPP, key_model, "", &downloaded), QWEN3_4B);
-        assert_eq!(model_for(&JUDGE, LLAMA_CPP, key_model, "", &downloaded), QWEN3_4B);
-        assert_eq!(
-            model_for(&APPLICATION_TASK, LLAMA_CPP, key_model, "", &downloaded),
-            key_model
-        );
-        assert_eq!(model_for(&RESUME_TASK, LLAMA_CPP, "", "", &downloaded), "");
+        assert_eq!(model_for(&READ_JOB, LLAMA_CPP, key_model, ""), GEMMA_4_E4B);
+        assert_eq!(model_for(&READ_CV, LLAMA_CPP, key_model, ""), QWEN3_4B);
+        assert_eq!(model_for(&JUDGE, LLAMA_CPP, key_model, ""), QWEN3_4B);
+        assert_eq!(model_for(&APPLICATION_TASK, LLAMA_CPP, key_model, ""), key_model);
+        assert_eq!(model_for(&RESUME_TASK, LLAMA_CPP, "", ""), "");
     }
 
     #[test]
-    fn the_keys_own_model_turns_a_downloaded_default_off() {
-        let downloaded = files(&[GEMMA_4_E4B, QWEN3_4B]);
+    fn the_keys_own_model_turns_a_default_off() {
         let key_model = "Qwen3-8B-Q4_K_M.gguf";
-        assert_eq!(
-            model_for(&READ_JOB, LLAMA_CPP, key_model, KEYS_OWN_MODEL, &downloaded),
-            key_model
-        );
-        assert_eq!(model_for(&JUDGE, LLAMA_CPP, "", KEYS_OWN_MODEL, &downloaded), "");
-        assert_eq!(model_for(&READ_JOB, LLAMA_CPP, key_model, "", &downloaded), GEMMA_4_E4B);
+        assert_eq!(model_for(&READ_JOB, LLAMA_CPP, key_model, KEYS_OWN_MODEL), key_model);
+        assert_eq!(model_for(&JUDGE, LLAMA_CPP, "", KEYS_OWN_MODEL), "");
     }
 
     #[test]
-    fn without_the_default_file_or_on_another_provider_the_keys_model_runs() {
-        let downloaded = files(&["Qwen3-8B-Q4_K_M.gguf"]);
-        assert_eq!(model_for(&READ_JOB, LLAMA_CPP, "", "", &downloaded), "");
-        assert_eq!(
-            model_for(&JUDGE, LOCAL, "llama3.1:8b", "", &files(&[QWEN3_4B])),
-            "llama3.1:8b"
-        );
+    fn on_another_provider_the_keys_model_runs() {
+        assert_eq!(model_for(&JUDGE, LOCAL, "llama3.1:8b", ""), "llama3.1:8b");
     }
 
     #[test]
