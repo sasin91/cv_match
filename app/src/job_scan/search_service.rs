@@ -120,13 +120,8 @@ pub struct SearchPage {
     /// A scan is running, of any search: one that hasn't reached this search yet will.
     pub scan_running: bool,
     pub posts: Vec<FoundPostCard>,
-    /// The query of the next batch's page ("dismissed=1&after=…"), when there is one.
-    pub next: Option<String>,
     /// The next batch's cursor (search_page's after), when there is one.
     pub next_after: Option<String>,
-    pub dismissed: bool,
-    /// The first batch, not one after a cursor.
-    pub first_batch: bool,
     /// What the latest scan did, step by step.
     pub timeline: ScanTimeline,
 }
@@ -146,7 +141,6 @@ pub async fn search_page(context: &Context, id: i64, dismissed: bool, after: &st
         None => Vec::new(),
     };
     let batch = model::posts(db, search.id, dismissed, PER_PAGE, after).await?;
-    let next = batch.next.as_ref().map(|cursor| next_query(dismissed, cursor));
     let problem = scan_service::scan_problem(context).await?;
     Ok(SearchPage {
         search,
@@ -154,10 +148,7 @@ pub async fn search_page(context: &Context, id: i64, dismissed: bool, after: &st
         problem,
         scan_running,
         posts: batch.rows.iter().map(FoundPostCard::from).collect(),
-        next,
         next_after: batch.next,
-        dismissed,
-        first_batch: crate::matches::score_cursor::place(after).is_none(),
         timeline: ScanTimeline::from(&steps),
     })
 }
@@ -176,16 +167,6 @@ pub async fn step_exchange(context: &Context, step_id: i64) -> Result<StepExchan
         ));
     };
     Ok(StepExchange { asked, answered })
-}
-
-/// "dismissed=1&after=0.8140_1792620000_7", or without dismissed.
-fn next_query(dismissed: bool, cursor: &str) -> String {
-    let mut query = url::form_urlencoded::Serializer::new(String::new());
-    if dismissed {
-        query.append_pair("dismissed", "1");
-    }
-    query.append_pair("after", cursor);
-    query.finish()
 }
 
 /// The search form as posted, or as a search fills it.
@@ -365,11 +346,5 @@ mod tests {
             ..form
         };
         assert!(checked(&bad_site).unwrap_err()[0].starts_with("These aren't sites"));
-    }
-
-    #[test]
-    fn the_next_batch_keeps_the_dismissed_switch() {
-        assert_eq!(next_query(true, "0.8140_1_7"), "dismissed=1&after=0.8140_1_7");
-        assert_eq!(next_query(false, "0.8140_1_7"), "after=0.8140_1_7");
     }
 }

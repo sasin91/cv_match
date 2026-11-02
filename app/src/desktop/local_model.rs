@@ -1,6 +1,6 @@
-//! The Local model screen: the llama.cpp setup page (llama_setup) in the window. This computer,
+//! The Local model screen: setting up the app's own llama.cpp model in the window. This computer,
 //! llama-server, the download running with its progress, and the models to download or use,
-//! all through llama_setup_service, the functions the web page uses.
+//! all through llama_setup_service.
 
 use std::sync::Arc;
 use std::time::Duration;

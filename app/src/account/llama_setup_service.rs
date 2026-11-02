@@ -65,7 +65,6 @@ pub struct DownloadView {
 /// The wizard's data.
 pub struct LlamaSetupView {
     pub computer: String,
-    pub folder: String,
     pub models_folder: String,
     pub server_found: bool,
     /// The llama-server that runs: the llama folder's, or one on PATH.
@@ -205,14 +204,6 @@ pub async fn use_model(context: &Context, file: &str) -> Result<ModelSaved, Serv
     })
 }
 
-/// How the running or last download is going, if there was one.
-pub fn progress(context: &Context) -> Option<DownloadView> {
-    context
-        .llama
-        .as_ref()
-        .and_then(|server| download_view(&server.downloads.progress()))
-}
-
 /// Starts work as the one download, called what, unless one is running.
 fn start_download<Work, Done>(context: &Arc<Context>, what: &str, work: Work) -> Result<(), ServiceError>
 where
@@ -256,7 +247,6 @@ pub fn view_of(server: &LlamaServer) -> LlamaSetupView {
     } = model_lists(rows);
     LlamaSetupView {
         computer: overview.inventory.to_string(),
-        folder: overview.folder.display().to_string(),
         models_folder: models_folder.display().to_string(),
         server_found: overview.server.is_some(),
         server_path: overview

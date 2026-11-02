@@ -1,35 +1,27 @@
-//! The app's local web server: the match page and its endpoints on 127.0.0.1, with the page's
-//! CSS and JS and Trongate MX built in.
+//! The app's local web server on 127.0.0.1: what the Jobnet extension asks for (extension_api)
+//! and how a second start finds this one (instance). The app itself is its window (desktop);
+//! there are no web pages.
 //!
 //! Only this computer can reach it, but any web page open in a browser here could send it
 //! requests, so it answers a request only when its Host header names this server (no DNS
-//! rebinding) and, for anything but GET, when its Origin is this server's own page or the Jobnet
-//! extension (extension::ID).
-//!
-//! To reach it from a phone, `tailscale serve` passes requests from the PC's Tailscale name on to
-//! 127.0.0.1 (docs/phone.md); the server then also answers for that one name, given with
-//! `--tailscale-name`, and still listens only on 127.0.0.1.
+//! rebinding) and, for anything but GET, when its Origin is this server's own address (a second
+//! start, instance::bring_to_front) or the Jobnet extension (extension::ID).
 
 use std::net::{Ipv4Addr, SocketAddr};
-use std::sync::{Arc, Mutex};
+use std::sync::Arc;
 
 use axum::Router;
-use axum::body::Body;
-use axum::extract::{DefaultBodyLimit, Path, Request, State};
+use axum::extract::{DefaultBodyLimit, Request, State};
 use axum::http::{HeaderMap, Method, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::{get, post};
-use rust_embed::RustEmbed;
 
-use crate::account;
 use crate::context::Context;
-use crate::dev_reload::{self, DevReload};
 use crate::extension;
+use crate::extension_api;
 use crate::instance;
 use crate::job_scan;
-use crate::matches::{match_service, pages};
-use crate::setup;
 
 /// The port the app listens on unless told otherwise, fixed so the Jobnet extension can find it.
 pub const DEFAULT_PORT: u16 = 8765;
@@ -40,32 +32,12 @@ const SENT_PAGE_JSON_ROOM: usize = 64 * 1024;
 /// Most bytes of a page the extension sends (job_scan/submit_page): its HTML, and its JSON.
 const SENT_PAGE_BYTES: usize = job_scan::scan_service::MAX_SENT_HTML + SENT_PAGE_JSON_ROOM;
 
-/// modules/cv_match's css/ and js/, served under match_module/ as Trongate serves them.
-#[derive(RustEmbed)]
-#[folder = "../assets/match/"]
-#[include = "css/*"]
-#[include = "js/*"]
-struct MatchAssets;
-
-/// Trongate MX, served under js/.
-#[derive(RustEmbed)]
-#[folder = "../assets/js/"]
-#[include = "trongate-mx.min.js"]
-struct PublicJs;
-
-/// What every request shares: the app's work (Context, which a desktop window shares too), and
-/// what only the web server has: the message the next page shows (Trongate's flashdata), the
-/// port, the Tailscale name and the page reloads.
+/// What every request shares: the app's work (Context, which the desktop window shares too), the
+/// port, and how to bring the window to the front.
 pub struct AppState {
     pub context: Arc<Context>,
-    flash: Mutex<Option<String>>,
     port: u16,
-    /// The PC's Tailscale name ("pc.tailnet.ts.net") that `tailscale serve` passes requests on
-    /// from, or None when the app is only for this computer.
-    pub tailscale_name: Option<String>,
-    /// Reloads the browser's page when the app restarts, with `--dev` while developing.
-    pub dev_reload: Option<DevReload>,
-    /// Tells the desktop window to come to the front (instance::front), when there is one.
+    /// Tells the desktop window to come to the front (instance::front), once it is open.
     pub front: Option<tokio::sync::mpsc::UnboundedSender<()>>,
 }
 
@@ -73,115 +45,29 @@ impl AppState {
     pub fn new(context: Arc<Context>, port: u16) -> Self {
         AppState {
             context,
-            flash: Mutex::new(None),
             port,
-            tailscale_name: None,
-            dev_reload: None,
             front: None,
         }
-    }
-
-    pub fn set_flash(&self, message: String) {
-        *self.flash.lock().unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(message);
-    }
-
-    pub fn take_flash(&self) -> Option<String> {
-        self.flash
-            .lock()
-            .unwrap_or_else(|poisoned| poisoned.into_inner())
-            .take()
     }
 }
 
 pub fn router(state: Arc<AppState>) -> Router {
-    let mut router = Router::new()
-        .route("/", get(setup::home))
+    Router::new()
         .route(instance::PATH, get(instance::answer))
         .route(instance::FRONT_PATH, post(instance::front))
-        .route("/setup", get(setup::index))
-        .route("/setup/submit_cv", post(setup::submit_cv))
-        .route("/setup/submit_schedule", post(setup::submit_schedule))
-        .route("/setup/submit_unschedule", post(setup::submit_unschedule))
-        .route("/match", get(pages::index))
-        .route("/match/{id}", get(pages::show))
-        .route("/match/history_list", get(pages::history_list))
-        .route("/match/history_more", get(pages::history_more))
-        .route("/match/result/{id}", get(pages::result))
-        .route("/match/quick_match", post(pages::quick_match))
-        .route("/match/already_matched", post(pages::already_matched))
-        .route("/match/submit_reject/{id}", post(pages::submit_reject))
-        .route("/match/history", get(pages::history))
-        .route("/match/joblog/{id}", get(pages::joblog))
-        .route("/match/joblog_panel/{id}", get(pages::joblog_panel))
-        .route("/match/joblog_status", post(pages::joblog_status))
-        .route("/match/pdf", post(pages::pdf))
-        .route("/match/fetch_job", post(pages::fetch_job))
-        .route("/match/extract_job", post(pages::extract_job))
-        .route("/match/extract_cv", post(pages::extract_cv))
-        .route(
-            "/match/pdf_text",
-            post(pages::pdf_text).layer(DefaultBodyLimit::max(match_service::MAX_PDF_BYTES + 1)),
-        )
-        .route("/match/match", post(pages::r#match))
-        .route("/match/saved/{id}", get(pages::saved))
-        .route("/match/write_application", post(pages::write_application))
-        .route("/match/tailor_resume", post(pages::tailor_resume))
-        .route(
-            "/match/resume_comparison/{id}/{resume_id}",
-            get(pages::resume_comparison),
-        )
-        .route("/match/application_delivery/{id}", get(pages::application_delivery))
-        .route("/joblog_extension", get(pages::joblog_extension))
-        .route("/joblog_extension/open_edge", post(pages::open_edge))
-        .route("/job_scan", get(job_scan::index))
-        .route("/job_scan/create", get(job_scan::create))
-        .route("/job_scan/edit/{id}", get(job_scan::edit))
-        .route("/job_scan/submit/{id}", post(job_scan::submit))
-        .route("/job_scan/submit_delete/{id}", post(job_scan::submit_delete))
-        .route("/job_scan/search/{id}", get(job_scan::search))
-        .route("/job_scan/submit_scan", post(job_scan::submit_scan))
-        .route("/job_scan/submit_dismiss/{id}", post(job_scan::submit_dismiss))
-        .route("/job_scan/submit_add/{id}", post(job_scan::submit_add))
-        .route("/job_scan/submit_retry/{id}", post(job_scan::submit_retry))
-        .route("/job_scan/search_names", get(job_scan::search_names))
+        .route("/match/history", get(extension_api::history))
+        .route("/match/joblog/{id}", get(extension_api::joblog))
+        .route("/match/joblog_status", post(extension_api::joblog_status))
+        .route("/match/pdf", post(extension_api::pdf))
+        .route("/job_scan/search_names", get(extension_api::search_names))
         .route(
             "/job_scan/submit_page",
-            post(job_scan::submit_page).layer(DefaultBodyLimit::max(SENT_PAGE_BYTES)),
+            post(extension_api::submit_page).layer(DefaultBodyLimit::max(SENT_PAGE_BYTES)),
         )
-        .route("/account", get(account::index))
-        .route("/account/submit_key", post(account::submit_key))
-        .route("/account/submit_uses", post(account::submit_uses))
-        .route("/account/submit_task_models", post(account::submit_task_models))
-        .route("/account/submit_delete", post(account::submit_delete))
-        .route("/account/submit_check", post(account::submit_check))
-        .route("/llama_setup", get(account::llama_setup::index))
-        .route("/llama_setup/progress", get(account::llama_setup::progress))
-        .route(
-            "/llama_setup/download_server",
-            post(account::llama_setup::download_server),
-        )
-        .route(
-            "/llama_setup/download_model",
-            post(account::llama_setup::download_model),
-        )
-        .route("/llama_setup/use_model", post(account::llama_setup::use_model))
-        .route("/match_module/{*path}", get(match_asset))
-        .route("/js/{*path}", get(public_js));
-    if state.dev_reload.is_some() {
-        router = router.route(dev_reload::STARTED_PATH, get(dev_reload::started));
-    }
-    router
-        .fallback(pages::not_yet)
-        .method_not_allowed_fallback(pages::not_yet)
-        .layer(middleware::from_fn_with_state(state.clone(), dev_reload::add_script))
-        .layer(middleware::from_fn_with_state(state.clone(), only_this_page))
+        .fallback(extension_api::not_here)
+        .method_not_allowed_fallback(extension_api::not_here)
+        .layer(middleware::from_fn_with_state(state.clone(), only_this_app))
         .with_state(state)
-}
-
-/// Answers on 127.0.0.1:port until the process ends.
-pub async fn serve(state: Arc<AppState>) -> std::io::Result<()> {
-    let listener = bind(state.port).await?;
-    serve_on(listener, state).await
 }
 
 /// The app's port on 127.0.0.1, taken before the window opens, so a taken port is said at start.
@@ -194,69 +80,43 @@ pub async fn serve_on(listener: tokio::net::TcpListener, state: Arc<AppState>) -
     axum::serve(listener, router(state)).await
 }
 
-/// The Host headers this server answers to: its own address and, when set, the Tailscale name
-/// `tailscale serve` answers on (HTTPS on 443, which browsers leave out of Host).
-fn own_hosts(port: u16, tailscale_name: Option<&str>) -> Vec<String> {
-    let mut hosts = vec![format!("127.0.0.1:{port}"), format!("localhost:{port}")];
-    hosts.extend(tailscale_name.map(str::to_string));
-    hosts
+/// The Host headers this server answers to: its own address.
+fn own_hosts(port: u16) -> [String; 2] {
+    [format!("127.0.0.1:{port}"), format!("localhost:{port}")]
 }
 
-/// The origins of this server's own pages, as a browser sends them in Origin.
-fn own_origins(port: u16, tailscale_name: Option<&str>) -> Vec<String> {
-    let mut origins = vec![format!("http://127.0.0.1:{port}"), format!("http://localhost:{port}")];
-    origins.extend(tailscale_name.map(|name| format!("https://{name}")));
-    origins
+/// The origins of this server's own address, as a request sends them in Origin.
+fn own_origins(port: u16) -> [String; 2] {
+    [format!("http://127.0.0.1:{port}"), format!("http://localhost:{port}")]
 }
 
-/// Lets a request through only when it is for this server and, unless it is a GET, from its own
-/// page. What it runs is in the task manager's list (its model calls, say).
-async fn only_this_page(State(state): State<Arc<AppState>>, request: Request, next: Next) -> Response {
-    let tailscale_name = state.tailscale_name.as_deref();
-    if let Err(why) = allowed(request.method(), request.headers(), state.port, tailscale_name) {
+/// Lets a request through only when it is for this server and, unless it is a GET, from this app
+/// or its extension. What it runs is in the task manager's list (its model calls, say).
+async fn only_this_app(State(state): State<Arc<AppState>>, request: Request, next: Next) -> Response {
+    if let Err(why) = allowed(request.method(), request.headers(), state.port) {
         return (StatusCode::FORBIDDEN, why).into_response();
     }
     let running = Arc::clone(&state.context.running);
     running.within(next.run(request)).await
 }
 
-fn allowed(method: &Method, headers: &HeaderMap, port: u16, tailscale_name: Option<&str>) -> Result<(), &'static str> {
+fn allowed(method: &Method, headers: &HeaderMap, port: u16) -> Result<(), &'static str> {
     let host = headers
         .get(header::HOST)
         .and_then(|host| host.to_str().ok())
         .unwrap_or("");
-    if !own_hosts(port, tailscale_name).iter().any(|own| own == host) {
-        return Err("This is the JobFinder app on this computer; open it at its own address.");
+    if !own_hosts(port).iter().any(|own| own == host) {
+        return Err("This is the JobFinder app on this computer; it answers only at its own address.");
     }
     if method == Method::GET || method == Method::HEAD {
         return Ok(());
     }
     let origin = headers.get(header::ORIGIN).and_then(|origin| origin.to_str().ok());
     match origin {
-        Some(origin) if own_origins(port, tailscale_name).iter().any(|own| own == origin) => Ok(()),
+        Some(origin) if own_origins(port).iter().any(|own| own == origin) => Ok(()),
         Some(origin) if origin == format!("chrome-extension://{}", extension::ID) => Ok(()),
-        _ => Err("Only the JobFinder app's own pages and its Jobnet extension can send it changes."),
+        _ => Err("Only the JobFinder app and its Jobnet extension can send it changes."),
     }
-}
-
-async fn match_asset(Path(path): Path<String>) -> Response {
-    asset(MatchAssets::get(&path), &path)
-}
-
-async fn public_js(Path(path): Path<String>) -> Response {
-    asset(PublicJs::get(&path), &path)
-}
-
-fn asset(file: Option<rust_embed::EmbeddedFile>, path: &str) -> Response {
-    let Some(file) = file else {
-        return StatusCode::NOT_FOUND.into_response();
-    };
-    let mime = mime_guess::from_path(path).first_or_octet_stream();
-    Response::builder()
-        .header(header::CONTENT_TYPE, mime.as_ref())
-        .header(header::CACHE_CONTROL, "no-cache")
-        .body(Body::from(file.data.into_owned()))
-        .unwrap_or_else(|_| StatusCode::INTERNAL_SERVER_ERROR.into_response())
 }
 
 #[cfg(test)]
@@ -272,65 +132,34 @@ mod tests {
     }
 
     #[test]
-    fn only_this_server_and_its_own_page_get_through() {
+    fn only_this_server_this_app_and_its_extension_get_through() {
         let port = DEFAULT_PORT;
         let own = headers(&[(header::HOST, "127.0.0.1:8765")]);
-        assert!(allowed(&Method::GET, &own, port, None).is_ok());
+        assert!(allowed(&Method::GET, &own, port).is_ok());
         // DNS rebinding: a site whose name points at 127.0.0.1.
-        assert!(
-            allowed(
-                &Method::GET,
-                &headers(&[(header::HOST, "evil.example:8765")]),
-                port,
-                None
-            )
-            .is_err()
-        );
+        assert!(allowed(&Method::GET, &headers(&[(header::HOST, "evil.example:8765")]), port).is_err());
         // A form on another site posting here.
         let cross = headers(&[
             (header::HOST, "127.0.0.1:8765"),
             (header::ORIGIN, "https://evil.example"),
         ]);
-        assert!(allowed(&Method::POST, &cross, port, None).is_err());
-        assert!(allowed(&Method::POST, &own, port, None).is_err());
+        assert!(allowed(&Method::POST, &cross, port).is_err());
+        assert!(allowed(&Method::POST, &own, port).is_err());
         let same = headers(&[
             (header::HOST, "localhost:8765"),
             (header::ORIGIN, "http://localhost:8765"),
         ]);
-        assert!(allowed(&Method::POST, &same, port, None).is_ok());
+        assert!(allowed(&Method::POST, &same, port).is_ok());
         // The Jobnet extension (Edge and Chrome), and no other.
         let ours = headers(&[
             (header::HOST, "127.0.0.1:8765"),
             (header::ORIGIN, "chrome-extension://jijhihfppobcoconjjllmffbohpffbll"),
         ]);
-        assert!(allowed(&Method::POST, &ours, port, None).is_ok());
+        assert!(allowed(&Method::POST, &ours, port).is_ok());
         let other = headers(&[
             (header::HOST, "127.0.0.1:8765"),
             (header::ORIGIN, "chrome-extension://aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"),
         ]);
-        assert!(allowed(&Method::POST, &other, port, None).is_err());
-    }
-
-    #[test]
-    fn the_tailscale_name_gets_through_only_when_set() {
-        let port = DEFAULT_PORT;
-        let name = Some("pc.tailnet.ts.net");
-        let phone_get = headers(&[(header::HOST, "pc.tailnet.ts.net")]);
-        assert!(allowed(&Method::GET, &phone_get, port, None).is_err());
-        assert!(allowed(&Method::GET, &phone_get, port, name).is_ok());
-        let phone_post = headers(&[
-            (header::HOST, "pc.tailnet.ts.net"),
-            (header::ORIGIN, "https://pc.tailnet.ts.net"),
-        ]);
-        assert!(allowed(&Method::POST, &phone_post, port, name).is_ok());
-        // Served over HTTPS only, so a plain-HTTP page under the name is someone else's.
-        let plain = headers(&[
-            (header::HOST, "pc.tailnet.ts.net"),
-            (header::ORIGIN, "http://pc.tailnet.ts.net"),
-        ]);
-        assert!(allowed(&Method::POST, &plain, port, name).is_err());
-        // Another tailnet's PC.
-        let other = headers(&[(header::HOST, "pc.other.ts.net")]);
-        assert!(allowed(&Method::GET, &other, port, name).is_err());
+        assert!(allowed(&Method::POST, &other, port).is_err());
     }
 }

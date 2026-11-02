@@ -1,16 +1,12 @@
 //! jobfinder: the desktop app's command line.
 //!
 //!   jobfinder [--port 8765] [--database path\to\jobfinder.sqlite] [--laya path\to\laya]
-//!             [--llama path\to\llama] [--browser | --no-browser]
-//!             [--tailscale-name pc.tailnet.ts.net]
-//!       opens the app's window (desktop/) and serves the app on 127.0.0.1 beside it, for the
-//!       Jobnet extension and the pages the window doesn't have yet; with --browser it opens
-//!       the web page instead of the window, and with --no-browser neither; with Laya's model
-//!       from the laya folder next to the database unless --laya names another; with
-//!       the app's own llama.cpp model (llama-server and models\*.gguf) from the llama folder
-//!       next to the database unless --llama names another; with
-//!       --tailscale-name it also answers `tailscale serve` for that name, so a phone can open it
-//!       (docs/phone.md)
+//!             [--llama path\to\llama]
+//!       opens the app's window (desktop/) and serves what the Jobnet extension asks for on
+//!       127.0.0.1 beside it (server); with Laya's model from the laya folder next to the
+//!       database unless --laya names another; with the app's own llama.cpp model (llama-server
+//!       and models\*.gguf) from the llama folder next to the database unless --llama names
+//!       another
 //!
 //!   jobfinder scan [--database path\to\jobfinder.sqlite]
 //!       the job scan, which the setup wizard's Task Scheduler task runs (scan_schedule): every
@@ -24,10 +20,6 @@
 //!
 //! Nothing is installed: double-click jobfinder.exe (or run the AppImage on Linux) wherever it is
 //! kept.
-//!
-//!   jobfinder --dev ...
-//!       (debug builds only) reloads the page in the browser whenever the app restarts, for
-//!       `cargo dev` (xtask/), which restarts it under watchexec on every change
 
 use std::path::PathBuf;
 use std::process::ExitCode;
@@ -36,7 +28,6 @@ use std::sync::Arc;
 use jobfinder::account::key_vault::KeyVault;
 use jobfinder::app_log::{self, Opened};
 use jobfinder::context::{Context, DatabaseFile};
-use jobfinder::dev_reload::DevReload;
 use jobfinder::from_recruiter::{self, Moved};
 use jobfinder::instance::{self, Running};
 use jobfinder::job_scan::scan_service;
@@ -49,19 +40,13 @@ use jobfinder::taxonomy::Taxonomy;
 use jobfinder::taxonomy_store;
 use jobfinder::{cleanup, db, desktop, extension};
 
-/// How a start shows the app.
-#[derive(Debug, Clone, Copy, PartialEq)]
-enum FrontEnd {
-    /// The desktop window, with the server beside it.
-    Window,
-    /// The web page, in the default browser (--browser).
-    Browser,
-    /// Only the server (--no-browser), for `cargo dev` and the phone.
-    Neither,
-}
+/// Options of the web pages, which are gone: a shortcut or login task that still gives one starts
+/// the window anyway, and the log says the option is ignored.
+const GONE_FLAGS: [&str; 3] = ["--browser", "--no-browser", "--dev"];
+/// The same, with a value after it.
+const GONE_FLAG_WITH_VALUE: &str = "--tailscale-name";
 
 const USAGE: &str = "usage: jobfinder [--port <port>] [--database <file>] [--laya <folder>] [--llama <folder>]
-                 [--browser | --no-browser] [--tailscale-name <name>] [--dev]
        jobfinder scan [--database <file>]
        jobfinder cleanup [--database <file>]
        jobfinder read-pdf   (a PDF on stdin, its text on stdout; the app runs it)";
@@ -333,27 +318,11 @@ fn run_server(args: &[String]) -> ExitCode {
     let mut database = db::default_path();
     let mut laya_folder = None;
     let mut llama_folder = None;
-    let mut front_end = FrontEnd::Window;
-    let mut tailscale_name = None;
-    let mut dev = false;
     let mut args = args.iter();
+    let mut ignored = Vec::new();
     while let Some(flag) = args.next() {
-        if flag == "--browser" || flag == "--no-browser" {
-            front_end = if flag == "--browser" {
-                FrontEnd::Browser
-            } else {
-                FrontEnd::Neither
-            };
-            continue;
-        }
-        if flag == "--dev" {
-            if !cfg!(debug_assertions) {
-                jobfinder::log_line!(
-                    "--dev is for debug builds (cargo dev, or cargo run -- --dev); release builds have the CSS and JS built in."
-                );
-                return ExitCode::FAILURE;
-            }
-            dev = true;
+        if GONE_FLAGS.contains(&flag.as_str()) {
+            ignored.push(flag.clone());
             continue;
         }
         let Some(value) = args.next() else {
@@ -371,64 +340,60 @@ fn run_server(args: &[String]) -> ExitCode {
             "--database" => database = PathBuf::from(value),
             "--laya" => laya_folder = Some(PathBuf::from(value)),
             "--llama" => llama_folder = Some(PathBuf::from(value)),
-            "--tailscale-name" => tailscale_name = Some(value.trim().to_ascii_lowercase()),
+            GONE_FLAG_WITH_VALUE => ignored.push(flag.clone()),
             _ => {
                 jobfinder::log_line!("unknown option {flag}\n{USAGE}");
                 return ExitCode::FAILURE;
             }
         }
     }
-    if front_end == FrontEnd::Window {
-        // Double-clicked, the console would stand open behind the window; what the app says
-        // goes to the log instead. Started from a terminal, it keeps printing there.
-        hide_own_console();
-    }
+    // Double-clicked, the console would stand open behind the window; what the app says goes to
+    // the log instead. Started from a terminal, it keeps printing there.
+    hide_own_console();
     let moved = from_recruiter::move_data_folder(&database);
     let data_folder = database.parent().unwrap_or(std::path::Path::new(".")).to_path_buf();
     open_log(&data_folder);
+    if !ignored.is_empty() {
+        jobfinder::log_line!(
+            "Ignored {}: JobFinder has no web pages any more, only its window. Take them out of the shortcut or task that starts it.",
+            ignored.join(", ")
+        );
+    }
     if let Err(why) = said_move(moved) {
-        return failed(front_end, why);
+        return failed(why);
     }
     let Some(runtime) = runtime() else {
-        return failed(front_end, "The app's runtime couldn't start (see the log).".to_string());
+        return failed("The app's runtime couldn't start (see the log).".to_string());
     };
-    // The home page opens the setup wizard on a new database, and the match page after that.
+    // Where the Jobnet extension finds the app.
     let address = format!("http://127.0.0.1:{port}/");
     match runtime.block_on(instance::running_on(port, &db::shown_path(&database))) {
         Running::None => {}
         Running::Same => {
-            if front_end == FrontEnd::Window && runtime.block_on(instance::bring_to_front(port)) {
+            if runtime.block_on(instance::bring_to_front(port)) {
                 jobfinder::say!("JobFinder is already running; its window is brought to the front.");
                 return ExitCode::SUCCESS;
             }
-            jobfinder::say!("JobFinder is already running at {address}.");
-            if front_end != FrontEnd::Neither && webbrowser::open(&address).is_err() {
-                jobfinder::say!("Open {address} in your browser.");
-            }
-            return ExitCode::SUCCESS;
+            return failed(
+                "JobFinder is already running, but its window couldn't be brought to the front. Find it on the taskbar, or close it and start JobFinder again.".to_string(),
+            );
         }
         Running::Other { database: running } => {
-            return failed(
-                front_end,
-                format!(
-                    "Port {port} is taken by a JobFinder on another database ({running}). Close it, or start this one with --port and another number."
-                ),
-            );
+            return failed(format!(
+                "Port {port} is taken by a JobFinder on another database ({running}). Close it, or start this one with --port and another number."
+            ));
         }
     }
     // Held while the app runs, so `jobfinder cleanup` won't remove the database under it.
     let Ok(_held) = cleanup::hold(&database, cleanup::Hold::Running) else {
-        return failed(
-            front_end,
-            format!(
-                "JobFinder's cleanup is running on {}. Let it finish, then start JobFinder again.",
-                database.display()
-            ),
-        );
+        return failed(format!(
+            "JobFinder's cleanup is running on {}. Let it finish, then start JobFinder again.",
+            database.display()
+        ));
     };
     let mut context = match app_context(&runtime, &database, laya_folder, llama_folder) {
         Ok(context) => context,
-        Err(why) => return failed(front_end, why),
+        Err(why) => return failed(why),
     };
     let folder = data_folder.join(extension::FOLDER);
     context.extension_folder = extension::write(&folder).map_err(|e| {
@@ -439,46 +404,23 @@ fn run_server(args: &[String]) -> ExitCode {
     let listener = match runtime.block_on(server::bind(port)) {
         Ok(listener) => listener,
         Err(e) => {
-            return failed(
-                front_end,
-                format!("Couldn't serve on port {port}: {e}. Is JobFinder already running? Then open {address}."),
-            );
+            return failed(format!(
+                "Couldn't serve on port {port}: {e}. Is another program using it? Then start JobFinder with --port and another number."
+            ));
         }
     };
     let context = Arc::new(context);
     let mut state = AppState::new(Arc::clone(&context), port);
-    let phone_address = tailscale_name.as_ref().map(|name| format!("https://{name}/match"));
-    state.tailscale_name = tailscale_name;
-    state.dev_reload = dev.then(DevReload::new);
     let (front_sender, front) = tokio::sync::mpsc::unbounded_channel();
-    if front_end == FrontEnd::Window {
-        state.front = Some(front_sender);
-    }
+    state.front = Some(front_sender);
     let state = Arc::new(state);
     runtime.spawn(jobfinder::idle::unload_when_idle(Arc::clone(&context)));
     let serving = runtime.spawn(server::serve_on(listener, state));
-    jobfinder::say!("JobFinder is serving at {address} (data in {}).", database.display());
-    if let Some(phone_address) = &phone_address {
-        jobfinder::say!("On your phone, with Tailscale on and `tailscale serve` set up: {phone_address}");
-    }
-    if front_end == FrontEnd::Window {
-        return run_window(runtime, context, address, front, serving);
-    }
-    jobfinder::say!("Close this window to stop it.");
-    if front_end == FrontEnd::Browser && webbrowser::open(&address).is_err() {
-        jobfinder::say!("Open {address} in your browser.");
-    }
-    match runtime.block_on(serving) {
-        Ok(Ok(())) => ExitCode::SUCCESS,
-        Ok(Err(e)) => {
-            jobfinder::log_line!("The server stopped: {e}");
-            ended_by_hand(ExitCode::FAILURE)
-        }
-        Err(e) => {
-            jobfinder::log_line!("The server stopped: {e}");
-            ended_by_hand(ExitCode::FAILURE)
-        }
-    }
+    jobfinder::say!(
+        "JobFinder is running, with the Jobnet extension's address at {address} (data in {}).",
+        database.display()
+    );
+    run_window(runtime, context, front, serving)
 }
 
 /// How long closing the window waits for the app's work to end (a match being written, Laya
@@ -489,7 +431,6 @@ const SHUTDOWN_WAIT: std::time::Duration = std::time::Duration::from_secs(2);
 fn run_window(
     runtime: tokio::runtime::Runtime,
     context: Arc<Context>,
-    address: String,
     front: tokio::sync::mpsc::UnboundedReceiver<()>,
     serving: tokio::task::JoinHandle<std::io::Result<()>>,
 ) -> ExitCode {
@@ -504,7 +445,6 @@ fn run_window(
     let launch = desktop::Launch {
         context,
         runtime: runtime.handle().clone(),
-        address,
         front,
     };
     let shown = desktop::run(launch);
@@ -512,25 +452,19 @@ fn run_window(
     match shown {
         Ok(()) => ExitCode::SUCCESS,
         Err(e) => {
-            jobfinder::log_line!(
-                "The window couldn't open: {e}. Start JobFinder with --browser to use it in the browser."
-            );
+            jobfinder::log_line!("The window couldn't open: {e}.");
             ExitCode::FAILURE
         }
     }
 }
 
-/// Says why the app couldn't start (and logs it): in a small window when it was to show its
-/// window, else on the console, which waits for Enter when it would close at once.
-fn failed(front_end: FrontEnd, why: String) -> ExitCode {
+/// Says why the app couldn't start (and logs it), in a small window.
+fn failed(why: String) -> ExitCode {
     jobfinder::log_line!("{why}");
-    if front_end == FrontEnd::Window {
-        if let Err(e) = desktop::show_failure(why) {
-            jobfinder::log_line!("The window couldn't open to say so: {e}");
-        }
-        return ExitCode::FAILURE;
+    if let Err(e) = desktop::show_failure(why) {
+        jobfinder::log_line!("The window couldn't open to say so: {e}");
     }
-    ended_by_hand(ExitCode::FAILURE)
+    ExitCode::FAILURE
 }
 
 /// What the app's work runs on, for the server and `jobfinder scan`: the database (made when

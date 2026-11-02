@@ -1,8 +1,7 @@
-//! A saved match's application and résumé in the window, as the match page's panel has them
-//! (templates/match/documents.html): the notes for the AI, and a box per document with Write,
-//! Copy and Save as PDF, its text to edit, the keywords a tailored résumé took over, its
-//! earlier versions, and the tailored résumé's own score next to the CV's. The writing itself
-//! is match_service::write_document; this is its state and its look.
+//! A saved match's application and résumé in the window: the notes for the AI, and a box per
+//! document with Write, Copy and Save as PDF, its text to edit, the keywords a tailored résumé
+//! took over, its earlier versions, and the tailored résumé's own score next to the CV's. The
+//! writing itself is match_service::write_document; this is its state and its look.
 
 use std::path::PathBuf;
 use std::sync::Arc;

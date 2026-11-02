@@ -1,203 +1,23 @@
-//! setup: the first-run wizard (GET setup), which the app opens on a database that hasn't been
-//! set up (setup_steps::is_first_run). Its steps, in order:
+//! setup: the first-run wizard, which the window opens (desktop::setup_screen) on a database
+//! that hasn't been set up (setup_steps::is_first_run). Its steps, in order:
 //!
 //! 1. The database: made at start-up; the wizard says where it is.
 //! 2. The AI model: this app's own llama.cpp model when the computer has room for a good one,
-//!    else an OpenAI or Claude key (model_advice). The steps themselves are the llama_setup and
-//!    account pages, which come back here while the setup isn't finished.
+//!    else an OpenAI or Claude key (model_advice). The steps themselves are the Local model and
+//!    Language models screens, which come back here while the setup isn't finished.
 //! 3. The CV, read into the profile (profile_fill), which needs the model.
 //! 4. How often the job scan runs by itself: a Task Scheduler task (scan_schedule).
-//! 5. The dashboard: the match page.
+//! 5. The dashboard: the Match screen.
 //!
-//! The steps' state and the forms' work come from setup_steps, so another front end can show and
-//! do the same steps.
+//! The steps' state and their work are in setup_steps.
 
 pub mod setup_steps;
 
-use std::sync::Arc;
-
-use askama::Template;
-use axum::Form;
-use axum::extract::State;
-use axum::http::StatusCode;
-use axum::response::{Html, IntoResponse, Redirect, Response};
-use serde::Deserialize;
-
-use self::setup_steps::{AiStep, CvStep, DatabaseStep, ScheduleStep};
-use crate::account::model_advice::ModelAdvice;
-use crate::profile::profile_fill::MAX_CV_LENGTH;
-use crate::scan_schedule::{DEFAULT_INTERVAL_HOURS, INTERVALS};
-use crate::server::AppState;
-
 pub use self::setup_steps::{first_run_or_logged, is_first_run};
-
-/// Where the wizard is, and where its forms send the browser back to.
-pub const PAGE: &str = "/setup";
-
-/// Where the wizard ends: the match page, the app's dashboard.
-const DASHBOARD: &str = "/match";
-
-/// An interval in the schedule step's list.
-pub struct IntervalOption {
-    pub hours: u32,
-    pub label: &'static str,
-    pub selected: bool,
-}
-
-/// The CV step as the page prints it.
-pub struct CvView {
-    /// "Mette Sørensen, read from cv.pdf on 31 October 2026", when there is a profile.
-    pub done: Option<String>,
-    pub can_read: bool,
-    /// Why the CV posted couldn't be read, with the text as it was posted.
-    pub error: Option<String>,
-    pub cv_text: String,
-    pub cv_name: String,
-    pub max_length: usize,
-}
-
-/// The schedule step as the page prints it.
-pub struct ScheduleView {
-    /// "every 4 hours", when the task is registered.
-    pub done: Option<String>,
-    pub error: Option<String>,
-    pub intervals: Vec<IntervalOption>,
-    pub task_run: String,
-}
-
-#[derive(Template)]
-#[template(path = "setup/setup.html")]
-struct SetupPage {
-    flash: Option<String>,
-    database: DatabaseStep,
-    /// The saved keys, as "OpenAI, gpt-5.4-mini".
-    ai_saved: Vec<String>,
-    advice: ModelAdvice,
-    cv: CvView,
-    schedule: ScheduleView,
-}
-
-/// The CV form's fields.
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
-pub struct CvForm {
-    cv_text: String,
-    cv_name: String,
-    /// "1" when replacing a profile there is already.
-    replace: String,
-}
-
-/// The schedule form's field.
-#[derive(Debug, Default, Deserialize)]
-#[serde(default)]
-pub struct ScheduleForm {
-    hours: u32,
-}
-
-/// GET /: the dashboard, which says what is set up and what is missing, with links here.
-pub async fn home() -> Redirect {
-    Redirect::to(DASHBOARD)
-}
-
-/// GET setup.
-pub async fn index(State(state): State<Arc<AppState>>) -> Response {
-    page(&state, None).await
-}
-
-/// POST setup/submit_cv {cv_text, cv_name, replace}: reads the CV into the profile, replacing
-/// it; replace must be "1" when there is one. With an error the form comes back with the text.
-pub async fn submit_cv(State(state): State<Arc<AppState>>, Form(form): Form<CvForm>) -> Response {
-    match setup_steps::read_cv(&state.context, &form.cv_text, &form.cv_name, form.replace == "1").await {
-        Ok(message) => {
-            state.set_flash(message);
-            Redirect::to(PAGE).into_response()
-        }
-        Err(e) => page(&state, Some((e.message, form))).await,
-    }
-}
-
-/// POST setup/submit_schedule {hours}: registers the job scan's task to run every hours.
-pub async fn submit_schedule(State(state): State<Arc<AppState>>, Form(form): Form<ScheduleForm>) -> Response {
-    let said = setup_steps::schedule_scan(&state.context, form.hours).await;
-    state.set_flash(said.unwrap_or_else(|e| e.message));
-    Redirect::to(PAGE).into_response()
-}
-
-/// POST setup/submit_unschedule: removes the job scan's task.
-pub async fn submit_unschedule(State(state): State<Arc<AppState>>) -> Response {
-    let said = setup_steps::unschedule_scan(&state.context).await;
-    state.set_flash(said.map_or_else(|e| e.message, str::to_string));
-    Redirect::to(PAGE).into_response()
-}
-
-/// The page, with the CV form as posted and why it couldn't be read, when it couldn't.
-async fn page(state: &AppState, posted: Option<(String, CvForm)>) -> Response {
-    let ai = match setup_steps::ai(&state.context).await {
-        Ok(ai) => ai,
-        Err(e) => return failure(&format!("The database couldn't answer: {e}")),
-    };
-    let cv = match setup_steps::cv(&state.context).await {
-        Ok(cv) => cv,
-        Err(why) => return failure(&why),
-    };
-    let AiStep { saved, advice } = ai;
-    let page = SetupPage {
-        flash: state.take_flash(),
-        database: setup_steps::database(&state.context),
-        ai_saved: saved,
-        advice,
-        cv: cv_view(cv, posted),
-        schedule: schedule_view(setup_steps::schedule(&state.context).await),
-    };
-    match page.render() {
-        Ok(html) => Html(html).into_response(),
-        Err(e) => failure(&format!("The page couldn't be printed: {e}")),
-    }
-}
-
-fn cv_view(step: CvStep, posted: Option<(String, CvForm)>) -> CvView {
-    let (error, form) = match posted {
-        Some((why, form)) => (Some(why), form),
-        None => (None, CvForm::default()),
-    };
-    CvView {
-        done: step.filled.as_ref().map(setup_steps::filled_line),
-        can_read: step.can_read,
-        error,
-        cv_text: form.cv_text,
-        cv_name: form.cv_name,
-        max_length: MAX_CV_LENGTH,
-    }
-}
-
-fn schedule_view(step: ScheduleStep) -> ScheduleView {
-    let picked = step.interval_hours.unwrap_or(DEFAULT_INTERVAL_HOURS);
-    ScheduleView {
-        done: step
-            .interval_hours
-            .map(|hours| setup_steps::interval_label(hours).to_lowercase()),
-        error: step.error,
-        intervals: INTERVALS
-            .iter()
-            .map(|&(hours, label)| IntervalOption {
-                hours,
-                label,
-                selected: hours == picked,
-            })
-            .collect(),
-        task_run: step.task_run,
-    }
-}
-
-/// The page when it can't be shown: what went wrong, logged too.
-fn failure(message: &str) -> Response {
-    crate::log_line!("setup: {message}");
-    (StatusCode::INTERNAL_SERVER_ERROR, message.to_string()).into_response()
-}
 
 #[cfg(test)]
 mod tests {
-    use super::*;
+    use super::setup_steps;
     use crate::profile::profile_model::FilledFrom;
 
     #[test]
@@ -218,19 +38,5 @@ mod tests {
             ..filled
         };
         assert_eq!(setup_steps::filled_line(&imported), "Mette Sørensen");
-    }
-
-    #[test]
-    fn the_schedule_picks_the_tasks_interval_or_the_default() {
-        let step = |interval_hours| ScheduleStep {
-            interval_hours,
-            error: None,
-            task_run: String::new(),
-        };
-        let selected = |view: ScheduleView| view.intervals.iter().find(|o| o.selected).map(|o| o.hours);
-        assert_eq!(selected(schedule_view(step(None))), Some(DEFAULT_INTERVAL_HOURS));
-        let registered = schedule_view(step(Some(8)));
-        assert_eq!(registered.done.as_deref(), Some("every 8 hours"));
-        assert_eq!(selected(registered), Some(8));
     }
 }

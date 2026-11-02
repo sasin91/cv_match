@@ -1,5 +1,5 @@
-//! A saved match as a row of the page's list (templates/match/history.html): its id, tag, title and
-//! meta line, ready to print.
+//! A saved match as a row of the Match screen's lists: its id, tag, title and meta line, ready to
+//! print.
 
 use super::match_model::{APPLIED_STATUSES, ListedMatch};
 use super::{dates, match_score, reject_reason, still_open};

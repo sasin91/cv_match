@@ -1,6 +1,6 @@
-//! The Reject part of a saved match (templates/match/result.html): "Not interested" opens a form
-//! asking why (as many reasons as apply) with room for a note; a rejected match says why it was
-//! rejected and offers Bring back. Plain form posts to match/submit_reject/{id}.
+//! The Reject part of a saved match: "Not interested" opens a form asking why (as many reasons as
+//! apply) with room for a note; a rejected match says why it was rejected and offers Bring back
+//! (match_service::reject).
 
 use super::reject_reason::{self, Rejection};
 

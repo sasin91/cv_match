@@ -8,7 +8,6 @@ use serde::Deserialize;
 use serde_json::json;
 
 use super::account_model::{self, PROVIDERS, Saved, UseChoices};
-use super::llama_panel::LlamaPanel;
 use super::model_advice::ModelAdvice;
 use super::saved_key::{self, KeyUse, SavedKey};
 use super::task_model::{self, KEYS_OWN_MODEL, TASKS};
@@ -81,12 +80,8 @@ pub struct AccountView {
     pub base_url: String,
     pub model_placeholder: String,
     pub base_url_placeholder: &'static str,
-    /// This app's own model, when the app has a llama folder.
-    pub llama: Option<LlamaPanel>,
     /// Which model to run the AI on, shown while no key is saved.
     pub advice: ModelAdvice,
-    /// The setup wizard isn't finished, so the page links back to it.
-    pub setup_unfinished: bool,
 }
 
 /// What came of the key form.
@@ -241,7 +236,6 @@ pub async fn account_view(context: &Context, typed: Option<&KeyForm>) -> Result<
     drop(together);
     let saved_models = task_model::saved(context.db()).await?;
     let downloaded = llama::model_files(context.llama.as_ref());
-    let setup_unfinished = setup::first_run_or_logged(context).await;
     let advice = ModelAdvice::from(context.llama.as_ref());
     let provider = typed
         .map(|form| form.provider.as_str())
@@ -270,9 +264,7 @@ pub async fn account_view(context: &Context, typed: Option<&KeyForm>) -> Result<
         base_url: typed.map_or_else(|| saved_field(|saved| &saved.base_url), |form| form.base_url.clone()),
         model_placeholder: model_placeholder(),
         base_url_placeholder: BASE_URL_PLACEHOLDER,
-        llama: context.llama.as_ref().map(|server| LlamaPanel::from(server.overview())),
         advice,
-        setup_unfinished,
     })
 }
 

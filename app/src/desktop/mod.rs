@@ -1,9 +1,9 @@
 //! The desktop window (iced): Match, the settings screens (Language models, Local model, Job
 //! searches, Setup, the Jobnet extension), the Task manager and Settings, with a status line for
-//! Laya and the app's own model under them. Its screens print what the service layer gives the
-//! web pages (dashboard, setup_steps), so the two can't disagree. A link the service layer gives
-//! as a web page's path opens the screen for it (place_for); the server still runs beside the
-//! window, for the Jobnet extension.
+//! Laya and the app's own model under them. Its screens print what the service layer gives them
+//! (dashboard, setup_steps). A link the service layer gives as a path ("setup#cv", "match/12")
+//! opens the screen for it (place_for); the server runs beside the window for the Jobnet
+//! extension.
 //!
 //! The window runs on the main thread, as the OS's windowing wants; the app's work runs on the
 //! tokio runtime the server runs on (on_runtime), since the database and HTTP clients need it.
@@ -49,21 +49,19 @@ const WINDOW_SIZE: Size = Size::new(980.0, 720.0);
 const FAILURE_WINDOW_SIZE: Size = Size::new(560.0, 240.0);
 /// The smallest the window can be made.
 const MIN_WINDOW_SIZE: Size = Size::new(560.0, 420.0);
-/// How often the Match screen reads its status again, so a scan or a match saved in the browser
-/// shows without a click.
+/// How often the Match screen reads its status again, so a scan or a post the Jobnet extension
+/// sent shows without a click.
 const RELOAD_EVERY: Duration = Duration::from_secs(30);
 /// Space between blocks on a screen.
 const GAP: f32 = 12.0;
 /// The window's padding.
 const PADDING: f32 = 16.0;
 
-/// What the window needs from main: the app's work, the runtime it runs on, the server's address
-/// (for the pages the window doesn't have yet), and what tells it to come to the front.
+/// What the window needs from main: the app's work, the runtime it runs on, and what tells it to
+/// come to the front.
 pub struct Launch {
     pub context: Arc<Context>,
     pub runtime: Handle,
-    /// "http://127.0.0.1:8765/".
-    pub address: String,
     /// A second start on this database (instance::front).
     pub front: UnboundedReceiver<()>,
 }
@@ -100,7 +98,6 @@ pub struct Read {
 pub struct Shell {
     context: Arc<Context>,
     runtime: Handle,
-    address: String,
     screen: Screen,
     /// None until first read; Err says why it couldn't be.
     overview: Option<Result<Overview, String>>,
@@ -127,7 +124,7 @@ pub enum Message {
     Show(Screen),
     Reload,
     Loaded(Arc<Read>),
-    /// Opens one of the web pages (its path under the server's address) in the browser.
+    /// Goes to the place a link names by its path, as the work's links give it (place_for).
     OpenPage(String),
     Do(Work),
     Said(String),
@@ -209,7 +206,6 @@ fn boot(launch: &Mutex<Option<Launch>>) -> (Shell, Task<Message>) {
     let Launch {
         context,
         runtime,
-        address,
         front,
     } = launch
         .lock()
@@ -220,7 +216,6 @@ fn boot(launch: &Mutex<Option<Launch>>) -> (Shell, Task<Message>) {
     let shell = Shell {
         context,
         runtime,
-        address,
         screen: Screen::Match,
         overview: None,
         status: Vec::new(),
@@ -400,7 +395,8 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
             shell.screen = screen;
             shell.said = None;
             shell.task_manager.hide();
-            // Each visit reads the screen's data again, so it shows what the browser changed.
+            // Each visit reads the screen's data again, so it shows what a scan or the extension
+            // changed.
             match screen {
                 Screen::LanguageModels => return Task::done(Message::LanguageModels(language_models::Msg::Load)),
                 Screen::LocalModel => return Task::done(Message::LocalModel(local_model::Msg::Load)),
@@ -431,7 +427,6 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
             let runner = shell.runner();
             return learned_terms::update(&mut shell.learned_terms, msg, &runner).map(Message::LearnedTerms);
         }
-        Message::Matching(matching::Msg::OpenPage(path)) => return Task::done(Message::OpenPage(path)),
         Message::Matching(matching::Msg::Changed) => return Task::done(Message::Reload),
         Message::Matching(matching::Msg::ShowLanguageModels) => {
             return Task::done(Message::Show(Screen::LanguageModels));
@@ -458,7 +453,7 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
             message,
             setup_unfinished,
         }) => {
-            // As the web page goes on: to Setup while it is unfinished, else to where the
+            // To Setup while it is unfinished, else to where the
             // model's uses are picked, since the uses stay on the key they were on.
             if setup_unfinished {
                 return Task::done(Message::Show(Screen::Setup))
@@ -500,11 +495,8 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
             if let Some(place) = place_for(&path) {
                 return go_to(place);
             }
-            let url = format!("{}{path}", shell.address);
-            if let Err(e) = webbrowser::open(&url) {
-                crate::log_line!("Couldn't open {url} in the browser: {e}");
-                shell.said = Some(format!("Couldn't open the browser ({e}). Open {url} in it."));
-            }
+            crate::log_line!("The window has no place for the link {path}.");
+            shell.said = Some(format!("The window has no place for the link {path}."));
         }
         Message::Do(Work::ScanNow) => {
             let scan = scan_service::scan_now(Arc::clone(&shell.context));
@@ -535,7 +527,7 @@ fn first_run(shell: &Shell) -> Task<Message> {
     )
 }
 
-/// A place in the window that does what a web page does.
+/// A place in the window a link goes to.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Place {
     Screen(Screen),
@@ -545,8 +537,8 @@ enum Place {
     NewSearch,
 }
 
-/// The place for a web page: the service layer gives its links as the web pages' paths
-/// ("setup#cv", "match/12"). None for a page the window has no place for.
+/// The place for a link: the service layer gives its links as paths ("setup#cv", "match/12"),
+/// named as the web pages that were. None for a path the window has no place for.
 fn place_for(path: &str) -> Option<Place> {
     let path = path.trim_start_matches('/');
     let page = path.split(['#', '?']).next().unwrap_or_default();

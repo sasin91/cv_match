@@ -28,26 +28,6 @@ pub enum Health {
     Neutral,
 }
 
-impl Health {
-    /// The row's CSS class.
-    pub fn class(&self) -> &'static str {
-        match self {
-            Health::Ready => "ready",
-            Health::Attention => "attention",
-            Health::Neutral => "neutral",
-        }
-    }
-
-    /// What a screen reader says before the row.
-    pub fn label(&self) -> &'static str {
-        match self {
-            Health::Ready => "Ready",
-            Health::Attention => "Needs attention",
-            Health::Neutral => "Note",
-        }
-    }
-}
-
 /// A link that sets a row up.
 #[derive(Debug, Clone, PartialEq)]
 pub struct Fix {

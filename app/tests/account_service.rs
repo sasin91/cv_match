@@ -63,7 +63,6 @@ async fn a_saved_key_is_listed_and_can_be_deleted() {
     let view = account_service::account_view(&context, None).await.unwrap();
     assert_eq!(view.saved.len(), 1);
     assert_eq!(view.saved[0].key_hint, "cdef");
-    assert!(view.setup_unfinished);
     assert!(!view.key_uses.is_empty());
     let deleted = account_service::delete_key(&context, "openai").await.unwrap();
     assert_eq!(deleted, "Your OpenAI key is deleted.");
@@ -108,7 +107,6 @@ async fn the_llama_wizard_needs_its_folder_and_a_known_model() {
             .await
             .is_err()
     );
-    assert!(llama_setup_service::progress(&context).is_none());
 }
 
 #[tokio::test]

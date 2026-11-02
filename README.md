@@ -1,14 +1,14 @@
 # cv_match
 
-JobFinder: Recruiter's CV match as a desktop app: one program for Windows or Linux that keeps your
-saved matches in SQLite, serves the match page on http://127.0.0.1:8765 in your own browser, and
-works with Jobnet's joblog through its browser extension. One local user, no sign-in.
+JobFinder: Recruiter's CV match as a desktop app: one program for Windows or Linux, in its own
+window, that keeps your saved matches in SQLite and works with Jobnet's joblog through its browser
+extension (which talks to the app on http://127.0.0.1:8765). One local user, no sign-in.
 
 | Folder | What |
 | --- | --- |
-| `app/` | the app (`jobfinder.exe`): the matching, the pages, the database. See its README. |
+| `app/` | the app (`jobfinder.exe`): the matching, the window, the database. See its README. |
 | `laya-server/` | Laya on ONNX Runtime in Rust: the model the app runs in-process, and a `/v1/systemone` HTTP server |
-| `assets/` | what the app builds in: the page's CSS and JS, Trongate MX, the taxonomy index and the Danish postcodes and DejaVu Sans 2.37 (`fonts`) |
+| `assets/` | what the app builds in: the taxonomy index, the Danish postcodes and DejaVu Sans 2.37 (`fonts`) |
 | `extension/jobnet-joblog/` | the Jobnet extension the app ships and you load once in Edge or Chrome |
 
 ## Setting it up on Windows
@@ -33,10 +33,11 @@ The first build downloads ONNX Runtime for Laya (from cdn.pyke.io) and links it 
     .\target\release\jobfinder.exe
 
 On the first start the app makes an empty database, `%APPDATA%\JobFinder\jobfinder.sqlite`,
-writes the Jobnet extension next to it and opens the dashboard (http://127.0.0.1:8765/match). It
-has an alert while no AI model is in use, and a row each for the AI model, your profile, Laya, the
-job scan and the Jobnet extension, saying what is set up and linking to what is missing. Under them
-are how many matches each list holds and the shortlist's best three, then the match form.
+writes the Jobnet extension next to it and opens its window on Setup. After that it opens on the
+Match screen: an alert while no AI model is in use, and a row each for the AI model, your profile,
+Laya, the job scan and the Jobnet extension, saying what is set up and going to what is missing.
+Under them are how many matches each list holds and the shortlist's best three, then the match
+form.
 
 The app was called Recruiter before. On the default database, the first start of JobFinder moves
 the app's files in `%APPDATA%\Recruiter` to `%APPDATA%\JobFinder` (renaming `recruiter.sqlite`
@@ -47,18 +48,18 @@ Recruiter still runs on that folder; close it first. If you loaded the Jobnet ex
 in Edge and load it again from `%APPDATA%\JobFinder\jobnet-joblog` (its ID stays the same). Delete the old `recruiter.exe` afterwards:
 started again, it would make a new empty database in the old folder.
 
-The links go to the setup (http://127.0.0.1:8765/setup), whose steps are:
+Setup (also under Settings) has these steps:
 
 1. where the database is;
 2. an AI model: this app's own llama.cpp model when the PC's graphics card has room for a good
    one (Qwen3 4B or bigger, at least half of it on the card), else an OpenAI key (gpt-5.4-mini)
-   or a Claude key; the steps are /llama_setup and /account, which come back to the setup while
-   the database has no profile or saved matches;
-3. your CV, read by that model into your profile, which the match page matches with;
+   or a Claude key; the steps are the Local model and Language models screens, which come back to
+   Setup while the database has no profile or saved matches;
+3. your CV, read by that model into your profile, which the Match screen matches with;
 4. how often the job scan runs by itself: a Task Scheduler task, `JobFinder\Job scan`, running
    `jobfinder.exe scan`, which scans every active job search (Job scan in the menu) for new
    posts and matches them with your profile. It reads Jobnet and Jobindex itself, so it runs on
-   any model, the app's own too; with an OpenAI key it also searches the web for other sites. The dashboard's Scan now runs the same scan.
+   any model, the app's own too; with an OpenAI key it also searches the web for other sites. The Match screen's Scan now runs the same scan.
    LinkedIn and Indeed are read too, in a browser
    of JobFinder's own (Edge, on its own profile in `%APPDATA%\JobFinder\signed-in-browser`):
    press **Sign in to job sites** under Job searches once, sign in, and close the window. A scan
@@ -75,12 +76,12 @@ aside and start again.
 
 ### The API key
 
-Open http://127.0.0.1:8765/account. Pick OpenAI, Anthropic or a local server, paste the key
-(a local server needs its address and a model name instead), and save it. One key is kept per
-provider, so an OpenAI and an Anthropic key can be saved side by side. Under **Use my keys for**,
-pick the key each use runs on: evaluating job posts, writing applications, tailoring résumés.
-Under **A model per task**, pick the model each task runs on, on its use's key: reading job
-posts, reading CVs and judging the match (evaluating job posts), writing applications, and
+Open Settings, then Language models, and press **Add a key**. Pick OpenAI, Anthropic or a local
+server, paste the key (a local server needs its address and a model name instead), and save it.
+One key is kept per provider, so an OpenAI and an Anthropic key can be saved side by side. Under
+**What the AI runs on**, pick the key each use runs on (evaluating job posts, writing
+applications, tailoring résumés) and, under each, the model each of its tasks runs on: reading
+job posts, reading CVs and judging the match (evaluating job posts), writing applications, and
 tailoring résumés. With this app's own model, job posts are read with Gemma 4 E4B and CVs read
 and judged with Qwen3 4B when those files are in `llama\models`; otherwise a task runs on the
 key's own model. **Check key** sends one tiny request. The keys go in Windows Credential Manager under
@@ -103,8 +104,7 @@ Laya line.
 
 ### The app's own model (llama.cpp)
 
-Instead of a key, the app can run a GGUF model itself. Open http://127.0.0.1:8765/llama_setup (or
-**Set it up** on the API key page):
+Instead of a key, the app can run a GGUF model itself. Open Settings, then Local model:
 
 1. **Download llama.cpp** fetches the latest release's Windows build for this computer's card
    (CUDA for NVIDIA, Vulkan for every other card, CPU without one) and unzips it into
@@ -114,7 +114,7 @@ Instead of a key, the app can run a GGUF model itself. Open http://127.0.0.1:876
    computer's memory and graphics card. **Download** the recommended one into `llama\models`;
    Gemma 4 E4B (reads Danish job posts best) and Munin (writes the best Danish, but heavy) are
    for picking per task, never the recommended one.
-3. **Use this model** saves it as **This app's own model (llama.cpp)**, and the API key page
+3. **Use this model** saves it as **This app's own model (llama.cpp)**, and Language models
    picks what it is used for.
 
 You can also put llama.cpp and `.gguf` files there by hand:
@@ -122,30 +122,29 @@ You can also put llama.cpp and `.gguf` files there by hand:
     llama\llama-server.exe      and the DLLs from the same zip
     llama\models\*.gguf         for example Qwen3-8B-Q4_K_M.gguf
 
-On the API key page pick **This app's own model (llama.cpp)**. With the model field blank the app
+On Language models pick **This app's own model (llama.cpp)**. With no model picked the app
 picks the biggest model that fits the graphics card's memory with room for its context, or splits
-one between the card and memory; the page lists each model and how it fits this computer. The
+one between the card and memory; Local model lists each model and how it fits this computer. The
 server starts on the first AI call (on a free port on 127.0.0.1), writes `llama\llama-server.log`,
 and stops when the app does. An NVIDIA or AMD card without CUDA, HIP or Vulkan in the folder is
-said on the page instead of quietly running on the CPU.
+said on Local model instead of quietly running on the CPU.
 
 ### The Jobnet extension
 
-Open http://127.0.0.1:8765/joblog_extension and press **Copy the folder and open Edge's
+Open Settings, then Jobnet extension, and press **Copy the folder and open Edge's
 extensions**. It copies `%APPDATA%\JobFinder\jobnet-joblog` and opens `edge://extensions`. There,
 switch on Developer mode, choose **Load unpacked**, paste the folder and press Select Folder. After an app update writes a newer version, press Reload on the extension.
 
 Its toolbar button sends the job post you have open (LinkedIn, Indeed, or any other site) to
 JobFinder, as your browser shows it: pick the job search to add it to and press Send. JobFinder
 matches it like a post the scan found. The button reads the page only when you press it, and
-JobFinder asks the site for nothing.
+JobFinder asks the site for nothing. The extension needs JobFinder running: it reaches the app on
+http://127.0.0.1:8765, which answers only the extension and the app itself.
 
 ### Your phone
 
-Through Tailscale, without opening anything to the internet: see [docs/phone.md](docs/phone.md).
-In short, run `tailscale serve --bg http://127.0.0.1:8765` once, start the app with
-`--tailscale-name pc.your-tailnet.ts.net`, and open `https://pc.your-tailnet.ts.net/match` on the
-phone with Tailscale on.
+Not yet: the app is its window now, and the web pages a phone used to open are gone. A
+remote-control app for the phone is planned; see [docs/phone.md](docs/phone.md).
 
 ### From a release
 
@@ -158,8 +157,8 @@ Linux), then delete the file. The cleanup lists what the app keeps outside its f
 removing it: the job scan's schedule, the API keys in Credential Manager (or the keyring), and the
 Jobnet extension's files, llama.cpp and Laya next to the database. It then asks separately whether
 to delete the database too (no unless you type y), and says that the extension itself is removed
-in Edge. Give it `--database` for a database elsewhere. When it can't start (the port is taken, the database can't be opened), its window
-stays open until you press Enter, so the reason can be read.
+in Edge. Give it `--database` for a database elsewhere. When it can't start (the port is taken, the database can't be opened), a small
+window says why.
 
 ### On Linux (and WSL)
 
@@ -188,13 +187,13 @@ again on the same database opens the one that runs.
 ### Starting it at login
 
 In Task Scheduler, create a task that runs at log on, with the action
-`<repo>\app\target\release\jobfinder.exe`, and arguments `--no-browser` plus any of
-`--tailscale-name ...`, `--laya ...` or `--llama ...` you use.
+`<repo>\app\target\release\jobfinder.exe`, and arguments `--laya ...` or `--llama ...` if you
+use them. The window opens at login.
 
 ## Developing
 
 One command, on Windows and Linux alike, builds the app, opens its window, and rebuilds and
-restarts it on every change (the window opens again, and a page open in the browser reloads):
+restarts it on every change (the window opens again):
 
     cd app
     cargo dev
@@ -204,16 +203,9 @@ It needs [watchexec](https://github.com/watchexec/watchexec) once:
 
 - `cargo dev` is an alias (`app/.cargo/config.toml`) for the small program in `app/xtask/`, the
   usual Rust stand-in for npm or Composer scripts. It runs watchexec, which runs a debug build
-  (`cargo run -- --dev`). `cargo dev --no-browser` runs only the server, for work on the web
-  pages at http://127.0.0.1:8765/match.
-- A change to `src/`, `templates/`, `queries/`, `migrations/`, `.sqlx/`, `Cargo.toml`,
-  `../assets/`, `../extension/` or `../laya-server/src/` restarts it, and the open page reloads
-  itself as soon as the new run answers. A CSS or JS change needs no compiling, since debug
-  builds read `../assets/` from disk, so it shows in a second or two; a Rust or template change
-  takes as long as the build.
-- `--dev` puts a small script on each page that asks `/dev/started` every half second which run
-  of the app it is, and reloads the page when that changes. Release builds refuse `--dev` and
-  never send the script.
+  (`cargo run`).
+- A change to `src/`, `queries/`, `migrations/`, `.sqlx/`, `Cargo.toml`, `../assets/`,
+  `../extension/` or `../laya-server/src/` restarts it, as soon as it is built.
 - It uses your real database unless you give it another, for example
   `cargo dev --database $env:TEMP\jobfinder-dev.sqlite` (or `/tmp/jobfinder-dev.sqlite` on
   Linux). Other `jobfinder` options go on to the app the same way, and `--port 8766` runs it
@@ -223,7 +215,7 @@ Stop it with Ctrl+C.
 
 ## Trying it out
 
-With a real key saved on the API key page, check these by hand after a change:
+With a real key saved on Language models, check these by hand after a change:
 
 - [ ] **A moved program:** schedule the job scan, close the app, move `jobfinder.exe` (or the
       AppImage) to another folder and start it from there. The task's action (or the timer's
@@ -232,29 +224,29 @@ With a real key saved on the API key page, check these by hand after a change:
       database with a scheduled scan and a saved key. It lists them, removes them on y (the task is
       gone from Task Scheduler, the key from Credential Manager), and keeps the database unless the
       second question gets a y. With the app open it refuses.
-- [ ] **The dashboard and the setup:** start with `--database` naming a new file. The browser
-      opens /match with the "No AI model is set up" alert and the missing rows; Set one up opens
-      /setup, which suggests the app's own model on a PC with a good graphics card, else an OpenAI key.
-      Set one up and land back on /setup; read a PDF CV into the profile; pick how often to check
-      for new jobs, and `JobFinder\Job scan` shows in Task Scheduler (run it once: no console
-      window opens). Go to the dashboard: the alert is gone, the rows say which model and whose profile, and
-      the match form has the CV filled in.
+- [ ] **The Match screen and Setup:** start with `--database` naming a new file. The window
+      opens on Setup, which suggests the app's own model on a PC with a good graphics card, else
+      an OpenAI key. Set one up and land back on Setup; read a PDF CV into the profile; pick how
+      often to check for new jobs, and `JobFinder\Job scan` shows in Task Scheduler (run it once:
+      no console window opens). Finish: the Match screen has no alert, the rows say which model
+      and whose profile, and the match form has the CV filled in.
 - [ ] **The job scan on the local model:** with the app's own model (or any key but OpenAI's)
-      picked for evaluating job posts, make a job search without sites under Job scan, and press
-      Scan now. The search's page lists posts from jobnet.dk and jobindex.dk, matched. Add
-      thehub.io to its sites: the page says the scan skips it.
+      picked for evaluating job posts, make a job search under Job searches, and press Scan now.
+      The search lists posts from jobnet.dk and jobindex.dk, matched. Add thehub.io to its Sites
+      to skip: the search says the scan skips it.
 - [ ] **A page that needs JavaScript:** paste a link to a post whose page shows nothing without
       JavaScript. Edge (or Chrome) reads it headless in the background, and the post is matched;
       `jobfinder.log` says so if no browser was found.
 - [ ] **The job scan:** with your OpenAI key picked for evaluating job posts, make a job search
-      under Job scan, then press Scan now on the dashboard. The Job scan row says "Scanning now",
-      and after a few minutes (reload) the last scan's result; the search's page lists the posts it
+      under Job searches, then press Scan now on the Match screen. The Job scan row says
+      "Scanning now", and after a few minutes the last scan's result; the search lists the posts it
       found, matched, with a tailored résumé and application from its score up. Run
       `jobfinder.exe scan` right after: it says every search was scanned less than an hour ago.
       Dismiss a post: its match is in the Rejected list.
-- [ ] **The lists:** after a few matches, http://127.0.0.1:8765/match shows them under
-      Shortlist, All and the other lists. Show more loads more.
-- [ ] **The free match:** paste a job post's text, with evaluating set to no key on the key page.
+- [ ] **The lists:** after a few matches, the Match screen shows them under Shortlist, All and
+      the other lists. Show more loads more.
+- [ ] **The free match:** paste a job post's text, with evaluating set to no key on Language
+      models.
       A match is saved and scored by the free reader.
 - [ ] **The AI match:** pick a key for evaluating and paste another post's text. The result shows the
       requirements as the model read them, the score and, with the model in place, the Laya line.
@@ -263,19 +255,20 @@ With a real key saved on the API key page, check these by hand after a change:
       refused.
 - [ ] **Writing:** on a saved match, write the application, then the tailored résumé. Each one
       appears in its box. Write one again with notes, and the earlier version is listed under it.
-- [ ] **The app's own model:** on /llama_setup, download llama.cpp and the recommended model,
-      then Use this model; the API key page lists the model and how it fits. Save "This app's own model" with the model blank,
-      press Check key (the first check loads the model), then run an AI match on it.
-- [ ] **PDFs:** Download PDF on the application, the résumé, the CV and the job post. Each opens as
+- [ ] **The app's own model:** on Local model, download llama.cpp and the recommended model,
+      then Use this model; Language models lists it. Press Check (the first check loads the
+      model), then run an AI match on it.
+- [ ] **PDFs:** Save as PDF on the application, the résumé, the CV and the job post. Each opens as
       an A4 page with the expected file name.
-- [ ] **Apply:** open the Apply dialog on a match. It shows the email or the employer's site,
+- [ ] **Apply:** open Apply on a match. It shows the email or the employer's site,
       with the PDFs and your profile links.
 - [ ] **Rejecting:** Not interested moves a match to Rejected, and Bring back returns it.
 - [ ] **Jobnet:** on jobnet.dk, the extension's panel lists your matches, fills in a joblog entry
       and marks the match as on Jobnet.
 - [ ] **Errors:** delete the key in Credential Manager, or switch a use off, and try a match.
-      The page says why and links to the key page, and the console window logs it.
-- [ ] **The phone:** with Tailscale on, the phone opens the match page and can save a match.
+      The window says why and goes to Language models, and `jobfinder.log` logs it.
+- [ ] **Nothing else on 8765:** http://127.0.0.1:8765/match in a browser says the app has no
+      web pages.
 
 ### The automated checks
 
