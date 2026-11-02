@@ -174,7 +174,10 @@ impl SignedInBrowser {
             let pause = Duration::from_secs(PAUSE_BETWEEN_PAGES);
             tokio::time::sleep(pause.saturating_sub(at.elapsed())).await;
         }
-        let looking = tokio::time::timeout(Duration::from_secs(PAGE_SECONDS), self.look(url, showing, &judge));
+        // The time limit starts when the read does: a read started in a paused scan waits in
+        // running_work first, and that wait isn't the browser's.
+        let looking =
+            async { tokio::time::timeout(Duration::from_secs(PAGE_SECONDS), self.look(url, showing, &judge)).await };
         let seen = running_work::part(WorkKind::Browser, format!("Signed in, reading {url}"), looking).await;
         *last_page = Some(Instant::now());
         let seen = seen

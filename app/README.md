@@ -39,6 +39,17 @@ fonts); the Jobnet extension lives in `../extension/jobnet-joblog`.
 
 opens the app's window (`src/desktop/`): Match, with the dashboard's status rows and your
 best matches, the Task manager (what JobFinder runs now and for how long: scans, matches, model
+calls, browsers, PDF readers, downloads, llama-server and Laya; right-click a row to pause, resume or stop it;
+a row's link opens in the browser),
+and Settings, with a status line for Laya and the local model under both. The
+app is also served on http://127.0.0.1:8765/match, for the Jobnet extension and for what the
+window can't do yet, which its buttons open in your default browser. Starting it again on the
+same database brings the window to the front.
+(`--port`, `--database file`, `--laya folder`, `--browser` for the page instead of the window,
+`--no-browser` for neither, and `--tailscale-name` for your phone:
+see [../docs/phone.md](../docs/phone.md)). The served page is the match page,
+with its CSS and JS (`assets/match/css`, `js`, and Trongate MX from `assets/js`, built into the exe), for
+one local user who is always signed in:
 calls, browsers, PDF readers, downloads, llama-server and Laya; right-click a row to stop it),
 and Settings (Language models, Local model, Job searches, Setup, Jobnet extension, Learned
 terms), with a status line for Laya and the local model under them. Starting it again on the

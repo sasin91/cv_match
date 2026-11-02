@@ -1,5 +1,6 @@
 //! The Task manager screen: what JobFinder runs now (task_manager::rows), how long each has run,
-//! and a right-click menu on each row to stop it. The list is read again every READ_EVERY while
+//! and a right-click menu on each row to pause, resume or stop it, or open its link (a row's link
+//! opens on a click too). The list is read again every READ_EVERY while
 //! the screen shows.
 
 use iced::widget::{Column, button, column, container, mouse_area, pin, row, space, stack, text};
@@ -40,7 +41,7 @@ pub struct State {
     menu: Option<(Work, Point)>,
     /// Where the pointer is over the list, for the menu to open at.
     pointer: Point,
-    /// What the last stop came to.
+    /// What the last stop, pause or resume came to.
     said: Option<(Health, String)>,
     /// The screen shows: the list is read again every READ_EVERY.
     shown: bool,
@@ -61,6 +62,10 @@ pub enum Msg {
     OpenMenu(Work),
     CloseMenu,
     Stop(Work),
+    /// Pause it (true) or resume it (false).
+    Pause(Work, bool),
+    /// Open a row's web address in the browser.
+    OpenLink(String),
     Said(Result<String, String>),
 }
 
@@ -120,6 +125,23 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                 |answer| Msg::Said(answer.and_then(|said| said.map_err(|e| e.message))),
             );
         }
+        Msg::Pause(task, paused) => {
+            state.menu = None;
+            return runner.run(
+                move |context| async move { task_manager::pause(&context, task, paused).await },
+                |answer| Msg::Said(answer.and_then(|said| said.map_err(|e| e.message))),
+            );
+        }
+        Msg::OpenLink(url) => {
+            state.menu = None;
+            if let Err(e) = webbrowser::open(&url) {
+                crate::log_line!("task_manager: couldn't open {url} in the browser: {e}");
+                state.said = Some((
+                    Health::Attention,
+                    format!("Couldn't open the browser ({e}). Open {url} in it."),
+                ));
+            }
+        }
         Msg::Said(said) => {
             state.said = Some(match said {
                 Ok(said) => (Health::Ready, said),
@@ -136,7 +158,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
 pub fn view(state: &State) -> Element<'_, Msg> {
     let title = widgets::page_title(
         "Task manager",
-        widgets::note("What JobFinder runs now, and for how long. Right-click a row to stop it."),
+        widgets::note("What JobFinder runs now, and for how long. Right-click a row to pause or stop it."),
     );
     let mut screen = Column::new().spacing(GAP * 1.5).push(title);
     if let Some((health, said)) = &state.said {
@@ -202,15 +224,22 @@ fn header<'a>() -> Element<'a, Msg> {
 /// started and for how long it has run at now. Right-click opens its menu.
 fn task_row(row: &TaskRow, now: i64) -> Element<'_, Msg> {
     let cell = |line: String, width: Length| text(line).size(style::BODY_SIZE).width(width);
-    let what = if row.stopping {
-        format!("{} (stopping)", row.what)
-    } else {
-        row.what.clone()
+    let what = match (row.stopping, row.paused) {
+        (true, _) => format!("{} (stopping)", row.what),
+        (false, true) => format!("{} (paused)", row.what),
+        (false, false) => row.what.clone(),
     };
-    let what = row![
-        space().width(INDENT * row.depth as f32),
-        text(what).size(style::BODY_SIZE).width(Fill)
-    ];
+    let what_text = text(what).size(style::BODY_SIZE);
+    // A row's link opens on a click; the rest of the row only closes the menu.
+    let what_cell: Element<'_, Msg> = match row.link() {
+        Some(link) => button(what_text)
+            .padding(0)
+            .style(style::link_button)
+            .on_press(Msg::OpenLink(link.to_string()))
+            .into(),
+        None => what_text.width(Fill).into(),
+    };
+    let what = row![space().width(INDENT * row.depth as f32), what_cell];
     let line = row![
         cell(row.kind.to_string(), Length::Fixed(KIND_WIDTH)),
         container(what).width(Fill),
@@ -237,12 +266,23 @@ fn task_row(row: &TaskRow, now: i64) -> Element<'_, Msg> {
 
 /// The menu open on row, at at; a click anywhere else closes it.
 fn menu_layer(row: &TaskRow, at: Point) -> Element<'_, Msg> {
-    let item: Element<'_, Msg> = match (row.stop, row.stopping) {
+    let mut items = Column::new().width(MENU_WIDTH);
+    if row.pausable && !row.stopping {
+        items = items.push(if row.paused {
+            menu_item("Resume", Some(Msg::Pause(row.task, false)))
+        } else {
+            menu_item("Pause", Some(Msg::Pause(row.task, true)))
+        });
+    }
+    items = items.push(match (row.stop, row.stopping) {
         (Some(_), true) => menu_item("Stopping…", None),
         (Some(stop), false) => menu_item(stop, Some(Msg::Stop(row.task))),
         (None, _) => menu_item("Can't be stopped", None),
-    };
-    let menu = container(column![item].width(MENU_WIDTH)).padding(4).style(style::card);
+    });
+    if let Some(link) = row.link() {
+        items = items.push(menu_item("Open link", Some(Msg::OpenLink(link.to_string()))));
+    }
+    let menu = container(items).padding(4).style(style::card);
     mouse_area(pin(menu).x(at.x).y(at.y))
         .on_press(Msg::CloseMenu)
         .on_right_press(Msg::CloseMenu)

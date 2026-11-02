@@ -378,6 +378,24 @@ pub fn row_button(theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
+/// A web address that opens in the browser: accent text, no face, the darker accent under the
+/// pointer.
+pub fn link_button(theme: &Theme, status: button::Status) -> button::Style {
+    let c = colors(theme);
+    let text_color = match status {
+        button::Status::Pressed => c.accent_pressed,
+        button::Status::Hovered => c.accent_hover,
+        _ => c.accent,
+    };
+    button::Style {
+        background: None,
+        text_color,
+        border: Border::default(),
+        shadow: Shadow::default(),
+        snap: true,
+    }
+}
+
 /// A field's border: the accent when focused, else the hairline.
 fn field_border(c: &Colors, focused: bool) -> Border {
     Border {
