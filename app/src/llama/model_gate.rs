@@ -5,8 +5,10 @@
 //! The rule: a call for the model the server runs joins it at once, unless a switch to another
 //! model is waiting; then it queues behind the switch, so a stream of calls for the current
 //! model can't keep the switch waiting forever. A switch waits until no call is under way, and
-//! while it starts the new model, every other call waits. Switches to different models take
-//! their turns as the calls of each finish, in whatever order they wake.
+//! while it starts the new model, every other call waits. Switches are counted per model they
+//! wait for: once one of them has started its model, the others waiting for that same model
+//! join it (they were waiting before any newer switch, so they don't starve it), and switches to
+//! different models take their turns as the calls of each finish, in whatever order they wake.
 //!
 //! Waiting holds no lock that a call under way needs: the state is a std mutex taken only to read
 //! and change the counts, and the waiting is on a tokio Notify that every change wakes. A caller
@@ -14,6 +16,7 @@
 //! most SWITCH_WAIT_SECONDS for the calls under way, then switches anyway (and logs it), as
 //! the server did before it waited: the calls on the old model then fail.
 
+use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -34,8 +37,9 @@ struct Turns {
     under_way: usize,
     /// When the last call ended.
     last_ended: Option<Instant>,
-    /// Callers waiting to switch to another model than current.
-    switches_waiting: usize,
+    /// Per model, the callers waiting to switch the server to it; a model none wait for isn't
+    /// listed.
+    switches_waiting: HashMap<PathBuf, usize>,
     /// A switch is starting its model: everyone else waits.
     switching: bool,
 }
@@ -67,9 +71,25 @@ pub struct SwitchTurn<'a> {
     done: bool,
 }
 
-/// A switch counted as waiting, until it is dropped.
+/// A switch counted as waiting for model, until it is dropped.
 struct WaitingSwitch<'a> {
     gate: &'a ModelGate,
+    model: PathBuf,
+}
+
+impl Turns {
+    /// Whether a caller waits to switch to another model than the current one.
+    fn switch_to_another_waits(&self) -> bool {
+        self.switches_waiting
+            .keys()
+            .any(|model| self.current.as_deref() != Some(model.as_path()))
+    }
+
+    /// The callers waiting to switch, to any model.
+    #[cfg(test)]
+    fn switches_waiting(&self) -> usize {
+        self.switches_waiting.values().sum()
+    }
 }
 
 impl ModelGate {
@@ -94,9 +114,11 @@ impl ModelGate {
             notified.as_mut().enable();
             {
                 let mut turns = self.turns();
-                let others_waiting = turns.switches_waiting - usize::from(waiting.is_some());
                 let runs_wanted = turns.current.as_deref() == Some(wanted);
-                if !turns.switching && runs_wanted && others_waiting == 0 {
+                // A caller that was already waiting for this model joins it now that it runs; a
+                // newer one queues behind switches to other models.
+                let may_join = waiting.is_some() || !turns.switch_to_another_waits();
+                if !turns.switching && runs_wanted && may_join {
                     turns.under_way += 1;
                     drop(turns);
                     drop(waiting);
@@ -121,14 +143,17 @@ impl ModelGate {
                     });
                 }
                 if !runs_wanted && waiting.is_none() {
-                    turns.switches_waiting += 1;
+                    *turns.switches_waiting.entry(wanted.to_path_buf()).or_default() += 1;
                     crate::log_line!(
                         "llama: waiting for {} call(s) on {} to finish before switching to {}",
                         turns.under_way,
                         name_of(turns.current.as_deref()),
                         name_of(Some(wanted))
                     );
-                    waiting = Some(WaitingSwitch { gate: self });
+                    waiting = Some(WaitingSwitch {
+                        gate: self,
+                        model: wanted.to_path_buf(),
+                    });
                 }
             }
             notified.await;
@@ -181,7 +206,12 @@ impl Drop for Ticket {
 impl Drop for WaitingSwitch<'_> {
     fn drop(&mut self) {
         let mut turns = self.gate.turns();
-        turns.switches_waiting = turns.switches_waiting.saturating_sub(1);
+        if let Some(count) = turns.switches_waiting.get_mut(&self.model) {
+            *count = count.saturating_sub(1);
+            if *count == 0 {
+                turns.switches_waiting.remove(&self.model);
+            }
+        }
         drop(turns);
         self.gate.changed.notify_waiters();
     }
@@ -256,7 +286,7 @@ mod tests {
         assert!(gate.idle_for(Duration::ZERO));
         let turns = gate.turns();
         assert_eq!(
-            (turns.under_way, turns.switches_waiting, turns.switching),
+            (turns.under_way, turns.switches_waiting(), turns.switching),
             (0, 0, false)
         );
     }
@@ -295,7 +325,7 @@ mod tests {
                 Entry::Join(_) => Err("qwen isn't running yet"),
             }
         });
-        while gate.turns().switches_waiting == 0 {
+        while gate.turns().switches_waiting() == 0 {
             tokio::task::yield_now().await;
         }
         let joining_gate = Arc::clone(&gate);
@@ -309,6 +339,87 @@ mod tests {
         assert_eq!(gate.turns().current.as_deref(), Some(Path::new(QWEN)));
         drop(qwen);
         assert!(!newer.await.unwrap(), "after the switch, gemma is a switch of its own");
+    }
+
+    /// The longest a test's calls may take to finish, in seconds: a hang fails the test instead of
+    /// blocking it.
+    const FINISH_SECONDS: u64 = 10;
+
+    /// A call on model that "the server" starts and holds until the ticket is dropped.
+    async fn running(gate: &Arc<ModelGate>, server: &Server, model: &str) -> Ticket {
+        let wanted = PathBuf::from(model);
+        let Entry::Switch(turn) = gate.enter(&wanted).await else {
+            panic!("{model} isn't running yet");
+        };
+        *server.running.lock().unwrap() = Some(wanted.clone());
+        turn.started(&wanted)
+    }
+
+    /// calls each spawned, on model.
+    fn spawned(
+        gate: &Arc<ModelGate>,
+        server: &Arc<Server>,
+        model: &'static str,
+        calls: usize,
+    ) -> Vec<tokio::task::JoinHandle<Result<(), String>>> {
+        (0..calls)
+            .map(|_| {
+                let gate = Arc::clone(gate);
+                let server = Arc::clone(server);
+                tokio::spawn(async move { call(&gate, &server, model).await })
+            })
+            .collect()
+    }
+
+    /// Waits for every call, failing when one fails or they don't all finish in FINISH_SECONDS.
+    async fn all_finish(calls: Vec<tokio::task::JoinHandle<Result<(), String>>>) {
+        let every = async {
+            for call in calls {
+                assert_eq!(call.await.unwrap(), Ok(()));
+            }
+        };
+        tokio::time::timeout(Duration::from_secs(FINISH_SECONDS), every)
+            .await
+            .expect("every call finishes");
+    }
+
+    /// Lets the spawned calls reach their wait.
+    async fn settle() {
+        tokio::time::sleep(Duration::from_millis(CALL_MILLISECONDS)).await;
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn three_waiters_for_another_model_all_get_their_turn() {
+        let gate = Arc::new(ModelGate::default());
+        let server = Arc::new(Server::default());
+        let gemma = running(&gate, &server, GEMMA).await;
+        let qwen_calls = spawned(&gate, &server, QWEN, 3);
+        settle().await;
+        drop(gemma);
+        all_finish(qwen_calls).await;
+        assert!(gate.idle_for(Duration::ZERO));
+    }
+
+    #[tokio::test(flavor = "multi_thread", worker_threads = 4)]
+    async fn several_waiters_for_each_of_two_models_take_turns() {
+        let gate = Arc::new(ModelGate::default());
+        let server = Arc::new(Server::default());
+        let gemma = running(&gate, &server, GEMMA).await;
+        let mut calls = spawned(&gate, &server, QWEN, 3);
+        settle().await;
+        // Newer calls on the model that runs queue behind the waiting switch.
+        calls.extend(spawned(&gate, &server, GEMMA, 3));
+        settle().await;
+        drop(gemma);
+        all_finish(calls).await;
+        let log = server.log.lock().unwrap();
+        assert_eq!(log.len(), 12);
+        assert_eq!(
+            log[0],
+            format!("start {QWEN}"),
+            "the waiting switch goes first: {log:?}"
+        );
+        assert!(gate.idle_for(Duration::ZERO));
     }
 
     #[tokio::test]
