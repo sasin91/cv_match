@@ -33,7 +33,7 @@ pub fn caption<'a, M: 'a>(line: impl text::IntoFragment<'a>) -> Element<'a, M> {
 }
 
 /// A section's heading.
-pub fn section_title<'a, M: 'a>(title: &'a str) -> Element<'a, M> {
+pub fn section_title<'a, M: 'a>(title: impl text::IntoFragment<'a>) -> Element<'a, M> {
     text(title).font(style::semibold()).size(style::SECTION_SIZE).into()
 }
 

@@ -9,6 +9,7 @@
 //! tokio runtime the server runs on (on_runtime), since the database and HTTP clients need it.
 
 mod apply;
+mod batch;
 mod documents;
 mod extension_screen;
 mod job_searches;

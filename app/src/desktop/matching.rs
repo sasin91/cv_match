@@ -12,6 +12,7 @@ use iced::widget::{Column, Row, button, checkbox, column, container, row, text, 
 use iced::{Center, Element, Fill, Task};
 
 use super::apply::{self, ApplyMsg, Applying};
+use super::batch::{self, Batch};
 use super::documents::{self, DocMsg, Docs};
 use super::style;
 use super::widgets::{self, CARD_PADDING, ROW_PADDING};
@@ -21,7 +22,9 @@ use crate::dashboard::Health;
 use crate::matches::document_box::APPLICATION;
 use crate::matches::match_model::LISTS;
 use crate::matches::match_result::{MatchResult, Section};
-use crate::matches::match_service::{self, MatchAnswer, MatchAsk, ReadCv, RejectOutcome, SavedMatchList, WriteAnswer};
+use crate::matches::match_service::{
+    self, JobAsk, MAX_JOBS, MatchAnswer, MatchAsk, ReadCv, RejectOutcome, SavedMatchList, WriteAnswer,
+};
 use crate::matches::page_reader::Page as Fetched;
 use crate::matches::reject_button::{self, RejectButton};
 use crate::matches::reject_reason::{self, Rejection};
@@ -34,6 +37,8 @@ use crate::service_error::{ErrorKind, ServiceError};
 const CV_HEIGHT: f32 = 180.0;
 /// The job box's height.
 const JOB_HEIGHT: f32 = 220.0;
+/// The height of another job post's box.
+const MORE_JOB_HEIGHT: f32 = 140.0;
 /// The score's size beside the job's name.
 const SCORE_SIZE: f32 = 40.0;
 /// The filter that shows every requirement (match_result::filters).
@@ -147,6 +152,10 @@ pub struct State {
     job_url: String,
     job: text_editor::Content,
     job_file: Option<String>,
+    /// More job posts to match with the same CV (text or a link), after the first.
+    more_jobs: Vec<text_editor::Content>,
+    /// The last batch of several posts, ranked.
+    batch: Option<Batch>,
     /// Matching, fetching or reading a file: the form's buttons wait.
     busy: bool,
     /// The step running, or what the last one came to.
@@ -170,6 +179,8 @@ impl Default for State {
             job_url: String::new(),
             job: text_editor::Content::new(),
             job_file: None,
+            more_jobs: Vec::new(),
+            batch: None,
             busy: false,
             said: None,
             fresh: None,
@@ -200,6 +211,14 @@ pub enum Msg {
     /// A step of the match, as it starts.
     Matching(String),
     Matched(Arc<Result<MatchAnswer, String>>),
+    AddJob,
+    RemoveJob(usize),
+    /// An edit in another job post's box.
+    MoreJobEdit(usize, text_editor::Action),
+    /// What matching several posts came to: an answer per post, in their order.
+    BatchMatched(Arc<Result<Vec<Result<MatchAnswer, String>>, String>>),
+    /// Opens a ranked row's result under the list.
+    OpenRanked(usize),
     ListLoaded {
         request: u64,
         more: bool,
@@ -330,7 +349,31 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                 Err(why) => (Health::Attention, why),
             });
         }
-        Msg::Match => return start_match(state, runner),
+        Msg::Match if state.more_jobs.is_empty() => return start_match(state, runner),
+        Msg::Match => return start_batch(state, runner),
+        Msg::AddJob => {
+            if state.more_jobs.len() + 1 < MAX_JOBS {
+                state.more_jobs.push(text_editor::Content::new());
+            }
+        }
+        Msg::RemoveJob(index) => {
+            if index < state.more_jobs.len() {
+                state.more_jobs.remove(index);
+            }
+        }
+        Msg::MoreJobEdit(index, action) => {
+            if let Some(job) = state.more_jobs.get_mut(index) {
+                job.perform(action);
+            }
+        }
+        Msg::BatchMatched(answers) => return batch_matched(state, &answers),
+        Msg::OpenRanked(index) => {
+            if let Some(batch) = &mut state.batch {
+                let open = (batch.open != Some(index)).then_some(index);
+                state.fresh = open.and_then(|index| batch.result(index)).cloned().map(Shown::new);
+                batch.open = open;
+            }
+        }
         Msg::Matching(step) => state.said = Some((Health::Neutral, step)),
         Msg::Matched(answer) => return matched(state, &answer),
         Msg::ListLoaded { more, list, .. } => match list {
@@ -598,6 +641,99 @@ fn start_match(state: &mut State, runner: &Runner) -> Task<Msg> {
     )
 }
 
+/// The job posts as typed: the first box (or its link), then the others.
+fn jobs_typed(state: &State) -> Vec<JobAsk> {
+    let first = JobAsk {
+        job_text: state.job.text(),
+        job_url: state.job_url.clone(),
+    };
+    let more = state.more_jobs.iter().map(|job| JobAsk {
+        job_text: job.text(),
+        job_url: String::new(),
+    });
+    std::iter::once(first).chain(more).collect()
+}
+
+fn start_batch(state: &mut State, runner: &Runner) -> Task<Msg> {
+    state.busy = true;
+    state.said = Some((Health::Neutral, "Matching…".to_string()));
+    let jobs = jobs_typed(state);
+    let cv_text = state.cv.text();
+    let read_cv = state.cv.read.clone();
+    runner.run_saying(
+        move |context, say| async move { match_service::match_jobs(&context, &jobs, &cv_text, read_cv, &*say).await },
+        |step| match step {
+            Step::Said(line) => Msg::Matching(line),
+            Step::Done(answers) => Msg::BatchMatched(Arc::new(answers.and_then(|answers| {
+                answers
+                    .map(|answers| {
+                        answers
+                            .into_iter()
+                            .map(|answer| answer.map_err(|e| e.message))
+                            .collect()
+                    })
+                    .map_err(|e| e.message)
+            }))),
+        },
+    )
+}
+
+fn batch_matched(state: &mut State, answers: &Result<Vec<Result<MatchAnswer, String>>, String>) -> Task<Msg> {
+    state.busy = false;
+    let answers = match answers {
+        Ok(answers) => answers,
+        Err(why) => {
+            state.said = Some((Health::Attention, why.clone()));
+            return Task::none();
+        }
+    };
+    let typed: Vec<String> = jobs_typed(state)
+        .into_iter()
+        .map(|job| {
+            if job.job_text.trim().is_empty() {
+                job.job_url
+            } else {
+                job.job_text
+            }
+        })
+        .collect();
+    // A fetched post goes in its box, so it can be checked and matched again without fetching.
+    for (index, answer) in answers.iter().enumerate() {
+        let Ok(MatchAnswer {
+            fetched: Some(page), ..
+        }) = answer
+        else {
+            continue;
+        };
+        match index.checked_sub(1) {
+            None => put_fetched(state, page),
+            Some(more) => {
+                if let Some(job) = state.more_jobs.get_mut(more) {
+                    *job = text_editor::Content::with_text(&page.text);
+                }
+            }
+        }
+    }
+    if let Some(read) = answers
+        .iter()
+        .rev()
+        .find_map(|answer| answer.as_ref().ok()?.read_cv.clone())
+    {
+        state.cv.read = Some(read);
+    }
+    let batch = Batch::new(&typed, answers);
+    // The list says how it went, and each post that failed says why.
+    state.said = None;
+    let saved_now = batch.saved_now > 0;
+    state.batch = Some(batch);
+    state.fresh = None;
+    if saved_now {
+        state.list.read = None;
+        return Task::done(Msg::Changed);
+    }
+    Task::none()
+}
+
 fn matched(state: &mut State, answer: &Result<MatchAnswer, String>) -> Task<Msg> {
     state.busy = false;
     let answer = match answer {
@@ -623,6 +759,7 @@ fn matched(state: &mut State, answer: &Result<MatchAnswer, String>) -> Task<Msg>
         answer.save_error.clone().map(|why| (Health::Attention, why))
     };
     state.fresh = Some(Shown::new(answer.result.clone()));
+    state.batch = None;
     let saved_now = answer.result.saved_id.is_some() && !answer.matched_before;
     if saved_now {
         state.list.read = None;
@@ -873,16 +1010,40 @@ fn new_view(state: &State) -> Element<'_, Msg> {
         "Match a job",
         widgets::note("Paste a link to a job post, its text, or choose a file, and match it with your CV."),
     ));
-    page = page
-        .push(widgets::section("Job post", job_card(state)))
-        .push(widgets::section("CV", cv_card(state)));
-    let match_button = button(text("Match").size(style::BODY_SIZE))
-        .padding([8.0, 24.0])
-        .style(style::primary_button)
-        .on_press_maybe((!state.busy).then_some(Msg::Match));
-    page = page.push(match_button);
+    page = page.push(widgets::section("Job post", job_card(state)));
+    for (index, job) in state.more_jobs.iter().enumerate() {
+        page = page.push(more_job_card(state, index, job));
+    }
+    page = page.push(widgets::section("CV", cv_card(state)));
+    let jobs = state.more_jobs.len() + 1;
+    let match_label = if jobs > 1 {
+        format!("Match {jobs} jobs")
+    } else {
+        "Match".to_string()
+    };
+    let mut buttons = row![
+        button(text(match_label).size(style::BODY_SIZE))
+            .padding([8.0, 24.0])
+            .style(style::primary_button)
+            .on_press_maybe((!state.busy).then_some(Msg::Match)),
+        button(text("Add another job post").size(style::BODY_SIZE))
+            .padding([8.0, 16.0])
+            .style(style::standard_button)
+            .on_press_maybe((!state.busy && jobs < MAX_JOBS).then_some(Msg::AddJob)),
+    ]
+    .spacing(8)
+    .align_y(Center);
+    if jobs > 1 {
+        buttons = buttons.push(widgets::caption(format!(
+            "{jobs} of {MAX_JOBS}. Each is matched in turn with the same CV; with an AI model, each is a few model calls."
+        )));
+    }
+    page = page.push(buttons);
     if let Some(bar) = said_bar(state) {
         page = page.push(bar);
+    }
+    if let Some(batch) = &state.batch {
+        page = page.push(batch::view(batch));
     }
     if let Some(shown) = &state.fresh {
         page = page.push(result_view(shown, state.busy));
@@ -923,6 +1084,31 @@ fn job_card(state: &State) -> Element<'_, Msg> {
     .spacing(GAP);
     body = body.push(file_row(state, Target::Job, state.job_file.as_deref()));
     container(body).padding(CARD_PADDING).width(Fill).into()
+}
+
+/// Another job post's box, with Remove.
+fn more_job_card<'a>(state: &'a State, index: usize, job: &'a text_editor::Content) -> Element<'a, Msg> {
+    let heading = row![
+        widgets::section_title(format!("Job post {}", index + 2)),
+        iced::widget::space().width(Fill),
+        button(text("Remove").size(style::BODY_SIZE))
+            .style(style::standard_button)
+            .on_press_maybe((!state.busy).then_some(Msg::RemoveJob(index))),
+    ]
+    .align_y(Center);
+    let body = text_editor(job)
+        .placeholder("Paste the job post here, or a link to it")
+        .on_action(move |action| Msg::MoreJobEdit(index, action))
+        .size(style::BODY_SIZE)
+        .padding(8)
+        .height(MORE_JOB_HEIGHT)
+        .style(style::text_area);
+    column![
+        heading,
+        widgets::card(container(body).padding(CARD_PADDING).width(Fill).into())
+    ]
+    .spacing(10)
+    .into()
 }
 
 fn cv_card(state: &State) -> Element<'_, Msg> {
@@ -1254,7 +1440,7 @@ fn score_card(result: &MatchResult) -> Element<'_, Msg> {
 }
 
 /// A score tag's colours: top and good are good news, weak is not.
-fn tag_health(tag: &str) -> Health {
+pub(super) fn tag_health(tag: &str) -> Health {
     match tag {
         "top" | "good" => Health::Ready,
         "poor" => Health::Attention,
