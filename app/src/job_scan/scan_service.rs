@@ -340,10 +340,10 @@ async fn scan_holding_lock(context: Arc<Context>, started: Started) -> Result<Sc
         return Err(ServiceError::new(ErrorKind::TooMany, running_text(running.as_ref())));
     };
     // Asked before this scan held the lock: meant for one that ended already.
-    scan_lock::forget_stop_request(&context);
+    scan_lock::forget_requests(&context);
     tokio::select! {
         scanned = scan_searches(&context, started) => scanned,
-        never = scan_lock::stop_when_asked(&context) => match never {},
+        never = scan_lock::heed_requests(&context) => match never {},
     }
 }
 
@@ -377,6 +377,7 @@ async fn scan_searches(context: &Arc<Context>, started: Started) -> Result<ScanR
         return Ok(report);
     }
     for search_id in model::scannable(db).await? {
+        running_work::until_resumed().await;
         if running_work::stop_asked() {
             report.stopped = Some(STOPPED_SCAN.to_string());
             break;
@@ -412,11 +413,11 @@ async fn scan_searches(context: &Arc<Context>, started: Started) -> Result<ScanR
 
 /// A scan's matching of posts, one after another: the profile, read for the first post and kept
 /// for the rest, whether a post was taken up yet (the pause comes between two), and until when
-/// posts are taken up (Started::time_limit).
+/// posts are taken up (Started::time_limit; the time the scan was paused isn't counted).
 struct Matching {
     cv: Option<ProfileCv>,
     started_one: bool,
-    began: Instant,
+    clock: running_work::Clock,
     time_limit: Duration,
 }
 
@@ -425,7 +426,7 @@ impl Matching {
         Matching {
             cv: None,
             started_one: false,
-            began: Instant::now(),
+            clock: running_work::Clock::start(),
             time_limit: started.time_limit(),
         }
     }
@@ -443,8 +444,10 @@ impl Matching {
             }
             crate::say!("job_scan: post {post_id} ({} of {count}): matching.", index + 1);
             let began = Instant::now();
+            // A pause of the scan doesn't count toward the post's time limit.
             let matched =
-                tokio::time::timeout(POST_TIME_LIMIT, match_post_once_read(context, post_id, &mut self.cv)).await;
+                running_work::timeout_unpaused(POST_TIME_LIMIT, match_post_once_read(context, post_id, &mut self.cv))
+                    .await;
             let minutes = began.elapsed().as_secs_f64() / 60.0;
             match matched {
                 Ok(Ok(true)) => {
@@ -472,6 +475,7 @@ impl Matching {
     /// or the user stayed busy.
     async fn make_way(&mut self) -> Result<(), String> {
         let stopped = || Err(STOPPED_SCAN.to_string());
+        running_work::until_resumed().await;
         if running_work::stop_asked() {
             return stopped();
         }
@@ -493,7 +497,7 @@ impl Matching {
 
     /// The scan's time left, or Err (out_of_time) when there is none.
     fn time_left(&self) -> Result<Duration, String> {
-        match self.time_limit.checked_sub(self.began.elapsed()) {
+        match self.time_limit.checked_sub(self.clock.ran()) {
             Some(left) if !left.is_zero() => Ok(left),
             _ => Err(out_of_time(self.time_limit)),
         }

@@ -10,7 +10,8 @@
 //!
 //! A scan another JobFinder runs (the schedule's) is stopped from this one's task manager by a
 //! file beside the database ("jobfinder.sqlite.scan.stop"): the scan looks for it every
-//! STOP_LOOK_EVERY and stops as the task manager stops one of its own.
+//! STOP_LOOK_EVERY and stops as the task manager stops one of its own. It is paused the same way,
+//! by a file there for as long as it is to stay paused ("jobfinder.sqlite.scan.pause").
 
 use std::fs::{File, OpenOptions, TryLockError};
 use std::path::PathBuf;
@@ -25,7 +26,10 @@ pub const LOCK_SUFFIX: &str = ".scan.lock";
 /// What is added to the database file's name for the file that asks its scan to stop.
 pub const STOP_SUFFIX: &str = ".scan.stop";
 
-/// How often a scan looks for the stop file (every two seconds).
+/// What is added to the database file's name for the file that keeps its scan paused.
+pub const PAUSE_SUFFIX: &str = ".scan.pause";
+
+/// How often a scan looks for the stop and pause files (every two seconds).
 const STOP_LOOK_EVERY: Duration = Duration::from_secs(2);
 
 /// How many times a scan tries to take the lock: is_held() takes it for a moment to look, so a
@@ -105,7 +109,17 @@ pub fn is_held(context: &Context) -> std::io::Result<bool> {
 
 /// The stop file, for a database file.
 fn stop_file(database: &str) -> Option<PathBuf> {
-    (!database.is_empty()).then(|| PathBuf::from(format!("{database}{STOP_SUFFIX}")))
+    beside(database, STOP_SUFFIX)
+}
+
+/// The pause file, for a database file.
+fn pause_file(database: &str) -> Option<PathBuf> {
+    beside(database, PAUSE_SUFFIX)
+}
+
+/// The file named the database file's name and suffix; None for an in-memory database.
+fn beside(database: &str, suffix: &str) -> Option<PathBuf> {
+    (!database.is_empty()).then(|| PathBuf::from(format!("{database}{suffix}")))
 }
 
 /// Asks the scan that holds the lock, in whichever program, to stop. False on an in-memory
@@ -118,25 +132,58 @@ pub fn ask_to_stop(context: &Context) -> std::io::Result<bool> {
     Ok(true)
 }
 
-/// Forgets a stop asked of a scan that ended before it saw it.
-pub fn forget_stop_request(context: &Context) {
-    if let Some(path) = stop_file(&context.database.path) {
+/// Asks the scan that holds the lock, in whichever program, to pause (paused) or to go on. False
+/// on an in-memory database.
+pub fn ask_to_pause(context: &Context, paused: bool) -> std::io::Result<bool> {
+    let Some(path) = pause_file(&context.database.path) else {
+        return Ok(false);
+    };
+    if paused {
+        std::fs::write(path, b"")?;
+    } else if let Err(e) = std::fs::remove_file(path)
+        && e.kind() != std::io::ErrorKind::NotFound
+    {
+        return Err(e);
+    }
+    Ok(true)
+}
+
+/// Whether the scan that holds the lock is asked to stay paused.
+pub fn pause_asked(context: &Context) -> bool {
+    pause_file(&context.database.path).is_some_and(|path| path.is_file())
+}
+
+/// Forgets a stop or a pause asked of a scan that ended before it saw it.
+pub fn forget_requests(context: &Context) {
+    let database = &context.database.path;
+    for path in [stop_file(database), pause_file(database)].into_iter().flatten() {
         let _ = std::fs::remove_file(path);
     }
 }
 
 /// Forever, for the scan holding the lock: when the stop file shows up, takes it away and asks
-/// this scan to stop (running_work).
-pub async fn stop_when_asked(context: &Context) -> std::convert::Infallible {
-    let path = stop_file(&context.database.path);
+/// this scan to stop (running_work); when the pause file shows up or goes away, pauses this scan
+/// or lets it go on. Only a change of the pause file does, so a pause from this program's own
+/// task manager stays.
+pub async fn heed_requests(context: &Context) -> std::convert::Infallible {
+    use crate::task_manager::running_work;
+    let stop = stop_file(&context.database.path);
+    let mut pause_seen = false;
     loop {
         tokio::time::sleep(STOP_LOOK_EVERY).await;
-        if let Some(path) = &path
+        if let Some(path) = &stop
             && path.is_file()
         {
             let _ = std::fs::remove_file(path);
             crate::log_line!("job_scan: another JobFinder's task manager asked this scan to stop.");
-            crate::task_manager::running_work::stop_this();
+            running_work::stop_this();
+        }
+        let pause = pause_asked(context);
+        if pause != pause_seen {
+            pause_seen = pause;
+            let asked = if pause { "pause" } else { "go on" };
+            crate::log_line!("job_scan: another JobFinder's task manager asked this scan to {asked}.");
+            running_work::pause_this(pause);
         }
     }
 }

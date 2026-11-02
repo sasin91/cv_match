@@ -135,6 +135,7 @@ pub fn database_files(database: &Path) -> Vec<PathBuf> {
         "-journal",
         crate::job_scan::scan_lock::LOCK_SUFFIX,
         crate::job_scan::scan_lock::STOP_SUFFIX,
+        crate::job_scan::scan_lock::PAUSE_SUFFIX,
     ] {
         let mut name = database.as_os_str().to_owned();
         name.push(suffix);
@@ -252,6 +253,7 @@ mod tests {
                 "/data/jobfinder.sqlite-journal",
                 "/data/jobfinder.sqlite.scan.lock",
                 "/data/jobfinder.sqlite.scan.stop",
+                "/data/jobfinder.sqlite.scan.pause",
                 "/data/jobfinder.log",
                 "/data/jobfinder.old.log",
                 "/data/jobfinder.log.lock"

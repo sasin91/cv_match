@@ -10,6 +10,13 @@
 //! task of its own takes both along with task_scope::carried(). Outside a piece of work (tests, the read-pdf child) part()
 //! runs its work as it is, unlisted.
 //!
+//! Pausing a piece holds it and every piece under it at its next step: what it is in the middle
+//! of (a model's answer, a page being read) finishes, and nothing new starts under it until it is
+//! resumed. A piece started under a paused one waits before it starts (track), work that goes on
+//! step by step waits between its steps (until_resumed: a scan between two posts, a download
+//! between two chunks), and the time limits work keeps (Clock, timeout_unpaused) don't count the
+//! time it was paused, so a paused post isn't failed for taking too long.
+//!
 //! Stopping a piece asks it and every piece under it to stop. Work that only waits on something
 //! (a model's answer, a child process) is dropped at once, which ends its HTTP request or its
 //! process (kill_on_drop). Work that keeps the books (a scan, a post's match) is given its
@@ -56,6 +63,15 @@ pub enum WorkKind {
 }
 
 impl WorkKind {
+    /// Whether the task manager offers to pause it: work that goes on in steps. A model call, a
+    /// browser or a PDF read is one step, which finishes anyway; pause the work it is part of.
+    pub fn pausable(self) -> bool {
+        matches!(
+            self,
+            WorkKind::Scan | WorkKind::Matching | WorkKind::Writing | WorkKind::Download
+        )
+    }
+
     /// The kind as the task manager's Kind column says it.
     pub fn label(self) -> &'static str {
         match self {
@@ -104,6 +120,8 @@ pub struct WorkRow {
     pub process_id: Option<u32>,
     /// Asked to stop, and finishing.
     pub stopping: bool,
+    /// Paused: holds at its next step until resumed.
+    pub paused: bool,
 }
 
 /// The work was stopped from the task manager before it finished.
@@ -131,6 +149,32 @@ struct Entry {
     process_id: Option<u32>,
     /// true once it is asked to stop.
     stop: watch::Sender<bool>,
+    /// true while it is paused.
+    pause: watch::Sender<bool>,
+    /// Since when it is paused, while it is.
+    paused_since: Option<Instant>,
+    /// How long it was paused before, all told.
+    paused_before: Duration,
+}
+
+impl Entry {
+    /// Pauses it, or resumes it.
+    fn set_paused(&mut self, paused: bool) {
+        match (paused, self.paused_since) {
+            (true, None) => self.paused_since = Some(Instant::now()),
+            (false, Some(since)) => {
+                self.paused_before += since.elapsed();
+                self.paused_since = None;
+            }
+            _ => {}
+        }
+        self.pause.send_replace(paused);
+    }
+
+    /// How long it was paused, all told, now included.
+    fn paused_for(&self) -> Duration {
+        self.paused_before + self.paused_since.map_or(Duration::ZERO, |since| since.elapsed())
+    }
 }
 
 #[derive(Default)]
@@ -159,6 +203,7 @@ pub struct WorkPlace {
 struct Piece {
     id: WorkId,
     stop: watch::Receiver<bool>,
+    pause: watch::Receiver<bool>,
 }
 
 /// Takes a piece out of the list when its work ends, however it ends (dropped too).
@@ -252,33 +297,63 @@ impl RunningWork {
         true
     }
 
+    /// Pauses the piece id and every piece under it, or resumes them. False when it isn't
+    /// running (it ended meanwhile).
+    pub fn pause(&self, id: WorkId, paused: bool) -> bool {
+        let mut entries = self.lock();
+        if !entries.rows.contains_key(&id) {
+            return false;
+        }
+        let mut asked = vec![id];
+        while let Some(next) = asked.pop() {
+            asked.extend(children(&entries, next).collect::<Vec<_>>());
+            if let Some(entry) = entries.rows.get_mut(&next) {
+                entry.set_paused(paused);
+            }
+        }
+        true
+    }
+
+    /// How long the piece id was paused, all told; zero once it ended.
+    fn paused_for(&self, id: WorkId) -> Duration {
+        self.lock().rows.get(&id).map_or(Duration::ZERO, Entry::paused_for)
+    }
+
     /// Whether a piece of kind runs now.
     pub fn runs(&self, kind: WorkKind) -> bool {
         self.lock().rows.values().any(|entry| entry.kind == kind)
     }
 
-    /// Lists a new piece, already asked to stop when the piece it is under is.
-    fn add(&self, parent: Option<WorkId>, kind: WorkKind, what: String) -> (WorkId, watch::Receiver<bool>) {
+    /// Lists a new piece, already asked to stop when the piece it is under is, and paused when
+    /// that one is.
+    fn add(&self, parent: Option<WorkId>, kind: WorkKind, what: String) -> Piece {
         let mut entries = self.lock();
-        let stopping = parent
-            .and_then(|parent| entries.rows.get(&parent))
-            .is_some_and(|entry| *entry.stop.borrow());
+        let parent_entry = parent.and_then(|parent| entries.rows.get(&parent));
+        let stopping = parent_entry.is_some_and(|entry| *entry.stop.borrow());
+        let paused = parent_entry.is_some_and(|entry| *entry.pause.borrow());
         let (stop, asked) = watch::channel(stopping);
+        let (pause, held) = watch::channel(false);
         let id = entries.next_id;
         entries.next_id += 1;
-        entries.rows.insert(
+        let mut entry = Entry {
+            parent,
+            kind,
+            what,
+            started_at: chrono::Utc::now().timestamp(),
+            started: Instant::now(),
+            process_id: None,
+            stop,
+            pause,
+            paused_since: None,
+            paused_before: Duration::ZERO,
+        };
+        entry.set_paused(paused);
+        entries.rows.insert(id, entry);
+        Piece {
             id,
-            Entry {
-                parent,
-                kind,
-                what,
-                started_at: chrono::Utc::now().timestamp(),
-                started: Instant::now(),
-                process_id: None,
-                stop,
-            },
-        );
-        (id, asked)
+            stop: asked,
+            pause: held,
+        }
     }
 
     fn set_process(&self, id: WorkId, process_id: Option<u32>) {
@@ -312,6 +387,7 @@ fn push_with_children(entries: &Entries, id: WorkId, depth: usize, rows: &mut Ve
         running_for: entry.started.elapsed(),
         process_id: entry.process_id,
         stopping: *entry.stop.borrow(),
+        paused: *entry.pause.borrow(),
     });
     for child in children(entries, id) {
         push_with_children(entries, child, depth + 1, rows);
@@ -326,14 +402,19 @@ async fn track<F: Future>(
     what: String,
     work: F,
 ) -> Result<F::Output, Stopped> {
-    let (id, mut asked) = list.add(parent, kind, what);
-    let _listed = Listed { list: &list, id };
+    let piece = list.add(parent, kind, what);
+    let _listed = Listed {
+        list: &list,
+        id: piece.id,
+    };
+    let mut asked = piece.stop.clone();
+    // Started under a paused piece: it waits for that one to be resumed before it starts.
+    if !wait_while_paused(&piece).await {
+        return Err(Stopped);
+    }
     let place = WorkPlace {
         list: Arc::clone(&list),
-        piece: Some(Piece {
-            id,
-            stop: asked.clone(),
-        }),
+        piece: Some(piece),
     };
     // On the heap: the futures of work listed inside work listed (a model call in a post's match
     // in a scan) would otherwise nest too deep for the compiler to lay them out.
@@ -353,6 +434,18 @@ async fn track<F: Future>(
 async fn asked_to_stop(asked: &mut watch::Receiver<bool>) {
     if asked.wait_for(|stop| *stop).await.is_err() {
         std::future::pending::<()>().await;
+    }
+}
+
+/// Waits while piece is paused. False when it was asked to stop meanwhile (or before).
+async fn wait_while_paused(piece: &Piece) -> bool {
+    let mut held = piece.pause.clone();
+    let mut asked = piece.stop.clone();
+    tokio::select! {
+        biased;
+        () = asked_to_stop(&mut asked) => false,
+        // An Err is the piece's entry gone, so nothing holds it any more.
+        _ = held.wait_for(|paused| !*paused) => !*asked.borrow(),
     }
 }
 
@@ -401,6 +494,83 @@ pub fn stop_this() {
             place.list.stop(piece.id);
         }
     });
+}
+
+/// Whether the piece this task runs is paused.
+pub fn paused() -> bool {
+    this_place(|place| place.piece.as_ref().is_some_and(|piece| *piece.pause.borrow())).unwrap_or(false)
+}
+
+/// Waits while the piece this task runs is paused, until it is resumed or asked to stop; at once
+/// when it isn't paused (and outside one). For work that goes on step by step, between its steps.
+pub async fn until_resumed() {
+    let piece = this_place(|place| place.piece.clone()).flatten();
+    if let Some(piece) = piece {
+        wait_while_paused(&piece).await;
+    }
+}
+
+/// Pauses the piece this task runs, and the pieces under it, or resumes them, as the task
+/// manager would.
+pub fn pause_this(paused: bool) {
+    this_place(|place| {
+        if let Some(piece) = &place.piece {
+            place.list.pause(piece.id, paused);
+        }
+    });
+}
+
+/// How long the piece this task runs was paused, all told; zero outside one.
+fn paused_for() -> Duration {
+    this_place(|place| place.piece.as_ref().map(|piece| place.list.paused_for(piece.id)))
+        .flatten()
+        .unwrap_or(Duration::ZERO)
+}
+
+/// A stopwatch for the piece this task runs that stands still while the piece is paused: for the
+/// time limits work keeps, so a pause doesn't use them up.
+pub struct Clock {
+    began: Instant,
+    paused_before: Duration,
+}
+
+impl Clock {
+    /// Starts it now, in the piece this task runs.
+    pub fn start() -> Self {
+        Clock {
+            began: Instant::now(),
+            paused_before: paused_for(),
+        }
+    }
+
+    /// How long the piece ran since start(), the time it was paused left out.
+    pub fn ran(&self) -> Duration {
+        let paused = paused_for().saturating_sub(self.paused_before);
+        self.began.elapsed().saturating_sub(paused)
+    }
+}
+
+/// The work ran past its time limit (timeout_unpaused).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct TimedOut;
+
+/// Runs work for at most limit, as tokio::time::timeout does, but the time the piece this task
+/// runs is paused doesn't count: work is polled all along (what it is in the middle of finishes),
+/// and the limit is looked at again whenever it would run out.
+pub async fn timeout_unpaused<F: Future>(limit: Duration, work: F) -> Result<F::Output, TimedOut> {
+    let clock = Clock::start();
+    let mut work = Box::pin(work);
+    loop {
+        let left = limit.saturating_sub(clock.ran());
+        if left.is_zero() {
+            return Err(TimedOut);
+        }
+        tokio::select! {
+            biased;
+            done = &mut work => return Ok(done),
+            () = tokio::time::sleep(left) => {}
+        }
+    }
 }
 
 /// Says the child process the piece this task runs started (its process id), for the list.
@@ -481,6 +651,94 @@ mod tests {
         assert!(grace(WorkKind::Matching) > grace(WorkKind::Writing));
         assert!(grace(WorkKind::Scan) > grace(WorkKind::Matching));
         assert_eq!(WorkKind::ModelCall.grace(), None);
+    }
+
+    #[tokio::test]
+    async fn a_paused_piece_starts_nothing_new_under_it_until_resumed() {
+        let list = Arc::new(RunningWork::default());
+        let (seen_tx, seen_rx) = tokio::sync::oneshot::channel();
+        let (go_tx, go_rx) = tokio::sync::oneshot::channel::<()>();
+        let (ran_tx, mut ran_rx) = tokio::sync::oneshot::channel();
+        let running = Arc::clone(&list);
+        let scan = tokio::spawn(async move {
+            running
+                .run(WorkKind::Scan, "Backend", async move {
+                    let _ = seen_tx.send(());
+                    let _ = go_rx.await;
+                    part(WorkKind::ModelCall, "model", async move {
+                        let _ = ran_tx.send(());
+                    })
+                    .await
+                })
+                .await
+        });
+        seen_rx.await.unwrap();
+        let top = list.rows()[0].id;
+        assert!(list.pause(top, true));
+        go_tx.send(()).unwrap();
+        // The call is listed, paused with its scan, and waits.
+        while list.rows().len() < 2 {
+            tokio::task::yield_now().await;
+        }
+        tokio::time::sleep(Duration::from_millis(50)).await;
+        assert!(ran_rx.try_recv().is_err(), "it waits while paused");
+        assert!(list.rows().iter().all(|row| row.paused));
+        assert!(list.pause(top, false));
+        assert_eq!(scan.await.unwrap(), Ok(Ok(())));
+        assert!(ran_rx.try_recv().is_ok());
+    }
+
+    #[tokio::test]
+    async fn a_paused_piece_can_still_be_stopped() {
+        let list = Arc::new(RunningWork::default());
+        let (seen_tx, seen_rx) = tokio::sync::oneshot::channel();
+        let running = Arc::clone(&list);
+        let download = tokio::spawn(async move {
+            running
+                .run(WorkKind::Download, "model.gguf", async move {
+                    pause_this(true);
+                    let _ = seen_tx.send(());
+                    until_resumed().await;
+                    stop_asked()
+                })
+                .await
+        });
+        seen_rx.await.unwrap();
+        assert!(list.rows()[0].paused);
+        assert!(list.stop(list.rows()[0].id));
+        // Its wait ends on the stop: it ends seeing it asked, or is dropped.
+        let ended = download.await.unwrap();
+        assert!(matches!(ended, Ok(true) | Err(Stopped)), "{ended:?}");
+    }
+
+    #[tokio::test]
+    async fn time_paused_doesnt_count_toward_a_time_limit() {
+        /// The limit the work keeps.
+        const LIMIT: Duration = Duration::from_millis(200);
+        /// How long it stays paused: longer than the limit.
+        const PAUSED: Duration = Duration::from_millis(400);
+        let list = Arc::new(RunningWork::default());
+        let (seen_tx, seen_rx) = tokio::sync::oneshot::channel();
+        let running = Arc::clone(&list);
+        let matching = tokio::spawn(async move {
+            running
+                .run(WorkKind::Matching, "a post", async move {
+                    pause_this(true);
+                    let _ = seen_tx.send(());
+                    let clock = Clock::start();
+                    let done = timeout_unpaused(LIMIT, until_resumed()).await;
+                    (done, clock.ran())
+                })
+                .await
+        });
+        seen_rx.await.unwrap();
+        tokio::time::sleep(PAUSED).await;
+        assert!(list.pause(list.rows()[0].id, false));
+        let (done, ran) = matching.await.unwrap().unwrap();
+        assert_eq!(done, Ok(()));
+        assert!(ran < LIMIT, "the pause isn't counted: {ran:?}");
+        let ran_out = timeout_unpaused(Duration::from_millis(10), std::future::pending::<()>()).await;
+        assert_eq!(ran_out, Err(TimedOut));
     }
 
     #[tokio::test]

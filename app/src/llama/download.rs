@@ -13,11 +13,12 @@ use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
 use serde::Deserialize;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncSeekExt, AsyncWriteExt};
 
 use super::catalog::CatalogModel;
 use super::hardware::{GpuVendor, Inventory};
 use super::llama_server::SERVER_FILE;
+use crate::task_manager::running_work::{self, Stopped};
 
 /// llama.cpp's releases, newest first, as GitHub's API lists them.
 pub const RELEASES: &str = "https://api.github.com/repos/ggml-org/llama.cpp/releases";
@@ -418,26 +419,45 @@ pub async fn download_model(model: &CatalogModel, models_folder: &Path, download
     Ok(())
 }
 
-/// url's body into to, through to.part, counting bytes into downloads.
+/// url's body into to, through to.part, counting bytes into downloads. Paused in the task
+/// manager, it lets go of the connection (a server ends one that waits long) between two chunks,
+/// and on resume asks for the rest (an HTTP range), or for all of it again when the server can't
+/// send a part.
 async fn download_file(client: &reqwest::Client, url: &str, to: &Path, downloads: &Downloads) -> Result<(), String> {
-    let mut response = client
-        .get(url)
-        .send()
-        .await
-        .and_then(reqwest::Response::error_for_status)
-        .map_err(|e| format!("{url} couldn't be downloaded: {e}"))?;
-    let total = response.content_length();
+    let mut response = get_from(client, url, 0).await?;
+    let mut total = response.content_length();
     let part = part_path(to);
     let mut file = tokio::fs::File::create(&part)
         .await
         .map_err(|e| format!("Couldn't write {}: {e}", part.display()))?;
     let mut done = 0u64;
     downloads.set_bytes(done, total);
-    while let Some(piece) = response
-        .chunk()
-        .await
-        .map_err(|e| format!("The download of {url} broke off: {e}"))?
-    {
+    loop {
+        if running_work::paused() {
+            drop(response);
+            running_work::until_resumed().await;
+            if running_work::stop_asked() {
+                return Err(Stopped::SAID.to_string());
+            }
+            response = get_from(client, url, done).await?;
+            if response.status() != reqwest::StatusCode::PARTIAL_CONTENT {
+                // The whole file again: start over.
+                file.set_len(0)
+                    .await
+                    .and(file.seek(io::SeekFrom::Start(0)).await.map(|_| ()))
+                    .map_err(|e| format!("Couldn't write {}: {e}", part.display()))?;
+                done = 0;
+                total = response.content_length();
+                downloads.set_bytes(done, total);
+            }
+        }
+        let Some(piece) = response
+            .chunk()
+            .await
+            .map_err(|e| format!("The download of {url} broke off: {e}"))?
+        else {
+            break;
+        };
         file.write_all(&piece)
             .await
             .map_err(|e| format!("Couldn't write {}: {e}", part.display()))?;
@@ -454,6 +474,19 @@ async fn download_file(client: &reqwest::Client, url: &str, to: &Path, downloads
     tokio::fs::rename(&part, to)
         .await
         .map_err(|e| format!("Couldn't move {} to {}: {e}", part.display(), to.display()))
+}
+
+/// The answer to a GET of url, from byte from on (the whole of it from 0).
+async fn get_from(client: &reqwest::Client, url: &str, from: u64) -> Result<reqwest::Response, String> {
+    let mut request = client.get(url);
+    if from > 0 {
+        request = request.header(reqwest::header::RANGE, format!("bytes={from}-"));
+    }
+    request
+        .send()
+        .await
+        .and_then(reqwest::Response::error_for_status)
+        .map_err(|e| format!("{url} couldn't be downloaded: {e}"))
 }
 
 fn part_path(to: &Path) -> PathBuf {
