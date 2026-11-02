@@ -1,10 +1,11 @@
-//! The Match screen: the dashboard's status rows and the glance at the saved matches, as the
-//! match page shows them (dashboard.rs). Matching itself is still the web page's, so its button
-//! opens it in the browser.
+//! The Match screen's overview: the dashboard's status rows and the glance at the saved matches,
+//! as the match page shows them (dashboard.rs). Match a job, a list's tile and a match on the
+//! shortlist open their pages in the window (matching).
 
 use iced::widget::{Column, button, column, container, row, text};
 use iced::{Center, Element, Fill};
 
+use super::matching::{self, Page};
 use super::style;
 use super::widgets::{CARD_PADDING, rows, section, section_title};
 use super::{GAP, Message};
@@ -89,10 +90,15 @@ fn heading<'a>(title: &'a str, under: Element<'a, Message>) -> Element<'a, Messa
         button(text("Match a job").size(style::BODY_SIZE))
             .padding([8.0, 16.0])
             .style(style::primary_button)
-            .on_press(open("match")),
+            .on_press(go(Page::New)),
     ]
     .align_y(Center)
     .into()
+}
+
+/// Goes to one of the Match screen's pages.
+fn go(page: Page) -> Message {
+    Message::Matching(matching::Msg::Go(page))
 }
 
 /// The browser opening path.
@@ -150,7 +156,7 @@ fn stat_tile(count: &ListCount) -> Element<'_, Message> {
     .width(Fill)
     .height(TILE_HEIGHT)
     .style(style::standard_button)
-    .on_press(open(&count.href))
+    .on_press(go(Page::List(count.list)))
     .into()
 }
 
@@ -179,6 +185,6 @@ fn best_row(saved: &SavedMatchRow) -> Element<'_, Message> {
     .padding([12.0, CARD_PADDING])
     .width(Fill)
     .style(style::row_button)
-    .on_press(open(&format!("match/{}", saved.id)))
+    .on_press(go(Page::Saved(saved.id)))
     .into()
 }

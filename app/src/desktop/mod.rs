@@ -11,6 +11,7 @@ mod job_searches;
 mod language_models;
 mod local_model;
 mod match_screen;
+mod matching;
 mod settings_screen;
 mod style;
 mod widgets;
@@ -98,6 +99,7 @@ pub struct Shell {
     language_models: language_models::State,
     local_model: local_model::State,
     job_searches: job_searches::State,
+    matching: matching::State,
 }
 
 /// Clone, as iced's buttons need; a reload's answer is shared rather than copied.
@@ -115,6 +117,7 @@ pub enum Message {
     LanguageModels(language_models::Msg),
     LocalModel(local_model::Msg),
     JobSearches(job_searches::Msg),
+    Matching(matching::Msg),
 }
 
 /// Opens the window and runs until it is closed.
@@ -199,6 +202,7 @@ fn boot(launch: &Mutex<Option<Launch>>) -> (Shell, Task<Message>) {
         language_models: language_models::State::default(),
         local_model: local_model::State::default(),
         job_searches: job_searches::State::default(),
+        matching: matching::State::default(),
     };
     let tasks = Task::batch([
         Task::done(Message::Reload),
@@ -284,6 +288,48 @@ impl Runner {
     }
 }
 
+/// A step of work run with Runner::run_saying: a line it says as it goes, or its answer.
+pub enum Step<T> {
+    Said(String),
+    Done(Result<T, String>),
+}
+
+/// What work run with Runner::run_saying says its steps with.
+pub type Sayer = Arc<dyn Fn(&str) + Send + Sync>;
+
+impl Runner {
+    /// As run, for work that says what it is doing as it goes: each line it says comes as
+    /// Step::Said, then its answer as Step::Done.
+    pub fn run_saying<T, F, M>(
+        &self,
+        work: impl FnOnce(Arc<Context>, Sayer) -> F + Send + 'static,
+        step: impl Fn(Step<T>) -> M + Send + 'static,
+    ) -> Task<M>
+    where
+        F: Future<Output = T> + Send + 'static,
+        T: Send + 'static,
+        M: Send + 'static,
+    {
+        let (sender, receiver) = unbounded_channel();
+        let says = sender.clone();
+        let sayer: Sayer = Arc::new(move |line: &str| {
+            // The window was closed: nobody to say it to.
+            let _ = says.send(Step::Said(line.to_string()));
+        });
+        let job = spawn_work(&self.runtime, Arc::clone(&self.context), move |context| {
+            work(context, sayer)
+        });
+        self.runtime.spawn(async move {
+            let done = job.await.map_err(|e| {
+                crate::log_line!("The window's work stopped: {e}");
+                format!("That stopped with an error: {e}")
+            });
+            let _ = sender.send(Step::Done(done));
+        });
+        Task::run(received(receiver), step)
+    }
+}
+
 /// Calls work(context) on the runtime and runs what it gives there.
 fn spawn_work<T, F>(
     runtime: &Handle,
@@ -324,8 +370,19 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
                     shell.job_searches.show_list();
                     return Task::done(Message::JobSearches(job_searches::Msg::Load));
                 }
-                Screen::Match | Screen::Settings => {}
+                // The sidebar's Match is the overview, read again.
+                Screen::Match => {
+                    shell.matching.page = matching::Page::Overview;
+                    return Task::done(Message::Reload);
+                }
+                Screen::Settings => {}
             }
+        }
+        Message::Matching(matching::Msg::OpenPage(path)) => return Task::done(Message::OpenPage(path)),
+        Message::Matching(matching::Msg::Changed) => return Task::done(Message::Reload),
+        Message::Matching(msg) => {
+            let runner = shell.runner();
+            return matching::update(&mut shell.matching, msg, &runner).map(Message::Matching);
         }
         Message::LanguageModels(language_models::Msg::ShowLocalModel) => {
             return Task::done(Message::Show(Screen::LocalModel));
@@ -398,7 +455,8 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
 
 fn view(shell: &Shell) -> Element<'_, Message> {
     let screen = match shell.screen {
-        Screen::Match => match_screen::view(shell.overview.as_ref()),
+        Screen::Match if shell.matching.page == matching::Page::Overview => match_screen::view(shell.overview.as_ref()),
+        Screen::Match => matching::view(&shell.matching).map(Message::Matching),
         Screen::LanguageModels => language_models::view(&shell.language_models).map(Message::LanguageModels),
         Screen::LocalModel => local_model::view(&shell.local_model).map(Message::LocalModel),
         Screen::JobSearches => job_searches::view(&shell.job_searches).map(Message::JobSearches),

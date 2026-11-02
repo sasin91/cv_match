@@ -6,7 +6,7 @@ use std::sync::{Arc, LazyLock};
 use jobfinder::account::key_vault::KeyVault;
 use jobfinder::context::Context;
 use jobfinder::db;
-use jobfinder::matches::match_service::{self, RejectOutcome};
+use jobfinder::matches::match_service::{self, MatchAsk, RejectOutcome};
 use jobfinder::server;
 use jobfinder::service_error::ErrorKind;
 use jobfinder::taxonomy::Taxonomy;
@@ -131,4 +131,77 @@ async fn writing_without_a_key_points_to_the_key_page() {
     let context = Arc::new(context().await);
     let error = match_service::write(context, 21, "", "application").await.unwrap_err();
     assert_eq!(error.kind, ErrorKind::NeedKey);
+}
+
+/// A MatchAsk of these texts, with no CV read before.
+fn ask<'a>(job_text: &'a str, job_url: &'a str, cv_text: &'a str) -> MatchAsk<'a> {
+    MatchAsk {
+        job_text,
+        job_url,
+        cv_text,
+        read_cv: None,
+    }
+}
+
+#[tokio::test]
+async fn matching_without_a_model_is_the_free_match_and_says_its_step() {
+    let context = context().await;
+    let said = std::sync::Mutex::new(Vec::new());
+    let say = |step: &str| said.lock().unwrap().push(step.to_string());
+    let answer = match_service::match_job(
+        &context,
+        ask(
+            "PHP-udvikler\nDin profil\n- Erfaring med PHP\n- Kendskab til Docker",
+            "",
+            "Udvikler\nPHP, Laravel, MySQL",
+        ),
+        &say,
+    )
+    .await
+    .unwrap();
+    assert!(answer.fetched.is_none());
+    assert!(answer.read_cv.is_none());
+    assert!(!answer.matched_before);
+    assert!(answer.result.cv_found.is_some());
+    assert_eq!(*said.lock().unwrap(), ["Matching…"]);
+}
+
+#[tokio::test]
+async fn matching_says_what_is_missing_before_any_work() {
+    let context = context().await;
+    let no_job = match_service::match_job(&context, ask("  ", "", "PHP"), &|_| {})
+        .await
+        .unwrap_err();
+    assert_eq!(no_job.kind, ErrorKind::Invalid);
+    let no_cv = match_service::match_job(&context, ask("Vi søger en PHP-udvikler.", "", " "), &|_| {})
+        .await
+        .unwrap_err();
+    assert_eq!(no_cv.message, "Paste or choose a CV first.");
+    let not_a_link = match_service::match_job(&context, ask("", "jobindex.dk/job/1", "PHP"), &|_| {})
+        .await
+        .unwrap_err();
+    assert_eq!(not_a_link.message, "Paste a link starting with http:// or https://.");
+}
+
+#[tokio::test]
+async fn a_link_in_the_job_box_is_fetched_first() {
+    let context = context().await;
+    let now = chrono::Utc::now().timestamp();
+    for _ in 0..match_service::MAX_FETCHES {
+        context.count_fetch(now).unwrap();
+    }
+    // The fetch is counted, so it stops at the limit: the link was fetched, not matched as text.
+    let error = match_service::match_job(&context, ask(" https://example.com/job ", "", "PHP"), &|_| {})
+        .await
+        .unwrap_err();
+    assert_eq!(error.kind, ErrorKind::TooMany);
+}
+
+#[test]
+fn a_link_is_one_address_and_nothing_else() {
+    assert!(match_service::is_link("https://www.jobindex.dk/job/1"));
+    assert!(match_service::is_link(" HTTP://example.com "));
+    assert!(!match_service::is_link("https://"));
+    assert!(!match_service::is_link("See https://example.com"));
+    assert!(!match_service::is_link("Vi søger en udvikler"));
 }

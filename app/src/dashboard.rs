@@ -84,6 +84,8 @@ pub struct StatusRow {
 /// A list of saved matches, and how many it holds.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ListCount {
+    /// The list (match_model::LISTS), for the window to open.
+    pub list: &'static str,
     pub href: String,
     pub label: &'static str,
     pub count: i64,
@@ -142,6 +144,7 @@ pub async fn findings(context: &Context) -> Result<Findings, String> {
         .map_err(database)?
         .into_iter()
         .map(|(list, count)| ListCount {
+            list,
             href: list_href(list),
             label: LISTS
                 .iter()
