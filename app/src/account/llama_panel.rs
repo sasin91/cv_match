@@ -42,7 +42,7 @@ impl LlamaPanel {
                 .as_ref()
                 .map(|path| path.display().to_string())
                 .unwrap_or_default(),
-            models_folder: overview.folder.join(llama_server::MODELS_FOLDER).display().to_string(),
+            models_folder: overview.models_folder.display().to_string(),
             computer: overview.inventory.to_string(),
             card_problem: overview.card_problem.clone(),
             models: overview

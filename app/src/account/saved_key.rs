@@ -47,6 +47,8 @@ pub struct KeyChoice {
 
 /// A use's list: its form field (use_for_{name}), what the page calls it, and the keys to pick.
 pub struct KeyUse {
+    /// The use's name in USES.
+    pub use_: &'static str,
     pub field: String,
     pub label: &'static str,
     pub choices: Vec<KeyChoice>,
@@ -56,6 +58,7 @@ pub struct KeyUse {
 pub fn key_uses(saved: &[Saved]) -> Vec<KeyUse> {
     USES.iter()
         .map(|&(name, label)| KeyUse {
+            use_: name,
             field: format!("use_for_{name}"),
             label,
             choices: choices_for(saved, name),
