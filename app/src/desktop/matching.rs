@@ -1421,12 +1421,17 @@ fn result_view(shown: &Shown, busy: bool) -> Element<'_, Msg> {
     if let Some(reject) = &result.reject {
         view = view.push(reject_card(shown, reject, busy));
     }
-    if let Some(location) = &result.location {
-        let mut lines = column![text(location.heading).font(style::semibold()).size(style::BODY_SIZE)].spacing(4);
-        for line in &location.lines {
+    if let Some(disqualifier) = &result.disqualifier {
+        let mut lines = column![
+            text(disqualifier.heading)
+                .font(style::semibold())
+                .size(style::BODY_SIZE)
+        ]
+        .spacing(4);
+        for line in &disqualifier.lines {
             lines = lines.push(text(join_reason(&line.text, &line.reason)).size(style::BODY_SIZE));
         }
-        lines = lines.push(widgets::caption(location.note));
+        lines = lines.push(widgets::caption(disqualifier.note));
         view = view.push(
             container(row![style::mark(Health::Attention), lines.width(Fill)].spacing(12))
                 .padding([12.0, CARD_PADDING])

@@ -246,7 +246,7 @@ mod tests {
                 saved_at: String::new(),
                 reject: None,
                 opening: None,
-                location: None,
+                disqualifier: None,
                 apply: None,
                 filters: Vec::new(),
                 sections: Vec::new(),

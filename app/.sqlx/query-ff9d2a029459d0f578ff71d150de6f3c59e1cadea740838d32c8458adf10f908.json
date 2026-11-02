@@ -1,0 +1,50 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT l.id AS \"id!\", l.term_id, l.text FROM taxonomy_labels l\n           WHERE l.status = 'candidate' AND l.source = 'learned'\n             AND EXISTS (SELECT 1 FROM taxonomy_label_sightings s WHERE s.label_id = l.id)\n             AND NOT EXISTS (SELECT 1 FROM taxonomy_label_sightings s\n                             WHERE s.label_id = l.id AND s.learned_from <> 'judge')",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_labels",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "term_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_labels",
+            "name": "term_id"
+          }
+        }
+      },
+      {
+        "name": "text",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_labels",
+            "name": "text"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "ff9d2a029459d0f578ff71d150de6f3c59e1cadea740838d32c8458adf10f908"
+}

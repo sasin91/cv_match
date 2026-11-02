@@ -4,8 +4,15 @@
 //! - From the model's read of the post: a requirement the taxonomy doesn't know by its own words,
 //!   whose English does name a term by one of its labels ("Erfaring med C#" → C#).
 //! - From the judge's "met": a requirement the taxonomy doesn't know, whose evidence is really in
-//!   the CV and holds exactly one of the CV's own list items that names a term ("datamatiker" →
-//!   the term the CV's "Datamatikeruddannelse" names). "partial" and "missing" teach nothing.
+//!   the CV and holds exactly one of the CV's own list items that names a term, when the
+//!   requirement's own words (or its English) share a word with that term's labels
+//!   ("datamatiker" → the term the CV's "Datamatikeruddannelse" names). "partial" and "missing"
+//!   teach nothing.
+//!
+//!   The shared word is what makes it a lesson. "met" says the CV shows something that covers the
+//!   requirement (Laravel covers PHP; a small model may even quote Laravel for "SSA til
+//!   aftenvagt"), not that the requirement is another name for that thing, so a met verdict alone
+//!   would teach "PHP" or "SSA til aftenvagt" as Laravel.
 //!
 //! Locations and years of experience are never learned: the judge weighs those against the
 //! candidate, not against a term. Short phrases, and phrases of only stopwords and qualifiers
@@ -74,7 +81,10 @@ pub fn lessons(taxonomy: &Taxonomy, job: &Job, profile: &Profile, cv_text: &str,
         if !cv.contains(&evidence) {
             continue;
         }
-        if let Some(term_id) = cv_item_term(taxonomy, &matcher, profile, &evidence) {
+        let Some(term_id) = cv_item_term(taxonomy, &matcher, profile, &evidence) else {
+            continue;
+        };
+        if names_term_in_its_words(taxonomy, requirement, term_id) {
             lessons.insert(lesson(requirement, term_id, FROM_JUDGE));
         }
     }
@@ -120,6 +130,14 @@ fn english_term(taxonomy: &Taxonomy, matcher: &Matcher<'_>, requirement: &Requir
         return None;
     }
     by_label(taxonomy, matcher.map_term(english, None)?)
+}
+
+/// Whether the requirement's own words, or its English, share a word with term_id's labels
+/// (Taxonomy::shares_word_stem): what a judge's lesson needs besides the met verdict.
+fn names_term_in_its_words(taxonomy: &Taxonomy, requirement: &Requirement, term_id: i64) -> bool {
+    [&requirement.value, &requirement.english]
+        .into_iter()
+        .any(|words| taxonomy.shares_word_stem(words, term_id))
 }
 
 /// The one term the CV's own list items in evidence name by a label; None when none or several do.
@@ -170,6 +188,8 @@ fn phrase_lang(text: &str) -> &'static str {
 mod tests {
     use super::*;
     use crate::matches::matcher::Verdict;
+    use crate::taxonomy::{Label, TermRecord};
+    use crate::taxonomy_store::FIRST_LEARNED_TERM_ID;
 
     fn requirement(value: &str, english: &str, kind: &str) -> Requirement {
         Requirement {
@@ -217,43 +237,100 @@ mod tests {
         );
     }
 
+    /// The shipped term with this preferred Danish label, made the only term of a taxonomy with
+    /// Laravel's term beside it, so the tests don't hang on the rest of the index.
+    fn two_term_taxonomy() -> (Taxonomy, i64, i64) {
+        let shipped = crate::taxonomy::shipped_terms().unwrap();
+        let named = |text: &str| {
+            shipped
+                .iter()
+                .find(|term| term.labels.iter().any(|label| label.text.eq_ignore_ascii_case(text)))
+                .unwrap_or_else(|| panic!("the shipped index names {text}"))
+                .clone()
+        };
+        let laravel = named("Laravel");
+        let education = TermRecord {
+            id: FIRST_LEARNED_TERM_ID,
+            kind: "skill".to_string(),
+            parent_id: None,
+            labels: vec![Label {
+                text: "Datamatikeruddannelse".to_string(),
+                lang: "da".to_string(),
+                preferred: true,
+            }],
+            definition: None,
+        };
+        let ids = (education.id, laravel.id);
+        (Taxonomy::from_records(vec![education, laravel]), ids.0, ids.1)
+    }
+
+    fn met(id: &str, evidence: &str) -> Verdicts {
+        Verdicts::from([(
+            id.to_string(),
+            Verdict {
+                verdict: MET.to_string(),
+                by: BY_LLM.to_string(),
+                method: String::new(),
+                evidence: evidence.to_string(),
+                reason: String::new(),
+            },
+        )])
+    }
+
+    fn cv_profile() -> (Profile, String) {
+        let profile = Profile {
+            skill: vec!["Laravel".to_string()],
+            education: vec!["Datamatikeruddannelse".to_string()],
+            ..Default::default()
+        };
+        let cv_text = "Uddannelse:\n  Datamatikeruddannelse, Erhvervsakademi\nKompetencer:\n  PHP, Laravel".to_string();
+        (profile, cv_text)
+    }
+
     #[test]
     fn a_met_verdict_teaches_only_with_a_real_quote_of_a_cv_item() {
-        let taxonomy = Taxonomy::load();
-        let (item, term_id) = preferred(&taxonomy, "skill", "da");
-        let profile = Profile {
-            skill: vec![item.clone()],
-            ..Default::default()
-        };
-        let cv_text = format!("Erfaring:\n  Arbejdede med {item} i fem år.");
+        let (taxonomy, education_id, _) = two_term_taxonomy();
+        let (profile, cv_text) = cv_profile();
         let job = Job {
-            requirements: vec![requirement("Qzxv på højt niveau", "", "skill")],
+            requirements: vec![requirement("Uddannelse som datamatiker", "", "education")],
             ..Default::default()
         };
-        let met = |evidence: &str| {
-            Verdicts::from([(
-                "r0".to_string(),
-                Verdict {
-                    verdict: MET.to_string(),
-                    by: BY_LLM.to_string(),
-                    method: String::new(),
-                    evidence: evidence.to_string(),
-                    reason: String::new(),
-                },
-            )])
-        };
-        let quoted = format!("arbejdede med {item}");
         assert_eq!(
-            lessons(&taxonomy, &job, &profile, &cv_text, &met(&quoted)),
+            lessons(
+                &taxonomy,
+                &job,
+                &profile,
+                &cv_text,
+                &met("r0", "Datamatikeruddannelse, Erhvervsakademi")
+            ),
             [Lesson {
-                term_id,
-                text: "Qzxv på højt niveau".to_string(),
+                term_id: education_id,
+                text: "Uddannelse som datamatiker".to_string(),
                 lang: "da",
                 learned_from: FROM_JUDGE,
             }]
         );
-        let made_up = format!("ledte et team med {item}");
-        assert!(lessons(&taxonomy, &job, &profile, &cv_text, &met(&made_up)).is_empty());
+        let made_up = "Datamatikeruddannelse fra DTU";
+        assert!(lessons(&taxonomy, &job, &profile, &cv_text, &met("r0", made_up)).is_empty());
+    }
+
+    #[test]
+    fn a_met_verdict_teaches_nothing_when_the_requirement_shares_no_word_with_the_term() {
+        let (taxonomy, _, _) = two_term_taxonomy();
+        let (profile, cv_text) = cv_profile();
+        for (value, english) in [
+            ("SSA til aftenvagt", "Social and health assistant for evening shifts"),
+            ("Erfaring med PHP", "Experience with PHP"),
+        ] {
+            let job = Job {
+                requirements: vec![requirement(value, english, "skill")],
+                ..Default::default()
+            };
+            assert!(
+                lessons(&taxonomy, &job, &profile, &cv_text, &met("r0", "PHP, Laravel")).is_empty(),
+                "{value} was learned as Laravel"
+            );
+        }
     }
 
     #[test]
