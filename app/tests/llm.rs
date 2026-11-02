@@ -74,6 +74,8 @@ fn chat_answer(content: &str) -> Value {
     json!({ "choices": [{ "finish_reason": "stop", "message": { "content": content, "refusal": null } }] })
 }
 
+/// The answer cap the tests' calls name.
+const TEST_TOKENS: u32 = 1000;
 const OPENAI_KEY: &str = "sk-proj-0123456789abcdef";
 const ANTHROPIC_KEY: &str = "sk-ant-api03-0123456789abcdef";
 
@@ -82,7 +84,7 @@ async fn openai_gets_a_strict_schema_and_answers_json() {
     let (stand_in, address) = stand_in(200, vec![], chat_answer(r#"{"title":"PHP-udvikler"}"#)).await;
     let openai = Openai::new(OPENAI_KEY, "gpt-5.4-mini", &format!("{address}/v1")).unwrap();
     let answer = openai
-        .structured("Read the post.", "Vi søger", &schema(), Effort::Low)
+        .structured("Read the post.", "Vi søger", &schema(), Effort::Low, TEST_TOKENS)
         .await
         .unwrap();
     assert_eq!(answer, json!({ "title": "PHP-udvikler" }));
@@ -117,7 +119,10 @@ async fn openai_says_why_it_failed() {
     )
     .await;
     let openai = Openai::new(OPENAI_KEY, "gpt-5.4-mini", &address).unwrap();
-    let failed = openai.structured("s", "u", &schema(), Effort::Low).await.unwrap_err();
+    let failed = openai
+        .structured("s", "u", &schema(), Effort::Low, TEST_TOKENS)
+        .await
+        .unwrap_err();
     assert_eq!(failed.message, "OpenAI declined: I can't help with that.");
     assert!(!failed.retryable);
 
@@ -128,7 +133,10 @@ async fn openai_says_why_it_failed() {
     )
     .await;
     let openai = Openai::new(OPENAI_KEY, "gpt-5.4-mini", &address).unwrap();
-    let failed = openai.structured("s", "u", &schema(), Effort::Low).await.unwrap_err();
+    let failed = openai
+        .structured("s", "u", &schema(), Effort::Low, TEST_TOKENS)
+        .await
+        .unwrap_err();
     assert_eq!(
         failed.message,
         "OpenAI rejected the API key: Incorrect API key provided: sk-…"
@@ -142,7 +150,10 @@ async fn openai_says_why_it_failed() {
     )
     .await;
     let openai = Openai::new(OPENAI_KEY, "gpt-5.4-mini", &address).unwrap();
-    let failed = openai.structured("s", "u", &schema(), Effort::Low).await.unwrap_err();
+    let failed = openai
+        .structured("s", "u", &schema(), Effort::Low, TEST_TOKENS)
+        .await
+        .unwrap_err();
     assert_eq!(
         failed.message,
         "OpenAI rate limited the request: Rate limit reached for requests. Try again in 20 seconds."
@@ -157,7 +168,10 @@ async fn openai_says_why_it_failed() {
     )
     .await;
     let openai = Openai::new(OPENAI_KEY, "gpt-5.4-mini", &address).unwrap();
-    let failed = openai.structured("s", "u", &schema(), Effort::Low).await.unwrap_err();
+    let failed = openai
+        .structured("s", "u", &schema(), Effort::Low, TEST_TOKENS)
+        .await
+        .unwrap_err();
     assert_eq!(
         failed.message,
         "OpenAI says the key has no quota left: You exceeded your current quota."
@@ -166,7 +180,10 @@ async fn openai_says_why_it_failed() {
 
     let (_, address) = stand_in(200, vec![], chat_answer("Sure! Here is the title.")).await;
     let openai = Openai::new(OPENAI_KEY, "gpt-5.4-mini", &address).unwrap();
-    let failed = openai.structured("s", "u", &schema(), Effort::Low).await.unwrap_err();
+    let failed = openai
+        .structured("s", "u", &schema(), Effort::Low, TEST_TOKENS)
+        .await
+        .unwrap_err();
     assert_eq!(
         failed.message,
         "OpenAI answered with something other than the JSON asked for."
@@ -178,11 +195,15 @@ async fn openai_says_why_it_failed() {
 async fn a_local_model_without_a_key_gets_no_authorization() {
     let (stand_in, address) = stand_in(200, vec![], chat_answer(r#"{"title":"x"}"#)).await;
     let llm = Llm::use_key("local", "", "llama3.1:8b", &format!("{address}/v1/")).unwrap();
-    llm.structured("s", "u", &schema(), Effort::Medium).await.unwrap();
+    llm.structured("s", "u", &schema(), Effort::Medium, TEST_TOKENS)
+        .await
+        .unwrap();
     let request = only_request(&stand_in);
     assert_eq!(request.path, "/v1/chat/completions");
     assert!(!request.headers.contains_key("authorization"));
     assert_eq!(request.body["model"], "llama3.1:8b");
+    // A local model is stopped at the call's cap; OpenAI's request (above) has none.
+    assert_eq!(request.body["max_tokens"], TEST_TOKENS);
 }
 
 #[tokio::test]
@@ -191,7 +212,10 @@ async fn a_local_model_that_isnt_running_is_named() {
     let address = format!("http://{}/v1", listener.local_addr().unwrap());
     drop(listener);
     let llm = Llm::use_key("local", "", "llama3.1:8b", &address).unwrap();
-    let failed = llm.structured("s", "u", &schema(), Effort::Low).await.unwrap_err();
+    let failed = llm
+        .structured("s", "u", &schema(), Effort::Low, TEST_TOKENS)
+        .await
+        .unwrap_err();
     assert!(
         failed
             .message
@@ -264,7 +288,7 @@ async fn claude_gets_the_schema_effort_and_fallbacks() {
     .await;
     let anthropic = Anthropic::new(ANTHROPIC_KEY, "claude-sonnet-5-5", &address).unwrap();
     let answer = anthropic
-        .structured("Read the post.", "Vi søger", &schema(), Effort::High)
+        .structured("Read the post.", "Vi søger", &schema(), Effort::High, TEST_TOKENS)
         .await
         .unwrap();
     assert_eq!(answer, json!({ "title": "PHP-udvikler" }));
@@ -298,7 +322,7 @@ async fn claude_says_why_it_failed() {
     .await;
     let anthropic = Anthropic::new(ANTHROPIC_KEY, "claude-sonnet-5-5", &address).unwrap();
     let failed = anthropic
-        .structured("s", "u", &schema(), Effort::Low)
+        .structured("s", "u", &schema(), Effort::Low, TEST_TOKENS)
         .await
         .unwrap_err();
     assert_eq!(failed.message, "Claude declined: Not this.");
@@ -311,7 +335,7 @@ async fn claude_says_why_it_failed() {
     .await;
     let anthropic = Anthropic::new(ANTHROPIC_KEY, "claude-sonnet-5-5", &address).unwrap();
     let failed = anthropic
-        .structured("s", "u", &schema(), Effort::Low)
+        .structured("s", "u", &schema(), Effort::Low, TEST_TOKENS)
         .await
         .unwrap_err();
     assert_eq!(
@@ -329,7 +353,7 @@ async fn claude_says_why_it_failed() {
     .await;
     let anthropic = Anthropic::new(ANTHROPIC_KEY, "claude-sonnet-5-5", &address).unwrap();
     let failed = anthropic
-        .structured("s", "u", &schema(), Effort::Low)
+        .structured("s", "u", &schema(), Effort::Low, TEST_TOKENS)
         .await
         .unwrap_err();
     assert_eq!(failed.message, "Claude failed: Overloaded");

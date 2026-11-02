@@ -85,7 +85,9 @@ static CUES: LazyLock<[(&str, Regex); 5]> = LazyLock::new(|| {
         (
             "questions",
             pattern(
-                r"(?i)(?:\banswer\w*|besvar\w*|svar på|svar på følgende|following questions|questions below|these questions|the questions|følgende spørgsmål|spørgsmålene|nedenstående spørgsmål)",
+                // "Answer"/"besvar" counts only with questions named after it: "besvare telefoner og
+                // mails" is a duty in the job, not something to do in the application.
+                r"(?i)(?:\banswer\w* (?:\w+ ){0,3}questions?\b|\bbesvar\w* (?:\w+ ){0,3}(?:spørgsmål\w*|følgende|nedenstående)|svar på|svar på følgende|following questions|questions below|these questions|the questions|følgende spørgsmål|spørgsmålene|nedenstående spørgsmål)",
             ),
         ),
         (
@@ -351,6 +353,17 @@ mod tests {
             read("Har du spørgsmål til stillingen, så kontakt Peter på peter@firma.dk eller 12345678."),
             None
         );
+    }
+
+    #[test]
+    fn answering_the_phone_in_the_job_is_not_an_instruction() {
+        assert_eq!(
+            read(
+                "Du skal blandt andet følge op på betalinger og besvare telefoner og mails fra borgere og kolleger med spørgsmål."
+            ),
+            None
+        );
+        assert_eq!(read("You will answer customer emails and calls every day."), None);
     }
 
     #[test]

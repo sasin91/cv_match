@@ -32,6 +32,8 @@ pub const BASE_URL_PLACEHOLDER: &str = "http://localhost:11434/v1";
 /// address answer.
 const CHECK_SYSTEM: &str = "You check that an API key works. Answer with ok set to true.";
 const CHECK_USER: &str = "Check.";
+/// The longest answer the check may write, in tokens: {"ok": true} with room to spare.
+const CHECK_TOKENS: u32 = 256;
 
 /// A provider in the form's list.
 pub struct ProviderOption {
@@ -178,7 +180,7 @@ pub async fn check_key(context: &Context, provider: &str) -> Result<String, Serv
         "required": ["ok"],
         "additionalProperties": false,
     });
-    llm.structured(CHECK_SYSTEM, CHECK_USER, &schema, Effort::Low)
+    llm.structured(CHECK_SYSTEM, CHECK_USER, &schema, Effort::Low, CHECK_TOKENS)
         .await
         .map_err(|e| {
             crate::log_line!("account/check_key: {}", e.details());
