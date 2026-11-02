@@ -393,6 +393,8 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                     kept.or_else(|| batch.result(index).cloned().map(Shown::new))
                 });
                 batch.open = open;
+                // A use may have been turned on or off since the batch: Write follows it.
+                return refresh_availability(state, runner);
             }
         }
         Msg::Matching(step) => state.said = Some((Health::Neutral, step)),
