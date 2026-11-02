@@ -283,7 +283,7 @@ fn model_row(model: &CatalogRow, action: ModelAction, busy: bool) -> Element<'_,
     let mut name = row![text(model.label).font(style::semibold()).size(style::BODY_SIZE)].spacing(8);
     if model.recommended {
         name = name.push(
-            container(text("Suggested").size(style::CAPTION_SIZE).color(style::ACCENT))
+            container(text("Suggested").size(style::CAPTION_SIZE).style(style::accent_text))
                 .padding([1.0, 8.0])
                 .style(style::badge),
         );
