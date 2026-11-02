@@ -13,7 +13,8 @@ and of the built `jobfinder.exe`, come from others and keep their own licences:
 | The Rust crates in `Cargo.lock` | built into the app | each crate's own (`cargo metadata` lists them) |
 | llama.cpp and the GGUF models | downloaded by the app, never shipped | MIT; each model's own licence |
 
-The taxonomy (`assets/taxonomy/index.json`) is JobFinder's own: merged in sasin91/recruiter from the
-skills, roles and titles of its two predecessors (the legacy app's `roles_and_skills.sql`, and the
-legacy parser API's `skills.txt`, `jobrole.csv` and `skills_cons.json`), so it is under
-JobFinder's licence.
+The taxonomy (`assets/taxonomy/index.json`) is not covered by JobFinder's licence yet. It was
+merged in sasin91/recruiter from the skills, roles and titles of two earlier systems (a legacy
+app's `roles_and_skills.sql`, and a legacy parser API's `skills.txt`, `jobrole.csv` and
+`skills_cons.json`), which came from the author's former employer. Where that data was first
+sourced, and under what terms, is not known.
