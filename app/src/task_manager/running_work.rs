@@ -14,6 +14,12 @@
 //! process (kill_on_drop). Work that keeps the books (a scan, a post's match) is given its
 //! grace (WorkKind::grace) to finish them: the pieces under it fail, so the post is marked failed and the scan
 //! says it was stopped, rather than leaving a post claimed for half an hour.
+//!
+//! run(), part(), within(), spawn() and carried() put the work they are given on the heap
+//! (Box::pin) before anything else: the future they answer holds a pointer to it, not the work
+//! itself. Otherwise each future would hold the whole work it wraps, the scan's ten or so levels
+//! (scan, search, post, match, model call) would add up to one future of tens of KB, and a debug
+//! build's poll of it took more than a tokio worker's 2 MiB stack (Start scan crashed).
 
 use std::collections::BTreeMap;
 use std::future::Future;
@@ -174,31 +180,36 @@ impl RunningWork {
 
     /// Runs work as a piece of the list called what: under the piece this task runs, when it runs
     /// one of this list's, else at the top. Err when it was stopped before it finished.
-    pub async fn run<F: Future>(
+    pub fn run<F: Future>(
         self: &Arc<Self>,
         kind: WorkKind,
         what: impl Into<String>,
         work: F,
-    ) -> Result<F::Output, Stopped> {
-        let parent = CURRENT
-            .try_with(|current| {
-                Arc::ptr_eq(&current.list, self)
-                    .then(|| current.piece.as_ref().map(|piece| piece.id))
-                    .flatten()
-            })
-            .ok()
-            .flatten();
-        track(Arc::clone(self), parent, kind, what.into(), work).await
+    ) -> impl Future<Output = Result<F::Output, Stopped>> {
+        let list = Arc::clone(self);
+        let what = what.into();
+        let work = Box::pin(work);
+        async move {
+            let parent = CURRENT
+                .try_with(|current| {
+                    Arc::ptr_eq(&current.list, &list)
+                        .then(|| current.piece.as_ref().map(|piece| piece.id))
+                        .flatten()
+                })
+                .ok()
+                .flatten();
+            track(list, parent, kind, what, work).await
+        }
     }
 
     /// Runs work with this list as the one the pieces started in it go in, at the top: for work a
     /// window or a page asks for, whose model calls are listed then.
-    pub async fn within<F: Future>(self: &Arc<Self>, work: F) -> F::Output {
+    pub fn within<F: Future>(self: &Arc<Self>, work: F) -> impl Future<Output = F::Output> + use<F> {
         let current = Current {
             list: Arc::clone(self),
             piece: None,
         };
-        CURRENT.scope(current, work).await
+        CURRENT.scope(current, Box::pin(work))
     }
 
     /// Runs work as a task of its own (tokio::spawn) within this list: work a page or a window
@@ -208,8 +219,7 @@ impl RunningWork {
         F: Future + Send + 'static,
         F::Output: Send + 'static,
     {
-        let list = Arc::clone(self);
-        tokio::spawn(async move { list.within(work).await })
+        tokio::spawn(self.within(work))
     }
 
     /// The pieces running now, each followed by the pieces under it, oldest first.
@@ -350,18 +360,27 @@ async fn asked_to_stop(asked: &mut watch::Receiver<bool>) {
 
 /// Runs work as a piece of the list this task's work is in, under the piece it runs. Outside a
 /// list (tests, the read-pdf child) it runs work as it is.
-pub async fn part<F: Future>(kind: WorkKind, what: impl Into<String>, work: F) -> Result<F::Output, Stopped> {
-    let Ok(current) = CURRENT.try_with(Current::clone) else {
-        return Ok(work.await);
-    };
-    let parent = current.piece.map(|piece| piece.id);
-    track(current.list, parent, kind, what.into(), work).await
+pub fn part<F: Future>(
+    kind: WorkKind,
+    what: impl Into<String>,
+    work: F,
+) -> impl Future<Output = Result<F::Output, Stopped>> {
+    let what = what.into();
+    let work = Box::pin(work);
+    async move {
+        let Ok(current) = CURRENT.try_with(Current::clone) else {
+            return Ok(work.await);
+        };
+        let parent = current.piece.map(|piece| piece.id);
+        track(current.list, parent, kind, what, work).await
+    }
 }
 
 /// work, for a task of its own (tokio::spawn): in the list, and under the piece, this task's work
 /// is in, as part() inside it would see them.
 pub fn carried<F: Future>(work: F) -> impl Future<Output = F::Output> {
     let current = CURRENT.try_with(Current::clone).ok();
+    let work = Box::pin(work);
     async move {
         match current {
             Some(current) => CURRENT.scope(current, work).await,

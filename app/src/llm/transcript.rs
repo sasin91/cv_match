@@ -28,14 +28,14 @@ tokio::task_local! {
 }
 
 /// Runs work, and keeps every call to the model it makes.
-pub async fn recording<F: Future>(work: F) -> (F::Output, Vec<Exchange>) {
-    CALLS
-        .scope(RefCell::new(Vec::new()), async move {
-            let output = work.await;
-            let calls = CALLS.with(|calls| calls.take());
-            (output, calls)
-        })
-        .await
+/// The work is on the heap (as running_work's wrappers put theirs, for the same reason).
+pub fn recording<F: Future>(work: F) -> impl Future<Output = (F::Output, Vec<Exchange>)> {
+    let work = Box::pin(work);
+    CALLS.scope(RefCell::new(Vec::new()), async move {
+        let output = work.await;
+        let calls = CALLS.with(|calls| calls.take());
+        (output, calls)
+    })
 }
 
 /// Whether this task is recording.
@@ -45,11 +45,14 @@ pub fn is_recording() -> bool {
 
 /// work for a task of its own: recorded when this task is recording, its calls handed back
 /// with keep() once it is done.
-pub async fn carried<F: Future>(recording_now: bool, work: F) -> (F::Output, Vec<Exchange>) {
-    if recording_now {
-        recording(work).await
-    } else {
-        (work.await, Vec::new())
+pub fn carried<F: Future>(recording_now: bool, work: F) -> impl Future<Output = (F::Output, Vec<Exchange>)> {
+    let work = Box::pin(work);
+    async move {
+        if recording_now {
+            recording(work).await
+        } else {
+            (work.await, Vec::new())
+        }
     }
 }
 
