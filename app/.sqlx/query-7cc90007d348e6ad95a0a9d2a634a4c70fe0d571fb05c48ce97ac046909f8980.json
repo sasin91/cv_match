@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT text\n        FROM profile_lines\n        WHERE entry_id IS NULL AND kind = ?1\n        ORDER BY sort_order, id\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "text",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "profile_lines",
+            "name": "text"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "7cc90007d348e6ad95a0a9d2a634a4c70fe0d571fb05c48ce97ac046909f8980"
+}

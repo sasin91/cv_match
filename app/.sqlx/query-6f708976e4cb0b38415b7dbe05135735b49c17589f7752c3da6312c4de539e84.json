@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM llm_task_models WHERE task = ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "6f708976e4cb0b38415b7dbe05135735b49c17589f7752c3da6312c4de539e84"
+}

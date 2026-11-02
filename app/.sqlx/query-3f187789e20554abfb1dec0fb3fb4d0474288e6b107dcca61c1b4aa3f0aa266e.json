@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE scanned_job_posts\n        SET matching_since = ?2\n        WHERE id = ?1 AND status = 'matching'\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "3f187789e20554abfb1dec0fb3fb4d0474288e6b107dcca61c1b4aa3f0aa266e"
+}

@@ -455,6 +455,24 @@ pub async fn claim_for_matching(db: &SqlitePool, post_id: i64, stale_before: i64
     Ok(claimed.rows_affected() > 0)
 }
 
+/// Says a post's match, claimed with claim_for_matching, still runs (now): a claim older than
+/// the stale_before a later claim gives is taken over, so a match that goes on (paused in the
+/// task manager, say) keeps its claim fresh. Nothing when the post isn't being matched any more.
+pub async fn keep_claim(db: &SqlitePool, post_id: i64, now: i64) -> sqlx::Result<()> {
+    sqlx::query!(
+        r#"
+        UPDATE scanned_job_posts
+        SET matching_since = ?2
+        WHERE id = ?1 AND status = 'matching'
+        "#,
+        post_id,
+        now
+    )
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
 /// Posts a scan or a match left unmatched when it stopped (the program was closed): new ones
 /// found before stale_before, and ones whose match started before it, oldest first.
 pub async fn unfinished_posts(db: &SqlitePool, stale_before: i64) -> sqlx::Result<Vec<i64>> {
@@ -551,7 +569,7 @@ pub async fn resume_after_new_key(db: &SqlitePool) -> sqlx::Result<()> {
         SET paused_reason = ''
         WHERE active = 1
           AND paused_reason <> ''
-          AND updated_at <= (SELECT COALESCE(MAX(updated_at), 0) FROM user_llm_keys)
+          AND updated_at <= (SELECT COALESCE(MAX(updated_at), 0) FROM llm_keys)
         "#
     )
     .execute(db)
@@ -838,6 +856,9 @@ mod tests {
         assert!(!claim_for_matching(&db, second, 150, 201).await.unwrap());
         assert_eq!(unfinished_posts(&db, 150).await.unwrap(), vec![first.unwrap()]);
         assert!(claim_for_matching(&db, second, 250, 300).await.unwrap());
+        // A match that goes on keeps its claim: a later claim doesn't take it over.
+        keep_claim(&db, second, 400).await.unwrap();
+        assert!(!claim_for_matching(&db, second, 350, 401).await.unwrap());
 
         // Dismissed while its match runs, a post stays dismissed when the match ends.
         dismiss(&db, first.unwrap(), false).await.unwrap();

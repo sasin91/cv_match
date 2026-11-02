@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "\n        SELECT label, url\n        FROM candidate_profile_links\n        WHERE candidate_id = ?1\n        ORDER BY position, id\n        ",
+  "query": "SELECT label, url FROM profile_links ORDER BY position, id",
   "describe": {
     "columns": [
       {
@@ -9,7 +9,7 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "candidate_profile_links",
+            "table": "profile_links",
             "name": "label"
           }
         }
@@ -20,19 +20,19 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "candidate_profile_links",
+            "table": "profile_links",
             "name": "url"
           }
         }
       }
     ],
     "parameters": {
-      "Right": 1
+      "Right": 0
     },
     "nullable": [
       false,
       false
     ]
   },
-  "hash": "1e45ada543eb569b25c8c4eedb90c267fd0c8decfa9f4459962ebffb37672050"
+  "hash": "f98042a9020ebbbe85dee00b8ac3aea2db0b8ed032938722da2ad1f9fafe4e8d"
 }

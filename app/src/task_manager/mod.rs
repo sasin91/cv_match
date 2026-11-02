@@ -4,6 +4,10 @@
 //! and Laya's model. A scan run by another JobFinder (the schedule's `jobfinder scan`) shows too,
 //! read from the scan's lock and the database, and is stopped through scan_lock's stop file.
 //!
+//! Work that goes on in steps (a scan, a post's match, writing, a download) can be paused too, at
+//! the top of the list: it holds at its next step until resumed (running_work says how). A row's
+//! link (the post or page it works on) opens in the browser.
+//!
 //! Later, a priority (how nice the work is to the rest of the computer) fits beside Stop: a
 //! Task names what to set it on, a process's priority class goes on its process_id, and the
 //! in-app work of a WorkKind would wait on that kind's priority before it starts.
@@ -47,6 +51,10 @@ pub struct TaskRow {
     pub stop: Option<&'static str>,
     /// Asked to stop, and finishing.
     pub stopping: bool,
+    /// Whether it can be paused: work at the top of the list that goes on in steps.
+    pub pausable: bool,
+    /// Paused, until resumed.
+    pub paused: bool,
 }
 
 impl TaskRow {
@@ -55,6 +63,18 @@ impl TaskRow {
         self.started_at
             .map(|started_at| Duration::from_secs(u64::try_from(now - started_at).unwrap_or(0)))
     }
+
+    /// The web address in what it works on (a post, a page being read), to open.
+    pub fn link(&self) -> Option<&str> {
+        link_in(&self.what)
+    }
+}
+
+/// The first http(s) address in text.
+fn link_in(text: &str) -> Option<&str> {
+    text.split_whitespace()
+        .find(|word| word.starts_with("https://") || word.starts_with("http://"))
+        .map(|word| word.trim_end_matches([',', '.', ')', ';']))
 }
 
 /// What the Kind column calls the app's own model server.
@@ -82,6 +102,8 @@ pub async fn rows(context: &Context) -> Vec<TaskRow> {
         started_at: Some(row.started_at),
         stop: Some(STOP),
         stopping: row.stopping,
+        pausable: row.depth == 0 && row.kind.pausable(),
+        paused: row.paused,
     }));
     if let Some(server) = context.llama.as_ref().and_then(|llama| llama.running_process()) {
         rows.push(TaskRow {
@@ -93,6 +115,8 @@ pub async fn rows(context: &Context) -> Vec<TaskRow> {
             started_at: Some(server.started_at),
             stop: Some(STOP),
             stopping: false,
+            pausable: false,
+            paused: false,
         });
     }
     if let Some(loaded_at) = context.laya.as_ref().and_then(|laya| laya.loaded_at()) {
@@ -105,6 +129,8 @@ pub async fn rows(context: &Context) -> Vec<TaskRow> {
             started_at: Some(loaded_at),
             stop: Some(UNLOAD),
             stopping: false,
+            pausable: false,
+            paused: false,
         });
     }
     rows
@@ -137,6 +163,8 @@ async fn scan_elsewhere(context: &Context) -> Option<TaskRow> {
         started_at: Some(running.started_at),
         stop: Some(STOP),
         stopping: false,
+        pausable: true,
+        paused: scan_lock::pause_asked(context),
     })
 }
 
@@ -184,6 +212,45 @@ pub async fn stop(context: &Context, task: Task) -> Result<String, ServiceError>
     Ok(said)
 }
 
+/// Pauses task (paused) or lets it go on, and says what was done.
+pub async fn pause(context: &Context, task: Task, paused: bool) -> Result<String, ServiceError> {
+    let said = match task {
+        Task::Work(id) => {
+            if !context.running.pause(id, paused) {
+                return Err(ServiceError::new(ErrorKind::NotFound, "That finished already."));
+            }
+            if paused {
+                "Paused. What it is in the middle of finishes; nothing new starts until you resume it."
+            } else {
+                "Resumed."
+            }
+            .to_string()
+        }
+        Task::ScanElsewhere => match scan_lock::ask_to_pause(context, paused) {
+            Ok(true) if paused => {
+                "The other JobFinder's scan is asked to pause; it pauses within a few seconds.".to_string()
+            }
+            Ok(true) => "The other JobFinder's scan is asked to go on.".to_string(),
+            Ok(false) => return Err(ServiceError::not_found()),
+            Err(e) => {
+                crate::log_line!("task_manager: the scan's pause file couldn't be changed: {e}");
+                return Err(ServiceError::internal(
+                    "task_manager",
+                    format!("The scan couldn't be asked to pause or go on: {e}"),
+                ));
+            }
+        },
+        Task::LocalModelServer | Task::Laya => {
+            return Err(ServiceError::new(
+                ErrorKind::Invalid,
+                "That can't be paused; stop or unload it.",
+            ));
+        }
+    };
+    crate::log_line!("task_manager: {said}");
+    Ok(said)
+}
+
 #[cfg(test)]
 mod tests {
     use std::sync::Arc;
@@ -220,5 +287,41 @@ mod tests {
         assert!(rows(&context).await.is_empty());
         let again = stop(&context, listed[0].task).await.unwrap_err();
         assert_eq!(again.kind, ErrorKind::NotFound);
+    }
+
+    #[tokio::test]
+    async fn work_at_the_top_pauses_and_resumes_from_the_task_manager() {
+        let context = context().await;
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let list = Arc::clone(&context.running);
+        let scan = tokio::spawn(async move {
+            list.run(WorkKind::Scan, "Backend", async move {
+                running_work::part(WorkKind::ModelCall, "model", async move {
+                    let _ = started_tx.send(());
+                    std::future::pending::<()>().await;
+                })
+                .await
+            })
+            .await
+        });
+        started_rx.await.unwrap();
+        let listed = rows(&context).await;
+        assert_eq!(listed.iter().map(|row| row.pausable).collect::<Vec<_>>(), [true, false]);
+        pause(&context, listed[0].task, true).await.unwrap();
+        assert!(rows(&context).await.iter().all(|row| row.paused));
+        pause(&context, listed[0].task, false).await.unwrap();
+        assert!(rows(&context).await.iter().all(|row| !row.paused));
+        let model = pause(&context, Task::Laya, true).await.unwrap_err();
+        assert_eq!(model.kind, ErrorKind::Invalid);
+        scan.abort();
+    }
+
+    #[test]
+    fn a_rows_link_is_the_address_in_what_it_works_on() {
+        assert_eq!(
+            link_in("Reading https://jobnet.dk/job/1, page 2"),
+            Some("https://jobnet.dk/job/1")
+        );
+        assert_eq!(link_in("Every active search"), None);
     }
 }

@@ -1,14 +1,14 @@
 -- A new provider's key takes the uses no other key of the user's is on for; a key saved again
 -- keeps its own.
-INSERT INTO user_llm_keys (
+INSERT INTO llm_keys (
   provider, model, base_url, key_hint,
   use_for_resume, use_for_application, use_for_job_evaluation, created_at, updated_at
 )
 VALUES (
   ?1, ?2, ?3, ?4,
-  NOT EXISTS (SELECT 1 FROM user_llm_keys WHERE use_for_resume = 1),
-  NOT EXISTS (SELECT 1 FROM user_llm_keys WHERE use_for_application = 1),
-  NOT EXISTS (SELECT 1 FROM user_llm_keys WHERE use_for_job_evaluation = 1),
+  NOT EXISTS (SELECT 1 FROM llm_keys WHERE use_for_resume = 1),
+  NOT EXISTS (SELECT 1 FROM llm_keys WHERE use_for_application = 1),
+  NOT EXISTS (SELECT 1 FROM llm_keys WHERE use_for_job_evaluation = 1),
   ?5, ?5
 )
 ON CONFLICT (provider) DO UPDATE SET

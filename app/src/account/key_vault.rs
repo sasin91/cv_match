@@ -7,7 +7,7 @@
 //! Before, each name had the local user's trongate_users id in it too; take_over_keys_named_by_user
 //! moves those once.
 //!
-//! A key and its row in user_llm_keys are two stores, so whoever reads or changes them takes the
+//! A key and its row in llm_keys are two stores, so whoever reads or changes them takes the
 //! vault's lock() first: a reader never pairs one key's row with another key.
 
 use std::collections::HashMap;

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT use AS \"task!\", model FROM user_llm_use_models WHERE model != ''",
+  "query": "SELECT task AS \"task!\", model FROM llm_task_models WHERE model != ''",
   "describe": {
     "columns": [
       {
@@ -9,8 +9,8 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "user_llm_use_models",
-            "name": "use"
+            "table": "llm_task_models",
+            "name": "task"
           }
         }
       },
@@ -20,7 +20,7 @@
         "type_info": "Text",
         "origin": {
           "Table": {
-            "table": "user_llm_use_models",
+            "table": "llm_task_models",
             "name": "model"
           }
         }
@@ -34,5 +34,5 @@
       false
     ]
   },
-  "hash": "74949ee14ebcccd9ea63eec6cafb5137fe26ce8786389d53a0ae6f55a0b2e49e"
+  "hash": "fe50b890b3fe584dc50ff5e8813b1274a6e7d84e3830e970b88473bf172f2c70"
 }

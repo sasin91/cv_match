@@ -123,6 +123,10 @@ impl Started {
 /// stopped without saying so (the program was closed): another may take it (half an hour).
 pub const RUN_GIVE_UP_SECONDS: i64 = 1800;
 
+/// How often a post's match says it still runs (every five minutes), well inside
+/// RUN_GIVE_UP_SECONDS, after which its claim would be taken over.
+const KEEP_CLAIM_EVERY: Duration = Duration::from_secs(300);
+
 /// What a scan cut off before it finished says (the program was closed while it ran).
 const CUT_OFF: &str = "The scan stopped before it finished: the app was closed while it ran.";
 
@@ -353,10 +357,10 @@ async fn scan_holding_lock(context: Arc<Context>, started: Started) -> Result<Sc
         return Err(ServiceError::new(ErrorKind::TooMany, running_text(running.as_ref())));
     };
     // Asked before this scan held the lock: meant for one that ended already.
-    scan_lock::forget_stop_request(&context);
+    scan_lock::forget_requests(&context);
     tokio::select! {
         scanned = scan_then_check_open(&context, started) => scanned,
-        never = scan_lock::stop_when_asked(&context) => match never {},
+        never = scan_lock::heed_requests(&context) => match never {},
     }
 }
 
@@ -406,6 +410,7 @@ async fn scan_searches(context: &Arc<Context>, started: Started) -> Result<ScanR
         return Ok(report);
     }
     for search_id in model::scannable(db).await? {
+        running_work::until_resumed().await;
         if running_work::stop_asked() {
             report.stopped = Some(STOPPED_SCAN.to_string());
             break;
@@ -441,13 +446,13 @@ async fn scan_searches(context: &Arc<Context>, started: Started) -> Result<ScanR
 
 /// A scan's matching of posts, one after another: the profile, read for the first post and kept
 /// for the rest, whether a post was taken up yet (the pause comes between two), and until when
-/// posts are taken up (Started::time_limit).
+/// posts are taken up (Started::time_limit; the time the scan was paused isn't counted).
 struct Matching {
     cv: Option<ProfileCv>,
     started_one: bool,
     /// The cloud key stands in for the game under way (said once per game).
     in_the_cloud: bool,
-    began: Instant,
+    clock: running_work::Clock,
     time_limit: Duration,
 }
 
@@ -457,7 +462,7 @@ impl Matching {
             cv: None,
             started_one: false,
             in_the_cloud: false,
-            began: Instant::now(),
+            clock: running_work::Clock::start(),
             time_limit: started.time_limit(),
         }
     }
@@ -475,8 +480,10 @@ impl Matching {
             }
             crate::say!("job_scan: post {post_id} ({} of {count}): matching.", index + 1);
             let began = Instant::now();
+            // A pause of the scan doesn't count toward the post's time limit.
             let matched =
-                tokio::time::timeout(POST_TIME_LIMIT, match_post_once_read(context, post_id, &mut self.cv)).await;
+                running_work::timeout_unpaused(POST_TIME_LIMIT, match_post_once_read(context, post_id, &mut self.cv))
+                    .await;
             let minutes = began.elapsed().as_secs_f64() / 60.0;
             match matched {
                 Ok(Ok(true)) => {
@@ -505,6 +512,7 @@ impl Matching {
     /// user stayed busy.
     async fn make_way(&mut self, context: &Context) -> Result<(), String> {
         let stopped = || Err(STOPPED_SCAN.to_string());
+        running_work::until_resumed().await;
         if running_work::stop_asked() {
             return stopped();
         }
@@ -516,15 +524,34 @@ impl Matching {
             }
         }
         self.started_one = true;
-        let left = self.time_left()?;
-        if self.goes_on_in_the_cloud(context).await {
-            return Ok(());
+        let give_up_after = BUSY_GIVE_UP.min(self.time_left()?);
+        if !self.goes_on_in_the_cloud(context).await {
+            self.wait_until_game_over(context, give_up_after).await?;
         }
-        tokio::select! {
-            free = context.game_mode.wait_until_over(BUSY_GIVE_UP.min(left)) => free?,
-            () = running_work::until_stop_asked() => return stopped(),
+        running_work::until_resumed().await;
+        if running_work::stop_asked() {
+            return stopped();
         }
         self.time_left().map(|_| ())
+    }
+
+    /// Waits while a game runs, for at most give_up_after; the time the scan is paused doesn't
+    /// count toward it. Err says why the scan stops: asked to stop, or the game went on.
+    async fn wait_until_game_over(&self, context: &Context, give_up_after: Duration) -> Result<(), String> {
+        let waited = running_work::Clock::start();
+        loop {
+            let left = give_up_after.saturating_sub(waited.ran());
+            let over = tokio::select! {
+                over = context.game_mode.wait_until_over(left) => over,
+                () = running_work::until_stop_asked() => return Err(STOPPED_SCAN.to_string()),
+            };
+            match over {
+                Ok(()) => return Ok(()),
+                Err(why) if waited.ran() >= give_up_after => return Err(why),
+                // Paused meanwhile: wait to be resumed, then the rest of the time.
+                Err(_) => running_work::until_resumed().await,
+            }
+        }
     }
 
     /// Whether a game runs and the cloud key stands in (stand_in), so the scan
@@ -551,7 +578,7 @@ impl Matching {
 
     /// The scan's time left, or Err (out_of_time) when there is none.
     fn time_left(&self) -> Result<Duration, String> {
-        match self.time_limit.checked_sub(self.began.elapsed()) {
+        match self.time_limit.checked_sub(self.clock.ran()) {
             Some(left) if !left.is_zero() => Ok(left),
             _ => Err(out_of_time(self.time_limit)),
         }
@@ -838,6 +865,8 @@ async fn read_sites(context: &Context, sites: &[JobSite], search: &model::JobSea
             terms.len()
         };
         for term in terms.into_iter().take(most) {
+            // Paused in the task manager: the next site or term waits until it is resumed.
+            running_work::until_resumed().await;
             let started = timeline.start(run_steps::SITE);
             let read = site.search(&term, place, signed_in).await;
             let said = site_text(site.domain(), &term, place, &read);
@@ -1105,10 +1134,14 @@ async fn match_post_with(
     }
     let url = post.url.clone();
     let list = Arc::clone(&context.running);
-    match list
-        .run(WorkKind::Matching, url, match_claimed(context, post_id, post, cv, sent))
-        .await
-    {
+    let matching = list.run(WorkKind::Matching, url, match_claimed(context, post_id, post, cv, sent));
+    // The claim is kept fresh while the match runs, however long it is paused in the task
+    // manager, so Try again or another scan doesn't take the post over meanwhile.
+    let matched = tokio::select! {
+        matched = matching => matched,
+        never = keep_claim(context, post_id) => match never {},
+    };
+    match matched {
         Ok(matched) => matched,
         // Not finished in its grace: dropped, so it is marked here.
         Err(Stopped) => {
@@ -1227,6 +1260,18 @@ async fn match_claimed(
 /// or the browser reading it (whose error says so).
 fn read_was_stopped(why: &str) -> bool {
     running_work::stop_asked() || why.contains(Stopped::SAID)
+}
+
+/// Forever, while a post's match runs: says every KEEP_CLAIM_EVERY that it still runs
+/// (job_scan_model::keep_claim). A failed write is logged; the next one tries again.
+async fn keep_claim(context: &Context, post_id: i64) -> std::convert::Infallible {
+    loop {
+        tokio::time::sleep(KEEP_CLAIM_EVERY).await;
+        let now = chrono::Utc::now().timestamp();
+        if let Err(e) = model::keep_claim(context.db(), post_id, now).await {
+            crate::log_line!("job_scan: post {post_id}'s claim couldn't be kept fresh: {e}");
+        }
+    }
 }
 
 /// Claims a post for a match starting now (job_scan_model::claim_for_matching); false when it
