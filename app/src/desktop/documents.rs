@@ -126,17 +126,24 @@ impl Docs {
             .boxes
             .iter()
             .cloned()
-            .map(|doc| {
+            .map(|mut doc| {
                 let kept = before
                     .iter_mut()
                     .find(|old| old.doc.kind == doc.kind && old.doc.written_at == doc.written_at);
                 match kept {
-                    // Not written again: its edits stay, as only the box holds them.
-                    Some(old) => DocBox {
-                        text: std::mem::take(&mut old.text),
-                        versions_open: old.versions_open,
-                        doc,
-                    },
+                    // Not written again: its edits stay, as only the box holds them, and so do
+                    // the keywords its writing found, as reading it back leaves them out.
+                    Some(old) => {
+                        if doc.keywords.is_none() && doc.left_out.is_empty() {
+                            doc.keywords = old.doc.keywords.take();
+                            doc.left_out = std::mem::take(&mut old.doc.left_out);
+                        }
+                        DocBox {
+                            text: std::mem::take(&mut old.text),
+                            versions_open: old.versions_open,
+                            doc,
+                        }
+                    }
                     None => DocBox::new(doc),
                 }
             })
@@ -508,6 +515,26 @@ mod tests {
         });
         assert_eq!(panel.text_of(APPLICATION, None).as_deref(), Some("!Kære Firma"));
         assert_eq!(panel.text_of(RESUME, None).as_deref(), Some("Résumé"));
+    }
+
+    #[test]
+    fn writing_the_application_keeps_the_keywords_of_the_resume() {
+        let mut panel = docs("Kære Firma");
+        panel.boxes[1].doc.left_out = "Left out, since your CV doesn't show it: Go".to_string();
+        let mut boxes: Vec<DocumentBox> = panel.boxes.iter().map(|doc| doc.doc.clone()).collect();
+        // The application written now; the résumé read back, which leaves its keywords out.
+        boxes[0].written_at = "1762000000".to_string();
+        boxes[1].left_out = String::new();
+        panel.written(&WriteAnswer {
+            boxes,
+            comparison: None,
+            done: "Application written",
+            problem: None,
+        });
+        assert_eq!(
+            panel.boxes[1].doc.left_out,
+            "Left out, since your CV doesn't show it: Go"
+        );
     }
 
     #[test]
