@@ -147,9 +147,10 @@ pub async fn download_if_missing(context: &Context, file: &str) -> Result<(), Se
         return Ok(());
     }
     crate::log_line!("llama: {file} isn't downloaded yet; downloading it now");
-    server
+    // Ended here, or on drop when this call is dropped while it waits (a scan's time limit).
+    let turn = server
         .downloads
-        .begin(model.file)
+        .begin_turn(model.file)
         .map_err(|why| ServiceError::new(ErrorKind::TooMany, why))?;
     let outcome = context
         .running
@@ -160,7 +161,7 @@ pub async fn download_if_missing(context: &Context, file: &str) -> Result<(), Se
         )
         .await
         .unwrap_or_else(|Stopped| Err(Stopped::SAID.to_string()));
-    server.downloads.end(outcome.clone());
+    turn.end(outcome.clone());
     outcome.map_err(|why| ServiceError::new(ErrorKind::Internal, format!("{file} couldn't be downloaded: {why}")))
 }
 
@@ -253,7 +254,7 @@ pub fn view_of(server: &LlamaServer) -> LlamaSetupView {
     let inventory = server.inventory();
     let models_folder = server.models_folder();
     let download = download_view(&server.downloads.progress());
-    let busy = download.as_ref().is_some_and(|download| download.running);
+    let busy = server.downloads.moving() || download.as_ref().is_some_and(|download| download.running);
     let rows = catalog_rows(server, card_usable);
     let good_model_fits_card = rows.iter().any(|row| row.good_enough);
     let ModelLists {

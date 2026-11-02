@@ -24,7 +24,7 @@ use std::time::{Duration, Instant};
 use tokio::process::{Child, Command};
 use tokio::sync::Mutex;
 
-use super::download::{Downloads, Progress};
+use super::download::Downloads;
 use super::gguf::{self, GgufFile};
 use super::hardware::Inventory;
 use super::model_choice::{self, Fit};
@@ -179,9 +179,7 @@ impl LlamaServer {
     /// file can't be moved on Windows (the next call starts it again).
     pub async fn move_models(&self, to: PathBuf) -> Result<usize, String> {
         let _no_task_download = self.fetching.lock().await;
-        if let Progress::Running { what, .. } = self.downloads.progress() {
-            return Err(format!("{what} is still downloading. Move the models once it is done."));
-        }
+        let _no_download = self.downloads.begin_move()?;
         let from = self.models_folder();
         if from == to {
             return Ok(0);

@@ -8,7 +8,7 @@
 
 use std::io;
 use std::path::{Path, PathBuf};
-use std::sync::atomic::{AtomicUsize, Ordering};
+use std::sync::atomic::{AtomicBool, AtomicUsize, Ordering};
 use std::sync::{Arc, Mutex};
 use std::time::Duration;
 
@@ -163,6 +163,42 @@ pub struct Downloads {
     /// manager (a blocking thread can't be stopped), so no download starts until it is done:
     /// the next would clear the staging folder it writes into.
     unzipping: Arc<AtomicUsize>,
+    /// The models are being moved to another folder (llama_server::move_models), so no download
+    /// starts: it would write into the folder being left.
+    moving: AtomicBool,
+}
+
+/// Holds the downloads off while the models are moved; dropping it lets them start again.
+pub struct MoveTurn<'a>(&'a AtomicBool);
+
+impl Drop for MoveTurn<'_> {
+    fn drop(&mut self) {
+        self.0.store(false, Ordering::Release);
+    }
+}
+
+/// Ends a download begun by the work that holds it, when that work is dropped before it ends
+/// the download itself (a task stopped, or a scan's time limit): the download is then said to
+/// have stopped, so the next one can begin.
+pub struct DownloadTurn<'a> {
+    downloads: &'a Downloads,
+    ended: bool,
+}
+
+impl DownloadTurn<'_> {
+    /// Ends the download with its outcome.
+    pub fn end(mut self, outcome: Result<(), String>) {
+        self.ended = true;
+        self.downloads.end(outcome);
+    }
+}
+
+impl Drop for DownloadTurn<'_> {
+    fn drop(&mut self) {
+        if !self.ended {
+            self.downloads.end(Err("It stopped before it finished.".to_string()));
+        }
+    }
 }
 
 /// Counts an unzip as running until it is dropped, at its thread's end.
@@ -196,6 +232,9 @@ impl Downloads {
         if let Progress::Running { what, .. } = &*progress {
             return Err(format!("{what} is still downloading. Wait for it to finish."));
         }
+        if self.moving.load(Ordering::Acquire) {
+            return Err("The models are being moved to another folder. Try again once that is done.".to_string());
+        }
         if self.unzipping.load(Ordering::Acquire) > 0 {
             return Err("The stopped llama.cpp download is still being unzipped. Try again in a minute.".to_string());
         }
@@ -205,6 +244,34 @@ impl Downloads {
             total_bytes: None,
         };
         Ok(())
+    }
+
+    /// Marks a download of what as started, as begin does, ended when the turn is dropped
+    /// unless it was ended first: for a download whose caller may be dropped while it waits.
+    pub fn begin_turn(&self, what: &str) -> Result<DownloadTurn<'_>, String> {
+        self.begin(what)?;
+        Ok(DownloadTurn {
+            downloads: self,
+            ended: false,
+        })
+    }
+
+    /// Holds downloads off while the models are moved; Err while one is running or another move
+    /// is. Checked under the same lock begin checks under, so neither slips past the other.
+    pub fn begin_move(&self) -> Result<MoveTurn<'_>, String> {
+        let progress = self.lock();
+        if let Progress::Running { what, .. } = &*progress {
+            return Err(format!("{what} is still downloading. Move the models once it is done."));
+        }
+        if self.moving.swap(true, Ordering::AcqRel) {
+            return Err("The models are being moved already.".to_string());
+        }
+        Ok(MoveTurn(&self.moving))
+    }
+
+    /// Whether the models are being moved now.
+    pub fn moving(&self) -> bool {
+        self.moving.load(Ordering::Acquire)
     }
 
     fn set_bytes(&self, done_bytes: u64, total_bytes: Option<u64>) {
@@ -448,6 +515,31 @@ mod tests {
         assert!(downloads.begin("llama.cpp").is_err());
         drop(unzipping);
         assert!(downloads.begin("llama.cpp").is_ok());
+    }
+
+    #[test]
+    fn a_download_whose_caller_is_dropped_ends_so_the_next_can_begin() {
+        let downloads = Downloads::default();
+        let turn = downloads.begin_turn("gemma.gguf").unwrap();
+        assert!(downloads.begin("qwen.gguf").is_err());
+        drop(turn);
+        assert!(matches!(downloads.progress(), Progress::Failed { .. }));
+        let turn = downloads.begin_turn("gemma.gguf").unwrap();
+        turn.end(Ok(()));
+        assert!(matches!(downloads.progress(), Progress::Finished { .. }));
+    }
+
+    #[test]
+    fn no_download_starts_while_the_models_move_and_no_move_while_one_runs() {
+        let downloads = Downloads::default();
+        let moving = downloads.begin_move().unwrap();
+        assert!(downloads.moving());
+        assert!(downloads.begin("gemma.gguf").is_err());
+        assert!(downloads.begin_move().is_err(), "one move at a time");
+        drop(moving);
+        assert!(!downloads.moving());
+        downloads.begin("gemma.gguf").unwrap();
+        assert!(downloads.begin_move().is_err());
     }
     use crate::llama::hardware::{GIB, Gpu};
 
