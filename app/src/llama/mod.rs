@@ -18,6 +18,7 @@ pub mod hardware;
 pub mod llama_server;
 pub mod model_choice;
 pub mod model_gate;
+pub mod models_folder;
 
 use std::sync::Arc;
 

@@ -38,6 +38,10 @@ pub enum Msg {
     DownloadServer,
     DownloadModel(&'static str),
     UseModel(&'static str),
+    /// Asks for a folder and moves the models there.
+    MoveModels,
+    /// The folder dialog was closed without a folder.
+    NoFolder,
     /// What a click came to; a reload follows.
     Said(Result<String, String>),
     /// The next look at a running download.
@@ -98,6 +102,29 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                 },
             );
         }
+        Msg::MoveModels => {
+            state.said = Some((Health::Neutral, "Pick the folder to keep the models in…".to_string()));
+            return runner.run(
+                |context| async move {
+                    let Some(folder) = rfd::AsyncFileDialog::new()
+                        .set_title("Choose the folder to keep the models in")
+                        .pick_folder()
+                        .await
+                    else {
+                        return Ok(None);
+                    };
+                    llama_setup_service::move_models(&context, folder.path().to_path_buf())
+                        .await
+                        .map(Some)
+                },
+                |answer| match answer.and_then(|moved| moved.map_err(|e| e.message)) {
+                    Ok(None) => Msg::NoFolder,
+                    Ok(Some(said)) => Msg::Said(Ok(said)),
+                    Err(why) => Msg::Said(Err(why)),
+                },
+            );
+        }
+        Msg::NoFolder => state.said = None,
         // The shell goes on.
         Msg::ModelInUse { .. } => {}
         Msg::Said(said) => {
@@ -160,9 +187,22 @@ pub fn view(state: &State) -> Element<'_, Msg> {
             ),
         ));
     }
-    screen
-        .push(widgets::caption(format!("Models are kept in {}.", view.models_folder)))
-        .into()
+    let move_models = button(text("Move to another folder…").size(style::BODY_SIZE))
+        .style(style::standard_button)
+        .on_press_maybe((!view.busy).then_some(Msg::MoveModels));
+    let folder = row![
+        column![
+            text(view.models_folder.as_str()).size(style::BODY_SIZE),
+            widgets::caption("The models you have move with it; new ones download there."),
+        ]
+        .spacing(2)
+        .width(Fill),
+        move_models,
+    ]
+    .spacing(14)
+    .align_y(Center)
+    .padding(ROW_PADDING);
+    screen.push(widgets::section("Models folder", folder.into())).into()
 }
 
 /// The computer the models are weighed against, and llama-server.

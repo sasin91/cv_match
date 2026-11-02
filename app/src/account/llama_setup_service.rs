@@ -128,6 +128,58 @@ pub fn download_model(context: &Arc<Context>, file: &str) -> Result<(), ServiceE
     })
 }
 
+/// Downloads file, a catalog model, when it isn't in the models folder yet, and waits for it: a
+/// task's default model comes down the first time the task needs it. A file the catalog doesn't
+/// offer is left to llama-server's start to say it is missing.
+pub async fn download_if_missing(context: &Context, file: &str) -> Result<(), ServiceError> {
+    let Some(server) = &context.llama else {
+        return Ok(());
+    };
+    let Some(model) = catalog::find(file) else {
+        return Ok(());
+    };
+    let _one_at_a_time = server.fetching.lock().await;
+    if server
+        .models()
+        .iter()
+        .any(|downloaded| downloaded.name.eq_ignore_ascii_case(file))
+    {
+        return Ok(());
+    }
+    crate::log_line!("llama: {file} isn't downloaded yet; downloading it now");
+    // Ended here, or on drop when this call is dropped while it waits (a scan's time limit).
+    let turn = server
+        .downloads
+        .begin_turn(model.file)
+        .map_err(|why| ServiceError::new(ErrorKind::TooMany, why))?;
+    let outcome = context
+        .running
+        .run(
+            WorkKind::Download,
+            model.file.to_string(),
+            download::download_model(model, &server.models_folder(), &server.downloads),
+        )
+        .await
+        .unwrap_or_else(|Stopped| Err(Stopped::SAID.to_string()));
+    turn.end(outcome.clone());
+    outcome.map_err(|why| ServiceError::new(ErrorKind::Internal, format!("{file} couldn't be downloaded: {why}")))
+}
+
+/// Moves the models to the folder to (a bigger disk, say) and keeps them there from now on;
+/// says how it went.
+pub async fn move_models(context: &Context, to: std::path::PathBuf) -> Result<String, ServiceError> {
+    let server = server_of(context)?;
+    let moved = server
+        .move_models(to.clone())
+        .await
+        .map_err(|why| ServiceError::internal("llama_setup (move models)", why))?;
+    let models = if moved == 1 { "model" } else { "models" };
+    Ok(format!(
+        "Moved {moved} {models}. Models are kept in {} from now on.",
+        to.display()
+    ))
+}
+
 /// Saves the downloaded model file as this app's own model.
 pub async fn use_model(context: &Context, file: &str) -> Result<ModelSaved, ServiceError> {
     let server = server_of(context)?;
@@ -202,7 +254,7 @@ pub fn view_of(server: &LlamaServer) -> LlamaSetupView {
     let inventory = server.inventory();
     let models_folder = server.models_folder();
     let download = download_view(&server.downloads.progress());
-    let busy = download.as_ref().is_some_and(|download| download.running);
+    let busy = server.downloads.moving() || download.as_ref().is_some_and(|download| download.running);
     let rows = catalog_rows(server, card_usable);
     let good_model_fits_card = rows.iter().any(|row| row.good_enough);
     let ModelLists {
@@ -272,21 +324,26 @@ fn catalog_rows(server: &LlamaServer, card_usable: bool) -> Vec<CatalogRow> {
     recommend_a_good_one(rows)
 }
 
-/// Moves the recommendation to the smallest good-enough model (the one with the most of itself
-/// on the card) when the best fit isn't good enough and another is, so the wizard downloads the
-/// model the API key page and the setup suggest.
+/// Moves the recommendation to the smallest good-enough model (the catalog lists the smallest
+/// first), so the wizard downloads the model the API key page and the setup suggest: the model
+/// bake-off found the bigger ones answer no better, only slower. Without a good-enough one, the
+/// smallest one good enough that runs at all (on the CPU, as the bake-off ran Qwen3 4B at about
+/// a minute per post) is recommended; without that either, the best fit stays recommended.
 fn recommend_a_good_one(mut rows: Vec<CatalogRow>) -> Vec<CatalogRow> {
-    let recommended_is_good = rows.iter().any(|row| row.recommended && row.good_enough);
-    let Some(good) = rows.iter().position(|row| row.good_enough) else {
+    let on_the_card = rows.iter().position(|row| row.good_enough);
+    let Some(good) = on_the_card.or_else(|| rows.iter().position(runs_well_enough_anywhere)) else {
         return rows;
     };
-    if recommended_is_good {
-        return rows;
-    }
     for (index, row) in rows.iter_mut().enumerate() {
         row.recommended = index == good;
     }
     rows
+}
+
+/// Whether row is a model every task can run on, good enough for the AI match, that runs on this
+/// computer at all.
+fn runs_well_enough_anywhere(row: &CatalogRow) -> bool {
+    !row.too_big && catalog::find(row.file).is_some_and(|model| model.fits_every_task && catalog::is_good_enough(model))
 }
 
 /// Whether a model of layers with this fit has at least MIN_CARD_SHARE_PERCENT of them on the
@@ -416,7 +473,7 @@ mod tests {
     }
 
     #[test]
-    fn an_8_gb_card_is_offered_qwen3_8b() {
+    fn an_8_gb_card_is_offered_qwen3_4b_which_the_bake_off_found_as_good_as_the_8b() {
         // Jonas's PC: 31.1 GB memory, AMD Radeon RX 7600 with 7.9 GB.
         let inventory = Inventory {
             memory_bytes: 311 * GIB / 10,
@@ -429,10 +486,7 @@ mod tests {
         let folder = std::env::temp_dir().join("jobfinder-llama-setup-test");
         let server = LlamaServer::new(&folder, inventory);
         let page = view_of(&server);
-        assert_eq!(
-            page.recommended.as_ref().map(|row| row.file),
-            Some("Qwen3-8B-Q4_K_M.gguf")
-        );
+        assert_eq!(page.recommended.as_ref().map(|row| row.file), Some(catalog::QWEN3_4B));
         let offered: Vec<&str> = page.to_download.iter().map(|row| row.file).collect();
         assert_eq!(
             offered.len(),
@@ -456,10 +510,7 @@ mod tests {
             }),
         };
         let jonas = LlamaServer::new(&folder, card(79));
-        assert_eq!(
-            good_local_model(&jonas).map(|row| row.file),
-            Some("Qwen3-8B-Q4_K_M.gguf")
-        );
+        assert_eq!(good_local_model(&jonas).map(|row| row.file), Some(catalog::QWEN3_4B));
         // Only the 1.7B fits whole on a 4 GB card; under half of the 4B fits on it.
         let small_card = LlamaServer::new(&folder, card(40));
         assert_eq!(good_local_model(&small_card).map(|row| row.file), None);

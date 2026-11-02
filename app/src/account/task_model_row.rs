@@ -1,7 +1,7 @@
 //! The model per task as the API key page and the Language models screen show it: per task whose
 //! use runs on a key, the key, and either a list of the models folder's files (this app's own
 //! model) or a field to type a model name in (every other provider). A list offers the key's own
-//! model and the task's default apart, so a downloaded default can be turned off.
+//! model and the task's default apart, so a default can be turned off.
 
 use super::account_model::{self, Saved};
 use super::saved_key::KeyChoice;
@@ -12,6 +12,8 @@ use crate::llm::{self, LLAMA_CPP};
 pub struct TaskModelRow {
     /// The task's name, as the desktop screen sends it back.
     pub task: &'static str,
+    /// The use (account_model::USES) whose key it runs on.
+    pub use_: &'static str,
     /// Its form field: model_for_{task}.
     pub field: String,
     pub label: &'static str,
@@ -24,8 +26,8 @@ pub struct TaskModelRow {
     pub choices: Vec<KeyChoice>,
     /// For a typed one: the model saved for the task, "" for none.
     pub model: String,
-    /// The key's own model, as the list's first entry and the typed field's grey hint: "The key's
-    /// own model (gpt-5.4-mini)".
+    /// The key's own model, as the list's first entry and the typed field's grey hint: "Same as
+    /// the key (gpt-5.4-mini)".
     pub keys_own: String,
 }
 
@@ -56,6 +58,7 @@ fn row(task: &'static Task, key: &Saved, model: String, downloaded: &[String]) -
     let keys_own = keys_own_label(key);
     TaskModelRow {
         task: task.name,
+        use_: task.use_,
         field: field(task),
         label: task.label,
         key: account_model::provider_label(&key.provider).to_string(),
@@ -71,11 +74,11 @@ fn row(task: &'static Task, key: &Saved, model: String, downloaded: &[String]) -
     }
 }
 
-/// "The key's own model (gpt-5.4-mini)", or without the name when it can't be said.
+/// "Same as the key (gpt-5.4-mini)", or without the name when it can't be said.
 fn keys_own_label(key: &Saved) -> String {
     match runs_without_a_name(&key.provider, &key.model) {
-        Some(model) => format!("The key's own model ({model})"),
-        None => "The key's own model".to_string(),
+        Some(model) => format!("Same as the key ({model})"),
+        None => "Same as the key".to_string(),
     }
 }
 
@@ -94,14 +97,10 @@ fn runs_without_a_name<'a>(provider: &str, model: &'a str) -> Option<&'a str> {
         .map(|(_, model)| *model)
 }
 
-/// "Default: gemma-4-E4B-it-Q4_K_M.gguf", saying when the file isn't downloaded yet (the key's own
-/// model runs until it is).
-fn default_label(default: &str, downloaded: &[String]) -> String {
-    if downloaded.iter().any(|file| file.eq_ignore_ascii_case(default)) {
-        format!("Default: {default}")
-    } else {
-        format!("Default: {default} once it is downloaded, the key's own model until then")
-    }
+/// "Default (gemma-4-E4B-it-Q4_K_M.gguf)": short, so it fits a list. A default that isn't
+/// downloaded yet comes down when the task first needs it (matches::llm_key).
+fn default_label(default: &str) -> String {
+    format!("Default ({default})")
 }
 
 /// What the list offers, with the saved one selected: the key's own model (KEYS_OWN_MODEL); for a
@@ -115,7 +114,7 @@ fn file_choices(task: &Task, keys_own: &str, saved: &str, downloaded: &[String])
     };
     let default = task.llama_default.map(|default| KeyChoice {
         value: String::new(),
-        label: default_label(default, downloaded),
+        label: default_label(default),
         selected: saved.is_empty(),
     });
     let files = downloaded.iter().map(|file| KeyChoice {
@@ -194,8 +193,8 @@ mod tests {
         assert_eq!(
             labels,
             [
-                "The key's own model (Qwen3-8B-Q4_K_M.gguf)",
-                "Default: gemma-4-E4B-it-Q4_K_M.gguf",
+                "Same as the key (Qwen3-8B-Q4_K_M.gguf)",
+                "Default (gemma-4-E4B-it-Q4_K_M.gguf)",
                 GEMMA_4_E4B,
                 QWEN3_4B
             ]
@@ -210,21 +209,13 @@ mod tests {
         );
         let application = &rows[3];
         assert!(!application.picks_a_file && application.choices.is_empty());
-        assert_eq!(application.keys_own, "The key's own model (gpt-5.4-mini)");
+        assert_eq!(application.keys_own, "Same as the key (gpt-5.4-mini)");
         let resume = &rows[4];
         assert_eq!(resume.choices.len(), 3, "no default to offer");
         assert_eq!(
             selected(resume),
             [KEYS_OWN_MODEL],
             "without a default, nothing saved is the key's own"
-        );
-    }
-
-    #[test]
-    fn a_default_not_downloaded_yet_says_so() {
-        assert_eq!(
-            default_label(GEMMA_4_E4B, &[]),
-            "Default: gemma-4-E4B-it-Q4_K_M.gguf once it is downloaded, the key's own model until then"
         );
     }
 }
