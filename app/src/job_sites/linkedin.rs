@@ -12,8 +12,11 @@ use regex::Regex;
 use scraper::{Html, Selector};
 
 use super::ListedPost;
-use super::signed_in::{Seen, SignedInBrowser};
+use super::signed_in::{Seen, Showing, SignedInBrowser};
 use crate::matches::page_reader::{self, PageText};
+
+/// How LinkedIn is read: headless, which it lets a signed-in member's browser do.
+const SHOWING: Showing = Showing::Headless;
 
 /// The domain the sites box keeps for LinkedIn.
 pub const DOMAIN: &str = "linkedin.com";
@@ -123,12 +126,12 @@ pub fn post_link(url: &str) -> Option<String> {
 
 /// LinkedIn's newest posts for term near place ("" for anywhere), read in browser.
 pub async fn search(browser: &SignedInBrowser, term: &str, place: &str) -> Result<Vec<ListedPost>, String> {
-    browser.read(DOMAIN, &search_url(term, place), listed).await
+    browser.read(DOMAIN, &search_url(term, place), SHOWING, listed).await
 }
 
 /// The post at url (post_link's), read in browser.
 pub async fn read_post(browser: &SignedInBrowser, url: &str) -> Result<PageText, String> {
-    browser.read(DOMAIN, url, post_page).await
+    browser.read(DOMAIN, url, SHOWING, post_page).await
 }
 
 /// The search page for term near place, newest first, of the past week.

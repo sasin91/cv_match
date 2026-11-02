@@ -1,9 +1,11 @@
 //! Indeed Denmark (dk.indeed.com), read in JobFinder's signed-in browser (signed_in): its search
 //! page, newest first, and its posts. Indeed needs no sign-in to search, but it shows its pages
 //! only to a browser that passes its bot check, which a headless one may not: its Cloudflare
-//! answers a headless Edge with a block page ("Blocked - Indeed.com"), signed in or not. A check
-//! or a block is said at once, and the scan leaves Indeed alone until the user opens the sign-in
-//! window again. A post is
+//! answers a headless Edge with a block page ("Blocked - Indeed.com"), signed in or not, so
+//! Indeed is read with the browser shown as a normal window (Showing::Window). A check or a
+//! block is still said at once, and the scan leaves Indeed alone until the user opens the
+//! sign-in window again. docs/extension-reads-sites.md says what reading it through an
+//! extension in the user's own Edge would take, if the window is blocked too. A post is
 //! always linked as https://{host}/viewjob?jk={id}, however it was found (a search page's vjk).
 //!
 //! What is read from a page is found by Indeed's own names, which it changes now and then.
@@ -14,8 +16,11 @@ use regex::Regex;
 use scraper::{Html, Selector};
 
 use super::ListedPost;
-use super::signed_in::{Seen, SignedInBrowser};
+use super::signed_in::{Seen, Showing, SignedInBrowser};
 use crate::matches::page_reader::{self, PageText};
+
+/// How Indeed is read: in a window, since its Cloudflare blocks a headless browser outright.
+const SHOWING: Showing = Showing::Window;
 
 /// The domain the sites box keeps for Indeed Denmark.
 pub const DOMAIN: &str = "dk.indeed.com";
@@ -81,7 +86,17 @@ const POST_LOCATION: [&str; 2] = [
     r#"[data-testid="inlineHeader-companyLocation"]"#,
     r#"[data-testid="job-location"]"#,
 ];
-const POST_TEXT: [&str; 1] = ["#jobDescriptionText"];
+const POST_TEXT: [&str; 2] = ["#jobDescriptionText", ".simple-job-description-html"];
+
+/// What Indeed puts last in a post page's title: "{title} - {place} - Indeed.com".
+const TITLE_SITE: &str = " - Indeed.com";
+
+/// What separates a post page title's parts.
+const TITLE_SEPARATOR: &str = " - ";
+
+/// The page's own title, read for the post's title and place on Indeed's newer post page, which
+/// has no h1 and no stable names for them.
+static PAGE_TITLE: LazyLock<Selector> = LazyLock::new(|| Selector::parse("head > title").expect("page title"));
 
 /// The post's link as Indeed's posts are always written, when url is an Indeed post's.
 pub fn post_link(url: &str) -> Option<String> {
@@ -93,12 +108,12 @@ pub fn post_link(url: &str) -> Option<String> {
 
 /// Indeed's newest posts for term near place ("" for anywhere), read in browser.
 pub async fn search(browser: &SignedInBrowser, term: &str, place: &str) -> Result<Vec<ListedPost>, String> {
-    browser.read(DOMAIN, &search_url(term, place), listed).await
+    browser.read(DOMAIN, &search_url(term, place), SHOWING, listed).await
 }
 
 /// The post at url (post_link's), read in browser.
 pub async fn read_post(browser: &SignedInBrowser, url: &str) -> Result<PageText, String> {
-    browser.read(DOMAIN, url, post_page).await
+    browser.read(DOMAIN, url, SHOWING, post_page).await
 }
 
 /// The search page for term near place, newest first, of the last MAX_AGE_DAYS.
@@ -195,13 +210,30 @@ pub fn post_page(location: &str, html: &str) -> Seen<PageText> {
     else {
         return Seen::NotYet;
     };
-    let title = page_reader::element_text(&page, &POST_TITLE).unwrap_or_default();
-    let about: Vec<String> = [&POST_COMPANY[..], &POST_LOCATION[..]]
-        .iter()
-        .filter_map(|selectors| page_reader::element_text(&page, selectors))
+    let (page_title, page_place) = title_parts(&page);
+    let title = page_reader::element_text(&page, &POST_TITLE)
+        .or(page_title)
+        .unwrap_or_default();
+    let place = page_reader::element_text(&page, &POST_LOCATION).or(page_place);
+    let about: Vec<String> = [page_reader::element_text(&page, &POST_COMPANY), place]
+        .into_iter()
+        .flatten()
         .collect();
     let text = about.into_iter().chain([text]).collect::<Vec<_>>().join("\n\n");
     Seen::Shown(PageText { title, text })
+}
+
+/// The post's title and place as the page's own title has them ("{title} - {place} -
+/// Indeed.com"), when it is a post's.
+fn title_parts(page: &Html) -> (Option<String>, Option<String>) {
+    let whole = page.select(&PAGE_TITLE).next().map(page_reader::part_text);
+    let Some(post) = whole.as_deref().and_then(|whole| whole.strip_suffix(TITLE_SITE)) else {
+        return (None, None);
+    };
+    match post.rsplit_once(TITLE_SEPARATOR) {
+        Some((title, place)) => (Some(title.trim().to_string()), Some(place.trim().to_string())),
+        None => (Some(post.trim().to_string()), None),
+    }
 }
 
 #[cfg(test)]
@@ -262,6 +294,28 @@ mod tests {
             listed("https://dk.indeed.com/jobs?q=php", "<html><body></body></html>"),
             Seen::NotYet
         );
+    }
+
+    #[test]
+    fn a_post_page_in_the_newer_layout_is_read_by_its_title() {
+        let description = "Vi søger en erfaren IT-systemadministrator til vores team i Ballerup. ".repeat(4);
+        let html = format!(
+            r#"<html><head><title>IT System Administrator - 2750 Ballerup - Indeed.com</title></head><body>
+              <h4 role="heading" data-testid="vj-job-description-heading">Fuld jobbeskrivelse</h4>
+              <div class="react-native-html-content simple-job-description-html"><p>{description}</p></div>
+            </body></html>"#
+        );
+        let Seen::Shown(post) = post_page("https://dk.indeed.com/viewjob?jk=44c2ef0ba90d7f78", &html) else {
+            panic!("the post shows");
+        };
+        assert_eq!(post.title, "IT System Administrator");
+        assert!(post.text.starts_with("2750 Ballerup\n\nVi søger"), "{}", post.text);
+    }
+
+    #[test]
+    fn the_security_check_is_said_as_a_check() {
+        let check = "<html><head><title>Security Check - Indeed.com</title></head><body></body></html>";
+        assert_eq!(listed("https://dk.indeed.com/jobs?q=php", check), Seen::Check);
     }
 
     #[test]
