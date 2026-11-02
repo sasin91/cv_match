@@ -119,7 +119,7 @@ pub async fn dashboard(context: &Context) -> Result<Dashboard, String> {
 }
 
 pub async fn findings(context: &Context) -> Result<Findings, String> {
-    let counts = match_model::list_counts(context.db(), context.user_id)
+    let counts = match_model::list_counts(context.db())
         .await
         .map_err(database)?
         .into_iter()
@@ -134,7 +134,7 @@ pub async fn findings(context: &Context) -> Result<Findings, String> {
             count,
         })
         .collect();
-    let best = match_model::best_first(context.db(), context.user_id, BEST_SHOWN, "", SHORTLIST)
+    let best = match_model::best_first(context.db(), BEST_SHOWN, "", SHORTLIST)
         .await
         .map_err(database)?
         .rows

@@ -35,13 +35,11 @@ struct Entry {
 }
 
 /// The user's profile as text, or None when they have none.
-pub async fn text_for_user(db: &SqlitePool, user_id: i64) -> sqlx::Result<Option<String>> {
-    let Some(candidate) = sqlx::query!(
-        r#"SELECT id, name, email, phone FROM candidates WHERE trongate_user_id = ?1"#,
-        user_id
-    )
-    .fetch_optional(db)
-    .await?
+pub async fn text_for_user(db: &SqlitePool) -> sqlx::Result<Option<String>> {
+    // The local user's candidate: there is at most one (migration 0010_one_local_user).
+    let Some(candidate) = sqlx::query!(r#"SELECT id, name, email, phone FROM candidates ORDER BY id LIMIT 1"#)
+        .fetch_optional(db)
+        .await?
     else {
         return Ok(None);
     };
@@ -114,8 +112,8 @@ pub async fn profile_links(db: &SqlitePool, candidate_id: i64) -> sqlx::Result<V
 }
 
 /// The user's profile links (LinkedIn, GitHub, ...) as (label, url), none without a candidate.
-pub async fn links_for_user(db: &SqlitePool, user_id: i64) -> sqlx::Result<Vec<(String, String)>> {
-    let candidate = sqlx::query_scalar!(r#"SELECT id FROM candidates WHERE trongate_user_id = ?1"#, user_id)
+pub async fn links_for_user(db: &SqlitePool) -> sqlx::Result<Vec<(String, String)>> {
+    let candidate = sqlx::query_scalar!(r#"SELECT id FROM candidates ORDER BY id LIMIT 1"#)
         .fetch_optional(db)
         .await?;
     match candidate {
@@ -237,9 +235,8 @@ mod tests {
         let db = db::open_in_memory().await.unwrap();
         db.execute(sqlx::raw_sql(
             r#"
-             INSERT INTO trongate_users (id) VALUES (3);
-             INSERT INTO candidates (id, trongate_user_id, name, email, phone, created_at, updated_at)
-             VALUES (11, 3, 'Jonas', 'me@example.com', '12345678', 0, 0);
+             INSERT INTO candidates (id, name, email, phone, created_at, updated_at)
+             VALUES (11, 'Jonas', 'me@example.com', '12345678', 0, 0);
              INSERT INTO candidate_profiles (candidate_id, title, location, about, created_at, updated_at)
              VALUES (11, 'Software developer', 'Slagelse', ' I build things. ', 0, 0);
              INSERT INTO candidate_profile_entries (id, candidate_id, section, title, organisation, started_on, ended_on, sort_order, created_at, updated_at)
@@ -255,7 +252,7 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(
-            text_for_user(&db, 3).await.unwrap().unwrap(),
+            text_for_user(&db).await.unwrap().unwrap(),
             "Jonas\nSoftware developer\nSlagelse · 12345678 · me@example.com\nGitHub: https://github.com/sasin91\n\n\
              I build things.\n\n\
              Experience\n\nLead · New Firm\nApril 2020 – now\n- Built the platform\n\n\
@@ -263,6 +260,5 @@ mod tests {
              Education\n\nDatamatiker · Zealand\n – June 2016\n\n\
              Skills\n- PHP\n- Rust"
         );
-        assert_eq!(text_for_user(&db, 4).await.unwrap(), None);
     }
 }

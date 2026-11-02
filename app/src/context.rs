@@ -1,5 +1,5 @@
-//! What the app's work shares, whichever front end asks for it: the database, the taxonomy, the
-//! local user, where the API keys are kept, Laya, the app's own llama.cpp model, the Jobnet
+//! What the app's work shares, whichever front end asks for it: the database, the taxonomy,
+//! where the API keys are kept, Laya, the app's own llama.cpp model, the Jobnet
 //! extension's folder, the database file and the job scan's schedule.
 //!
 //! The web server keeps its own state beside this (server::AppState: the flash message, the
@@ -27,7 +27,6 @@ pub struct Context {
     /// The taxonomy every lookup uses, swapped whole when a learned label turns active
     /// (taxonomy_store::reload); a lookup keeps the one it took for as long as it runs.
     taxonomy: RwLock<Arc<Taxonomy>>,
-    pub user_id: i64,
     pub key_vault: KeyVault,
     /// When the pages fetch_job read in its window were fetched, oldest first (unix seconds).
     fetches: Mutex<Vec<i64>>,
@@ -64,11 +63,10 @@ pub struct DatabaseFile {
 }
 
 impl Context {
-    pub fn new(db: SqlitePool, taxonomy: Arc<Taxonomy>, user_id: i64, key_vault: KeyVault) -> Self {
+    pub fn new(db: SqlitePool, taxonomy: Arc<Taxonomy>, key_vault: KeyVault) -> Self {
         Context {
             db,
             taxonomy: RwLock::new(taxonomy),
-            user_id,
             key_vault,
             fetches: Mutex::new(Vec::new()),
             extension_folder: Err("The extension wasn't written out.".to_string()),

@@ -10,7 +10,6 @@ use jobfinder::db;
 use jobfinder::job_scan::scan_service;
 use jobfinder::job_scan::search_service::{self, SaveError, SearchForm};
 use jobfinder::matches::match_service;
-use jobfinder::server;
 use jobfinder::service_error::ErrorKind;
 use jobfinder::taxonomy::Taxonomy;
 use sqlx::Executor;
@@ -20,8 +19,7 @@ static TAXONOMY: LazyLock<Arc<Taxonomy>> = LazyLock::new(|| Arc::new(Taxonomy::l
 /// The work on a new database: nothing in it but the local user.
 async fn context() -> Arc<Context> {
     let db = db::open_in_memory().await.unwrap();
-    let user_id = server::local_user(&db).await.unwrap();
-    Arc::new(Context::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory()))
+    Arc::new(Context::new(db, TAXONOMY.clone(), KeyVault::in_memory()))
 }
 
 fn form(name: &str, keywords: &str) -> SearchForm {
@@ -82,7 +80,6 @@ async fn a_job_search_is_made_listed_and_scanned_only_with_a_model_and_a_profile
     account_model::save(
         context.db(),
         &context.key_vault,
-        context.user_id,
         "local",
         "stand-in",
         "http://127.0.0.1:9/v1",
@@ -119,8 +116,8 @@ async fn dismissing_a_found_post_rejects_its_match_and_rejecting_the_match_dismi
         .db()
         .execute(sqlx::raw_sql(
             r#"
-            INSERT INTO matches (id, trongate_user_id, job_title, company, job_text, score, points, max_points, tag, created_at)
-            VALUES (5, 1, 'PHP developer', 'Acme', 'post', 0.8, 8, 10, 'good', 100);
+            INSERT INTO matches (id, job_title, company, job_text, score, points, max_points, tag, created_at)
+            VALUES (5, 'PHP developer', 'Acme', 'post', 0.8, 8, 10, 'good', 100);
             INSERT INTO scanned_job_posts (id, job_search_id, url, url_hash, title, status, match_id, found_at)
             VALUES (1, 1, 'https://jobnet.dk/1', 'x', 'PHP developer', 'matched', 5, 100);
             "#,

@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT model FROM user_llm_use_models WHERE trongate_user_id = ?1 AND use = ?2",
+  "query": "SELECT model FROM user_llm_use_models WHERE use = ?1",
   "describe": {
     "columns": [
       {
@@ -16,11 +16,11 @@
       }
     ],
     "parameters": {
-      "Right": 2
+      "Right": 1
     },
     "nullable": [
       false
     ]
   },
-  "hash": "f8a6a0ca1db3dca8131b9f122fdae0215019a08db289efb55601af9beeebc28a"
+  "hash": "0582fd1c843aa2cd00d4bf00d0aaa08c9a4db20cbfea0ca0badba1dcf85f8e0c"
 }

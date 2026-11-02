@@ -117,7 +117,6 @@ pub async fn save_key(context: &Context, form: &KeyForm) -> Result<SaveKey, Serv
     account_model::save(
         context.db(),
         &context.key_vault,
-        context.user_id,
         &form.provider,
         &form.model,
         base_url,
@@ -140,14 +139,12 @@ pub async fn save_key(context: &Context, form: &KeyForm) -> Result<SaveKey, Serv
 
 /// Runs each use on the key of the provider chosen for it, or on none.
 pub async fn save_uses(context: &Context, chosen: &UseChoices) -> Result<&'static str, ServiceError> {
-    account_model::save_uses(context.db(), context.user_id, chosen)
-        .await
-        .map_err(|e| {
-            ServiceError::internal(
-                "account/save_uses",
-                format!("Which key each use runs on couldn't be saved: {e}"),
-            )
-        })?;
+    account_model::save_uses(context.db(), chosen).await.map_err(|e| {
+        ServiceError::internal(
+            "account/save_uses",
+            format!("Which key each use runs on couldn't be saved: {e}"),
+        )
+    })?;
     Ok("Saved which key each use runs on.")
 }
 
@@ -155,7 +152,7 @@ pub async fn save_uses(context: &Context, chosen: &UseChoices) -> Result<&'stati
 /// "" for its default, task_model::KEYS_OWN_MODEL for the key's own) on that model, when its use runs on a key; Err with what's wrong, and
 /// nothing saved, when one of them can't run there.
 pub async fn save_task_models(context: &Context, chosen: &[(String, String)]) -> Result<&'static str, ServiceError> {
-    let saved = account_model::saved(context.db(), context.user_id).await?;
+    let saved = account_model::saved(context.db()).await?;
     let downloaded = llama::model_files(context.llama.as_ref());
     let mut errors = Vec::new();
     let mut models = Vec::new();
@@ -180,21 +177,19 @@ pub async fn save_task_models(context: &Context, chosen: &[(String, String)]) ->
     if !errors.is_empty() {
         return Err(ServiceError::new(ErrorKind::Invalid, errors.join(" ")));
     }
-    task_model::save(context.db(), context.user_id, &models)
-        .await
-        .map_err(|e| {
-            ServiceError::internal(
-                "account/save_task_models",
-                format!("Which model each task runs on couldn't be saved: {e}"),
-            )
-        })?;
+    task_model::save(context.db(), &models).await.map_err(|e| {
+        ServiceError::internal(
+            "account/save_task_models",
+            format!("Which model each task runs on couldn't be saved: {e}"),
+        )
+    })?;
     Ok("Saved which model each task runs on.")
 }
 
 /// Deletes that provider's saved key.
 pub async fn delete_key(context: &Context, provider: &str) -> Result<String, ServiceError> {
     let label = account_model::provider_label(provider);
-    account_model::delete_key(context.db(), &context.key_vault, context.user_id, provider)
+    account_model::delete_key(context.db(), &context.key_vault, provider)
         .await
         .map_err(|e| {
             ServiceError::internal(
@@ -207,7 +202,7 @@ pub async fn delete_key(context: &Context, provider: &str) -> Result<String, Ser
 
 /// Asks that provider's saved key's model for one tiny answer: "Your key works: …", or why not.
 pub async fn check_key(context: &Context, provider: &str) -> Result<String, ServiceError> {
-    let key = account_model::key_of(context.db(), &context.key_vault, context.user_id, provider)
+    let key = account_model::key_of(context.db(), &context.key_vault, provider)
         .await
         .map_err(|e| ServiceError::internal("account/check_key", format!("The check couldn't read your key: {e}")))?
         .ok_or_else(|| ServiceError::need_key("There's no key to check: save one first."))?;
@@ -236,10 +231,10 @@ pub async fn check_key(context: &Context, provider: &str) -> Result<String, Serv
 /// The page's data, with the form as typed (None: a provider without a saved key, if any).
 pub async fn account_view(context: &Context, typed: Option<&KeyForm>) -> Result<AccountView, ServiceError> {
     let together = context.key_vault.lock().await;
-    let saved = account_model::saved(context.db(), context.user_id).await?;
+    let saved = account_model::saved(context.db()).await?;
     let (saved_keys, vault_error) = readable(context, &saved);
     drop(together);
-    let saved_models = task_model::saved(context.db(), context.user_id).await?;
+    let saved_models = task_model::saved(context.db()).await?;
     let downloaded = llama::model_files(context.llama.as_ref());
     let advice = ModelAdvice::from(context.llama.as_ref());
     let provider = typed
@@ -299,7 +294,7 @@ fn readable(context: &Context, saved: &[Saved]) -> (Vec<SavedKey>, Option<String
     let keys = saved
         .iter()
         .map(|saved| {
-            let unreadable = match account_model::with_key(&context.key_vault, context.user_id, saved) {
+            let unreadable = match account_model::with_key(&context.key_vault, saved) {
                 Ok(key) => key.is_none(),
                 Err(e) => {
                     crate::log_line!("account: {e} (saved {} key)", saved.provider);

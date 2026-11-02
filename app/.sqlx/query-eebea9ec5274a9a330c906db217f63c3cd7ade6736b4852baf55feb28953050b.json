@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        UPDATE user_llm_keys\n        SET use_for_resume = provider IS ?1,\n            use_for_application = provider IS ?2,\n            use_for_job_evaluation = provider IS ?3\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "eebea9ec5274a9a330c906db217f63c3cd7ade6736b4852baf55feb28953050b"
+}

@@ -26,10 +26,9 @@ static TAXONOMY: LazyLock<Arc<Taxonomy>> = LazyLock::new(|| Arc::new(Taxonomy::l
 /// A saved match with a missed location, an email instruction and a résumé written as fields, and
 /// a rejected one.
 const SEED: &str = "
-INSERT INTO trongate_users (id) VALUES (3);
-INSERT INTO matches (id, trongate_user_id, job_title, company, job_url, job_text, score, points, max_points, tag, created_at)
-VALUES (21, 3, 'PHP-udvikler', 'Firma <A/S>', 'https://www.jobindex.dk/job/1', 'Vi søger en PHP-udvikler.\nSend din ansøgning til job@firma.dk. Skriv \"Backend\" i emnefeltet.', 0.86, 9, 10, 'top', 1760000000),
-       (22, 3, 'Mekaniker', '', NULL, 'Mekaniker søges', 0.2, 1, 10, 'poor', 1760000100);
+INSERT INTO matches (id, job_title, company, job_url, job_text, score, points, max_points, tag, created_at)
+VALUES (21, 'PHP-udvikler', 'Firma <A/S>', 'https://www.jobindex.dk/job/1', 'Vi søger en PHP-udvikler.\nSend din ansøgning til job@firma.dk. Skriv \"Backend\" i emnefeltet.', 0.86, 9, 10, 'top', 1760000000),
+       (22, 'Mekaniker', '', NULL, 'Mekaniker søges', 0.2, 1, 10, 'poor', 1760000100);
 INSERT INTO documents (id, kind, name, text, written_at) VALUES (1, 'cv', 'cv', 'PHP', 1760000000);
 INSERT INTO match_documents (match_id, document_id) VALUES (21, 1), (22, 1);
 INSERT INTO match_items (match_id, criterion, text, verdict, decided_by, reason, sort_order)
@@ -54,8 +53,7 @@ async fn seeded() -> SqlitePool {
 
 async fn app() -> axum::Router {
     let db = seeded().await;
-    let user_id = server::local_user(&db).await.unwrap();
-    let context = Context::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory());
+    let context = Context::new(db, TAXONOMY.clone(), KeyVault::in_memory());
     server::router(Arc::new(AppState::new(Arc::new(context), PORT)))
 }
 
@@ -298,8 +296,7 @@ async fn a_second_start_brings_the_window_to_the_front_or_is_told_there_is_none(
     assert_eq!(send(front()).await.0, StatusCode::NOT_FOUND);
 
     let db = seeded().await;
-    let user_id = server::local_user(&db).await.unwrap();
-    let context = Context::new(db, TAXONOMY.clone(), user_id, KeyVault::in_memory());
+    let context = Context::new(db, TAXONOMY.clone(), KeyVault::in_memory());
     let mut state = AppState::new(Arc::new(context), PORT);
     let (window, mut asked) = tokio::sync::mpsc::unbounded_channel();
     state.front = Some(window);
@@ -321,13 +318,7 @@ fn extension_json(path: &str, json: &str) -> Request<Body> {
 #[tokio::test]
 async fn the_extension_sends_the_post_the_browser_shows_to_a_search() {
     let db = db::open_in_memory().await.unwrap();
-    let user_id = server::local_user(&db).await.unwrap();
-    let context = Arc::new(Context::new(
-        db.clone(),
-        TAXONOMY.clone(),
-        user_id,
-        KeyVault::in_memory(),
-    ));
+    let context = Arc::new(Context::new(db.clone(), TAXONOMY.clone(), KeyVault::in_memory()));
     let app = server::router(Arc::new(AppState::new(Arc::clone(&context), PORT)));
     let description = "Vi søger en erfaren PHP-udvikler til vores team i Odense. ".repeat(5);
     let html = format!(

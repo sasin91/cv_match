@@ -57,27 +57,24 @@ pub async fn llm(context: &Context, task: &Task) -> Result<KeyedLlm, ServiceErro
 
 /// The model task runs on, on key: the one saved for it, its default, or the key's own.
 async fn task_model_of(context: &Context, task: &Task, key: &KeyFor) -> Result<String, ServiceError> {
-    let saved = task_model::saved_for(context.db(), context.user_id, task)
-        .await
-        .map_err(|e| {
-            let what = lowercase_first(task.label);
-            ServiceError::internal(
-                "llm (task model)",
-                format!("The model for {what} couldn't be read: {e}"),
-            )
-        })?;
+    let saved = task_model::saved_for(context.db(), task).await.map_err(|e| {
+        let what = lowercase_first(task.label);
+        ServiceError::internal(
+            "llm (task model)",
+            format!("The model for {what} couldn't be read: {e}"),
+        )
+    })?;
     Ok(task_model::model_for(task, &key.provider, &key.model, &saved))
 }
 
 /// Why there's no key to use: none picked for this use, the picked one no longer in Windows
 /// Credential Manager, or none saved.
 async fn missing_key_message(context: &Context, use_: &str) -> Result<String, ServiceError> {
-    let saved = account_model::saved(context.db(), context.user_id).await?;
+    let saved = account_model::saved(context.db()).await?;
     let message = match account_model::picked_for(&saved, use_) {
         Some(picked) => {
             crate::log_line!(
-                "match: user {}'s saved {} key isn't in Windows Credential Manager",
-                context.user_id,
+                "match: the saved {} key isn't in Windows Credential Manager",
                 picked.provider
             );
             format!(
@@ -109,7 +106,7 @@ fn lowercase_first(label: &str) -> String {
 }
 
 async fn key_for(context: &Context, use_: &str) -> Result<Option<KeyFor>, ServiceError> {
-    account_model::key_for(context.db(), &context.key_vault, context.user_id, use_)
+    account_model::key_for(context.db(), &context.key_vault, use_)
         .await
         .map_err(|e| {
             crate::log_line!("match: the API key couldn't be read: {e}");
