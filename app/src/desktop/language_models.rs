@@ -1,6 +1,6 @@
 //! The Language models screen: the API key page (account) in the window. The saved keys with
-//! Check and Delete, which key each use runs on, and the form that adds one, all through
-//! account_service, the functions the web page uses.
+//! Check and Delete, which key each use runs on, which model each task runs on, and the form that
+//! adds one, all through account_service, the functions the web page uses.
 
 use std::sync::Arc;
 
@@ -12,7 +12,8 @@ use super::widgets::{self, CARD_PADDING, ROW_PADDING};
 use super::{GAP, Runner};
 use crate::account::account_model::{PROVIDERS, USES, UseChoices};
 use crate::account::account_service::{self, AccountView, KeyForm, SaveKey};
-use crate::account::saved_key::{KeyUse, SavedKey};
+use crate::account::saved_key::{KeyChoice, KeyUse, SavedKey};
+use crate::account::task_model_row::TaskModelRow;
 use crate::dashboard::Health;
 use crate::llm::{LLAMA_CPP, LOCAL};
 
@@ -47,6 +48,8 @@ pub struct State {
     errors: Vec<String>,
     /// Per use (account_model::USES, in order), the key picked for it.
     uses: Vec<Option<Choice>>,
+    /// Per task row (AccountView::task_models, in order), the model picked or typed for it.
+    task_models: Vec<String>,
     /// The provider whose Delete was pressed once, waiting for the second press.
     confirm_delete: Option<String>,
     /// Work is running (a save, a check), so the buttons wait.
@@ -67,6 +70,9 @@ pub enum Msg {
     Saved(Result<Arc<SaveKey>, String>),
     PickUse(usize, Choice),
     SaveUses,
+    /// The model picked or typed for the task row at the index.
+    TaskModel(usize, String),
+    SaveTaskModels,
     AskDelete(String),
     CancelDelete,
     Delete(String),
@@ -149,6 +155,31 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                 said(true),
             );
         }
+        Msg::TaskModel(index, model) => {
+            if let Some(slot) = state.task_models.get_mut(index) {
+                *slot = model;
+            }
+        }
+        Msg::SaveTaskModels => {
+            let Some(Ok(view)) = &state.view else {
+                return Task::none();
+            };
+            state.busy = true;
+            let chosen: Vec<(String, String)> = view
+                .task_models
+                .iter()
+                .zip(&state.task_models)
+                .map(|(row, model)| (row.task.to_string(), model.clone()))
+                .collect();
+            return runner.run(
+                move |context| async move {
+                    account_service::save_task_models(&context, &chosen)
+                        .await
+                        .map(str::to_string)
+                },
+                said(true),
+            );
+        }
         Msg::AskDelete(provider) => state.confirm_delete = Some(provider),
         Msg::CancelDelete => state.confirm_delete = None,
         Msg::Delete(provider) => {
@@ -213,18 +244,32 @@ fn fill_forms(state: &mut State, view: &AccountView) {
     state.model = view.model.clone();
     state.base_url = view.base_url.clone();
     state.uses = view.key_uses.iter().map(picked).collect();
+    state.task_models = view.task_models.iter().map(task_model_of).collect();
 }
 
 /// The key a use's list has picked.
 fn picked(key_use: &KeyUse) -> Option<Choice> {
-    key_use
-        .choices
+    key_use.choices.iter().find(|choice| choice.selected).map(choice_of)
+}
+
+/// A page's list entry as the screen's.
+fn choice_of(choice: &KeyChoice) -> Choice {
+    Choice {
+        value: choice.value.clone(),
+        label: choice.label.clone(),
+    }
+}
+
+/// The model a task row has: the file its list picked, or the name saved for it.
+fn task_model_of(row: &TaskModelRow) -> String {
+    if !row.picks_a_file {
+        return row.model.clone();
+    }
+    row.choices
         .iter()
         .find(|choice| choice.selected)
-        .map(|choice| Choice {
-            value: choice.value.clone(),
-            label: choice.label.clone(),
-        })
+        .map(|choice| choice.value.clone())
+        .unwrap_or_default()
 }
 
 /// The picks as account_service takes them; "" (no key) and no pick run a use on none.
@@ -275,6 +320,9 @@ pub fn view(state: &State) -> Element<'_, Msg> {
     }
     if !view.key_uses.is_empty() {
         screen = screen.push(widgets::section("Use my keys for", uses_card(view, state)));
+    }
+    if !view.task_models.is_empty() {
+        screen = screen.push(widgets::section("A model per task", task_models_card(view, state)));
     }
     screen.push(widgets::section("Add a key", key_form(view, state))).into()
 }
@@ -378,14 +426,7 @@ fn saved_row<'a>(key: &'a SavedKey, state: &'a State) -> Element<'a, Msg> {
 fn uses_card<'a>(view: &'a AccountView, state: &'a State) -> Element<'a, Msg> {
     let mut list = Column::new().spacing(10);
     for (index, key_use) in view.key_uses.iter().enumerate() {
-        let choices: Vec<Choice> = key_use
-            .choices
-            .iter()
-            .map(|choice| Choice {
-                value: choice.value.clone(),
-                label: choice.label.clone(),
-            })
-            .collect();
+        let choices: Vec<Choice> = key_use.choices.iter().map(choice_of).collect();
         let selected = state.uses.get(index).cloned().flatten();
         list = list.push(
             row![
@@ -412,6 +453,53 @@ fn uses_card<'a>(view: &'a AccountView, state: &'a State) -> Element<'a, Msg> {
     .spacing(12)
     .padding(CARD_PADDING);
     body.into()
+}
+
+/// Per task, the model it runs on: a file from the models folder for this app's own model, a typed
+/// name for every other key.
+fn task_models_card<'a>(view: &'a AccountView, state: &'a State) -> Element<'a, Msg> {
+    let mut list = Column::new().spacing(10);
+    for (index, task) in view.task_models.iter().enumerate() {
+        let model = state.task_models.get(index).map(String::as_str).unwrap_or("");
+        let label = column![
+            text(task.label).size(style::BODY_SIZE),
+            widgets::caption(format!("on {}", task.key)),
+        ]
+        .spacing(2)
+        .width(Fill);
+        let field: Element<'a, Msg> = if task.picks_a_file {
+            let choices: Vec<Choice> = task.choices.iter().map(choice_of).collect();
+            let selected = choices.iter().find(|choice| choice.value == model).cloned();
+            pick_list(choices, selected, move |choice| Msg::TaskModel(index, choice.value))
+                .text_size(style::BODY_SIZE)
+                .padding(8)
+                .style(style::pick_field)
+                .menu_style(style::pick_menu)
+                .width(PICK_WIDTH)
+                .into()
+        } else {
+            text_input(&task.unpicked, model)
+                .on_input(move |typed| Msg::TaskModel(index, typed))
+                .size(style::BODY_SIZE)
+                .padding(8)
+                .style(style::text_field)
+                .width(PICK_WIDTH)
+                .into()
+        };
+        list = list.push(row![label, field].align_y(Center));
+    }
+    column![
+        list,
+        widgets::caption(
+            "Each task runs on the key picked for its use above, on the model picked here. This app's own model starts again with another model when the next task needs another."
+        ),
+        button(text("Save").size(style::BODY_SIZE))
+            .style(style::primary_button)
+            .on_press_maybe((!state.busy).then_some(Msg::SaveTaskModels)),
+    ]
+    .spacing(12)
+    .padding(CARD_PADDING)
+    .into()
 }
 
 /// The form that adds a key: the provider, then the fields it needs.

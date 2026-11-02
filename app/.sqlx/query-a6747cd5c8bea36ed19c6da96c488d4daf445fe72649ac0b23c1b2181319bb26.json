@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO user_llm_use_models (trongate_user_id, use, model) VALUES (?1, ?2, ?3)\n            ON CONFLICT (trongate_user_id, use) DO UPDATE SET model = excluded.model\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 3
+    },
+    "nullable": []
+  },
+  "hash": "a6747cd5c8bea36ed19c6da96c488d4daf445fe72649ac0b23c1b2181319bb26"
+}

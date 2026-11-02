@@ -1,6 +1,7 @@
 //! The API key page's work, outside the web page, so a desktop window can do the same from the
 //! same functions: the key form's checks, saving and deleting a provider's key, which key each
-//! use runs on, asking a key's model for one tiny answer, and the page's data as a view model.
+//! use runs on and which model each task runs on, asking a key's model for one tiny answer, and
+//! the page's data as a view model.
 //! Every answer is a message to show, or a ServiceError (logged when it is the app's failure).
 
 use serde::Deserialize;
@@ -10,6 +11,8 @@ use super::account_model::{self, PROVIDERS, Saved, UseChoices};
 use super::llama_panel::LlamaPanel;
 use super::model_advice::ModelAdvice;
 use super::saved_key::{self, KeyUse, SavedKey};
+use super::task_model::{self, TASKS};
+use super::task_model_row::{self, TaskModelRow};
 use crate::context::Context;
 use crate::llama;
 use crate::llm::{self, ANTHROPIC, Effort, LLAMA_CPP, LOCAL, OPENAI};
@@ -69,6 +72,8 @@ pub struct AccountView {
     pub saved: Vec<SavedKey>,
     /// Per use, the list that picks its key; empty without saved keys.
     pub key_uses: Vec<KeyUse>,
+    /// Per task whose use runs on a key, the model it runs on.
+    pub task_models: Vec<TaskModelRow>,
     /// Why Credential Manager couldn't be read, when it couldn't.
     pub vault_error: Option<String>,
     pub providers: Vec<ProviderOption>,
@@ -151,6 +156,44 @@ pub async fn save_uses(context: &Context, chosen: &UseChoices) -> Result<&'stati
     Ok("Saved which key each use runs on.")
 }
 
+/// Runs each (task, model) chosen (a task's name in task_model::TASKS, and a model name or file;
+/// "" for its default) on that model, when its use runs on a key; Err with what's wrong, and
+/// nothing saved, when one of them can't run there.
+pub async fn save_task_models(context: &Context, chosen: &[(String, String)]) -> Result<&'static str, ServiceError> {
+    let saved = account_model::saved(context.db(), context.user_id).await?;
+    let downloaded = llama::model_files(context.llama.as_ref());
+    let mut errors = Vec::new();
+    let mut models = Vec::new();
+    for task in &TASKS {
+        let Some((_, model)) = chosen.iter().find(|(name, _)| name == task.name) else {
+            continue;
+        };
+        let Some(key) = account_model::picked_for(&saved, task.use_) else {
+            continue;
+        };
+        let model = model.trim().to_string();
+        let wrong = if key.provider == LLAMA_CPP {
+            llama_file_errors(context, &model, &downloaded)
+        } else {
+            model_name_errors(&model)
+        };
+        errors.extend(wrong.into_iter().map(|why| format!("{}: {why}", task.label)));
+        models.push((task, model));
+    }
+    if !errors.is_empty() {
+        return Err(ServiceError::new(ErrorKind::Invalid, errors.join(" ")));
+    }
+    task_model::save(context.db(), context.user_id, &models)
+        .await
+        .map_err(|e| {
+            ServiceError::internal(
+                "account/save_task_models",
+                format!("Which model each task runs on couldn't be saved: {e}"),
+            )
+        })?;
+    Ok("Saved which model each task runs on.")
+}
+
 /// Deletes that provider's saved key.
 pub async fn delete_key(context: &Context, provider: &str) -> Result<String, ServiceError> {
     let label = account_model::provider_label(provider);
@@ -199,6 +242,8 @@ pub async fn account_view(context: &Context, typed: Option<&KeyForm>) -> Result<
     let saved = account_model::saved(context.db(), context.user_id).await?;
     let (saved_keys, vault_error) = readable(context, &saved);
     drop(together);
+    let saved_models = task_model::saved(context.db(), context.user_id).await?;
+    let downloaded = llama::model_files(context.llama.as_ref());
     let setup_unfinished = setup::first_run_or_logged(context).await;
     let advice = ModelAdvice::from(context.llama.as_ref());
     let provider = typed
@@ -213,6 +258,7 @@ pub async fn account_view(context: &Context, typed: Option<&KeyForm>) -> Result<
         } else {
             saved_key::key_uses(&saved)
         },
+        task_models: task_model_row::rows(&saved, &saved_models, &downloaded),
         saved: saved_keys,
         vault_error,
         providers: PROVIDERS
@@ -294,10 +340,14 @@ fn validation_errors(form: &KeyForm) -> Vec<String> {
 }
 
 fn model_errors(form: &KeyForm) -> Vec<String> {
-    let model = &form.model;
-    if model.is_empty() && form.provider == LOCAL {
+    if form.model.is_empty() && form.provider == LOCAL {
         return vec!["A local model needs its model name, like llama3.1:8b.".to_string()];
     }
+    model_name_errors(&form.model)
+}
+
+/// A model name's length and characters; "" is the key's own model.
+fn model_name_errors(model: &str) -> Vec<String> {
     if model.chars().count() > MAX_MODEL_LENGTH {
         return vec![format!(
             "The model field cannot exceed {MAX_MODEL_LENGTH} characters in length."
@@ -374,15 +424,15 @@ fn llama_model_errors(context: &Context, form: &KeyForm) -> Vec<String> {
     if form.provider != LLAMA_CPP {
         return Vec::new();
     }
+    llama_file_errors(context, &form.model, &llama::model_files(context.llama.as_ref()))
+}
+
+/// named must be one of downloaded, the models folder's files, or "".
+fn llama_file_errors(context: &Context, named: &str, downloaded: &[String]) -> Vec<String> {
     let Some(server) = &context.llama else {
         return vec!["The app was started without its llama folder.".to_string()];
     };
-    let named = &form.model;
-    let found = named.is_empty()
-        || server
-            .models()
-            .iter()
-            .any(|model| model.name.eq_ignore_ascii_case(named));
+    let found = named.is_empty() || downloaded.iter().any(|file| file.eq_ignore_ascii_case(named));
     if found {
         return Vec::new();
     }

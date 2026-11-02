@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT model FROM user_llm_use_models WHERE trongate_user_id = ?1 AND use = ?2",
+  "describe": {
+    "columns": [
+      {
+        "name": "model",
+        "ordinal": 0,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "user_llm_use_models",
+            "name": "model"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "f8a6a0ca1db3dca8131b9f122fdae0215019a08db289efb55601af9beeebc28a"
+}

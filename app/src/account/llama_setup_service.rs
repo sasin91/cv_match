@@ -41,12 +41,12 @@ pub struct CatalogRow {
     pub fit: String,
     /// Too big for this computer: it can't be downloaded here.
     pub too_big: bool,
-    /// The biggest of the best fit: the one to take.
+    /// The biggest of the best fit among the models every task can run on: the one to take.
     pub recommended: bool,
     /// In the models folder already.
     pub downloaded: bool,
-    /// Good enough for the AI match (catalog::is_good_enough) and whole or partly on the
-    /// graphics card, so it answers in reasonable time.
+    /// Good enough for the AI match (catalog::is_good_enough), a model every task can run on, and
+    /// whole or partly on the graphics card, so it answers in reasonable time.
     pub good_enough: bool,
 }
 
@@ -231,7 +231,8 @@ pub fn view_of(server: &LlamaServer) -> LlamaSetupView {
     }
 }
 
-/// The catalog, each model weighed against this computer, with the one to take marked.
+/// The catalog, each model weighed against this computer, with the one to take marked: never
+/// one picked by hand for a task (catalog::CatalogModel::fits_every_task).
 fn catalog_rows(server: &LlamaServer, card_usable: bool) -> Vec<CatalogRow> {
     let models_folder = server.models_folder();
     let inventory = server.inventory();
@@ -239,7 +240,13 @@ fn catalog_rows(server: &LlamaServer, card_usable: bool) -> Vec<CatalogRow> {
         .iter()
         .map(|model| model.as_gguf(&models_folder))
         .collect();
-    let recommended = model_choice::choose(&as_files, "", inventory, card_usable)
+    let for_every_task: Vec<_> = catalog::MODELS
+        .iter()
+        .zip(&as_files)
+        .filter(|(model, _)| model.fits_every_task)
+        .map(|(_, file)| file.clone())
+        .collect();
+    let recommended = model_choice::choose(&for_every_task, "", inventory, card_usable)
         .map(|(model, _)| model.name.clone())
         .ok();
     let downloaded: Vec<String> = server.models().into_iter().map(|model| model.name).collect();
@@ -256,7 +263,9 @@ fn catalog_rows(server: &LlamaServer, card_usable: bool) -> Vec<CatalogRow> {
                 too_big: fit == Fit::TooBig,
                 recommended: recommended.as_deref() == Some(model.file),
                 downloaded: downloaded.iter().any(|name| name == model.file),
-                good_enough: catalog::is_good_enough(model) && runs_mostly_on_the_card(fit, model.layers),
+                good_enough: model.fits_every_task
+                    && catalog::is_good_enough(model)
+                    && runs_mostly_on_the_card(fit, model.layers),
             }
         })
         .collect();
@@ -427,7 +436,7 @@ mod tests {
         let offered: Vec<&str> = page.to_download.iter().map(|row| row.file).collect();
         assert_eq!(
             offered.len(),
-            4,
+            catalog::MODELS.len(),
             "every model fits a 7.9 GB card one way or another: {offered:?}"
         );
         assert!(page.downloaded.is_empty());

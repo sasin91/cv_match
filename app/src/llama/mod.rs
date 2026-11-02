@@ -37,3 +37,10 @@ pub async fn use_key(server: Option<&llama_server::LlamaServer>, key: &KeyFor) -
     llm.server_in_use = Some(Arc::new(in_use));
     Ok(llm)
 }
+
+/// The file names of the models in the models folder; none without a llama folder.
+pub fn model_files(server: Option<&llama_server::LlamaServer>) -> Vec<String> {
+    server.map_or_else(Vec::new, |server| {
+        server.models().into_iter().map(|model| model.name).collect()
+    })
+}

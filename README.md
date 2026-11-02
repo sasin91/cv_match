@@ -79,7 +79,11 @@ Open http://127.0.0.1:8765/account. Pick OpenAI, Anthropic or a local server, pa
 (a local server needs its address and a model name instead), and save it. One key is kept per
 provider, so an OpenAI and an Anthropic key can be saved side by side. Under **Use my keys for**,
 pick the key each use runs on: evaluating job posts, writing applications, tailoring résumés.
-**Check key** sends one tiny request. The keys go in Windows Credential Manager under
+Under **A model per task**, pick the model each task runs on, on its use's key: reading job
+posts, reading CVs and judging the match (evaluating job posts), writing applications, and
+tailoring résumés. With this app's own model, job posts are read with Gemma 4 E4B and CVs read
+and judged with Qwen3 4B when those files are in `llama\models`; otherwise a task runs on the
+key's own model. **Check key** sends one tiny request. The keys go in Windows Credential Manager under
 `JobFinder`, never in the database. With no model named, OpenAI keys run on gpt-5.4-mini.
 
 ### Laya's model
@@ -106,8 +110,10 @@ Instead of a key, the app can run a GGUF model itself. Open http://127.0.0.1:876
    (CUDA for NVIDIA, Vulkan for every other card, CPU without one) and unzips it into
    `%APPDATA%\JobFinder\llama`, or the folder `--llama` names. A `llama-server.exe` already on
    the PATH (winget's llama.cpp, say) is used instead, and nothing is downloaded.
-2. Each offered model (Qwen3 1.7B to 14B) is weighed against this computer's memory and graphics
-   card. **Download** the recommended one into `llama\models`.
+2. Each offered model (Qwen3 1.7B to 14B, Gemma 4 E4B, Munin Qwen3.5 9B) is weighed against this
+   computer's memory and graphics card. **Download** the recommended one into `llama\models`;
+   Gemma 4 E4B (reads Danish job posts best) and Munin (writes the best Danish, but heavy) are
+   for picking per task, never the recommended one.
 3. **Use this model** saves it as **This app's own model (llama.cpp)**, and the API key page
    picks what it is used for.
 

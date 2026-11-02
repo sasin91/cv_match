@@ -23,7 +23,7 @@ against a fixed snapshot of expected answers (tests/parity.rs).
 | `src/extension.rs` | ships `extension/jobnet-joblog` and writes it out for the browser |
 | `src/matches/pdf_writer.rs`, `tailored_resume.rs` | documents as PDFs, and the tailored résumé's fields |
 | `src/matches/match_prompts.rs` | extract_job, extract_cv and the judging |
-| `src/matches/ai_match.rs`, `document_writer.rs`, `llm_key.rs` | the AI match, the writing, and which key a use runs on |
+| `src/matches/ai_match.rs`, `document_writer.rs`, `llm_key.rs` | the AI match, the writing, and which key and model a task runs on |
 | `src/matches/page_reader.rs` | fetch_job: a post read from a pasted link |
 | `src/matches/application_delivery.rs`, `cv_links.rs`, `resume_comparison.rs` | the Apply dialog and the résumé's comparison |
 | `src/laya/laya_client.rs` | Laya, on `laya-server`'s model in this process |
@@ -114,7 +114,8 @@ needs a model name and usually no key. One key is kept per provider. Each goes i
 Credential Manager (service `JobFinder`, user `user_llm_keys:1:{provider}@` and the database
 file's full path, so each provider and each database has its own key), never in the database;
 `user_llm_keys` keeps a row per provider with the model, address, the key's last 4 characters
-and the uses it is picked for (each use on one key at most). A key saved before keys were kept
+and the uses it is picked for (each use on one key at most); `user_llm_use_models` keeps the
+model each task runs on, on its use's key (`account/task_model.rs`). A key saved before keys were kept
 per provider (`user_llm_keys:1@…`) moves to its provider's credential the first time it is read. "Check key" sends one
 tiny request and says whether it was answered.
 

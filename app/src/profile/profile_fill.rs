@@ -2,7 +2,7 @@
 //! read_cv): one model call reads the CV's text into the profile, replacing all of it. It runs
 //! on the key picked for tailoring résumés, since the résumés are written from the profile.
 
-use crate::account::account_model::RESUME;
+use crate::account::task_model;
 use crate::context::Context;
 use crate::llm::{Effort, Llm, LlmException};
 use crate::matches::llm_key;
@@ -69,7 +69,7 @@ pub async fn fill_from_cv(context: &Context, cv_text: &str, cv_name: &str) -> Re
     if let Some(why) = cv_text_error(cv_text) {
         return Err(ServiceError::new(ErrorKind::Invalid, why));
     }
-    let keyed = llm_key::llm(context, RESUME).await?;
+    let keyed = llm_key::llm(context, &task_model::RESUME_TASK).await?;
     let answer = read_cv(&keyed.llm, cv_text.trim()).await.map_err(|e| {
         crate::log_line!("profile (fill_from_cv): {}", e.details());
         ServiceError::new(

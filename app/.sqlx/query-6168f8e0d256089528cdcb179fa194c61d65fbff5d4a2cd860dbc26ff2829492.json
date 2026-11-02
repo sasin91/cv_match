@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM user_llm_use_models WHERE trongate_user_id = ?1 AND use = ?2",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "6168f8e0d256089528cdcb179fa194c61d65fbff5d4a2cd860dbc26ff2829492"
+}

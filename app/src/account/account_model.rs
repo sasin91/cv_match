@@ -9,6 +9,7 @@ use std::fmt;
 use sqlx::SqlitePool;
 
 use super::key_vault::KeyVault;
+use super::task_model;
 use crate::llm::{ANTHROPIC, LLAMA_CPP, LOCAL, OPENAI};
 use crate::matches::match_documents::Uses;
 
@@ -73,6 +74,18 @@ pub struct UseChoices {
     pub resume: Option<String>,
     pub application: Option<String>,
     pub job_evaluation: Option<String>,
+}
+
+impl UseChoices {
+    /// The provider chosen for use_ (a name in USES), or None.
+    fn of(&self, use_: &str) -> Option<&str> {
+        let chosen = match use_ {
+            RESUME => &self.resume,
+            APPLICATION => &self.application,
+            _ => &self.job_evaluation,
+        };
+        chosen.as_deref()
+    }
 }
 
 /// Why a key couldn't be read or kept.
@@ -178,8 +191,12 @@ fn kept_key(vault: &KeyVault, user_id: i64, saved: &Saved) -> Result<Option<Stri
     Ok(Some(key))
 }
 
-/// Runs each use on the key chosen for it, and on no other.
+/// Runs each use on the key chosen for it, and on no other. A use that moves to another key (or
+/// none) forgets its tasks' models (task_model), which were the old key's.
 pub async fn save_uses(db: &SqlitePool, user_id: i64, chosen: &UseChoices) -> sqlx::Result<()> {
+    let before = saved(db, user_id).await?;
+    let moved = moved_uses(&before, chosen);
+    let mut tx = crate::db::write_transaction(db).await?;
     sqlx::query!(
         r#"
         UPDATE user_llm_keys
@@ -193,9 +210,18 @@ pub async fn save_uses(db: &SqlitePool, user_id: i64, chosen: &UseChoices) -> sq
         chosen.application,
         chosen.job_evaluation
     )
-    .execute(db)
+    .execute(&mut *tx)
     .await?;
-    Ok(())
+    task_model::forget_for_uses(&mut tx, user_id, &moved).await?;
+    tx.commit().await
+}
+
+/// The uses whose chosen provider isn't the one picked for them in before.
+fn moved_uses(before: &[Saved], chosen: &UseChoices) -> Vec<&'static str> {
+    USES.iter()
+        .map(|(use_, _)| *use_)
+        .filter(|use_| picked_for(before, use_).map(|saved| saved.provider.as_str()) != chosen.of(use_))
+        .collect()
 }
 
 /// Saves the provider's key, replacing the one saved for it before (its uses stay as they were);
@@ -251,16 +277,25 @@ fn keep(vault: &KeyVault, user_id: i64, provider: &str, api_key: &str) -> Result
 }
 
 /// Deletes the provider's saved key, from the table and from Credential Manager. The uses it was
-/// picked for run on no key until another is picked.
+/// picked for run on no key until another is picked, and forget their tasks' models.
 pub async fn delete_key(db: &SqlitePool, vault: &KeyVault, user_id: i64, provider: &str) -> Result<(), Error> {
     let _together = vault.lock().await;
+    let before = saved(db, user_id).await?;
+    let picked: Vec<&str> = USES
+        .iter()
+        .map(|(use_, _)| *use_)
+        .filter(|use_| picked_for(&before, use_).is_some_and(|saved| saved.provider == provider))
+        .collect();
+    let mut tx = crate::db::write_transaction(db).await?;
     sqlx::query!(
         r#"DELETE FROM user_llm_keys WHERE trongate_user_id = ?1 AND provider = ?2"#,
         user_id,
         provider
     )
-    .execute(db)
+    .execute(&mut *tx)
     .await?;
+    task_model::forget_for_uses(&mut tx, user_id, &picked).await?;
+    tx.commit().await?;
     vault.delete(user_id, provider).map_err(Error::Vault)
 }
 
@@ -377,6 +412,35 @@ mod tests {
         let found = saved(&db, 1).await.unwrap();
         assert_eq!(provider_for(&found, APPLICATION).as_deref(), Some(ANTHROPIC));
         assert_eq!(found[0].model, "");
+    }
+
+    #[tokio::test]
+    async fn a_use_moved_to_another_key_forgets_its_tasks_models() {
+        let db = with_user().await;
+        let vault = KeyVault::in_memory();
+        save(&db, &vault, 1, LLAMA_CPP, "", "", "").await.unwrap();
+        save(&db, &vault, 1, OPENAI, "", "", OPENAI_KEY).await.unwrap();
+        let models = [
+            (&task_model::READ_JOB, "gemma-4-E4B-it-Q4_K_M.gguf".to_string()),
+            (&task_model::RESUME_TASK, "Qwen3-8B-Q4_K_M.gguf".to_string()),
+        ];
+        task_model::save(&db, 1, &models).await.unwrap();
+        let key = |provider: &str| Some(provider.to_string());
+        let chosen = UseChoices {
+            resume: key(LLAMA_CPP),
+            application: key(LLAMA_CPP),
+            job_evaluation: key(OPENAI),
+        };
+        save_uses(&db, 1, &chosen).await.unwrap();
+        assert_eq!(task_model::saved_for(&db, 1, &task_model::READ_JOB).await.unwrap(), "");
+        assert_eq!(
+            task_model::saved_for(&db, 1, &task_model::RESUME_TASK).await.unwrap(),
+            "Qwen3-8B-Q4_K_M.gguf",
+            "the résumé stays on its key, with its model"
+        );
+
+        delete_key(&db, &vault, 1, LLAMA_CPP).await.unwrap();
+        assert_eq!(task_model::saved(&db, 1).await.unwrap(), []);
     }
 
     #[tokio::test]

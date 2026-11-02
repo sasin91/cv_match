@@ -3,7 +3,8 @@
 //! local OpenAI-compatible server (Ollama, LM Studio), or on a GGUF model the app runs itself with
 //! llama.cpp (the llama module), which needs no key. One key is kept per provider, in Windows
 //! Credential Manager, and never shown again; only its last 4 characters are. Each use (tailoring
-//! résumés, writing applications, evaluating job posts) runs on the key picked for it, or on none.
+//! résumés, writing applications, evaluating job posts) runs on the key picked for it, or on none,
+//! and each task of a use on the model picked for it (task_model), or on the key's own.
 //!
 //! The work is in account_service; the handlers here read the form, call it and print the page.
 //! There is no account on the desktop, so no profile links, data download or account deletion.
@@ -16,7 +17,10 @@ pub mod llama_setup;
 pub mod llama_setup_service;
 pub mod model_advice;
 pub mod saved_key;
+pub mod task_model;
+pub mod task_model_row;
 
+use std::collections::HashMap;
 use std::sync::Arc;
 
 use askama::Template;
@@ -31,6 +35,8 @@ use self::account_service::{AccountView, KeyForm, ProviderOption, SaveKey};
 use self::llama_panel::LlamaPanel;
 use self::model_advice::ModelAdvice;
 use self::saved_key::{KeyUse, SavedKey};
+use self::task_model::TASKS;
+use self::task_model_row::TaskModelRow;
 use crate::server::AppState;
 use crate::setup;
 
@@ -44,6 +50,8 @@ struct AccountPage {
     saved: Vec<SavedKey>,
     /// Per use, the list that picks its key; empty without saved keys.
     key_uses: Vec<KeyUse>,
+    /// Per task whose use runs on a key, the model it runs on.
+    task_models: Vec<TaskModelRow>,
     /// Why Credential Manager couldn't be read, when it couldn't.
     vault_error: Option<String>,
     providers: Vec<ProviderOption>,
@@ -115,6 +123,25 @@ pub async fn submit_uses(State(state): State<Arc<AppState>>, Form(form): Form<Us
     Redirect::to(PAGE).into_response()
 }
 
+/// POST account/submit_task_models {model_for_read_job, model_for_read_cv, model_for_judge,
+/// model_for_application, model_for_resume}: runs each task sent on that model ("" its default);
+/// a task not sent keeps its model.
+pub async fn submit_task_models(
+    State(state): State<Arc<AppState>>,
+    Form(form): Form<HashMap<String, String>>,
+) -> Response {
+    let chosen: Vec<(String, String)> = TASKS
+        .iter()
+        .filter_map(|task| {
+            let model = form.get(&task_model_row::field(task))?;
+            Some((task.name.to_string(), model.clone()))
+        })
+        .collect();
+    let said = account_service::save_task_models(&state.context, &chosen).await;
+    state.set_flash(said.map_or_else(|e| e.message, str::to_string));
+    Redirect::to(PAGE).into_response()
+}
+
 /// POST account/submit_delete {provider}: deletes that provider's saved key.
 pub async fn submit_delete(State(state): State<Arc<AppState>>, Form(form): Form<ProviderForm>) -> Response {
     let said = account_service::delete_key(&state.context, &form.provider).await;
@@ -141,6 +168,7 @@ async fn page(state: &AppState, typed: Option<&KeyForm>, errors: Vec<String>) ->
     let AccountView {
         saved,
         key_uses,
+        task_models,
         vault_error,
         providers,
         model,
@@ -155,6 +183,7 @@ async fn page(state: &AppState, typed: Option<&KeyForm>, errors: Vec<String>) ->
         flash: state.take_flash(),
         saved,
         key_uses,
+        task_models,
         vault_error,
         providers,
         errors,

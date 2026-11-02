@@ -23,6 +23,7 @@ use super::resume_comparison::ResumeComparison;
 use super::saved_match_row::SavedMatchRow;
 use super::{Job, Profile, apply_instructions, match_prompts, pdf_writer, reject_reason};
 use crate::account::account_model::JOB_EVALUATION;
+use crate::account::task_model;
 use crate::context::Context;
 use crate::laya::laya_client;
 use crate::pdf_text::child;
@@ -462,7 +463,7 @@ pub async fn extract_job(context: &Context, text: &str) -> Result<Job, ServiceEr
     if llm_key::llm_settings(context, JOB_EVALUATION).await?.is_none() {
         return Ok(FreeReader::new(&context.taxonomy, this_month()).job(text));
     }
-    let keyed = llm_key::llm(context, JOB_EVALUATION).await?;
+    let keyed = llm_key::llm(context, &task_model::READ_JOB).await?;
     match_prompts::read_job(&keyed.llm, text)
         .await
         .map_err(|e| ServiceError::llm("match/extract_job", &e))
@@ -474,7 +475,7 @@ pub async fn extract_cv(context: &Context, text: &str) -> Result<Profile, Servic
     if llm_key::llm_settings(context, JOB_EVALUATION).await?.is_none() {
         return Ok(FreeReader::new(&context.taxonomy, this_month()).cv(text));
     }
-    let keyed = llm_key::llm(context, JOB_EVALUATION).await?;
+    let keyed = llm_key::llm(context, &task_model::READ_CV).await?;
     match_prompts::read_cv(&keyed.llm, text)
         .await
         .map_err(|e| ServiceError::llm("match/extract_cv", &e))
@@ -494,7 +495,7 @@ pub struct MatchRequest {
 /// The match of a read job post with a read CV (ai_match), saved when both texts are given.
 pub async fn ai_match(context: &Context, request: &MatchRequest) -> Result<AiMatch, ServiceError> {
     let keyed = match llm_key::llm_settings(context, JOB_EVALUATION).await? {
-        Some(_) => Some(llm_key::llm(context, JOB_EVALUATION).await?),
+        Some(_) => Some(llm_key::llm(context, &task_model::JUDGE).await?),
         None => None,
     };
     let matching = Matching {
@@ -724,7 +725,7 @@ pub async fn write(
     kind: &'static str,
 ) -> Result<DocumentBox, ServiceError> {
     let found = saved_match(&context, id).await?;
-    let keyed = llm_key::llm(&context, kind).await?;
+    let keyed = llm_key::llm(&context, task_model::writing(kind)).await?;
     let notes = document_writer::notes(notes);
     let task_context = context.clone();
     let task_found = found.clone();
