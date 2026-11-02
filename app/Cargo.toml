@@ -3,6 +3,7 @@ name = "jobfinder"
 version = "0.1.0"
 edition = "2024"
 description = "JobFinder: Recruiter's CV match as a local desktop app"
+license = "BSD-2-Clause"
 publish = false
 
 # xtask/ holds the developer commands (`cargo dev`). It shares this Cargo.lock and target/, and

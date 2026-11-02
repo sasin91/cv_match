@@ -72,9 +72,50 @@ pub async fn open(db: &SqlitePool) -> Result<Taxonomy, String> {
     write_shipped_if_changed(db, now)
         .await
         .map_err(|e| format!("The taxonomy couldn't be written to the database: {e}"))?;
-    load(db)
+    let taxonomy = load(db)
         .await
-        .map_err(|e| format!("The taxonomy couldn't be read from the database: {e}"))
+        .map_err(|e| format!("The taxonomy couldn't be read from the database: {e}"))?;
+    reject_unfounded_judge_candidates(db, &taxonomy, now)
+        .await
+        .map_err(|e| format!("The judge's unfounded labels couldn't be rejected: {e}"))?;
+    Ok(taxonomy)
+}
+
+/// Rejects the candidate labels only the judge taught whose words share none with their term's
+/// labels (Taxonomy::shares_word_stem), as taxonomy_lessons now asks of a judge's lesson: such a
+/// label came from a met verdict alone ("SSA til aftenvagt" for Laravel), before that rule. They
+/// are rejected rather than deleted, so they aren't learned again and the Learned terms screen
+/// still shows them; Approve takes one back.
+async fn reject_unfounded_judge_candidates(db: &SqlitePool, taxonomy: &Taxonomy, now: i64) -> sqlx::Result<()> {
+    let candidates = sqlx::query!(
+        r#"SELECT l.id AS "id!", l.term_id, l.text FROM taxonomy_labels l
+           WHERE l.status = 'candidate' AND l.source = 'learned'
+             AND EXISTS (SELECT 1 FROM taxonomy_label_sightings s WHERE s.label_id = l.id)
+             AND NOT EXISTS (SELECT 1 FROM taxonomy_label_sightings s
+                             WHERE s.label_id = l.id AND s.learned_from <> 'judge')"#
+    )
+    .fetch_all(db)
+    .await?;
+    let unfounded: Vec<_> = candidates
+        .into_iter()
+        .filter(|label| !taxonomy.shares_word_stem(&label.text, label.term_id))
+        .collect();
+    if unfounded.is_empty() {
+        return Ok(());
+    }
+    let mut tx = db::write_transaction(db).await?;
+    for label in &unfounded {
+        set_status(&mut tx, label.id, REJECTED, now).await?;
+    }
+    tx.commit().await?;
+    for label in &unfounded {
+        crate::log_line!(
+            "taxonomy: rejected \"{}\" for term {}: only the judge taught it, and it shares no word with the term",
+            label.text,
+            label.term_id
+        );
+    }
+    Ok(())
 }
 
 /// The taxonomy built again from the database and swapped into context, after a label turned
@@ -316,6 +357,33 @@ pub async fn learned_labels(db: &SqlitePool) -> sqlx::Result<Vec<ListedLabel>> {
         .fetch_all(db)
         .await?;
     Ok(rows)
+}
+
+/// A match that taught a label: where it was found and why.
+#[derive(Debug, Clone, PartialEq)]
+pub struct LabelSighting {
+    pub match_id: i64,
+    /// FROM_READ or FROM_JUDGE.
+    pub learned_from: String,
+    /// The provider/model that answered.
+    pub model: String,
+    pub seen_at: i64,
+    pub job_title: String,
+    pub company: String,
+    pub job_url: Option<String>,
+    /// The match's item for the requirement the label is, when it is found: its verdict, who
+    /// decided it, and the judge's quote of the CV and reason.
+    pub verdict: Option<String>,
+    pub decided_by: Option<String>,
+    pub evidence: Option<String>,
+    pub reason: Option<String>,
+}
+
+/// The matches that taught label id, oldest first.
+pub async fn sightings(db: &SqlitePool, id: i64) -> sqlx::Result<Vec<LabelSighting>> {
+    sqlx::query_file_as!(LabelSighting, "queries/taxonomy_store/label_sightings.sql", id)
+        .fetch_all(db)
+        .await
 }
 
 /// Every label, shipped or learned, whose text contains words (case aside), at most MAX_LISTED,
@@ -637,6 +705,47 @@ mod tests {
         let one = a_match(&db, "a").await;
         learn(&db, &[lesson], one, "", 1).await.unwrap();
         assert!(learned_labels(&db).await.unwrap().is_empty());
+    }
+
+    #[tokio::test]
+    async fn a_start_rejects_judge_candidates_that_share_no_word_with_their_term() {
+        let (db, taxonomy) = opened().await;
+        let laravel = taxonomy
+            .terms
+            .iter()
+            .find(|term| term.labels.iter().any(|l| l.text == "Laravel"))
+            .unwrap()
+            .id;
+        let lesson = |text: &str, learned_from: &'static str| Lesson {
+            term_id: laravel,
+            text: text.to_string(),
+            lang: "da",
+            learned_from,
+        };
+        let one = a_match(&db, "a").await;
+        let lessons = [
+            lesson("SSA til aftenvagt", FROM_JUDGE),
+            lesson("Laravel-udvikling", FROM_JUDGE),
+            lesson("Backend på vores webshop", FROM_READ),
+        ];
+        learn(&db, &lessons, one, "", 1).await.unwrap();
+        open(&db).await.unwrap();
+        let statuses: Vec<(String, String)> = learned_labels(&db)
+            .await
+            .unwrap()
+            .into_iter()
+            .map(|l| (l.text, l.status))
+            .collect();
+        let status_of = |text: &str| {
+            statuses
+                .iter()
+                .find(|(label, _)| label == text)
+                .map(|(_, status)| status.as_str())
+        };
+        assert_eq!(status_of("SSA til aftenvagt"), Some(REJECTED));
+        assert_eq!(status_of("Laravel-udvikling"), Some(CANDIDATE));
+        // The model's read of the post named the term in English: not the judge's to undo.
+        assert_eq!(status_of("Backend på vores webshop"), Some(CANDIDATE));
     }
 
     #[test]

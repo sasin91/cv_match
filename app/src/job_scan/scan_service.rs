@@ -36,6 +36,7 @@ use crate::game_mode::{
     self,
     stand_in::{self, StandIn},
 };
+use crate::job_sites::signed_in::SignedInBrowser;
 use crate::job_sites::{JobSite, ListedPost};
 use crate::llm::transcript::{self, Exchange};
 use crate::llm::{Effort, OPENAI};
@@ -801,6 +802,11 @@ async fn read_sites(context: &Context, sites: &[JobSite], search: &model::JobSea
     let mut lists = Vec::new();
     let mut problems = Vec::new();
     for site in sites {
+        if let Some(paused) = paused_site(*site, signed_in) {
+            let started = timeline.start(run_steps::SITE);
+            timeline.keep(started, &format!("Skipped: {paused}"), false, &[]).await;
+            continue;
+        }
         let mut failed = None;
         let terms = job_search_rules::search_terms(&search.keywords);
         let most = if site.is_signed_in() {
@@ -827,13 +833,32 @@ async fn read_sites(context: &Context, sites: &[JobSite], search: &model::JobSea
                 search.id,
                 site.domain()
             );
-            problems.push(format!("Reading {} failed: {why}", site.domain()));
+            problems.push(site_problem(site.domain(), signed_in));
         }
     }
     Listed {
         posts: taking_turns(lists),
         problems,
         ..Listed::default()
+    }
+}
+
+/// Why the scan leaves site alone, when it is a signed-in site the signed-in browser is paused
+/// on: it is skipped then, quietly (Job searches says why), rather than failing every scan.
+fn paused_site(site: JobSite, signed_in: Option<&SignedInBrowser>) -> Option<String> {
+    if !site.is_signed_in() {
+        return None;
+    }
+    signed_in?.pause_of(site.domain())
+}
+
+/// What the scan's status says of a site it couldn't read: short, since the step in the scan's
+/// timeline and the log say why in full.
+fn site_problem(domain: &str, signed_in: Option<&SignedInBrowser>) -> String {
+    if signed_in.is_some_and(|browser| browser.is_paused(domain)) {
+        format!("{domain} is skipped from now on (Job searches says why).")
+    } else {
+        format!("{domain} couldn't be read (the scan's timeline says why).")
     }
 }
 
@@ -1605,6 +1630,25 @@ mod tests {
             .map(|post| post.url)
             .collect();
         assert_eq!(urls, vec!["a1", "b1", "a2", "a3"]);
+    }
+
+    #[test]
+    fn the_status_says_a_site_failed_in_short() {
+        assert_eq!(
+            site_problem("dk.indeed.com", None),
+            "dk.indeed.com couldn't be read (the scan's timeline says why)."
+        );
+        let folder = std::env::temp_dir().join(format!("jobfinder-site-problem-{}", std::process::id()));
+        let browser = SignedInBrowser::new(folder.clone());
+        assert_eq!(paused_site(JobSite::Indeed, Some(&browser)), None);
+        let said = browser.pause("dk.indeed.com", "dk.indeed.com blocks JobFinder's browser");
+        assert_eq!(paused_site(JobSite::Indeed, Some(&browser)), Some(said));
+        assert_eq!(paused_site(JobSite::Jobnet, Some(&browser)), None);
+        assert_eq!(
+            site_problem("dk.indeed.com", Some(&browser)),
+            "dk.indeed.com is skipped from now on (Job searches says why)."
+        );
+        let _ = std::fs::remove_dir_all(&folder);
     }
 
     #[test]

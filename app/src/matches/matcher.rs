@@ -7,7 +7,7 @@
 use indexmap::IndexMap;
 use serde::{Deserialize, Serialize};
 
-use super::{Job, KnownTerm, Profile};
+use super::{Job, KnownTerm, Profile, seniority};
 use crate::taxonomy::{self, Method, Taxonomy, Term};
 
 /// The legacy ranking engine's weights: formal requirements weigh 150, relevant skills 50, and
@@ -27,10 +27,11 @@ pub mod credit {
     pub const MISSING: f64 = 0.0;
 }
 
-/// The most a match may score when the post asks the candidate to live somewhere they don't (a
-/// missing required location): just under "medium", so it ranks below real fits and isn't
-/// tailored right away.
-pub const LOCATION_MISSED_INDEX: f64 = 0.59;
+/// The most a match may score when it has a likely disqualifier: the post asks the candidate to
+/// live somewhere they don't (a missing required location), or is for another career level (a
+/// student job for someone with ten years of work). Just under "medium", so it ranks below real
+/// fits and isn't tailored right away.
+pub const DISQUALIFIED_INDEX: f64 = 0.59;
 
 /// The legacy ranker's tags, by the lowest match index that earns them.
 pub mod tags {
@@ -55,6 +56,10 @@ pub const SKILLS: &str = "skills";
 pub const TITLE: &str = "title";
 pub const RESPONSIBILITIES: &str = "responsibilities";
 pub const LOCATION: &str = "location";
+pub const LEVEL: &str = "level";
+
+/// The criteria that aren't weighed, but whose miss caps the score at DISQUALIFIED_INDEX.
+pub const DISQUALIFIERS: [&str; 2] = [LOCATION, LEVEL];
 
 /// One thing a verdict is given on, or a group of alternatives met by the best of them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -181,6 +186,10 @@ impl<'a> Matcher<'a> {
     /// A verdict the taxonomy (or plain arithmetic) can give without the model, or None when it
     /// can't decide.
     pub fn decide(&self, item: &Item) -> Option<Verdict> {
+        if item.kind == LEVEL {
+            let level = item.min_level.as_deref().unwrap_or("");
+            return Some(seniority::verdict(level, self.profile.experience_years));
+        }
         let min_years = item.min_years.unwrap_or(0);
         if item.kind == "experience" && min_years > 0 {
             let have = self.profile.experience_years;
@@ -331,7 +340,9 @@ fn weight_of(criterion: &str) -> i64 {
 ///
 /// Soft skills are left out: they are not scored (see soft_skills()). Required location
 /// requirements are their own group, location, when the post has any: not weighed, but a missing
-/// one caps the score. A nice-to-have location is a relevant skill like any other.
+/// one caps the score. A nice-to-have location is a relevant skill like any other. The post's
+/// career level, when it states one, is the group level: not weighed either, but a mismatch with
+/// the candidate's years caps the score too.
 pub fn criteria(job: &Job) -> Groups {
     let mut lists: IndexMap<&str, Vec<Item>> =
         IndexMap::from([(REQUIREMENTS, vec![]), (SKILLS, vec![]), (LOCATION, vec![])]);
@@ -442,7 +453,39 @@ pub fn criteria(job: &Job) -> Groups {
     if !location.is_empty() {
         out.insert(LOCATION.into(), location);
     }
+    if let Some(level) = level_item(job) {
+        out.insert(LEVEL.into(), vec![level]);
+    }
     out
+}
+
+/// The post's career level as an item, when it was read with one (seniority::with_level).
+fn level_item(job: &Job) -> Option<Item> {
+    let level = job.level.clone();
+    let label = seniority::label(&level);
+    (!label.is_empty()).then(|| Item {
+        id: "l0".into(),
+        kind: LEVEL.into(),
+        text: label.into(),
+        english: Some(label.into()),
+        min_years: None,
+        min_level: Some(level),
+        alternatives: None,
+    })
+}
+
+/// The post's likely disqualifiers the candidate misses: a location the model judged they miss,
+/// and a career level their years don't fit. They cap the score.
+pub fn missed_disqualifiers<'g>(groups: &'g Groups, verdicts: &Verdicts) -> Vec<&'g Item> {
+    let mut missed = missed_locations(groups, verdicts);
+    missed.extend(
+        groups
+            .get(LEVEL)
+            .into_iter()
+            .flatten()
+            .filter(|item| verdicts.get(&item.id).is_some_and(|v| v.verdict == "missing")),
+    );
+    missed
 }
 
 /// The post's location items the model judged the candidate misses: what caps the score. Only
@@ -513,13 +556,20 @@ pub fn combine(groups: &Groups, verdicts: &Verdicts) -> Verdicts {
 /// as missing there, marked "(partly)".
 pub fn laya_summary(job: &Job, groups: &Groups, verdicts: &Verdicts) -> String {
     // A required location is a required qualification to Laya too, once the model has weighed
-    // it: unjudged, it isn't known to be missing.
+    // it: unjudged, it isn't known to be missing. So is the post's career level.
     let judged = groups
         .get(LOCATION)
         .into_iter()
         .flatten()
         .filter(|item| verdicts.get(&item.id).is_some_and(|v| v.by == "llm"));
-    let items: Vec<&Item> = groups.get(REQUIREMENTS).into_iter().flatten().chain(judged).collect();
+    let level = groups.get(LEVEL).into_iter().flatten();
+    let items: Vec<&Item> = groups
+        .get(REQUIREMENTS)
+        .into_iter()
+        .flatten()
+        .chain(judged)
+        .chain(level)
+        .collect();
     let mut met = 0;
     let mut missing = Vec::new();
     for item in &items {
@@ -549,7 +599,7 @@ pub fn laya_summary(job: &Job, groups: &Groups, verdicts: &Verdicts) -> String {
 
 /// The legacy ranking over the criteria: each non-empty criterion scores the share of its items
 /// met (as a whole percent), times its weight; the match index is the sum over the sum of
-/// weights. A missed required location caps the index at LOCATION_MISSED_INDEX.
+/// weights. A missed disqualifier (missed_disqualifiers) caps the index at DISQUALIFIED_INDEX.
 pub fn score(groups: &Groups, verdicts: &Verdicts) -> Score {
     /// A share as a whole percent.
     const PERCENT: f64 = 100.0;
@@ -557,7 +607,7 @@ pub fn score(groups: &Groups, verdicts: &Verdicts) -> Score {
     let mut total = 0;
     let mut parts = IndexMap::new();
     for (key, items) in groups {
-        if items.is_empty() || key == LOCATION {
+        if items.is_empty() || DISQUALIFIERS.contains(&key.as_str()) {
             continue;
         }
         let weight = weight_of(key);
@@ -576,8 +626,8 @@ pub fn score(groups: &Groups, verdicts: &Verdicts) -> Score {
         );
     }
     let mut index = if total > 0 { rank as f64 / total as f64 } else { 0.0 };
-    if !missed_locations(groups, verdicts).is_empty() {
-        index = index.min(LOCATION_MISSED_INDEX);
+    if !missed_disqualifiers(groups, verdicts).is_empty() {
+        index = index.min(DISQUALIFIED_INDEX);
     }
     Score {
         rank,
@@ -599,5 +649,55 @@ mod tests {
         assert_eq!(share_of_weight(29, weights::SKILLS), 15);
         assert_eq!(share_of_weight(100, weights::REQUIREMENTS), 150);
         assert_eq!(share_of_weight(0, weights::SKILLS), 0);
+    }
+
+    /// A post asking only for PHP, at the given level, with the PHP requirement met.
+    fn php_post(level: &str) -> (Groups, Verdicts) {
+        let job = Job {
+            job_title: "Udvikler".into(),
+            requirements: vec![super::super::Requirement {
+                value: "PHP".into(),
+                kind: "skill".into(),
+                required: true,
+                ..Default::default()
+            }],
+            level: level.into(),
+            ..Job::default()
+        };
+        let groups = criteria(&job);
+        let mut verdicts = Verdicts::new();
+        verdicts.insert(
+            "r0".into(),
+            verdict_of("met", "taxonomy", "exact", "PHP".into(), String::new()),
+        );
+        verdicts.insert(
+            "t0".into(),
+            verdict_of("met", "taxonomy", "exact", "Udvikler".into(), String::new()),
+        );
+        (groups, verdicts)
+    }
+
+    #[test]
+    fn a_student_job_for_a_senior_is_capped_below_medium() {
+        let (groups, mut verdicts) = php_post(seniority::STUDENT);
+        assert_eq!(groups[LEVEL][0].text, "Student job");
+        verdicts.insert("l0".into(), seniority::verdict(seniority::STUDENT, 10));
+        let score = score(&groups, &verdicts);
+        assert_eq!(score.index, DISQUALIFIED_INDEX);
+        assert_eq!(score.tag, "poor");
+        assert!(!score.parts.contains_key(LEVEL), "the level isn't weighed");
+    }
+
+    #[test]
+    fn a_level_that_fits_leaves_the_score_alone() {
+        let (groups, mut verdicts) = php_post(seniority::SENIOR);
+        verdicts.insert("l0".into(), seniority::verdict(seniority::SENIOR, 10));
+        assert_eq!(score(&groups, &verdicts).index, 1.0);
+    }
+
+    #[test]
+    fn a_post_without_a_level_has_no_level_group() {
+        let (groups, _) = php_post("");
+        assert!(!groups.contains_key(LEVEL));
     }
 }
