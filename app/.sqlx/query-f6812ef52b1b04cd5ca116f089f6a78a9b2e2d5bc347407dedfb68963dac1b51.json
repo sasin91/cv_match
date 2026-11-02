@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "-- A shipped label, active. A learned row with the same text that was rejected (a shipped label\n-- edited or rejected by hand) keeps it out; a learned candidate or active one becomes shipped.\nINSERT INTO taxonomy_labels (term_id, text, lang, preferred, source, status, created_at, updated_at)\nVALUES (?1, ?2, ?3, ?4, 'shipped', 'active', ?5, ?5)\nON CONFLICT (term_id, text, lang) DO UPDATE SET\n  source = 'shipped',\n  status = 'active',\n  preferred = excluded.preferred,\n  updated_at = excluded.updated_at\nWHERE taxonomy_labels.status <> 'rejected'\n",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 5
+    },
+    "nullable": []
+  },
+  "hash": "f6812ef52b1b04cd5ca116f089f6a78a9b2e2d5bc347407dedfb68963dac1b51"
+}

@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT id, kind, parent_id, definition FROM taxonomy_terms ORDER BY id",
+  "describe": {
+    "columns": [
+      {
+        "name": "id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_terms",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_terms",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "name": "parent_id",
+        "ordinal": 2,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_terms",
+            "name": "parent_id"
+          }
+        }
+      },
+      {
+        "name": "definition",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_terms",
+            "name": "definition"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      true,
+      true
+    ]
+  },
+  "hash": "b392209403e90fa62b098dc247e57138e164a5628b79efbd31ccfe09eea085ad"
+}

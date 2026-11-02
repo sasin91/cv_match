@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT term_id, text, lang, preferred AS \"preferred: bool\" FROM taxonomy_labels\n           WHERE status = 'active' ORDER BY term_id, source <> 'shipped', id",
+  "describe": {
+    "columns": [
+      {
+        "name": "term_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_labels",
+            "name": "term_id"
+          }
+        }
+      },
+      {
+        "name": "text",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_labels",
+            "name": "text"
+          }
+        }
+      },
+      {
+        "name": "lang",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_labels",
+            "name": "lang"
+          }
+        }
+      },
+      {
+        "name": "preferred: bool",
+        "ordinal": 3,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_labels",
+            "name": "preferred"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "0a67236a0138189e6ef029a750bdceaad97f7422529efeadb9e139a85862f9e3"
+}

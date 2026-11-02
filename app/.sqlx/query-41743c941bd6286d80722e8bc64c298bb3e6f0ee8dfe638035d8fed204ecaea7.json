@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "INSERT INTO taxonomy_labels (term_id, text, lang, preferred, source, status, created_at, updated_at)\n               VALUES (?1, ?2, ?3, 0, 'learned', 'candidate', ?4, ?4)\n               ON CONFLICT (term_id, text, lang) DO NOTHING",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "41743c941bd6286d80722e8bc64c298bb3e6f0ee8dfe638035d8fed204ecaea7"
+}

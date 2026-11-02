@@ -20,8 +20,9 @@ use regex::Regex;
 use serde::{Deserialize, Serialize};
 use unicode_normalization::UnicodeNormalization;
 
-/// The shipped index (assets/taxonomy/index.json).
-const INDEX_JSON: &str = include_str!("../../assets/taxonomy/index.json");
+/// The shipped index (assets/taxonomy/index.json). taxonomy_store writes it into the database,
+/// where the learned labels join it.
+pub const INDEX_JSON: &str = include_str!("../../assets/taxonomy/index.json");
 
 /// How much each kind of evidence is worth. A whole label of the term appearing in the query is
 /// the strongest signal there is; a word turning up in the definition is the weakest.
@@ -152,17 +153,23 @@ impl Term {
 
 #[derive(Deserialize)]
 struct Index {
-    terms: Vec<IndexTerm>,
+    terms: Vec<TermRecord>,
 }
 
-#[derive(Deserialize)]
-struct IndexTerm {
-    id: i64,
-    kind: String,
-    parent_id: Option<i64>,
-    labels: Vec<Label>,
+/// A term as the index (or the database) keeps it, before it is prepared for matching.
+#[derive(Debug, Clone, Deserialize, PartialEq)]
+pub struct TermRecord {
+    pub id: i64,
+    pub kind: String,
+    pub parent_id: Option<i64>,
+    pub labels: Vec<Label>,
     #[serde(default)]
-    definition: Option<String>,
+    pub definition: Option<String>,
+}
+
+/// The shipped index's terms, in its order.
+pub fn shipped_terms() -> serde_json::Result<Vec<TermRecord>> {
+    Ok(serde_json::from_str::<Index>(INDEX_JSON)?.terms)
 }
 
 /// What lexical evidence matched: a phrase (label or synonym) or a single word.
@@ -223,20 +230,26 @@ pub struct Taxonomy {
 }
 
 impl Taxonomy {
-    /// The shipped index, built into the program.
+    /// The shipped index alone, built into the program: for tests, and for a start whose
+    /// database couldn't give the taxonomy (taxonomy_store::open says why).
     pub fn load() -> Self {
         Self::from_json(INDEX_JSON).expect("the built-in taxonomy index is valid")
     }
 
-    /// Prepares an index (index.json's shape) for ranking: phrase lists, word sets and
-    /// document frequencies.
+    /// Prepares an index (index.json's shape) for ranking.
     pub fn from_json(json: &str) -> serde_json::Result<Self> {
         let index: Index = serde_json::from_str(json)?;
+        Ok(Self::from_records(index.terms))
+    }
+
+    /// Prepares terms for ranking: phrase lists, word sets and document frequencies. Their order
+    /// is kept: ties and first appearances go by it.
+    pub fn from_records(records: Vec<TermRecord>) -> Self {
         let stopwords: HashSet<&'static str> = STOPWORDS.split_whitespace().collect();
         let qualifiers: HashSet<&'static str> = QUALIFIERS.split_whitespace().collect();
-        let mut terms = Vec::with_capacity(index.terms.len());
+        let mut terms = Vec::with_capacity(records.len());
         let mut frequency: IndexMap<String, usize> = IndexMap::new();
-        for raw in index.terms {
+        for raw in records {
             let mut phrases = Vec::new();
             let mut keywords = IndexSet::new();
             for label in &raw.labels {
@@ -271,13 +284,13 @@ impl Taxonomy {
         for word in frequency.keys() {
             by_length.entry(word.chars().count()).or_default().push(word.clone());
         }
-        Ok(Self {
+        Self {
             terms,
             frequency,
             by_length,
             stopwords,
             qualifiers,
-        })
+        }
     }
 
     /// Ranks every term for `query`, optionally of one `kind` (skill, role, title), by lexical

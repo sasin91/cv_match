@@ -46,6 +46,7 @@ use jobfinder::llama::{self, hardware::Inventory, llama_server::LlamaServer};
 use jobfinder::scan_schedule::{self, ScanSchedule};
 use jobfinder::server::{self, AppState};
 use jobfinder::taxonomy::Taxonomy;
+use jobfinder::taxonomy_store;
 use jobfinder::{cleanup, db, desktop, extension};
 
 /// How a start shows the app.
@@ -548,9 +549,14 @@ fn app_context(
     let user_id = runtime
         .block_on(server::local_user(&db))
         .map_err(|e| format!("Couldn't read the local user: {e}"))?;
+    let taxonomy = runtime.block_on(taxonomy_store::open(&db)).unwrap_or_else(|why| {
+        // Matching still works on the shipped index alone; only the learned labels are missing.
+        jobfinder::log_line!("{why} Matching uses the shipped taxonomy without the learned labels.");
+        Taxonomy::load()
+    });
     let mut context = Context::new(
         db,
-        Arc::new(Taxonomy::load()),
+        Arc::new(taxonomy),
         user_id,
         KeyVault::credential_manager(db::full_path(database)),
     );

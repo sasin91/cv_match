@@ -1,0 +1,62 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT term_id, lang, source, status FROM taxonomy_labels WHERE id = ?1",
+  "describe": {
+    "columns": [
+      {
+        "name": "term_id",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_labels",
+            "name": "term_id"
+          }
+        }
+      },
+      {
+        "name": "lang",
+        "ordinal": 1,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_labels",
+            "name": "lang"
+          }
+        }
+      },
+      {
+        "name": "source",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_labels",
+            "name": "source"
+          }
+        }
+      },
+      {
+        "name": "status",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "taxonomy_labels",
+            "name": "status"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      false,
+      false,
+      false
+    ]
+  },
+  "hash": "93da5bcd7753247896076a8cbe3ab030eab68f15b3082e0c413cfa24e0c21a03"
+}

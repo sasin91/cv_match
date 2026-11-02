@@ -10,6 +10,7 @@
 mod documents;
 mod job_searches;
 mod language_models;
+mod learned_terms;
 mod local_model;
 mod match_screen;
 mod matching;
@@ -71,6 +72,7 @@ pub enum Screen {
     JobSearches,
     TaskManager,
     Settings,
+    LearnedTerms,
 }
 
 /// What the Match screen shows, read together.
@@ -107,6 +109,7 @@ pub struct Shell {
     /// Windows' light or dark mode, which the window follows.
     mode: Mode,
     task_manager: task_manager::State,
+    learned_terms: learned_terms::State,
 }
 
 /// Clone, as iced's buttons need; a reload's answer is shared rather than copied.
@@ -128,6 +131,7 @@ pub enum Message {
     /// Windows' light or dark mode, read at the start and whenever it changes.
     ThemeMode(Mode),
     TaskManager(task_manager::Msg),
+    LearnedTerms(learned_terms::Msg),
 }
 
 /// Opens the window and runs until it is closed.
@@ -216,6 +220,7 @@ fn boot(launch: &Mutex<Option<Launch>>) -> (Shell, Task<Message>) {
         matching: matching::State::default(),
         mode: Mode::Light,
         task_manager: task_manager::State::default(),
+        learned_terms: learned_terms::State::default(),
     };
     let tasks = Task::batch([
         Task::done(Message::Reload),
@@ -398,12 +403,17 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
                     shell.task_manager.show();
                     return Task::done(Message::TaskManager(task_manager::Msg::Load));
                 }
+                Screen::LearnedTerms => return Task::done(Message::LearnedTerms(learned_terms::Msg::Load)),
                 Screen::Settings => {}
             }
         }
         Message::TaskManager(msg) => {
             let runner = shell.runner();
             return task_manager::update(&mut shell.task_manager, msg, &runner).map(Message::TaskManager);
+        }
+        Message::LearnedTerms(msg) => {
+            let runner = shell.runner();
+            return learned_terms::update(&mut shell.learned_terms, msg, &runner).map(Message::LearnedTerms);
         }
         Message::Matching(matching::Msg::OpenPage(path)) => return Task::done(Message::OpenPage(path)),
         Message::Matching(matching::Msg::Changed) => return Task::done(Message::Reload),
@@ -493,6 +503,7 @@ fn view(shell: &Shell) -> Element<'_, Message> {
         Screen::JobSearches => job_searches::view(&shell.job_searches).map(Message::JobSearches),
         Screen::TaskManager => task_manager::view(&shell.task_manager).map(Message::TaskManager),
         Screen::Settings => settings_screen::view(&shell.context),
+        Screen::LearnedTerms => learned_terms::view(&shell.learned_terms).map(Message::LearnedTerms),
     };
     let mut page = Column::new().spacing(GAP).max_width(PAGE_MAX_WIDTH);
     if let Some(said) = &shell.said {
