@@ -176,6 +176,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
                 _pair.value = PairState()
                 _list.value = ListState()
                 refresh()
+                // A post shared before pairing waits in the box: go on to send it.
+                if (_send.value.text.isNotBlank()) show(Screen.Send)
             } catch (e: DeviceError) {
                 _pair.update { it.copy(busy = false, error = e.message) }
             }
@@ -271,14 +273,18 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     fun typePost(text: String) = _send.update { it.copy(text = text, error = null) }
 
-    /** A post shared from another app: shown in the box to send. */
+    /**
+     * A post shared from another app: shown in the box to send, and a link opens to be read. The
+     * link stays in the box too, so it isn't lost when the device has to pair first (the pairing
+     * screen shows instead of the reader) or the reader is left.
+     */
     fun shared(text: String) {
         val trimmed = text.trim()
-        if (opensInApp(trimmed)) {
+        _send.update { it.copy(text = trimmed.take(MAX_EVALUATE_CHARS), error = null) }
+        if (opensInApp(trimmed) && _pairing.value != null) {
             show(Screen.Read(trimmed))
             return
         }
-        _send.update { it.copy(text = trimmed.take(MAX_EVALUATE_CHARS), error = null) }
         show(Screen.Send)
     }
 
