@@ -9,6 +9,8 @@
 //!   the borderless windowed games the first misses.
 //! - The app in front is in a folder the Epic Games launcher or Battle.net installed a game in
 //!   (launchers): neither says which game runs, as Steam does.
+//! - The app in front keeps the graphics card's 3D engine busy, a quarter or more since the
+//!   last look (gpu): any game, by what it does rather than its name (Windows only).
 //! - Steam runs a game: its RunningAppID (Windows' registry, or ~/.steam/registry.vdf).
 //! - Feral's gamemode runs a game (its ClientCount on the session D-Bus), which games started
 //!   with `gamemoderun` (Steam's launch option `gamemoderun %command%`) ask for on Linux.
@@ -22,6 +24,8 @@
 //! game ends (wait_until_over). The models let go of the graphics card as soon as no call needs
 //! them (idle).
 
+#[cfg(any(windows, test))]
+mod gpu;
 #[cfg(any(windows, test))]
 mod launchers;
 #[cfg(target_os = "linux")]
@@ -52,6 +56,8 @@ pub enum Playing {
     KnownGame { program: String },
     /// The app in front is a game this launcher installed (launchers).
     LauncherGame { launcher: &'static str, game: String },
+    /// The app in front (its program file's name) kept this share of the 3D engine busy (gpu).
+    GpuHeavy { program: String, share: u32 },
     /// Steam runs the game with this app ID.
     Steam { app_id: u32 },
     /// Feral's gamemode runs for this many games.
@@ -64,6 +70,9 @@ impl fmt::Display for Playing {
             Playing::FullScreen => f.write_str("a full-screen app or game runs"),
             Playing::KnownGame { program } => write!(f, "the game {program} is in front"),
             Playing::LauncherGame { launcher, game } => write!(f, "{game} ({launcher}) is in front"),
+            Playing::GpuHeavy { program, share } => {
+                write!(f, "{program} keeps the graphics card busy ({share} %)")
+            }
             Playing::Steam { app_id } => write!(f, "Steam runs a game (app {app_id})"),
             Playing::GameMode { games: 1 } => f.write_str("gamemode runs a game"),
             Playing::GameMode { games } => write!(f, "gamemode runs {games} games"),
@@ -77,7 +86,29 @@ type Signal = fn() -> Result<Option<Playing>, String>;
 /// Whether a game runs, as last looked: kept for LOOK_AGAIN_AFTER.
 #[derive(Default)]
 pub struct GameMode {
-    last_look: Mutex<Option<Look>>,
+    watch: Mutex<Watch>,
+}
+
+/// The last look, and the GPU counters, whose shares are averaged since the look before.
+#[derive(Default)]
+struct Watch {
+    last_look: Option<Look>,
+    gpu: GpuWatch,
+}
+
+#[cfg(windows)]
+use windows::GpuWatch;
+
+/// No GPU counters per process off Windows (gpu).
+#[cfg(not(windows))]
+#[derive(Default)]
+struct GpuWatch;
+
+#[cfg(not(windows))]
+impl GpuWatch {
+    fn heavy_app_in_front(&mut self) -> Result<Option<Playing>, String> {
+        Ok(None)
+    }
 }
 
 /// One look at the signals.
@@ -96,12 +127,21 @@ impl GameMode {
     /// Why a game runs now, or None; the last look's answer while it is younger than
     /// LOOK_AGAIN_AFTER. A signal that couldn't be asked is logged and counts as saying nothing.
     pub fn why_running(&self) -> Option<Playing> {
-        let mut last_look = self.last_look.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
-        if let Some(look) = last_look.as_ref().filter(|look| look.at.elapsed() < LOOK_AGAIN_AFTER) {
+        let mut watch = self.watch.lock().unwrap_or_else(std::sync::PoisonError::into_inner);
+        if let Some(look) = watch
+            .last_look
+            .as_ref()
+            .filter(|look| look.at.elapsed() < LOOK_AGAIN_AFTER)
+        {
             return look.playing.clone();
         }
-        let playing = first_playing(&SIGNALS);
-        *last_look = Some(Look {
+        // The counters are read at every look, so their average covers the time since the last.
+        let heavy = watch.gpu.heavy_app_in_front().unwrap_or_else(|why| {
+            crate::log_line!("Couldn't tell whether a game runs: {why}");
+            None
+        });
+        let playing = first_playing(&SIGNALS).or(heavy);
+        watch.last_look = Some(Look {
             at: Instant::now(),
             playing: playing.clone(),
         });
