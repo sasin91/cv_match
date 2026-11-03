@@ -1,0 +1,13 @@
+[package]
+name = "device-protocol"
+version = "0.1.0"
+edition = "2024"
+description = "What JobFinder on the computer and its paired devices (a phone, a tablet) send each other"
+license = "BSD-2-Clause"
+publish = false
+
+[dependencies]
+serde = { version = "1", features = ["derive"] }
+
+[dev-dependencies]
+serde_json = "1"

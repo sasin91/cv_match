@@ -13,6 +13,7 @@ use std::sync::{Arc, Mutex, RwLock};
 use sqlx::SqlitePool;
 
 use crate::account::key_vault::KeyVault;
+use crate::devices::Devices;
 use crate::game_mode::GameMode;
 use crate::job_sites::signed_in::SignedInBrowser;
 use crate::laya::laya_client::LayaClient;
@@ -57,6 +58,8 @@ pub struct Context {
     pub game_mode: GameMode,
     /// How the system's notifications are raised (notifications; none unless main sets it).
     pub toasts: Toasts,
+    /// The pairing code shown now and the tailnet name, for paired devices (devices).
+    pub devices: Devices,
 }
 
 /// The database file the app runs on.
@@ -86,6 +89,7 @@ impl Context {
             running: Arc::default(),
             game_mode: GameMode::default(),
             toasts: Toasts::default(),
+            devices: Devices::default(),
         }
     }
 

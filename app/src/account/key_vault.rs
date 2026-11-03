@@ -1,7 +1,8 @@
 //! Where the user's API keys are kept, not in the database: Windows Credential Manager (through
 //! the keyring crate), so a key is never in the database file. Each provider's key has its own
 //! credential, and each database file its own set, so neither a second key nor a second database
-//! (--database) can replace another one's key. Tests keep keys in memory instead.
+//! (--database) can replace another one's key. A paired device's token hash (devices) is kept
+//! the same way, in a credential of its own. Tests keep them in memory instead.
 //!
 //! The app has one local user, so a credential is named by the database and provider alone.
 //! Before, each name had the local user's trongate_users id in it too; take_over_keys_named_by_user
@@ -63,29 +64,57 @@ impl KeyVault {
 
     /// Keeps key as the user's key for provider, replacing the one kept for it before.
     pub fn save(&self, provider: &str, key: &str) -> Result<(), String> {
+        self.save_secret(&Secret::LlmKey(provider), key)
+    }
+
+    /// The user's key for provider, or None when none is kept.
+    pub fn key_for(&self, provider: &str) -> Result<Option<String>, String> {
+        self.secret(&Secret::LlmKey(provider))
+    }
+
+    /// Forgets the user's key for provider; none kept is fine.
+    pub fn delete(&self, provider: &str) -> Result<(), String> {
+        self.forget_secret(&Secret::LlmKey(provider))
+    }
+
+    /// Keeps the hash of the token of the paired device with this id (devices), replacing one
+    /// kept before. The token itself is never kept on this computer.
+    pub fn save_device_token_hash(&self, device_id: i64, hash: &str) -> Result<(), String> {
+        self.save_secret(&Secret::DeviceToken(device_id), hash)
+    }
+
+    /// The hash of the token of the paired device with this id, or None when none is kept.
+    pub fn device_token_hash(&self, device_id: i64) -> Result<Option<String>, String> {
+        self.secret(&Secret::DeviceToken(device_id))
+    }
+
+    /// Forgets the token hash of the device with this id; none kept is fine.
+    pub fn forget_device_token_hash(&self, device_id: i64) -> Result<(), String> {
+        self.forget_secret(&Secret::DeviceToken(device_id))
+    }
+
+    fn save_secret(&self, secret: &Secret, value: &str) -> Result<(), String> {
         match &self.store {
-            Store::CredentialManager { database } => entry(database, provider)?.set_password(key).map_err(failed),
-            Store::InMemory(keys) => {
-                lock(keys).insert(provider.to_string(), key.to_string());
+            Store::CredentialManager { database } => secret.entry(database)?.set_password(value).map_err(failed),
+            Store::InMemory(kept) => {
+                lock(kept).insert(secret.in_memory_name(), value.to_string());
                 Ok(())
             }
         }
     }
 
-    /// The user's key for provider, or None when none is kept.
-    pub fn key_for(&self, provider: &str) -> Result<Option<String>, String> {
+    fn secret(&self, secret: &Secret) -> Result<Option<String>, String> {
         match &self.store {
-            Store::CredentialManager { database } => password_of(&entry(database, provider)?),
-            Store::InMemory(keys) => Ok(lock(keys).get(provider).cloned()),
+            Store::CredentialManager { database } => password_of(&secret.entry(database)?),
+            Store::InMemory(kept) => Ok(lock(kept).get(&secret.in_memory_name()).cloned()),
         }
     }
 
-    /// Forgets the user's key for provider; none kept is fine.
-    pub fn delete(&self, provider: &str) -> Result<(), String> {
+    fn forget_secret(&self, secret: &Secret) -> Result<(), String> {
         match &self.store {
-            Store::CredentialManager { database } => forget(&entry(database, provider)?),
-            Store::InMemory(keys) => {
-                lock(keys).remove(provider);
+            Store::CredentialManager { database } => forget(&secret.entry(database)?),
+            Store::InMemory(kept) => {
+                lock(kept).remove(&secret.in_memory_name());
                 Ok(())
             }
         }
@@ -162,6 +191,35 @@ impl KeyVault {
         }
         Ok(kept)
     }
+}
+
+/// What the vault keeps: a provider's API key, or the hash of a paired device's token.
+enum Secret<'a> {
+    LlmKey(&'a str),
+    DeviceToken(i64),
+}
+
+impl Secret<'_> {
+    /// Its credential in Credential Manager, for the database at this full path.
+    fn entry(&self, database: &str) -> Result<keyring::Entry, String> {
+        match self {
+            Secret::LlmKey(provider) => entry(database, provider),
+            Secret::DeviceToken(device_id) => entry_named(SERVICE, &device_credential_user(database, *device_id)),
+        }
+    }
+
+    /// Its name among the in-memory store's: the provider, or device:{id}.
+    fn in_memory_name(&self) -> String {
+        match self {
+            Secret::LlmKey(provider) => provider.to_string(),
+            Secret::DeviceToken(device_id) => format!("device:{device_id}"),
+        }
+    }
+}
+
+/// devices:{id}@{database}: the credential a paired device's token hash is kept in.
+fn device_credential_user(database: &str, device_id: i64) -> String {
+    format!("devices:{device_id}@{database}")
 }
 
 /// Every provider a key can be kept for, the key from before providers among them (as "").

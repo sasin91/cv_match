@@ -9,7 +9,7 @@ publish = false
 # xtask/ holds the developer commands (`cargo dev`). It shares this Cargo.lock and target/, and
 # plain `cargo build`, `cargo test` and `cargo run` still mean the app.
 [workspace]
-members = ["xtask"]
+members = ["xtask", "device-protocol"]
 
 [dependencies]
 serde = { version = "1", features = ["derive"] }
@@ -61,8 +61,12 @@ laya-server = { path = "../laya-server" }
 # JobFinder's signed-in browser (job_sites::cdp): its DevTools on 127.0.0.1, over a WebSocket.
 tokio-tungstenite = { version = "0.30", default-features = false, features = ["connect"] }
 futures-util = { version = "0.3", default-features = false, features = ["sink"] }
+# What the app and its paired devices (a phone, a tablet) send each other (devices).
+device-protocol = { path = "device-protocol" }
+# Pairing codes and device tokens, from the system's random source.
+getrandom = "0.3"
 # The desktop window (desktop/), pinned: its releases come about yearly and change the API.
-iced = "=0.14.0"
+iced = { version = "=0.14.0", features = ["qr_code"] }
 # The window's Open file dialog: Windows' own, and the desktop portal on Linux (no GTK to build).
 rfd = "0.17"
 

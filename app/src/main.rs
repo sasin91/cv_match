@@ -28,6 +28,7 @@ use std::sync::Arc;
 use jobfinder::account::key_vault::KeyVault;
 use jobfinder::app_log::{self, Opened};
 use jobfinder::context::{Context, DatabaseFile};
+use jobfinder::devices::{device_server, tailscale};
 use jobfinder::from_recruiter::{self, Moved};
 use jobfinder::instance::{self, Running};
 use jobfinder::job_scan::scan_service;
@@ -224,6 +225,12 @@ fn run_cleanup(args: &[String]) -> ExitCode {
     if let Some(why) = &found.keys_error {
         println!("  (the API keys couldn't be read: {why})");
     }
+    for device in &found.devices {
+        println!("- the token of the paired device \"{}\"", device.name);
+    }
+    if let Some(why) = &found.devices_error {
+        println!("  (the paired devices couldn't be read: {why})");
+    }
     for folder in &found.folders {
         println!("- {}", folder.display());
     }
@@ -232,7 +239,7 @@ fn run_cleanup(args: &[String]) -> ExitCode {
     }
     let mut failed = Vec::new();
     if !found.anything_besides_the_database() {
-        println!("No schedule, keys or downloads to remove.");
+        println!("No schedule, keys, device tokens or downloads to remove.");
     } else if ask("Remove these?") {
         failed.extend(runtime.block_on(cleanup::remove_besides_the_database(&found, &schedule, &vault)));
     } else {
@@ -420,11 +427,44 @@ fn run_server(args: &[String]) -> ExitCode {
     let state = Arc::new(state);
     runtime.spawn(jobfinder::idle::unload_when_idle(Arc::clone(&context)));
     let serving = runtime.spawn(server::serve_on(listener, state));
+    serve_devices(&runtime, &context);
     jobfinder::say!(
         "JobFinder is running, with the Jobnet extension's address at {address} (data in {}).",
         database.display()
     );
     run_window(runtime, context, front, serving)
+}
+
+/// Answers paired devices (a phone, a tablet) on their own port, and reads the computer's
+/// tailnet name for them. A port that can't be taken is logged and said on the Devices screen;
+/// the rest of the app goes on without it.
+fn serve_devices(runtime: &tokio::runtime::Runtime, context: &Arc<Context>) {
+    let port = device_protocol::PORT;
+    match runtime.block_on(device_server::bind()) {
+        Ok(listener) => {
+            let serving = runtime.spawn(device_server::serve_on(listener, Arc::clone(context)));
+            runtime.spawn(async move {
+                match serving.await {
+                    Ok(Ok(())) => {}
+                    Ok(Err(e)) => jobfinder::log_line!("The device server stopped: {e}"),
+                    Err(e) => jobfinder::log_line!("The device server stopped: {e}"),
+                }
+            });
+        }
+        Err(e) => {
+            let why = format!("Port {port} for paired devices couldn't be taken: {e}. Is another program using it?");
+            jobfinder::log_line!("{why}");
+            *context
+                .devices
+                .not_listening
+                .lock()
+                .unwrap_or_else(|poisoned| poisoned.into_inner()) = Some(why);
+        }
+    }
+    let reading = Arc::clone(context);
+    runtime.spawn(async move {
+        tailscale::state(&reading, port, chrono::Utc::now().timestamp()).await;
+    });
 }
 
 /// How long closing the window waits for the app's work to end (a match being written, Laya

@@ -24,6 +24,9 @@ pub enum ErrorKind {
     Failed,
     /// The language model's call failed; retryable says whether asking again may work.
     Llm { retryable: bool },
+    /// The one asking may not: a device that isn't paired, or a pairing code that is used or
+    /// too old.
+    NotAllowed,
     /// The app itself failed: the database, the key store, making a file.
     Internal,
 }

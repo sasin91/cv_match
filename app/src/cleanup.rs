@@ -18,6 +18,7 @@
 use std::path::{Path, PathBuf};
 
 use crate::account::key_vault::KeyVault;
+use crate::devices::device_model::{self, Device};
 use crate::scan_schedule::ScanSchedule;
 use crate::{app_log, extension, laya, llama};
 
@@ -31,6 +32,9 @@ pub struct Found {
     /// The providers whose keys are kept ("" is the key from before providers).
     pub keys: Vec<&'static str>,
     pub keys_error: Option<String>,
+    /// The paired devices, whose tokens are kept beside the keys (devices).
+    pub devices: Vec<Device>,
+    pub devices_error: Option<String>,
     /// The folders the app wrote next to the database that are there.
     pub folders: Vec<PathBuf>,
     /// The database's files that are there.
@@ -42,7 +46,11 @@ pub struct Found {
 impl Found {
     /// Whether anything but the database is there to remove.
     pub fn anything_besides_the_database(&self) -> bool {
-        self.schedule.is_some() || !self.keys.is_empty() || !self.folders.is_empty() || self.notification_name
+        self.schedule.is_some()
+            || !self.keys.is_empty()
+            || !self.devices.is_empty()
+            || !self.folders.is_empty()
+            || self.notification_name
     }
 }
 
@@ -159,12 +167,18 @@ pub async fn find(database: &Path, schedule: &ScanSchedule, vault: &KeyVault) ->
         Ok(keys) => (keys, None),
         Err(why) => (Vec::new(), Some(why)),
     };
+    let (devices, devices_error) = match device_model::in_file(database).await {
+        Ok(devices) => (devices, None),
+        Err(e) => (Vec::new(), Some(e.to_string())),
+    };
     Found {
         database: database.to_path_buf(),
         schedule,
         schedule_error,
         keys,
         keys_error,
+        devices,
+        devices_error,
         folders: app_folders(database)
             .into_iter()
             .filter(|folder| folder.exists())
@@ -188,6 +202,11 @@ pub async fn remove_besides_the_database(found: &Found, schedule: &ScanSchedule,
     for provider in &found.keys {
         if let Err(why) = vault.delete(provider) {
             failed.push(format!("The {} key: {why}", key_name(provider)));
+        }
+    }
+    for device in &found.devices {
+        if let Err(why) = vault.forget_device_token_hash(device.id) {
+            failed.push(format!("The token of the device \"{}\": {why}", device.name));
         }
     }
     for folder in &found.folders {
@@ -352,6 +371,28 @@ mod tests {
         assert!(remove_database(&found).is_empty());
         assert!(!database.exists());
         assert!(!remove_default_folder(&database, Path::new("/elsewhere")));
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[tokio::test]
+    async fn the_cleanup_forgets_the_paired_devices_tokens() {
+        let folder = std::env::temp_dir().join(format!("jobfinder-cleanup-devices-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let database = folder.join("jobfinder.sqlite");
+        let db = crate::db::open(&database).await.unwrap();
+        let id = device_model::add(&db, "Pixel 8", 1).await.unwrap();
+        db.close().await;
+        let schedule = ScanSchedule::in_memory();
+        let vault = KeyVault::in_memory();
+        vault.save_device_token_hash(id, "beef").unwrap();
+
+        let found = find(&database, &schedule, &vault).await;
+        assert_eq!(found.devices_error, None);
+        assert_eq!(found.devices.iter().map(|device| device.id).collect::<Vec<_>>(), [id]);
+        assert!(found.anything_besides_the_database());
+
+        assert!(remove_besides_the_database(&found, &schedule, &vault).await.is_empty());
+        assert_eq!(vault.device_token_hash(id).unwrap(), None);
         std::fs::remove_dir_all(&folder).unwrap();
     }
 }
