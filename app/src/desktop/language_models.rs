@@ -16,6 +16,7 @@ use crate::account::account_service::{self, AccountView, KeyForm, SaveKey};
 use crate::account::saved_key::{KeyChoice, KeyUse, SavedKey};
 use crate::account::task_model_row::TaskModelRow;
 use crate::dashboard::Health;
+use crate::game_mode::stand_in::WhilePlaying;
 use crate::llm::{LLAMA_CPP, LOCAL};
 
 /// A field's width in the key form.
@@ -383,10 +384,24 @@ pub fn view(state: &State) -> Element<'_, Msg> {
     if !view.key_uses.is_empty() {
         screen = screen.push(widgets::section("What the AI runs on", runs_on_card(view, state)));
     }
+    if let Some(while_playing) = &view.while_playing {
+        screen = screen.push(widgets::section("While you play", while_playing_card(while_playing)));
+    }
     if view.saved.is_empty() || state.adding_key {
         screen = screen.push(widgets::section("Add a key", key_form(view, state)));
     }
     screen.into()
+}
+
+/// What happens to the AI's work while a game runs, with the keys saved.
+fn while_playing_card(while_playing: &WhilePlaying) -> Element<'_, Msg> {
+    let what = match &while_playing.cloud_key {
+        Some(cloud_key) => format!(
+            "While a game runs, the model on this computer lets go of the graphics card, and the AI's work (a job scan's posts too) goes to your {cloud_key} key, on its own model. Once the game ends, it runs here again."
+        ),
+        None => "While a game runs, a job scan waits until it ends. With an OpenAI or Claude key, the work would go to that key meanwhile.".to_string(),
+    };
+    widgets::card(container(widgets::caption(what)).padding(CARD_PADDING).into())
 }
 
 /// Which model to run the AI on, while no key is saved (model_advice).

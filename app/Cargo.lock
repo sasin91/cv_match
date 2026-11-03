@@ -2650,6 +2650,7 @@ dependencies = [
  "url",
  "webbrowser",
  "windows 0.62.2",
+ "zbus",
  "zip",
 ]
 

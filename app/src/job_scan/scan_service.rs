@@ -14,7 +14,8 @@
 //! dialog.
 //!
 //! It matches the posts as background work should: with a pause between two (each keeps the
-//! model busy for minutes), and waiting while the user plays a full-screen game (user_busy).
+//! model busy for minutes), and waiting while a game runs (game_mode), or going on with their cloud
+//! key meanwhile (game_mode::stand_in).
 
 use std::sync::Arc;
 use std::time::{Duration, Instant};
@@ -28,9 +29,13 @@ use super::job_search_rules;
 use super::run_steps::{self, NewStep};
 use super::scan_lock;
 use super::search_service;
-use crate::account::account_model::{APPLICATION, JOB_EVALUATION, RESUME};
+use crate::account::account_model::{self, APPLICATION, JOB_EVALUATION, RESUME};
 use crate::account::task_model;
 use crate::context::Context;
+use crate::game_mode::{
+    self,
+    stand_in::{self, StandIn},
+};
 use crate::job_sites::signed_in::SignedInBrowser;
 use crate::job_sites::{JobSite, ListedPost};
 use crate::llm::transcript::{self, Exchange};
@@ -445,6 +450,8 @@ async fn scan_searches(context: &Arc<Context>, started: Started) -> Result<ScanR
 struct Matching {
     cv: Option<ProfileCv>,
     started_one: bool,
+    /// The cloud key stands in for the game under way (said once per game).
+    in_the_cloud: bool,
     clock: running_work::Clock,
     time_limit: Duration,
 }
@@ -454,6 +461,7 @@ impl Matching {
         Matching {
             cv: None,
             started_one: false,
+            in_the_cloud: false,
             clock: running_work::Clock::start(),
             time_limit: started.time_limit(),
         }
@@ -465,7 +473,7 @@ impl Matching {
     async fn match_posts(&mut self, context: &Arc<Context>, post_ids: Vec<i64>, report: &mut ScanReport) -> bool {
         let count = post_ids.len();
         for (index, post_id) in post_ids.into_iter().enumerate() {
-            if let Err(why) = self.make_way().await {
+            if let Err(why) = self.make_way(context).await {
                 crate::say!("job_scan: {why}");
                 report.stopped = Some(why);
                 return false;
@@ -497,11 +505,12 @@ impl Matching {
         true
     }
 
-    /// Waits PAUSE_BETWEEN_POSTS after a post, then while the user is busy (user_busy), for at
-    /// most BUSY_GIVE_UP and never past the scan's time limit. Err says why the scan stops: out
-    /// of time (looked at before and after the waits), asked to stop (the task manager; at once),
-    /// or the user stayed busy.
-    async fn make_way(&mut self) -> Result<(), String> {
+    /// Waits PAUSE_BETWEEN_POSTS after a post, then while a game runs (game_mode), for at
+    /// most BUSY_GIVE_UP and never past the scan's time limit; unless the cloud key stands in
+    /// meanwhile (stand_in), which goes on at once. Err says why the scan stops: out of time
+    /// (looked at before and after the waits), asked to stop (the task manager; at once), or the
+    /// user stayed busy.
+    async fn make_way(&mut self, context: &Context) -> Result<(), String> {
         let stopped = || Err(STOPPED_SCAN.to_string());
         running_work::until_resumed().await;
         if running_work::stop_asked() {
@@ -516,26 +525,55 @@ impl Matching {
         }
         self.started_one = true;
         let give_up_after = BUSY_GIVE_UP.min(self.time_left()?);
-        // The time the scan is paused doesn't count toward giving up on the user being busy.
-        let waited = running_work::Clock::start();
-        loop {
-            let left = give_up_after.saturating_sub(waited.ran());
-            let free = tokio::select! {
-                free = crate::user_busy::wait_until_free(left) => free,
-                () = running_work::until_stop_asked() => return stopped(),
-            };
-            match free {
-                Ok(()) => break,
-                Err(why) if waited.ran() >= give_up_after => return Err(why),
-                // Paused meanwhile: wait to be resumed, then the rest of the time.
-                Err(_) => running_work::until_resumed().await,
-            }
+        if !self.goes_on_in_the_cloud(context).await {
+            self.wait_until_game_over(context, give_up_after).await?;
         }
         running_work::until_resumed().await;
         if running_work::stop_asked() {
             return stopped();
         }
         self.time_left().map(|_| ())
+    }
+
+    /// Waits while a game runs, for at most give_up_after; the time the scan is paused doesn't
+    /// count toward it. Err says why the scan stops: asked to stop, or the game went on.
+    async fn wait_until_game_over(&self, context: &Context, give_up_after: Duration) -> Result<(), String> {
+        let waited = running_work::Clock::start();
+        loop {
+            let left = give_up_after.saturating_sub(waited.ran());
+            let over = tokio::select! {
+                over = context.game_mode.wait_until_over(left) => over,
+                () = running_work::until_stop_asked() => return Err(STOPPED_SCAN.to_string()),
+            };
+            match over {
+                Ok(()) => return Ok(()),
+                Err(why) if waited.ran() >= give_up_after => return Err(why),
+                // Paused meanwhile: wait to be resumed, then the rest of the time.
+                Err(_) => running_work::until_resumed().await,
+            }
+        }
+    }
+
+    /// Whether a game runs and the cloud key stands in (stand_in), so the scan
+    /// needn't wait; said once per game. When that can't be told (logged), the scan waits.
+    async fn goes_on_in_the_cloud(&mut self, context: &Context) -> bool {
+        let stand_in = stand_in::now(context).await.unwrap_or_else(|e| {
+            crate::log_line!("job_scan: the cloud key for games couldn't be looked up: {}", e.message);
+            None
+        });
+        let Some(StandIn { key, playing }) = stand_in else {
+            self.in_the_cloud = false;
+            return false;
+        };
+        if !self.in_the_cloud {
+            crate::say!(
+                "job_scan: {}, so the scan goes on with your {} key.",
+                game_mode::capitalized(&playing),
+                account_model::provider_label(&key.provider)
+            );
+        }
+        self.in_the_cloud = true;
+        true
     }
 
     /// The scan's time left, or Err (out_of_time) when there is none.
@@ -1784,15 +1822,18 @@ mod tests {
             time_limit: Duration::ZERO,
             ..Matching::new(Started::ByHand)
         };
-        let why = out_of_time.make_way().await.unwrap_err();
+        let db = crate::db::open_in_memory().await.unwrap();
+        let taxonomy = Arc::new(crate::taxonomy::Taxonomy::load());
+        let context = Context::new(db, taxonomy, crate::account::key_vault::KeyVault::in_memory());
+        let why = out_of_time.make_way(&context).await.unwrap_err();
         assert!(why.starts_with("The scan ran for 0 minutes, its limit"), "{why}");
         let mut in_time = Matching::new(Started::ByHand);
-        assert_eq!(in_time.make_way().await, Ok(()));
+        assert_eq!(in_time.make_way(&context).await, Ok(()));
     }
 
     #[test]
     fn a_scan_stopped_for_a_game_says_so_whenever_it_stopped() {
-        let busy = "A full-screen app or game ran for 60 minutes, so the scan stopped.".to_string();
+        let busy = "A game or full-screen app ran for 60 minutes, so the scan stopped.".to_string();
         let before_searches = ScanReport {
             matched: 2,
             stopped: Some(busy.clone()),

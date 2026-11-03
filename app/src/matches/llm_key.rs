@@ -2,13 +2,17 @@
 //! task's use (account_model::USES), on the task's model (task_model::model_for). Every task
 //! gets its model from llm() here; only the API key page's Check runs on a key's own model. The
 //! desktop app has no server key to fall back to, so without a key for that use the page is told
-//! why and pointed to the API key page.
+//! why and pointed to the API key page. While the user plays, a task that would run on this
+//! computer runs on their cloud key instead (game_mode::stand_in).
+
+use std::time::Duration;
 
 use super::match_documents::Uses;
 use crate::account::account_model::{self, APPLICATION, JOB_EVALUATION, KeyFor, RESUME, USES};
 use crate::account::llama_setup_service;
 use crate::account::task_model::{self, Task};
 use crate::context::Context;
+use crate::game_mode::stand_in::{self, StandIn};
 use crate::llama;
 use crate::llm::{LLAMA_CPP, Llm};
 use crate::service_error::{ErrorKind, ServiceError};
@@ -41,9 +45,12 @@ pub async fn llm(context: &Context, task: &Task) -> Result<KeyedLlm, ServiceErro
     let Some(key) = llm_settings(context, use_).await? else {
         return Err(ServiceError::need_key(missing_key_message(context, use_).await?));
     };
-    let key = KeyFor {
-        model: task_model_of(context, task, &key).await?,
-        ..key
+    let key = match stand_in::for_key(context, &key).await? {
+        Some(stand_in) => moved_while_gaming(context, task, stand_in).await,
+        None => KeyFor {
+            model: task_model_of(context, task, &key).await?,
+            ..key
+        },
     };
     if key.provider == LLAMA_CPP {
         llama_setup_service::download_if_missing(context, &key.model).await?;
@@ -53,6 +60,25 @@ pub async fn llm(context: &Context, task: &Task) -> Result<KeyedLlm, ServiceErro
         .map_err(|e| ServiceError::llm(&format!("llm ({})", task.name), &e))?;
     let written_by = format!("{}/{}", key.provider, llm.model());
     Ok(KeyedLlm { llm, written_by })
+}
+
+/// The cloud key task runs on while a game runs (game_mode::stand_in), on that key's own model: the
+/// models saved for the task are this computer's key's. llama-server is stopped when no call
+/// needs it anymore, so the game gets the graphics card back.
+async fn moved_while_gaming(context: &Context, task: &Task, stand_in: StandIn) -> KeyFor {
+    let StandIn { key, playing } = stand_in;
+    crate::log_line!(
+        "game mode: {playing}, so {} runs on {}/{}.",
+        lowercase_first(task.label),
+        key.provider,
+        key.model
+    );
+    if let Some(llama) = &context.llama
+        && let Some(model) = llama.stop_if_idle(Duration::ZERO).await
+    {
+        crate::say!("game mode: llama-server stopped ({model}), so the game has the graphics card.");
+    }
+    key
 }
 
 /// The model task runs on, on key: the one saved for it, its default, or the key's own.

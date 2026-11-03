@@ -248,6 +248,12 @@ JobFinder is meant to sit in the background without getting in the way:
   time, and llama.cpp puts as many layers on the graphics card as fit in its free memory, so the
   model isn't spilled into shared memory. The headless browser of the job scan runs at
   below-normal priority too, and the scheduled scan runs below normal anyway.
-- The job scan pauses ten seconds between posts, and waits while a full-screen game or
-  presentation runs (Windows' "do not disturb" state, `src/user_busy.rs`). After an hour of that
-  it stops, and the next scan matches the posts left.
+- The job scan pauses ten seconds between posts, and waits while a game or presentation runs.
+  After an hour of that it stops, and the next scan matches the posts left. A game counts when
+  Windows is in its full-screen "do not disturb" state, the app in front is in the Xbox Game
+  Bar's list of games, Steam runs a game (its RunningAppID), or Feral's gamemode runs one on
+  Linux (`src/game_mode/`; the answer is kept ten seconds).
+- While a game runs, llama-server stops as soon as no call needs it, and the AI's work that
+  would run on this computer goes to the OpenAI key, else the Claude key, so the scan doesn't
+  wait. Without a cloud key the scan waits as above (`src/game_mode/stand_in.rs`). There is no
+  setting for it.

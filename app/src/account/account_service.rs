@@ -13,6 +13,7 @@ use super::saved_key::{self, KeyUse, SavedKey};
 use super::task_model::{self, KEYS_OWN_MODEL, TASKS};
 use super::task_model_row::{self, TaskModelRow};
 use crate::context::Context;
+use crate::game_mode::stand_in::{self, WhilePlaying};
 use crate::llama;
 use crate::llm::{self, ANTHROPIC, Effort, LLAMA_CPP, LOCAL, OPENAI};
 use crate::service_error::{ErrorKind, ServiceError};
@@ -82,6 +83,8 @@ pub struct AccountView {
     pub base_url_placeholder: &'static str,
     /// Which model to run the AI on, shown while no key is saved.
     pub advice: ModelAdvice,
+    /// What happens while a game runs, when a saved key runs on this computer.
+    pub while_playing: Option<WhilePlaying>,
 }
 
 /// What came of the key form.
@@ -236,6 +239,7 @@ pub async fn account_view(context: &Context, typed: Option<&KeyForm>) -> Result<
     drop(together);
     let saved_models = task_model::saved(context.db()).await?;
     let downloaded = llama::model_files(context.llama.as_ref());
+    let while_playing = stand_in::while_playing(&saved);
     let advice = ModelAdvice::from(context.llama.as_ref());
     let provider = typed
         .map(|form| form.provider.as_str())
@@ -265,6 +269,7 @@ pub async fn account_view(context: &Context, typed: Option<&KeyForm>) -> Result<
         model_placeholder: model_placeholder(),
         base_url_placeholder: BASE_URL_PLACEHOLDER,
         advice,
+        while_playing,
     })
 }
 
