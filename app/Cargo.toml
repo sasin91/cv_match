@@ -68,9 +68,13 @@ rfd = "0.17"
 
 # The memory and graphics card a llama.cpp model is weighed against (DXGI), the job object
 # that ends llama-server with the app, whether the installer has its console to itself, and
-# whether a game runs (game_mode: the registry, and the window in front).
+# whether a game runs (game_mode: the registry, and the window in front); Windows' own
+# notifications (notifications: toasts, and the app's name for them in the registry).
 [target.'cfg(windows)'.dependencies]
 windows = { version = "0.62", features = [
+    "Data_Xml_Dom",
+    "Foundation",
+    "UI_Notifications",
     "Win32_Foundation",
     "Win32_Graphics_Dxgi",
     "Win32_Security",

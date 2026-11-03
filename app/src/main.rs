@@ -34,6 +34,7 @@ use jobfinder::job_scan::scan_service;
 use jobfinder::job_sites::signed_in::{self, SignedInBrowser};
 use jobfinder::laya::laya_client::{self, LayaClient};
 use jobfinder::llama::{self, hardware::Inventory, llama_server::LlamaServer};
+use jobfinder::notifications::{Toasts, notification_model};
 use jobfinder::scan_schedule::{self, ScanSchedule};
 use jobfinder::server::{self, AppState};
 use jobfinder::taxonomy::Taxonomy;
@@ -225,6 +226,9 @@ fn run_cleanup(args: &[String]) -> ExitCode {
     }
     for folder in &found.folders {
         println!("- {}", folder.display());
+    }
+    if found.notification_name {
+        println!("- JobFinder's name for Windows notifications, in your registry");
     }
     let mut failed = Vec::new();
     if !found.anything_besides_the_database() {
@@ -498,6 +502,8 @@ fn app_context(
         made_now,
     };
     context.scan_schedule = scan_schedule(database);
+    context.toasts = Toasts::system();
+    forget_old_notifications(runtime, context.db());
     runtime.block_on(take_over_kept_elsewhere(
         database,
         &context.key_vault,
@@ -523,6 +529,15 @@ fn app_context(
     context.llama = Some(LlamaServer::new(&llama_folder, inventory));
     context.signed_in = Some(SignedInBrowser::new(data_folder.join(signed_in::FOLDER)));
     Ok(context)
+}
+
+/// Deletes the bell's notifications older than notification_model::KEEP_DAYS; a failure is
+/// logged, and they stay till the next start.
+fn forget_old_notifications(runtime: &tokio::runtime::Runtime, db: &sqlx::SqlitePool) {
+    let now = chrono::Utc::now().timestamp();
+    if let Err(e) = runtime.block_on(notification_model::forget_old(db, now)) {
+        jobfinder::log_line!("Old notifications couldn't be deleted: {e}");
+    }
 }
 
 /// Says (and logs) what the data folder's move from the former name did; Err when it failed.

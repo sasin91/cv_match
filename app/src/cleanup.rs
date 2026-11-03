@@ -5,6 +5,7 @@
 //! - the job scan's schedule (Task Scheduler's task, or the systemd user timer), which would
 //!   otherwise keep running a program that is gone;
 //! - the API keys in Credential Manager (or the keyring);
+//! - JobFinder's name for Windows' notifications, in the user's registry (notifications);
 //! - what the app wrote or downloaded next to the database: the Jobnet extension's files,
 //!   llama.cpp and its models, Laya's model;
 //! - and only when asked again, the database itself, with its -wal and -shm files and the app's
@@ -34,12 +35,14 @@ pub struct Found {
     pub folders: Vec<PathBuf>,
     /// The database's files that are there.
     pub database_files: Vec<PathBuf>,
+    /// JobFinder's name for Windows notifications is in the registry (notifications).
+    pub notification_name: bool,
 }
 
 impl Found {
     /// Whether anything but the database is there to remove.
     pub fn anything_besides_the_database(&self) -> bool {
-        self.schedule.is_some() || !self.keys.is_empty() || !self.folders.is_empty()
+        self.schedule.is_some() || !self.keys.is_empty() || !self.folders.is_empty() || self.notification_name
     }
 }
 
@@ -166,6 +169,7 @@ pub async fn find(database: &Path, schedule: &ScanSchedule, vault: &KeyVault) ->
             .into_iter()
             .filter(|folder| folder.exists())
             .collect(),
+        notification_name: crate::notifications::system_name_kept(),
         database_files: database_files(database)
             .into_iter()
             .filter(|file| file.exists())
@@ -190,6 +194,11 @@ pub async fn remove_besides_the_database(found: &Found, schedule: &ScanSchedule,
         if let Err(e) = std::fs::remove_dir_all(folder) {
             failed.push(format!("{}: {e}", folder.display()));
         }
+    }
+    if found.notification_name
+        && let Err(why) = crate::notifications::forget_system_name()
+    {
+        failed.push(format!("JobFinder's name for Windows notifications: {why}"));
     }
     failed
 }
