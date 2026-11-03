@@ -16,7 +16,7 @@ const HEADING_GAP: f32 = 10.0;
 
 /// A page's title and the line under it.
 pub fn page_title<'a, M: 'a>(title: &'a str, under: Element<'a, M>) -> Element<'a, M> {
-    column![text(title).font(style::semibold()).size(style::TITLE_SIZE), under]
+    column![text(title).font(style::title_font()).size(style::TITLE_SIZE), under]
         .spacing(4)
         .width(Fill)
         .into()
@@ -34,7 +34,7 @@ pub fn caption<'a, M: 'a>(line: impl text::IntoFragment<'a>) -> Element<'a, M> {
 
 /// A section's heading.
 pub fn section_title<'a, M: 'a>(title: impl text::IntoFragment<'a>) -> Element<'a, M> {
-    text(title).font(style::semibold()).size(style::SECTION_SIZE).into()
+    text(title).font(style::title_font()).size(style::SECTION_SIZE).into()
 }
 
 /// A titled card.

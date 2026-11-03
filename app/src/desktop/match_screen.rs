@@ -84,7 +84,7 @@ pub fn view(overview: Option<&Result<super::Overview, String>>) -> Element<'_, M
 /// The page's title, with what's under it on the left and Match a job on the right.
 fn heading<'a>(title: &'a str, under: Element<'a, Message>) -> Element<'a, Message> {
     row![
-        column![text(title).font(style::semibold()).size(style::TITLE_SIZE), under]
+        column![text(title).font(style::title_font()).size(style::TITLE_SIZE), under]
             .spacing(4)
             .width(Fill),
         button(text("Match a job").size(style::BODY_SIZE))

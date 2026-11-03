@@ -61,7 +61,7 @@ pub fn view(context: &Context) -> Element<'_, Message> {
     .padding([12.0, CARD_PADDING]);
     column![
         column![
-            text("Settings").font(style::semibold()).size(style::TITLE_SIZE),
+            text("Settings").font(style::title_font()).size(style::TITLE_SIZE),
             text("What the app runs on, and what it searches for.")
                 .size(style::BODY_SIZE)
                 .style(style::secondary),
