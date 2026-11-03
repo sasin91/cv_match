@@ -41,12 +41,12 @@ pub async fn serve_on(listener: tokio::net::TcpListener, context: Arc<Context>) 
     axum::serve(listener, router(context)).await
 }
 
-/// POST device/v1/pair: a device trades the pairing code shown now for its token.
+/// POST v1/device/pair: a device trades the pairing code shown now for its token.
 async fn pair(State(context): State<Arc<Context>>, Json(ask): Json<PairAsk>) -> Result<Json<PairAnswer>, ApiError> {
     Ok(Json(device_service::pair(&context, &ask, now()).await?))
 }
 
-/// POST device/v1/hello: what a paired device is paired with.
+/// POST v1/device/hello: what a paired device is paired with.
 async fn hello(State(context): State<Arc<Context>>, headers: HeaderMap) -> Result<Json<Hello>, ApiError> {
     let device = device_service::device_for(&context, authorization(&headers), now()).await?;
     Ok(Json(device_service::hello(&device)))

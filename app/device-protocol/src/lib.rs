@@ -15,10 +15,10 @@ use serde::{Deserialize, Serialize};
 pub const PORT: u16 = 8766;
 
 /// Where a device trades its pairing code for a token (PairAsk, PairAnswer).
-pub const PAIR_PATH: &str = "/device/v1/pair";
+pub const PAIR_PATH: &str = "/v1/device/pair";
 
 /// Where a paired device asks what it is paired with (Hello).
-pub const HELLO_PATH: &str = "/device/v1/hello";
+pub const HELLO_PATH: &str = "/v1/device/hello";
 
 /// How long a pairing code works after the computer shows it, in seconds.
 pub const PAIRING_CODE_SECONDS: i64 = 5 * 60;
