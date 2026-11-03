@@ -1,2 +1,5 @@
 /app/target/
 /laya-server/target/
+
+# Python wheels a cloud session downloads to get libonnxruntime; never part of the app.
+*.whl
