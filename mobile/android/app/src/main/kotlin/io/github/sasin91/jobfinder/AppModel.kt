@@ -110,6 +110,10 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         session = newSession()
         polling = null
         listing = null
+        // What was read or sent through the pairing before belongs to it; a draft post stays.
+        _list.value = ListState()
+        _match.value = MatchState()
+        _send.update { SendState(text = it.text) }
     }
 
     private fun client(): DeviceClient? = _pairing.value?.let { DeviceClient(it.address, it.token) }
@@ -275,7 +279,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
                 val started = client.evaluate(text)
                 _send.update { state ->
                     state.copy(
-                        text = "",
+                        // A post shared while this one was sent stays in the box.
+                        text = if (state.text.trim() == text) "" else state.text,
                         sending = false,
                         evaluations = listOf(started) + state.evaluations.filter { it.id != started.id },
                     )
