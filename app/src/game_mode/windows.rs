@@ -5,6 +5,11 @@
 use windows::Win32::Foundation::{
     CloseHandle, ERROR_FILE_NOT_FOUND, ERROR_NO_MORE_ITEMS, ERROR_SUCCESS, HWND, WIN32_ERROR,
 };
+use windows::Win32::System::Performance::{
+    PDH_CSTATUS_NEW_DATA, PDH_CSTATUS_VALID_DATA, PDH_FMT_COUNTERVALUE_ITEM_W, PDH_FMT_DOUBLE, PDH_HCOUNTER,
+    PDH_HQUERY, PDH_MORE_DATA, PdhAddEnglishCounterW, PdhCloseQuery, PdhCollectQueryData, PdhGetFormattedCounterArrayW,
+    PdhOpenQueryW,
+};
 use windows::Win32::System::Registry::{
     HKEY, HKEY_CURRENT_USER, HKEY_LOCAL_MACHINE, KEY_READ, RRF_RT_REG_DWORD, RRF_RT_REG_SZ, RegCloseKey, RegEnumKeyExW,
     RegGetValueW, RegOpenKeyExW,
@@ -20,6 +25,7 @@ use windows::core::{HSTRING, PCWSTR, PWSTR};
 
 use std::path::PathBuf;
 
+use super::gpu;
 use super::launchers::{self, InstalledGame};
 use super::{Playing, steam};
 
@@ -54,6 +60,8 @@ const INSTALLED_PROGRAMS: [(HKEY, &str); 3] = [
 const PUBLISHER: &str = "Publisher";
 const DISPLAY_NAME: &str = "DisplayName";
 const INSTALL_LOCATION: &str = "InstallLocation";
+/// Every process's share of every graphics engine, by its English name (any Windows language).
+const GPU_ENGINE_COUNTER: &str = r"\GPU Engine(*)\Utilization Percentage";
 /// The longest path a program file has, in UTF-16 units (Windows' long paths).
 const LONGEST_PATH: usize = 32_768;
 /// The longest registry key name, in UTF-16 units, with its ending 0.
@@ -90,6 +98,11 @@ pub fn steam_game() -> Result<Option<Playing>, String> {
 
 /// The program file of the window in front.
 fn program_in_front() -> Option<String> {
+    process_in_front().map(|(_, program)| program)
+}
+
+/// The process ID and program file of the window in front.
+fn process_in_front() -> Option<(u32, String)> {
     // SAFETY: takes nothing; a null window means none is in front.
     let window: HWND = unsafe { GetForegroundWindow() };
     if window.is_invalid() {
@@ -108,7 +121,122 @@ fn program_in_front() -> Option<String> {
     // SAFETY: process was opened above and isn't used after.
     let _ = unsafe { CloseHandle(process) };
     read.ok()?;
-    Some(String::from_utf16_lossy(&path[..length as usize]))
+    Some((process_id, String::from_utf16_lossy(&path[..length as usize])))
+}
+
+/// Windows' "GPU Engine" counters for every process (gpu), open from the first look on; each
+/// read gives the shares averaged since the read before.
+#[derive(Default)]
+pub struct GpuWatch {
+    counters: Option<GpuCounters>,
+}
+
+/// An open counter query and its counter.
+struct GpuCounters {
+    query: PDH_HQUERY,
+    counter: PDH_HCOUNTER,
+}
+
+// SAFETY: the handles are PDH's, used by one thread at a time (GameMode's lock), and PDH's
+// functions may be called from any thread.
+unsafe impl Send for GpuCounters {}
+
+impl Drop for GpuCounters {
+    fn drop(&mut self) {
+        // SAFETY: the query was opened by GpuCounters::open and isn't used after.
+        let _ = unsafe { PdhCloseQuery(self.query) };
+    }
+}
+
+impl GpuWatch {
+    /// The app in front as a game when it kept the 3D engine busy enough since the last look
+    /// (gpu::heavy_app); None on the first look, which only starts the counting.
+    pub fn heavy_app_in_front(&mut self) -> Result<Option<Playing>, String> {
+        let Some(counters) = &self.counters else {
+            self.counters = Some(GpuCounters::open()?);
+            return Ok(None);
+        };
+        let shares = counters.read()?;
+        let Some((process_id, program)) = process_in_front() else {
+            return Ok(None);
+        };
+        let pairs = shares.iter().map(|(instance, share)| (instance.as_str(), *share));
+        let share = gpu::three_d_share(process_id, pairs);
+        Ok(gpu::heavy_app(&file_name(&program), share))
+    }
+}
+
+impl GpuCounters {
+    /// Opens the query and takes its first sample, which the next read is averaged from.
+    fn open() -> Result<Self, String> {
+        let mut query = PDH_HQUERY::default();
+        // SAFETY: query outlives the call; no data source means the live counters.
+        pdh(unsafe { PdhOpenQueryW(PCWSTR::null(), 0, &mut query) }, "open")?;
+        let mut counters = GpuCounters {
+            query,
+            counter: PDH_HCOUNTER::default(),
+        };
+        let path = HSTRING::from(GPU_ENGINE_COUNTER);
+        // SAFETY: the query is open, and counter outlives the call.
+        pdh(
+            unsafe { PdhAddEnglishCounterW(counters.query, &path, 0, &mut counters.counter) },
+            "add",
+        )?;
+        counters.sample()?;
+        Ok(counters)
+    }
+
+    fn sample(&self) -> Result<(), String> {
+        // SAFETY: the query is open.
+        pdh(unsafe { PdhCollectQueryData(self.query) }, "sample")
+    }
+
+    /// Each instance's share (percent) since the last sample; instances that weren't there
+    /// then have none yet and are left out.
+    fn read(&self) -> Result<Vec<(String, f64)>, String> {
+        self.sample()?;
+        let mut bytes = 0u32;
+        let mut count = 0u32;
+        // SAFETY: asks for the size only; bytes and count outlive the call.
+        let sized = unsafe { PdhGetFormattedCounterArrayW(self.counter, PDH_FMT_DOUBLE, &mut bytes, &mut count, None) };
+        if sized != PDH_MORE_DATA {
+            pdh(sized, "size")?;
+            return Ok(Vec::new());
+        }
+        // u64s, so the items in it are aligned; the instance names follow them in the buffer.
+        let mut buffer = vec![0u64; (bytes as usize).div_ceil(size_of::<u64>())];
+        let items = buffer.as_mut_ptr().cast::<PDH_FMT_COUNTERVALUE_ITEM_W>();
+        // SAFETY: buffer holds bytes bytes, and the call writes at most that many.
+        pdh(
+            unsafe { PdhGetFormattedCounterArrayW(self.counter, PDH_FMT_DOUBLE, &mut bytes, &mut count, Some(items)) },
+            "read",
+        )?;
+        // SAFETY: the call wrote count items at the start of buffer, whose names point into it.
+        let items = unsafe { std::slice::from_raw_parts(items, count as usize) };
+        Ok(items.iter().filter_map(share_of).collect())
+    }
+}
+
+/// An item's instance name and share, or None when it has no valid value yet.
+fn share_of(item: &PDH_FMT_COUNTERVALUE_ITEM_W) -> Option<(String, f64)> {
+    if item.FmtValue.CStatus != PDH_CSTATUS_VALID_DATA && item.FmtValue.CStatus != PDH_CSTATUS_NEW_DATA {
+        return None;
+    }
+    // SAFETY: the name is a 0-terminated string in the read's buffer, which outlives the item.
+    let name = unsafe { item.szName.to_string() }.ok()?;
+    // SAFETY: the value was asked for as PDH_FMT_DOUBLE.
+    let share = unsafe { item.FmtValue.Anonymous.doubleValue };
+    Some((name, share))
+}
+
+/// Ok for ERROR_SUCCESS, else what PDH said while doing what.
+fn pdh(status: u32, what: &str) -> Result<(), String> {
+    if status == ERROR_SUCCESS.0 {
+        return Ok(());
+    }
+    Err(format!(
+        "the graphics card's counters couldn't {what} (PDH status {status:#x})"
+    ))
 }
 
 /// The program file of each game in the Game Bar's list; none without the list.
