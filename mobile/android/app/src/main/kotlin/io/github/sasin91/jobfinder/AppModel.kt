@@ -31,6 +31,12 @@ import kotlinx.coroutines.launch
 /** How often the posts sent are asked about while one is being matched, in milliseconds. */
 private const val EVALUATIONS_POLL_MS = 2_000L
 
+/**
+ * Whether a link opens in the app's reader: an https link. The app refuses plain http (its
+ * network security config), so an http link goes to the computer, which reads it itself.
+ */
+private fun opensInApp(text: String) = isLink(text) && text.trim().lowercase().startsWith("https://")
+
 /** What the app shows. */
 sealed interface Screen {
     data object Matches : Screen
@@ -268,7 +274,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     /** A post shared from another app: shown in the box to send. */
     fun shared(text: String) {
         val trimmed = text.trim()
-        if (isLink(trimmed)) {
+        if (opensInApp(trimmed)) {
             show(Screen.Read(trimmed))
             return
         }
@@ -283,7 +289,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
             _send.update { it.copy(error = "Paste or share a link to a job post, or its text.") }
             return
         }
-        if (isLink(text)) {
+        if (opensInApp(text)) {
             // The link stays in the box until it is sent, to try again if sending fails.
             _send.update { it.copy(error = null) }
             show(Screen.Read(text))
