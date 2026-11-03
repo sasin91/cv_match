@@ -163,9 +163,10 @@ pub fn run(launch: Launch) -> iced::Result {
     // boot may be called more than once by iced's types, but runs once; the channel's end is
     // taken by that run.
     let launch = Mutex::new(Some(launch));
-    iced::application(move || boot(&launch), update, view)
+    let app = iced::application(move || boot(&launch), update, view)
         .title(TITLE)
-        .window(window_settings())
+        .window(window_settings());
+    with_fonts(app)
         .default_font(style::font())
         .theme(|shell: &Shell| style::theme(shell.mode))
         .subscription(|_: &Shell| iced::system::theme_changes().map(Message::ThemeMode))
@@ -175,12 +176,18 @@ pub fn run(launch: Launch) -> iced::Result {
 /// A small window saying why the app couldn't start, for a start without a console to say it
 /// in (the window is how a double-clicked JobFinder talks).
 pub fn show_failure(why: String) -> iced::Result {
-    iced::application(move || Failure(why.clone()), |_: &mut Failure, _: ()| {}, failure_view)
+    let app = iced::application(move || Failure(why.clone()), |_: &mut Failure, _: ()| {}, failure_view)
         .title(TITLE)
-        .window_size(FAILURE_WINDOW_SIZE)
+        .window_size(FAILURE_WINDOW_SIZE);
+    with_fonts(app)
         .default_font(style::font())
         .theme(style::theme(Mode::Light))
         .run()
+}
+
+/// The application with the fonts built into the program loaded (style::FONTS).
+fn with_fonts<A: iced::Program>(app: iced::Application<A>) -> iced::Application<A> {
+    style::FONTS.into_iter().fold(app, |app, font| app.font(font))
 }
 
 /// Why the app couldn't start, as the failure window's state.
@@ -701,7 +708,7 @@ const STRIP_SIZE: Size = Size::new(3.0, 16.0);
 /// The app's name and its screens, as Windows 11's Settings has them.
 fn sidebar(current: Screen) -> Element<'static, Message> {
     column![
-        container(text(TITLE).font(style::semibold()).size(style::SECTION_SIZE)).padding([8.0, 12.0]),
+        container(text(TITLE).font(style::title_font()).size(style::SECTION_SIZE)).padding([8.0, 12.0]),
         nav_item("Match", Screen::Match, current),
         nav_item("Language models", Screen::LanguageModels, current),
         nav_item("Local model", Screen::LocalModel, current),

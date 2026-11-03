@@ -1,7 +1,8 @@
-//! The window's look, after Windows 11's (Fluent): a grey page, cards with a hairline border and
-//! a soft shadow, Windows' blue as the accent, and status marks on soft tinted pills; light or
-//! dark as Windows is set (theme). Every colour and size the screens use is named here, so they
-//! stay one design.
+//! The window's look, the same as JobFinder's web page: oat paper with warm ink in light mode, a
+//! warm evening brown in dark mode, Newsreader for titles and Figtree for the rest, sage green
+//! as the accent, rust for links, ink for the main button, and status marks on soft tinted pills;
+//! light or dark as the system is set (theme). Every colour, size and font the screens use is
+//! named here, so they stay one design.
 
 use iced::border::Radius;
 use iced::overlay::menu;
@@ -22,7 +23,7 @@ const fn hex(rgb: u32) -> Color {
 
 /// Every colour of one look, light or dark.
 pub struct Colors {
-    /// The page behind the cards (Windows 11's Mica).
+    /// The page behind the cards: oat paper.
     pub page: Color,
     /// A card's face, and a field's or a plain button's.
     pub card: Color,
@@ -34,16 +35,26 @@ pub struct Colors {
     pub text: Color,
     /// Secondary text: notes, captions, paths.
     pub text_secondary: Color,
-    /// Windows' accent blue.
+    /// The accent: sage green, as the web page's drawings and good scores.
     pub accent: Color,
     /// The accent under the pointer.
     accent_hover: Color,
-    /// The accent pressed.
-    accent_pressed: Color,
     /// Text on the accent.
     on_accent: Color,
     /// The accent's tint, behind a badge or a picked entry.
     accent_tint: Color,
+    /// The main button's face: ink, as the web page's Download button.
+    primary: Color,
+    /// The main button under the pointer.
+    primary_hover: Color,
+    /// The main button pressed.
+    primary_pressed: Color,
+    /// Text on the main button.
+    on_primary: Color,
+    /// A web address: rust, as the web page's links.
+    link: Color,
+    /// A web address under the pointer.
+    link_hover: Color,
     /// A plain button's face under the pointer, and the selected sidebar item.
     subtle_hover: Color,
     /// A plain button pressed, and a disabled main button.
@@ -52,7 +63,7 @@ pub struct Colors {
     control_hover: Color,
     /// A card's button pressed.
     control_pressed: Color,
-    /// A field's border, darker than a card's, as Windows 11 draws its text boxes.
+    /// A field's border, darker than a card's.
     field_border: Color,
     /// A field's text before anything is typed.
     placeholder: Color,
@@ -61,75 +72,93 @@ pub struct Colors {
     /// Ready: green on a green tint.
     success: Color,
     success_tint: Color,
-    /// Needs attention: amber on an amber tint, as Windows' warning bar.
+    /// Needs attention: amber on an amber tint.
     warning: Color,
     warning_tint: Color,
     warning_border: Color,
-    /// Something failed.
+    /// Something failed, and the face of a button that deletes.
     danger: Color,
+    /// A button that deletes, under the pointer.
+    danger_hover: Color,
+    /// A button that deletes, pressed.
+    danger_pressed: Color,
     /// A note: grey on a grey tint.
     neutral: Color,
     neutral_tint: Color,
 }
 
-/// Windows 11's light look.
+/// The light look: morning paper.
 pub const LIGHT: Colors = Colors {
-    page: hex(0xF3F3F3),
-    card: hex(0xFFFFFF),
-    card_border: hex(0xE5E5E5),
-    divider: hex(0xEDEDED),
-    text: hex(0x1A1A1A),
-    text_secondary: hex(0x5F5F5F),
-    accent: hex(0x005FB8),
-    accent_hover: hex(0x196EBF),
-    accent_pressed: hex(0x3C82C9),
-    on_accent: Color::WHITE,
-    accent_tint: hex(0xE5EFF8),
-    subtle_hover: hex(0xEAEAEA),
-    subtle_pressed: hex(0xE0E0E0),
-    control_hover: hex(0xF9F9F9),
-    control_pressed: hex(0xF0F0F0),
-    field_border: hex(0xD1D1D1),
-    placeholder: hex(0x8A8A8A),
-    shadow: 0.06,
-    success: hex(0x0F7B0F),
-    success_tint: hex(0xDFF6DD),
-    warning: hex(0x9D5D00),
-    warning_tint: hex(0xFFF4CE),
-    warning_border: hex(0xF2D27A),
-    danger: hex(0xC42B1C),
-    neutral: hex(0x616161),
-    neutral_tint: hex(0xF0F0F0),
+    page: hex(0xF5EFE4),
+    card: hex(0xFCF9F3),
+    card_border: hex(0xE2D7C4),
+    divider: hex(0xEBE2D2),
+    text: hex(0x2A231C),
+    text_secondary: hex(0x6F6456),
+    accent: hex(0x4F6D4D),
+    accent_hover: hex(0x5D7A5A),
+    on_accent: hex(0xFCF9F3),
+    accent_tint: hex(0xE1E9DC),
+    primary: hex(0x2A231C),
+    primary_hover: hex(0x3D342A),
+    primary_pressed: hex(0x4D4236),
+    on_primary: hex(0xF5EFE4),
+    link: hex(0x8A4A2F),
+    link_hover: hex(0x6A361F),
+    subtle_hover: hex(0xECE4D6),
+    subtle_pressed: hex(0xE3D9C8),
+    control_hover: hex(0xF7F1E7),
+    control_pressed: hex(0xEFE7DA),
+    field_border: hex(0xD4C7B2),
+    placeholder: hex(0x9A8E7E),
+    shadow: 0.07,
+    success: hex(0x4F6D4D),
+    success_tint: hex(0xE1E9DC),
+    warning: hex(0x8A5A12),
+    warning_tint: hex(0xF8EAD0),
+    warning_border: hex(0xE6CD98),
+    danger: hex(0xB23A26),
+    danger_hover: hex(0x9E3221),
+    danger_pressed: hex(0x8A2B1C),
+    neutral: hex(0x6F6456),
+    neutral_tint: hex(0xECE4D6),
 };
 
-/// Windows 11's dark look.
+/// The dark look: a warm evening brown.
 pub const DARK: Colors = Colors {
-    page: hex(0x202020),
-    card: hex(0x2B2B2B),
-    card_border: hex(0x3A3A3A),
-    divider: hex(0x353535),
-    text: hex(0xFFFFFF),
-    text_secondary: hex(0xC5C5C5),
-    accent: hex(0x60CDFF),
-    accent_hover: hex(0x5BBDEA),
-    accent_pressed: hex(0x56AED6),
-    on_accent: hex(0x000000),
-    accent_tint: hex(0x1F3A4D),
-    subtle_hover: hex(0x2D2D2D),
-    subtle_pressed: hex(0x292929),
-    control_hover: hex(0x323232),
-    control_pressed: hex(0x272727),
-    field_border: hex(0x4D4D4D),
-    placeholder: hex(0x9E9E9E),
+    page: hex(0x221B16),
+    card: hex(0x2D241E),
+    card_border: hex(0x43362C),
+    divider: hex(0x3A2F27),
+    text: hex(0xF1E6D6),
+    text_secondary: hex(0xB8A792),
+    accent: hex(0x9DBF9A),
+    accent_hover: hex(0xAFCCAC),
+    on_accent: hex(0x221B16),
+    accent_tint: hex(0x2F3A2C),
+    primary: hex(0xF1E6D6),
+    primary_hover: hex(0xE4D6C2),
+    primary_pressed: hex(0xD6C6B0),
+    on_primary: hex(0x221B16),
+    link: hex(0xE6A46A),
+    link_hover: hex(0xEEB27C),
+    subtle_hover: hex(0x342A23),
+    subtle_pressed: hex(0x2F261F),
+    control_hover: hex(0x352B24),
+    control_pressed: hex(0x2A221C),
+    field_border: hex(0x57473A),
+    placeholder: hex(0x8F8070),
     shadow: 0.3,
-    success: hex(0x6CCB5F),
-    success_tint: hex(0x2A3A27),
-    warning: hex(0xFCE100),
-    warning_tint: hex(0x433519),
-    warning_border: hex(0x5C4A1A),
-    danger: hex(0xC42B1C),
-    neutral: hex(0xB4B4B4),
-    neutral_tint: hex(0x353535),
+    success: hex(0x9DBF9A),
+    success_tint: hex(0x2F3A2C),
+    warning: hex(0xE9B45A),
+    warning_tint: hex(0x45351C),
+    warning_border: hex(0x5F4A26),
+    danger: hex(0xB8452F),
+    danger_hover: hex(0xA33D29),
+    danger_pressed: hex(0x8F3524),
+    neutral: hex(0xB8A792),
+    neutral_tint: hex(0x3A2F27),
 };
 
 /// The look a theme is: dark or light.
@@ -141,10 +170,13 @@ pub fn colors(theme: &Theme) -> &'static Colors {
     }
 }
 
-/// Corner radius of cards and the warning bar.
-pub const CARD_RADIUS: f32 = 8.0;
-/// Corner radius of buttons and sidebar items.
-const CONTROL_RADIUS: f32 = 4.0;
+/// Corner radius of cards and the warning bar, as the web page's cards.
+pub const CARD_RADIUS: f32 = 12.0;
+/// Corner radius of buttons, fields and sidebar items.
+const CONTROL_RADIUS: f32 = 8.0;
+/// Corner radius of the main button: a pill, as the web page's Download button (more than half
+/// any button's height).
+const PILL_RADIUS: f32 = 999.0;
 
 /// The page title's size.
 pub const TITLE_SIZE: f32 = 28.0;
@@ -157,7 +189,7 @@ pub const CAPTION_SIZE: f32 = 12.0;
 /// A big number on a stat tile.
 pub const STAT_SIZE: f32 = 24.0;
 
-/// The window's theme for Windows' light or dark mode (light when it doesn't say): its palette,
+/// The window's theme for the system's light or dark mode (light when it doesn't say): its palette,
 /// which iced's own widgets (scrollbars, focus) take colours from.
 pub fn theme(mode: Mode) -> Theme {
     let (name, c) = match mode {
@@ -177,13 +209,26 @@ pub fn theme(mode: Mode) -> Theme {
     )
 }
 
-/// Windows 11's own font; elsewhere the system's sans-serif.
+/// Figtree, the web page's sans-serif, for everything but titles (SIL Open Font License,
+/// assets/fonts/OFL-Figtree.txt).
+const FIGTREE: &[u8] = include_bytes!("../../../assets/fonts/Figtree-Regular.ttf");
+/// Figtree's semibold, for names and buttons.
+const FIGTREE_SEMIBOLD: &[u8] = include_bytes!("../../../assets/fonts/Figtree-SemiBold.ttf");
+/// Newsreader, the web page's serif, for titles (SIL Open Font License,
+/// assets/fonts/OFL-Newsreader.txt).
+const NEWSREADER: &[u8] = include_bytes!("../../../assets/fonts/Newsreader-Regular.ttf");
+
+/// The fonts built into the program, for the window to load at start.
+pub const FONTS: [&[u8]; 3] = [FIGTREE, FIGTREE_SEMIBOLD, NEWSREADER];
+
+/// The font everything is written in: Figtree.
 pub fn font() -> Font {
-    if cfg!(windows) {
-        Font::with_name("Segoe UI")
-    } else {
-        Font::DEFAULT
-    }
+    Font::with_name("Figtree")
+}
+
+/// The font titles are written in: Newsreader.
+pub fn title_font() -> Font {
+    Font::with_name("Newsreader")
 }
 
 /// The bell beside the app's name: Segoe Fluent Icons' Ringer on Windows 11, the emoji's bell
@@ -207,7 +252,7 @@ pub fn semibold() -> Font {
     }
 }
 
-/// A card: white, a hairline border, rounded, and a shadow just strong enough to lift it.
+/// A card: paper, a hairline border, rounded, and a shadow just strong enough to lift it.
 pub fn card(theme: &Theme) -> container::Style {
     let c = colors(theme);
     container::Style {
@@ -237,7 +282,7 @@ pub fn page(theme: &Theme) -> container::Style {
     }
 }
 
-/// Windows' warning bar: amber tint, amber hairline.
+/// The warning bar: amber tint, amber hairline.
 pub fn warning_bar(theme: &Theme) -> container::Style {
     let c = colors(theme);
     container::Style {
@@ -274,38 +319,37 @@ pub fn selected_strip(theme: &Theme) -> container::Style {
     }
 }
 
-/// The main action: accent blue, white text.
+/// The main action: an ink pill with paper text.
 pub fn primary_button(theme: &Theme, status: button::Status) -> button::Style {
     let c = colors(theme);
     let background = match status {
-        button::Status::Hovered => c.accent_hover,
-        button::Status::Pressed => c.accent_pressed,
+        button::Status::Hovered => c.primary_hover,
+        button::Status::Pressed => c.primary_pressed,
         button::Status::Disabled => c.subtle_pressed,
-        button::Status::Active => c.accent,
+        button::Status::Active => c.primary,
     };
     button::Style {
         background: Some(Background::Color(background)),
         text_color: if status == button::Status::Disabled {
             c.text_secondary
         } else {
-            c.on_accent
+            c.on_primary
         },
         border: Border {
-            color: Color::from_rgba(0.0, 0.0, 0.0, 0.1),
-            width: 1.0,
-            radius: Radius::from(CONTROL_RADIUS),
+            radius: Radius::from(PILL_RADIUS),
+            ..Border::default()
         },
         shadow: Shadow::default(),
         snap: true,
     }
 }
 
-/// A button that deletes: Windows' red, white text.
+/// A button that deletes: red, white text.
 pub fn danger_button(theme: &Theme, status: button::Status) -> button::Style {
     let c = colors(theme);
     let background = match status {
-        button::Status::Hovered => hex(0xB02A1C),
-        button::Status::Pressed => hex(0x9E2618),
+        button::Status::Hovered => c.danger_hover,
+        button::Status::Pressed => c.danger_pressed,
         button::Status::Disabled => c.subtle_pressed,
         button::Status::Active => c.danger,
     };
@@ -321,7 +365,7 @@ pub fn danger_button(theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
-/// Any other button: white with a hairline, grey under the pointer.
+/// Any other button: paper with a hairline, darker under the pointer.
 pub fn standard_button(theme: &Theme, status: button::Status) -> button::Style {
     let c = colors(theme);
     let background = match status {
@@ -391,14 +435,12 @@ pub fn row_button(theme: &Theme, status: button::Status) -> button::Style {
     }
 }
 
-/// A web address that opens in the browser: accent text, no face, the darker accent under the
-/// pointer.
+/// A web address that opens in the browser: rust text, no face, darker under the pointer.
 pub fn link_button(theme: &Theme, status: button::Status) -> button::Style {
     let c = colors(theme);
     let text_color = match status {
-        button::Status::Pressed => c.accent_pressed,
-        button::Status::Hovered => c.accent_hover,
-        _ => c.accent,
+        button::Status::Pressed | button::Status::Hovered => c.link_hover,
+        _ => c.link,
     };
     button::Style {
         background: None,
@@ -418,7 +460,7 @@ fn field_border(c: &Colors, focused: bool) -> Border {
     }
 }
 
-/// A text box: white, a hairline, the accent around it while typing.
+/// A text box: paper, a hairline, the accent around it while typing.
 pub fn text_field(theme: &Theme, status: text_input::Status) -> text_input::Style {
     let c = colors(theme);
     let focused = matches!(status, text_input::Status::Focused { .. });
@@ -453,7 +495,7 @@ pub fn text_area(theme: &Theme, status: text_editor::Status) -> text_editor::Sty
     }
 }
 
-/// A check box: white with a hairline, the accent with a white tick when ticked.
+/// A check box: paper with a hairline, the accent with a paper tick when ticked.
 pub fn check_box(theme: &Theme, status: checkbox::Status) -> checkbox::Style {
     let c = colors(theme);
     let (checked, hovered) = match status {
@@ -494,7 +536,7 @@ pub fn pick_field(theme: &Theme, status: pick_list::Status) -> pick_list::Style 
     }
 }
 
-/// A list's open menu: a white card, the picked entry on the accent's tint.
+/// A list's open menu: a paper card, the picked entry on the accent's tint.
 pub fn pick_menu(theme: &Theme) -> menu::Style {
     let c = colors(theme);
     menu::Style {
