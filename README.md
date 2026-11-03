@@ -143,8 +143,9 @@ http://127.0.0.1:8765, which answers only the extension and the app itself.
 
 ### Your phone
 
-Not yet: the app is its window now, and the web pages a phone used to open are gone. A
-remote-control app for the phone is planned; see [docs/phone.md](docs/phone.md).
+A JobFinder app for the phone or a tablet is on its way. It reaches the computer through
+Tailscale. The computer's side is here already: Settings, Devices sets up `tailscale serve` and
+pairs a device with a QR code. See [docs/phone.md](docs/phone.md).
 
 ### From a release
 

@@ -12,6 +12,7 @@
 
 mod apply;
 mod batch;
+mod devices_screen;
 mod documents;
 mod extension_screen;
 mod job_searches;
@@ -82,6 +83,7 @@ pub enum Screen {
     LearnedTerms,
     Setup,
     JoblogExtension,
+    Devices,
 }
 
 /// What the Match screen shows, read together.
@@ -124,6 +126,7 @@ pub struct Shell {
     learned_terms: learned_terms::State,
     setup: setup_screen::State,
     extension: extension_screen::State,
+    devices: devices_screen::State,
     notifications: notification_drawer::State,
     /// The notification drawer is open over the bottom of the screen.
     drawer_open: bool,
@@ -151,6 +154,7 @@ pub enum Message {
     LearnedTerms(learned_terms::Msg),
     Setup(setup_screen::Msg),
     Extension(extension_screen::Msg),
+    Devices(devices_screen::Msg),
     Notifications(notification_drawer::Msg),
     /// The bell was clicked: the drawer opens, or closes when open.
     ToggleDrawer,
@@ -253,6 +257,7 @@ fn boot(launch: &Mutex<Option<Launch>>) -> (Shell, Task<Message>) {
         learned_terms: learned_terms::State::default(),
         setup: setup_screen::State::default(),
         extension: extension_screen::State::default(),
+        devices: devices_screen::State::default(),
         notifications: notification_drawer::State::default(),
         unread: 0,
         drawer_open: false,
@@ -463,6 +468,10 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
                 Screen::LearnedTerms => return Task::done(Message::LearnedTerms(learned_terms::Msg::Load)),
                 Screen::Setup => return Task::done(Message::Setup(setup_screen::Msg::Load)),
                 Screen::JoblogExtension => extension_screen::shown(&mut shell.extension),
+                Screen::Devices => {
+                    devices_screen::shown(&mut shell.devices);
+                    return Task::done(Message::Devices(devices_screen::Msg::Load));
+                }
                 Screen::Settings => {}
             }
         }
@@ -564,6 +573,10 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
             return setup_screen::update(&mut shell.setup, msg, &runner).map(Message::Setup);
         }
         Message::Extension(msg) => return extension_screen::update(&mut shell.extension, msg).map(Message::Extension),
+        Message::Devices(msg) => {
+            let runner = shell.runner();
+            return devices_screen::update(&mut shell.devices, msg, &runner).map(Message::Devices);
+        }
         Message::OpenPage(path) => {
             if let Some(place) = place_for(&path) {
                 return go_to(place);
@@ -620,6 +633,7 @@ fn place_for(path: &str) -> Option<Place> {
         "account" => Place::Screen(Screen::LanguageModels),
         "llama_setup" => Place::Screen(Screen::LocalModel),
         "joblog_extension" => Place::Screen(Screen::JoblogExtension),
+        "devices" => Place::Screen(Screen::Devices),
         "job_scan" => Place::Screen(Screen::JobSearches),
         "job_scan/create" => Place::NewSearch,
         "" | "match" => Place::Screen(Screen::Match),
@@ -662,6 +676,7 @@ fn view(shell: &Shell) -> Element<'_, Message> {
         Screen::LearnedTerms => learned_terms::view(&shell.learned_terms).map(Message::LearnedTerms),
         Screen::Setup => setup_screen::view(&shell.setup).map(Message::Setup),
         Screen::JoblogExtension => extension_screen::view(&shell.extension, &shell.context).map(Message::Extension),
+        Screen::Devices => devices_screen::view(&shell.devices, not_listening(&shell.context)).map(Message::Devices),
     };
     let mut page = Column::new().spacing(GAP).max_width(PAGE_MAX_WIDTH);
     if let Some(said) = &shell.said {
@@ -773,7 +788,20 @@ fn nav_item(label: &'static str, screen: Screen, current: Screen) -> Element<'st
 
 /// The screens without a sidebar entry, opened from Settings, which stays marked for them.
 fn opened_from_settings(screen: Screen) -> bool {
-    matches!(screen, Screen::LearnedTerms | Screen::Setup | Screen::JoblogExtension)
+    matches!(
+        screen,
+        Screen::LearnedTerms | Screen::Setup | Screen::JoblogExtension | Screen::Devices
+    )
+}
+
+/// Why the device server isn't listening, when it couldn't start.
+fn not_listening(context: &Context) -> Option<String> {
+    context
+        .devices
+        .not_listening
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner())
+        .clone()
 }
 
 /// Laya and the app's own model, as they stood at the last reload: a dot and a word each; the

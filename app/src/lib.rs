@@ -9,6 +9,7 @@ pub mod context;
 pub mod dashboard;
 pub mod db;
 pub mod desktop;
+pub mod devices;
 pub mod extension;
 pub mod extension_api;
 pub mod from_recruiter;

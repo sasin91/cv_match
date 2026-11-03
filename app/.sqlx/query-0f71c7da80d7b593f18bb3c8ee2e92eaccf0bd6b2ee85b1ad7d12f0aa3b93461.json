@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO devices (name, paired_at)\n        VALUES (?1, ?2)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 2
+    },
+    "nullable": []
+  },
+  "hash": "0f71c7da80d7b593f18bb3c8ee2e92eaccf0bd6b2ee85b1ad7d12f0aa3b93461"
+}

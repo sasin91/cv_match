@@ -11,7 +11,7 @@ use crate::context::Context;
 const CARD_PADDING: f32 = 16.0;
 
 /// The settings pages: label, what it sets, and its screen.
-const PAGES: [(&str, &str, Screen); 6] = [
+const PAGES: [(&str, &str, Screen); 7] = [
     (
         "Language models",
         "The API keys, and what each model is used for.",
@@ -38,6 +38,11 @@ const PAGES: [(&str, &str, Screen); 6] = [
         Screen::Setup,
     ),
     ("Jobnet extension", "How to load it in Edge.", Screen::JoblogExtension),
+    (
+        "Devices",
+        "Your phone or tablet: pair it, and see what is paired.",
+        Screen::Devices,
+    ),
 ];
 
 pub fn view(context: &Context) -> Element<'_, Message> {

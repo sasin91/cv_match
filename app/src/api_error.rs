@@ -58,6 +58,7 @@ impl From<ServiceError> for ApiError {
             ErrorKind::TooMany => StatusCode::TOO_MANY_REQUESTS,
             ErrorKind::NeedKey => StatusCode::PAYMENT_REQUIRED,
             ErrorKind::Failed | ErrorKind::Llm { .. } => StatusCode::BAD_GATEWAY,
+            ErrorKind::NotAllowed => StatusCode::UNAUTHORIZED,
             ErrorKind::Internal => StatusCode::INTERNAL_SERVER_ERROR,
         };
         let mut error = Self::new(status, e.message);

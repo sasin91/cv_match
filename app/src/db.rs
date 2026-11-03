@@ -47,6 +47,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0012_notifications",
         include_str!("../migrations/0012_notifications.sql"),
     ),
+    ("0013_devices", include_str!("../migrations/0013_devices.sql")),
 ];
 
 /// How long a write waits for another connection's write to finish, in milliseconds.
