@@ -98,11 +98,6 @@ pub fn steam_game() -> Result<Option<Playing>, String> {
 
 /// The program file of the window in front.
 fn program_in_front() -> Option<String> {
-    process_in_front().map(|(_, program)| program)
-}
-
-/// The process ID and program file of the window in front.
-fn process_in_front() -> Option<(u32, String)> {
     // SAFETY: takes nothing; a null window means none is in front.
     let window: HWND = unsafe { GetForegroundWindow() };
     if window.is_invalid() {
@@ -111,6 +106,12 @@ fn process_in_front() -> Option<(u32, String)> {
     let mut process_id = 0;
     // SAFETY: window is a window handle and process_id outlives the call.
     unsafe { GetWindowThreadProcessId(window, Some(&mut process_id)) };
+    program_of(process_id)
+}
+
+/// The program file of the process; None when it can't be read (another user's, or the
+/// system's).
+fn program_of(process_id: u32) -> Option<String> {
     // SAFETY: opens the process to read its name only; closed below.
     let process = unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, process_id) }.ok()?;
     let mut path = vec![0u16; LONGEST_PATH];
@@ -121,14 +122,23 @@ fn process_in_front() -> Option<(u32, String)> {
     // SAFETY: process was opened above and isn't used after.
     let _ = unsafe { CloseHandle(process) };
     read.ok()?;
-    Some((process_id, String::from_utf16_lossy(&path[..length as usize])))
+    Some(String::from_utf16_lossy(&path[..length as usize]))
 }
 
-/// Windows' "GPU Engine" counters for every process (gpu), open from the first look on; each
-/// read gives the shares averaged since the read before.
-#[derive(Default)]
+/// Windows' "GPU Engine" counters for every process (gpu), opened with the app (GameMode is
+/// made with its Context), so even its first look has an average to read; each read gives the
+/// shares averaged since the read before.
 pub struct GpuWatch {
     counters: Option<GpuCounters>,
+}
+
+impl Default for GpuWatch {
+    fn default() -> Self {
+        let counters = GpuCounters::open()
+            .inspect_err(|why| crate::log_line!("Couldn't tell whether a game runs: {why}"))
+            .ok();
+        GpuWatch { counters }
+    }
 }
 
 /// An open counter query and its counter.
@@ -149,20 +159,33 @@ impl Drop for GpuCounters {
 }
 
 impl GpuWatch {
-    /// The app in front as a game when it kept the 3D engine busy enough since the last look
-    /// (gpu::heavy_app); None on the first look, which only starts the counting.
-    pub fn heavy_app_in_front(&mut self) -> Result<Option<Playing>, String> {
+    /// The program that kept the 3D engine busy enough since the last look to be a game
+    /// (gpu::heavy_app), in front or not: a game behind the window the user switched to still
+    /// plays. JobFinder itself and the programs gpu::NOT_GAMES names don't count. When the
+    /// counters couldn't be opened with the app, they're opened now and read from the next look.
+    pub fn heavy_app(&mut self) -> Result<Option<Playing>, String> {
         let Some(counters) = &self.counters else {
             self.counters = Some(GpuCounters::open()?);
             return Ok(None);
         };
         let shares = counters.read()?;
-        let Some((process_id, program)) = process_in_front() else {
-            return Ok(None);
-        };
         let pairs = shares.iter().map(|(instance, share)| (instance.as_str(), *share));
-        let share = gpu::three_d_share(process_id, pairs);
-        Ok(gpu::heavy_app(&file_name(&program), share))
+        let this_app = std::process::id();
+        for (process_id, share) in gpu::busiest_processes(pairs) {
+            if share < gpu::GAME_SHARE {
+                break;
+            }
+            if process_id == this_app {
+                continue;
+            }
+            let Some(program) = program_of(process_id) else {
+                continue;
+            };
+            if let Some(playing) = gpu::heavy_app(&file_name(&program), share) {
+                return Ok(Some(playing));
+            }
+        }
+        Ok(None)
     }
 }
 

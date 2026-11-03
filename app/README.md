@@ -252,8 +252,9 @@ JobFinder is meant to sit in the background without getting in the way:
   After an hour of that it stops, and the next scan matches the posts left. A game counts when
   Windows is in its full-screen "do not disturb" state, the app in front is in the Xbox Game
   Bar's list of games or in a folder the Epic Games launcher or Battle.net installed a game in,
-  or keeps a quarter or more of the graphics card's 3D engine busy (Windows' GPU counters, any
-  game without a list), Steam runs a game (its RunningAppID), or Feral's gamemode runs one on
+  any program, in front or behind, keeps a quarter or more of the graphics card's 3D engine
+  busy (Windows' GPU counters, any game without a list; not the desktop or a model server),
+  Steam runs a game (its RunningAppID), or Feral's gamemode runs one on
   Linux (`src/game_mode/`; the answer is kept ten seconds).
 - While a game runs, llama-server stops as soon as no call needs it, and the AI's work that
   would run on this computer goes to the OpenAI key, else the Claude key, so the scan doesn't
