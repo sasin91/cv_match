@@ -67,11 +67,15 @@ pub async fn llm(context: &Context, task: &Task) -> Result<KeyedLlm, ServiceErro
 /// needs it anymore, so the game gets the graphics card back.
 async fn moved_while_gaming(context: &Context, task: &Task, stand_in: StandIn) -> KeyFor {
     let StandIn { key, playing } = stand_in;
+    // A key saved without a model runs on its provider's default, so the log names that one.
+    let model = match key.model.as_str() {
+        "" => crate::llm::default_model(&key.provider).unwrap_or_default(),
+        model => model,
+    };
     crate::log_line!(
-        "game mode: {playing}, so {} runs on {}/{}.",
+        "game mode: {playing}, so {} runs on {}/{model}.",
         lowercase_first(task.label),
-        key.provider,
-        key.model
+        key.provider
     );
     if let Some(llama) = &context.llama
         && let Some(model) = llama.stop_if_idle(Duration::ZERO).await
