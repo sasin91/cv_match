@@ -12,9 +12,12 @@ use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
 use axum::routing::post;
 use axum::{Json, Router};
-use device_protocol::{HELLO_PATH, Hello, PAIR_PATH, PORT, PairAnswer, PairAsk};
+use device_protocol::{
+    EVALUATE_PATH, EVALUATIONS_PATH, EvaluateAsk, Evaluation, Evaluations, HELLO_PATH, Hello, MATCH_PATH, MATCHES_PATH,
+    MatchAsk, MatchDetails, Matches, MatchesAsk, PAIR_PATH, PORT, PairAnswer, PairAsk,
+};
 
-use super::{device_service, tailscale};
+use super::{device_matches, device_service, tailscale};
 use crate::api_error::ApiError;
 use crate::context::Context;
 
@@ -22,6 +25,10 @@ pub fn router(context: Arc<Context>) -> Router {
     Router::new()
         .route(PAIR_PATH, post(pair))
         .route(HELLO_PATH, post(hello))
+        .route(MATCHES_PATH, post(matches))
+        .route(MATCH_PATH, post(match_details))
+        .route(EVALUATE_PATH, post(evaluate))
+        .route(EVALUATIONS_PATH, post(evaluations))
         .fallback(not_here)
         .method_not_allowed_fallback(not_here)
         .layer(middleware::from_fn_with_state(
@@ -50,6 +57,43 @@ async fn pair(State(context): State<Arc<Context>>, Json(ask): Json<PairAsk>) -> 
 async fn hello(State(context): State<Arc<Context>>, headers: HeaderMap) -> Result<Json<Hello>, ApiError> {
     let device = device_service::device_for(&context, authorization(&headers), now()).await?;
     Ok(Json(device_service::hello(&device)))
+}
+
+/// POST v1/device/matches: a batch of a list of saved matches, the shortlist first.
+async fn matches(
+    State(context): State<Arc<Context>>,
+    headers: HeaderMap,
+    Json(ask): Json<MatchesAsk>,
+) -> Result<Json<Matches>, ApiError> {
+    device_service::device_for(&context, authorization(&headers), now()).await?;
+    Ok(Json(device_matches::matches(&context, &ask).await?))
+}
+
+/// POST v1/device/match: one saved match.
+async fn match_details(
+    State(context): State<Arc<Context>>,
+    headers: HeaderMap,
+    Json(ask): Json<MatchAsk>,
+) -> Result<Json<MatchDetails>, ApiError> {
+    device_service::device_for(&context, authorization(&headers), now()).await?;
+    Ok(Json(device_matches::match_details(&context, ask.id).await?))
+}
+
+/// POST v1/device/evaluate: a job post to match with the user's profile; answered as it starts.
+async fn evaluate(
+    State(context): State<Arc<Context>>,
+    headers: HeaderMap,
+    Json(ask): Json<EvaluateAsk>,
+) -> Result<Json<Evaluation>, ApiError> {
+    let now = now();
+    let device = device_service::device_for(&context, authorization(&headers), now).await?;
+    Ok(Json(device_matches::evaluate(&context, &device, &ask, now)?))
+}
+
+/// POST v1/device/evaluations: what became of the job posts this device sent.
+async fn evaluations(State(context): State<Arc<Context>>, headers: HeaderMap) -> Result<Json<Evaluations>, ApiError> {
+    let device = device_service::device_for(&context, authorization(&headers), now()).await?;
+    Ok(Json(device_matches::evaluations(&context, &device)))
 }
 
 async fn not_here() -> ApiError {

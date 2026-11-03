@@ -1,0 +1,28 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- A sage magnifier over a page: finding jobs. -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+    <path
+        android:fillColor="#FCF9F3"
+        android:strokeColor="#2A231C"
+        android:strokeWidth="2.5"
+        android:pathData="M36,30h28l8,8v40h-36z" />
+    <path
+        android:strokeColor="#6F6456"
+        android:strokeWidth="2.5"
+        android:strokeLineCap="round"
+        android:pathData="M42,44h18M42,52h22M42,60h12" />
+    <path
+        android:strokeColor="@color/accent"
+        android:strokeWidth="5"
+        android:fillColor="#00000000"
+        android:pathData="M68,64m-9,0a9,9 0,1 1,18 0a9,9 0,1 1,-18 0" />
+    <path
+        android:strokeColor="@color/accent"
+        android:strokeWidth="5"
+        android:strokeLineCap="round"
+        android:pathData="M74.5,70.5l8,8" />
+</vector>
