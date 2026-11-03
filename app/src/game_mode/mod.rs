@@ -9,8 +9,9 @@
 //!   the borderless windowed games the first misses.
 //! - The app in front is in a folder the Epic Games launcher or Battle.net installed a game in
 //!   (launchers): neither says which game runs, as Steam does.
-//! - The app in front keeps the graphics card's 3D engine busy, a quarter or more since the
-//!   last look (gpu): any game, by what it does rather than its name (Windows only).
+//! - A program keeps the graphics card's 3D engine busy, a quarter or more since the last look,
+//!   in front or behind the window the user switched to (gpu): any game, by what it does rather
+//!   than its name (Windows only).
 //! - Steam runs a game: its RunningAppID (Windows' registry, or ~/.steam/registry.vdf).
 //! - Feral's gamemode runs a game (its ClientCount on the session D-Bus), which games started
 //!   with `gamemoderun` (Steam's launch option `gamemoderun %command%`) ask for on Linux.
@@ -56,7 +57,7 @@ pub enum Playing {
     KnownGame { program: String },
     /// The app in front is a game this launcher installed (launchers).
     LauncherGame { launcher: &'static str, game: String },
-    /// The app in front (its program file's name) kept this share of the 3D engine busy (gpu).
+    /// A program (its file's name) kept this share of the 3D engine busy (gpu).
     GpuHeavy { program: String, share: u32 },
     /// Steam runs the game with this app ID.
     Steam { app_id: u32 },
@@ -106,7 +107,7 @@ struct GpuWatch;
 
 #[cfg(not(windows))]
 impl GpuWatch {
-    fn heavy_app_in_front(&mut self) -> Result<Option<Playing>, String> {
+    fn heavy_app(&mut self) -> Result<Option<Playing>, String> {
         Ok(None)
     }
 }
@@ -136,7 +137,7 @@ impl GameMode {
             return look.playing.clone();
         }
         // The counters are read at every look, so their average covers the time since the last.
-        let heavy = watch.gpu.heavy_app_in_front().unwrap_or_else(|why| {
+        let heavy = watch.gpu.heavy_app().unwrap_or_else(|why| {
             crate::log_line!("Couldn't tell whether a game runs: {why}");
             None
         });
