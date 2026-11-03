@@ -145,6 +145,12 @@ pub fn forget_system_name() -> Result<bool, String> {
     toast::forget_name()
 }
 
+/// Whether the system's notifications keep anything outside the database (cleanup): Windows'
+/// name for JobFinder's toasts.
+pub fn system_name_kept() -> bool {
+    toast::name_registered()
+}
+
 /// A Windows toast's XML: title and text in the generic template, link as its launch argument.
 #[cfg_attr(not(windows), allow(dead_code))]
 fn toast_xml(title: &str, text: &str, link: &str) -> String {

@@ -9,7 +9,9 @@ use windows::Data::Xml::Dom::XmlDocument;
 use windows::Foundation::TypedEventHandler;
 use windows::UI::Notifications::{ToastActivatedEventArgs, ToastNotification, ToastNotificationManager};
 use windows::Win32::Foundation::{ERROR_FILE_NOT_FOUND, ERROR_SUCCESS, WIN32_ERROR};
-use windows::Win32::System::Registry::{HKEY_CURRENT_USER, REG_SZ, RegDeleteTreeW, RegSetKeyValueW};
+use windows::Win32::System::Registry::{
+    HKEY_CURRENT_USER, REG_SZ, RRF_RT_REG_SZ, RegDeleteTreeW, RegGetValueW, RegSetKeyValueW,
+};
 use windows::core::{HSTRING, IInspectable, Interface, PCWSTR, Ref};
 
 use super::Clicked;
@@ -84,6 +86,25 @@ fn set_value(name: &str, value: &str) -> Result<(), String> {
             described(e)
         )),
     }
+}
+
+/// Whether JobFinder's name for toasts is in the registry (cleanup).
+pub fn name_registered() -> bool {
+    let key = HSTRING::from(APP_ID_KEY);
+    let name = HSTRING::from("DisplayName");
+    // SAFETY: key and name are 0-ended UTF-16 that outlive the call; no data is asked for.
+    let read = unsafe {
+        RegGetValueW(
+            HKEY_CURRENT_USER,
+            PCWSTR(key.as_ptr()),
+            PCWSTR(name.as_ptr()),
+            RRF_RT_REG_SZ,
+            None,
+            None,
+            None,
+        )
+    };
+    read == ERROR_SUCCESS
 }
 
 /// Removes JobFinder's name for toasts from the registry (cleanup); Ok(false) when it wasn't

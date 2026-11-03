@@ -529,9 +529,11 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
             }
             shell.overview = Some(read.overview);
             shell.status = read.status;
-            // On the Notifications screen they are read as they come.
+            // On the Notifications screen new ones are listed (and so read) as they come.
             if shell.screen != Screen::Notifications {
                 shell.unread = read.unread;
+            } else if read.unread > 0 {
+                return Task::done(Message::Notifications(notifications_screen::Msg::Load));
             }
         }
         Message::Setup(setup_screen::Msg::ShowLanguageModels) => {

@@ -48,6 +48,11 @@ pub fn show(title: &str, text: &str, _link: &str, _clicked: Option<Clicked>) -> 
 }
 
 /// Nothing is kept outside the database on Linux for notifications.
+pub fn name_registered() -> bool {
+    false
+}
+
+/// Nothing is kept outside the database on Linux for notifications.
 pub fn forget_name() -> Result<bool, String> {
     Ok(false)
 }

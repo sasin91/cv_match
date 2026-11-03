@@ -227,7 +227,7 @@ fn run_cleanup(args: &[String]) -> ExitCode {
     for folder in &found.folders {
         println!("- {}", folder.display());
     }
-    if cfg!(windows) {
+    if found.notification_name {
         println!("- JobFinder's name for Windows notifications, in your registry");
     }
     let mut failed = Vec::new();
