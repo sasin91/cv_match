@@ -299,12 +299,8 @@ impl Applying {
                 }
             }
             ApplyMsg::OpenLink(href) => {
-                if let Err(e) = webbrowser::open(&href) {
-                    crate::log_line!("Couldn't open {href}: {e}");
-                    return (
-                        Task::none(),
-                        Some((Health::Attention, format!("Couldn't open {href}: {e}"))),
-                    );
+                if let Err(why) = super::open_in_browser(&href) {
+                    return (Task::none(), Some((Health::Attention, why)));
                 }
             }
             ApplyMsg::ToggleJoblog => {

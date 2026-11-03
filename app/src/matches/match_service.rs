@@ -99,8 +99,14 @@ pub async fn saved_result(context: &Context, id: i64) -> Result<MatchResult, Ser
 
 /// The free match: both texts read with the free reader (no model), matched with the taxonomy
 /// and scored like the full match; what the taxonomy can't find in the CV counts as missing.
-/// Nothing is saved. With Laya's model, the result has its answer on these verdicts.
-pub async fn quick_match(context: &Context, job_text: &str, cv_text: &str) -> Result<MatchResult, ServiceError> {
+/// Nothing is saved. With Laya's model, the result has its answer on these verdicts. job_url:
+/// where the post was read from, empty for a pasted post.
+pub async fn quick_match(
+    context: &Context,
+    job_text: &str,
+    job_url: &str,
+    cv_text: &str,
+) -> Result<MatchResult, ServiceError> {
     let job_text = job_text.trim();
     let cv_text = cv_text.trim();
     if job_text.is_empty() || cv_text.is_empty() {
@@ -146,6 +152,7 @@ pub async fn quick_match(context: &Context, job_text: &str, cv_text: &str) -> Re
         apply_instructions: apply.as_ref(),
         saved_id: None,
         laya: &laya,
+        job_url,
     };
     let writer = llm_key::ai_uses(context).await?.any();
     Ok(MatchResult::from(&fresh, writer, None, "").with_cv_found(&profile))
@@ -573,6 +580,7 @@ pub async fn ai_match_result(
         apply_instructions: found.apply_instructions.as_ref(),
         saved_id: found.saved_id,
         laya: &found.laya_reading,
+        job_url: &request.job_url,
     };
     let laya_input = ai_match::laya_input(
         &request.job,
@@ -721,7 +729,7 @@ pub async fn match_job(context: &Context, ask: MatchAsk<'_>, say: Say<'_>) -> Re
     if !uses.any() {
         say("Matching…");
         return Ok(MatchAnswer {
-            result: quick_match(context, &job_text, cv_text).await?,
+            result: quick_match(context, &job_text, &job_url, cv_text).await?,
             fetched,
             read_cv: None,
             matched_before: false,

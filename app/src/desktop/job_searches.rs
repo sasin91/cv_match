@@ -425,12 +425,8 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             );
         }
         Msg::OpenPost(url) => {
-            if let Err(e) = webbrowser::open(&url) {
-                crate::log_line!("Couldn't open {url} in the browser: {e}");
-                state.said = Some((
-                    Health::Attention,
-                    format!("Couldn't open the browser ({e}). Open {url} in it."),
-                ));
+            if let Err(why) = super::open_in_browser(&url) {
+                state.said = Some((Health::Attention, why));
             }
         }
         // The shell goes there.
