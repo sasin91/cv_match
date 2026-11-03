@@ -7,6 +7,8 @@
 //! - The app in front is one the Xbox Game Bar knows as a game (its list in
 //!   HKCU\System\GameConfigStore\Children, the one Windows' Game Mode goes by). This catches
 //!   the borderless windowed games the first misses.
+//! - The app in front is in a folder the Epic Games launcher or Battle.net installed a game in
+//!   (launchers): neither says which game runs, as Steam does.
 //! - Steam runs a game: its RunningAppID (Windows' registry, or ~/.steam/registry.vdf).
 //! - Feral's gamemode runs a game (its ClientCount on the session D-Bus), which games started
 //!   with `gamemoderun` (Steam's launch option `gamemoderun %command%`) ask for on Linux.
@@ -20,6 +22,8 @@
 //! game ends (wait_until_over). The models let go of the graphics card as soon as no call needs
 //! them (idle).
 
+#[cfg(any(windows, test))]
+mod launchers;
 #[cfg(target_os = "linux")]
 mod linux;
 pub mod stand_in;
@@ -46,6 +50,8 @@ pub enum Playing {
     FullScreen,
     /// The app in front is in the Xbox Game Bar's list of games: its program file's name.
     KnownGame { program: String },
+    /// The app in front is a game this launcher installed (launchers).
+    LauncherGame { launcher: &'static str, game: String },
     /// Steam runs the game with this app ID.
     Steam { app_id: u32 },
     /// Feral's gamemode runs for this many games.
@@ -57,6 +63,7 @@ impl fmt::Display for Playing {
         match self {
             Playing::FullScreen => f.write_str("a full-screen app or game runs"),
             Playing::KnownGame { program } => write!(f, "the game {program} is in front"),
+            Playing::LauncherGame { launcher, game } => write!(f, "{game} ({launcher}) is in front"),
             Playing::Steam { app_id } => write!(f, "Steam runs a game (app {app_id})"),
             Playing::GameMode { games: 1 } => f.write_str("gamemode runs a game"),
             Playing::GameMode { games } => write!(f, "gamemode runs {games} games"),
@@ -110,7 +117,12 @@ impl GameMode {
 
 /// The signals this computer gives, in the order they're asked.
 #[cfg(windows)]
-const SIGNALS: [Signal; 3] = [windows::full_screen, windows::known_game_in_front, windows::steam_game];
+const SIGNALS: [Signal; 4] = [
+    windows::full_screen,
+    windows::known_game_in_front,
+    windows::launcher_game_in_front,
+    windows::steam_game,
+];
 
 #[cfg(target_os = "linux")]
 const SIGNALS: [Signal; 2] = [linux::steam_game, linux::feral_game_mode];
@@ -240,6 +252,11 @@ mod tests {
             capitalized(&Playing::KnownGame { program }),
             "The game Cyberpunk2077.exe is in front"
         );
+        let fortnite = Playing::LauncherGame {
+            launcher: "Epic Games",
+            game: "Fortnite".to_string(),
+        };
+        assert_eq!(fortnite.to_string(), "Fortnite (Epic Games) is in front");
         assert_eq!(Playing::GameMode { games: 1 }.to_string(), "gamemode runs a game");
         assert_eq!(Playing::GameMode { games: 3 }.to_string(), "gamemode runs 3 games");
     }
