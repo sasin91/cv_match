@@ -66,11 +66,15 @@ class DeviceClient(
         answerSerializer: KSerializer<T>,
     ): T = withContext(Dispatchers.IO) {
         val body = if (ask != null && askSerializer != null) protocolJson.encodeToString(askSerializer, ask) else "{}"
-        val request = Request.Builder()
-            .url(address.trimEnd('/') + path)
-            .post(body.toRequestBody(JSON_TYPE))
-            .apply { token?.let { header("Authorization", "Bearer $it") } }
-            .build()
+        val request = try {
+            Request.Builder()
+                .url(address.trimEnd('/') + path)
+                .post(body.toRequestBody(JSON_TYPE))
+                .apply { token?.let { header("Authorization", "Bearer $it") } }
+                .build()
+        } catch (e: IllegalArgumentException) {
+            throw DeviceError("$address isn't an address JobFinder can be reached at: pair again. (${e.message})")
+        }
         val (status, text) = try {
             http.newCall(request).execute().use { response -> response.code to (response.body?.string() ?: "") }
         } catch (e: IOException) {

@@ -15,7 +15,10 @@ import io.github.sasin91.jobfinder.protocol.MatchDetails
 import io.github.sasin91.jobfinder.protocol.MatchRow
 import io.github.sasin91.jobfinder.protocol.PairingLink
 import io.github.sasin91.jobfinder.protocol.SHORTLIST
+import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
+import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -89,7 +92,25 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     private val _send = MutableStateFlow(SendState())
     val send: StateFlow<SendState> = _send.asStateFlow()
 
+    /**
+     * Where the requests to the computer paired now run. Unpairing or pairing again cancels it,
+     * so a late answer from before can't fill in or unpair the new pairing.
+     */
+    private var session = newSession()
+
     private var polling: Job? = null
+
+    /** The list request running now; choosing another list or refreshing supersedes it. */
+    private var listing: Job? = null
+
+    private fun newSession() = CoroutineScope(viewModelScope.coroutineContext + SupervisorJob(viewModelScope.coroutineContext[Job]))
+
+    private fun restartSession() {
+        session.cancel()
+        session = newSession()
+        polling = null
+        listing = null
+    }
 
     private fun client(): DeviceClient? = _pairing.value?.let { DeviceClient(it.address, it.token) }
 
@@ -130,7 +151,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
         }
         _screen.value = Screen.Matches
         _pair.update { it.copy(linkText = text.trim(), busy = true, error = null) }
-        viewModelScope.launch {
+        restartSession()
+        session.launch {
             try {
                 val answer = DeviceClient(link.address).pair(link, deviceName())
                 val pairing = Pairing(link.address, answer.token)
@@ -147,6 +169,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     /** Forgets the pairing on this device. The computer lists it until it is removed there. */
     fun unpair() {
+        restartSession()
         store.forget()
         _pairing.value = null
         _list.value = ListState()
@@ -175,24 +198,28 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     fun chooseList(name: String) {
         _list.update { it.copy(list = name, rows = emptyList(), nextAfter = null) }
-        refresh()
+        loadList(after = "")
     }
 
     fun refresh() = loadList(after = "")
 
     fun loadMore() {
+        if (listing?.isActive == true) return
         val after = _list.value.nextAfter ?: return
         loadList(after)
     }
 
+    /** Reads a batch of the list chosen now; a first batch supersedes the request running. */
     private fun loadList(after: String) {
         val client = client() ?: return
-        if (_list.value.loading) return
+        listing?.cancel()
+        val wanted = _list.value.list
         _list.update { it.copy(loading = true, error = null) }
-        viewModelScope.launch {
+        listing = session.launch {
             try {
-                val found = client.matches(_list.value.list, after)
+                val found = client.matches(wanted, after)
                 _list.update {
+                    if (it.list != wanted) return@update it
                     it.copy(
                         lists = found.lists,
                         list = found.list,
@@ -214,7 +241,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     fun loadMatch(id: Long) {
         val client = client() ?: return
         _match.value = MatchState(id = id, loading = true)
-        viewModelScope.launch {
+        session.launch {
             try {
                 val details = client.match(id)
                 _match.update { if (it.id == id) it.copy(details = details, loading = false) else it }
@@ -243,7 +270,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
             return
         }
         _send.update { it.copy(sending = true, error = null) }
-        viewModelScope.launch {
+        session.launch {
             try {
                 val started = client.evaluate(text)
                 _send.update { state ->
@@ -263,7 +290,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     fun refreshEvaluations() {
         val client = client() ?: return
-        viewModelScope.launch {
+        session.launch {
             try {
                 _send.update { it.copy(evaluations = client.evaluations().evaluations) }
                 pollWhileWorking()
@@ -277,7 +304,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     private fun pollWhileWorking() {
         if (polling?.isActive == true) return
         if (_send.value.evaluations.none { it.state == EVALUATION_WORKING }) return
-        polling = viewModelScope.launch {
+        polling = session.launch {
             while (_send.value.evaluations.any { it.state == EVALUATION_WORKING }) {
                 delay(EVALUATIONS_POLL_MS)
                 val client = client() ?: break

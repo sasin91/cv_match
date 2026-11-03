@@ -27,6 +27,8 @@ class PairingLinkTest {
             "jobfinder-pair://pc.tail1234.ts.net/0a1b2c",
             "jobfinder-pair://pc.tail1234.ts.net:8766/NOT-HEX",
             "jobfinder-pair://pc.tail1234.ts.net:port/0a",
+            "jobfinder-pair://pc.tail1234.ts.net:65536/0a",
+            "jobfinder-pair://pc.tail1234.ts.net:0/0a",
             "jobfinder-pair://evil.example/x:8766/0a1b2c",
         )) {
             assertNull(text, PairingLink.parse(text))
@@ -35,6 +37,16 @@ class PairingLinkTest {
 }
 
 class DeviceClientTest {
+    @Test
+    fun anAddressThatIsNoURLIsADeviceError() = runTest {
+        try {
+            DeviceClient("not a url").hello()
+            fail("hello was answered")
+        } catch (e: DeviceError) {
+            assertTrue(e.message!!.contains("not a url"))
+        }
+    }
+
     private lateinit var server: MockWebServer
 
     @Before

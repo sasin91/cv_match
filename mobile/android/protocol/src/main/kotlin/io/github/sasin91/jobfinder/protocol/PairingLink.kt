@@ -3,6 +3,9 @@ package io.github.sasin91.jobfinder.protocol
 /** The scheme of a pairing link: jobfinder-pair://<host>:<port>/<code>. */
 const val PAIRING_SCHEME = "jobfinder-pair"
 
+/** The ports there are: a link with another one is no pairing link. */
+private val PORTS = 1..65535
+
 /**
  * What the QR code on the computer holds: where to reach it, and the code that pairs this
  * device once. Read the same way as the computer's PairingLink::parse.
@@ -23,7 +26,7 @@ data class PairingLink(val host: String, val port: Int, val code: String) {
             val colon = address.lastIndexOf(':')
             if (colon < 0) return null
             val host = address.substring(0, colon)
-            val port = address.substring(colon + 1).toIntOrNull() ?: return null
+            val port = address.substring(colon + 1).toIntOrNull()?.takeIf { it in PORTS } ?: return null
             if (!isHostName(host) || !isCode(code)) return null
             return PairingLink(host, port, code)
         }
