@@ -5,7 +5,7 @@
 //! their place when clicked. Its screens print what the service layer gives them
 //! (dashboard, setup_steps). A link the service layer gives as a path ("setup#cv", "match/12")
 //! opens the screen for it (place_for); the server runs beside the window for the Jobnet
-//! extension.
+//! extension. The mouse's back button goes back to the place before (history), as in a browser.
 //!
 //! The window runs on the main thread, as the OS's windowing wants; the app's work runs on the
 //! tokio runtime the server runs on (on_runtime), since the database and HTTP clients need it.
@@ -15,6 +15,7 @@ mod batch;
 mod devices_screen;
 mod documents;
 mod extension_screen;
+mod history;
 mod job_searches;
 mod language_models;
 mod learned_terms;
@@ -130,6 +131,8 @@ pub struct Shell {
     notifications: notification_drawer::State,
     /// The notification drawer is open over the bottom of the screen.
     drawer_open: bool,
+    /// The places left, for the mouse's back button.
+    history: history::History<Place>,
 }
 
 /// Clone, as iced's buttons need; a reload's answer is shared rather than copied.
@@ -160,6 +163,8 @@ pub enum Message {
     ToggleDrawer,
     /// A system notification was clicked: its link, which the window comes up on.
     NotificationClicked(String),
+    /// The mouse's back button: the open drawer closes, else the place before shows.
+    Back,
 }
 
 /// Opens the window and runs until it is closed.
@@ -173,7 +178,12 @@ pub fn run(launch: Launch) -> iced::Result {
     with_fonts(app)
         .default_font(style::font())
         .theme(|shell: &Shell| style::theme(shell.mode))
-        .subscription(|_: &Shell| iced::system::theme_changes().map(Message::ThemeMode))
+        .subscription(|_: &Shell| {
+            iced::Subscription::batch([
+                iced::system::theme_changes().map(Message::ThemeMode),
+                iced::event::listen_with(back_button),
+            ])
+        })
         .run()
 }
 
@@ -261,6 +271,7 @@ fn boot(launch: &Mutex<Option<Launch>>) -> (Shell, Task<Message>) {
         notifications: notification_drawer::State::default(),
         unread: 0,
         drawer_open: false,
+        history: history::History::new(),
     };
     let tasks = Task::batch([
         Task::done(Message::Reload),
@@ -441,7 +452,68 @@ async fn overview(context: &Context) -> Result<Overview, String> {
     Ok(Overview { dashboard, findings })
 }
 
+/// The mouse's back button, pressed anywhere in the window.
+fn back_button(event: iced::Event, _: iced::event::Status, _: iced::window::Id) -> Option<Message> {
+    let iced::Event::Mouse(iced::mouse::Event::ButtonPressed(iced::mouse::Button::Back)) = event else {
+        return None;
+    };
+    Some(Message::Back)
+}
+
+/// Handles a message, noting the place left when it goes somewhere else (for Back).
 fn update(shell: &mut Shell, message: Message) -> Task<Message> {
+    if let Message::Back = message {
+        return back(shell);
+    }
+    let goes_somewhere = goes_somewhere(&message);
+    let before = place_shown(shell);
+    let task = handle(shell, message);
+    if goes_somewhere && place_shown(shell) != before {
+        shell.history.left(before);
+    }
+    task
+}
+
+/// A click that goes to another place: the sidebar, a link, a page of Match or Job searches.
+/// What a click's work leads to afterwards (a search deleted goes back to the list) isn't a
+/// place to go back to, so only these are noted.
+fn goes_somewhere(message: &Message) -> bool {
+    matches!(
+        message,
+        Message::Show(_)
+            | Message::OpenPage(_)
+            | Message::Matching(matching::Msg::Go(_))
+            | Message::JobSearches(job_searches::Msg::Go(_))
+    )
+}
+
+/// Closes the open drawer, else shows the place before; nothing when there is none.
+fn back(shell: &mut Shell) -> Task<Message> {
+    if shell.drawer_open {
+        shell.drawer_open = false;
+        return Task::none();
+    }
+    // A click's work may have led back to a place left before (a search deleted shows the list
+    // again): going back to the place on screen would look like nothing happened.
+    let shown = place_shown(shell);
+    while let Some(place) = shell.history.back() {
+        if place != shown {
+            return go_to(shell, place);
+        }
+    }
+    Task::none()
+}
+
+/// The place on screen.
+fn place_shown(shell: &Shell) -> Place {
+    match shell.screen {
+        Screen::Match => Place::Match(shell.matching.page),
+        Screen::JobSearches => Place::JobSearches(shell.job_searches.page()),
+        screen => Place::Screen(screen),
+    }
+}
+
+fn handle(shell: &mut Shell, message: Message) -> Task<Message> {
     match message {
         Message::Show(screen) => {
             shell.screen = screen;
@@ -584,7 +656,7 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
         }
         Message::OpenPage(path) => {
             if let Some(place) = place_for(&path) {
-                return go_to(place);
+                return go_to(shell, place);
             }
             crate::log_line!("The window has no place for the link {path}.");
             shell.said = Some(format!("The window has no place for the link {path}."));
@@ -598,6 +670,8 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
         }
         Message::Said(said) => shell.said = Some(said),
         Message::ThemeMode(mode) => shell.mode = mode,
+        // Handled before (update), since it goes to a place without noting one.
+        Message::Back => {}
         Message::Front => {
             return iced::window::latest().and_then(|window| {
                 // Out of the taskbar first, when it was minimised there.
@@ -618,14 +692,13 @@ fn first_run(shell: &Shell) -> Task<Message> {
     )
 }
 
-/// A place in the window a link goes to.
+/// A place in the window: a screen, and on Match and Job searches, which of their pages.
 #[derive(Debug, Clone, Copy, PartialEq)]
 enum Place {
+    /// A screen without pages of its own.
     Screen(Screen),
-    /// A saved match's result.
-    SavedMatch(i64),
-    /// The form for a new job search.
-    NewSearch,
+    Match(matching::Page),
+    JobSearches(job_searches::Page),
 }
 
 /// The place for a link: the service layer gives its links as paths ("setup#cv", "match/12"),
@@ -639,10 +712,10 @@ fn place_for(path: &str) -> Option<Place> {
         "llama_setup" => Place::Screen(Screen::LocalModel),
         "joblog_extension" => Place::Screen(Screen::JoblogExtension),
         "devices" => Place::Screen(Screen::Devices),
-        "job_scan" => Place::Screen(Screen::JobSearches),
-        "job_scan/create" => Place::NewSearch,
-        "" | "match" => Place::Screen(Screen::Match),
-        _ => Place::SavedMatch(page.strip_prefix("match/")?.parse().ok()?),
+        "job_scan" => Place::JobSearches(job_searches::Page::List),
+        "job_scan/create" => Place::JobSearches(job_searches::Page::Form(0)),
+        "" | "match" => Place::Match(matching::Page::Overview),
+        _ => Place::Match(matching::Page::Saved(page.strip_prefix("match/")?.parse().ok()?)),
     })
 }
 
@@ -655,17 +728,23 @@ fn open_in_browser(url: &str) -> Result<(), String> {
     })
 }
 
-/// Goes to a place.
-fn go_to(place: Place) -> Task<Message> {
-    let show = |screen| Task::done(Message::Show(screen));
-    match place {
-        Place::Screen(screen) => show(screen),
-        Place::SavedMatch(id) => show(Screen::Match).chain(Task::done(Message::Matching(matching::Msg::Go(
-            matching::Page::Saved(id),
-        )))),
-        Place::NewSearch => show(Screen::JobSearches).chain(Task::done(Message::JobSearches(job_searches::Msg::Go(
-            job_searches::Page::Form(0),
-        )))),
+/// Goes to a place: its screen as the sidebar shows it, then its page when it isn't the one
+/// the screen starts on. Both here, so the window lands on the place in one step.
+fn go_to(shell: &mut Shell, place: Place) -> Task<Message> {
+    let (screen, page) = match place {
+        Place::Screen(screen) => (screen, None),
+        Place::Match(matching::Page::Overview) => (Screen::Match, None),
+        Place::Match(page) => (Screen::Match, Some(Message::Matching(matching::Msg::Go(page)))),
+        Place::JobSearches(job_searches::Page::List) => (Screen::JobSearches, None),
+        Place::JobSearches(page) => (
+            Screen::JobSearches,
+            Some(Message::JobSearches(job_searches::Msg::Go(page))),
+        ),
+    };
+    let shown = handle(shell, Message::Show(screen));
+    match page {
+        Some(page) => Task::batch([shown, handle(shell, page)]),
+        None => shown,
     }
 }
 
@@ -866,11 +945,80 @@ mod tests {
     fn a_web_pages_link_opens_its_place_in_the_window() {
         assert_eq!(place_for("setup#cv"), Some(Place::Screen(Screen::Setup)));
         assert_eq!(place_for("/account"), Some(Place::Screen(Screen::LanguageModels)));
-        assert_eq!(place_for("job_scan/create"), Some(Place::NewSearch));
-        assert_eq!(place_for("match/12"), Some(Place::SavedMatch(12)));
-        assert_eq!(place_for("match"), Some(Place::Screen(Screen::Match)));
+        assert_eq!(
+            place_for("job_scan/create"),
+            Some(Place::JobSearches(job_searches::Page::Form(0)))
+        );
+        assert_eq!(place_for("match/12"), Some(Place::Match(matching::Page::Saved(12))));
+        assert_eq!(place_for("match"), Some(Place::Match(matching::Page::Overview)));
         assert_eq!(place_for("match/history"), None);
         assert_eq!(place_for("elsewhere"), None);
+    }
+
+    /// A window's state as boot makes it, on an empty database, and the runtime it runs on.
+    fn shell_for_test() -> (Shell, tokio::runtime::Runtime) {
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        let context = runtime.block_on(async {
+            let db = crate::db::open_in_memory().await.unwrap();
+            let taxonomy = Arc::new(crate::taxonomy::Taxonomy::load());
+            Arc::new(Context::new(db, taxonomy, KeyVault::in_memory()))
+        });
+        let (_front, front) = unbounded_channel();
+        let launch = Mutex::new(Some(Launch {
+            context,
+            runtime: runtime.handle().clone(),
+            front,
+        }));
+        let (shell, _) = boot(&launch);
+        (shell, runtime)
+    }
+
+    #[test]
+    fn the_back_button_goes_back_through_the_places_shown() {
+        let (mut shell, _runtime) = shell_for_test();
+        let _ = update(&mut shell, Message::Show(Screen::LanguageModels));
+        let _ = update(&mut shell, Message::OpenPage("match/12".to_string()));
+        let _ = update(&mut shell, Message::Show(Screen::Devices));
+
+        let _ = update(&mut shell, Message::Back);
+        assert_eq!(place_shown(&shell), Place::Match(matching::Page::Saved(12)));
+        let _ = update(&mut shell, Message::Back);
+        assert_eq!(place_shown(&shell), Place::Screen(Screen::LanguageModels));
+        let _ = update(&mut shell, Message::Back);
+        assert_eq!(place_shown(&shell), Place::Match(matching::Page::Overview));
+        // Nothing before the first place: it stays.
+        let _ = update(&mut shell, Message::Back);
+        assert_eq!(place_shown(&shell), Place::Match(matching::Page::Overview));
+    }
+
+    #[test]
+    fn the_back_button_closes_the_open_drawer_first() {
+        let (mut shell, _runtime) = shell_for_test();
+        let _ = update(&mut shell, Message::Show(Screen::Settings));
+        let _ = update(&mut shell, Message::ToggleDrawer);
+        let _ = update(&mut shell, Message::Back);
+        assert!(!shell.drawer_open);
+        assert_eq!(place_shown(&shell), Place::Screen(Screen::Settings));
+    }
+
+    #[test]
+    fn a_page_a_clicks_work_leads_to_is_not_a_place_to_go_back_to() {
+        let (mut shell, _runtime) = shell_for_test();
+        let _ = update(&mut shell, Message::Show(Screen::JobSearches));
+        let _ = update(
+            &mut shell,
+            Message::JobSearches(job_searches::Msg::Go(job_searches::Page::Search(3))),
+        );
+        // A search deleted: the list again, and Back doesn't go to the search that is gone.
+        let _ = update(
+            &mut shell,
+            Message::JobSearches(job_searches::Msg::Said {
+                said: Ok("Deleted.".to_string()),
+                then: job_searches::Page::List,
+            }),
+        );
+        let _ = update(&mut shell, Message::Back);
+        assert_eq!(place_shown(&shell), Place::Match(matching::Page::Overview));
     }
 
     #[test]
