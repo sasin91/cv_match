@@ -1,5 +1,7 @@
 //! Pairing a device and knowing it again: the pairing link the window shows as a QR code, the
 //! token a device trades its code for, the token checked on each request, and removing a device.
+//! A token is treated like an API token: only the device has it, and this computer keeps only its
+//! SHA-256 hash (token_hash), so nothing kept here can be used to reach the app.
 //! Errors are said to whoever asked (the window, or the device) and logged where they aren't the
 //! asker's own doing.
 
@@ -53,7 +55,10 @@ pub async fn pair(context: &Context, ask: &PairAsk, now: i64) -> Result<PairAnsw
         device_id,
         secret: random_hex(TOKEN_SECRET_BYTES)?,
     };
-    if let Err(why) = context.key_vault.save_device_token(device_id, &token.secret) {
+    if let Err(why) = context
+        .key_vault
+        .save_device_token_hash(device_id, &token_hash(&token.secret))
+    {
         // A device without a kept token could never be known again: don't keep it at all.
         if let Err(e) = device_model::remove(context.db(), device_id).await {
             crate::log_line!("devices/pair: device {device_id} without a token couldn't be removed: {e}");
@@ -82,9 +87,9 @@ pub async fn device_for(context: &Context, authorization: Option<&str>, now: i64
         .ok_or_else(not_paired)?;
     let kept = context
         .key_vault
-        .device_token(token.device_id)
+        .device_token_hash(token.device_id)
         .map_err(|why| ServiceError::internal("devices", format!("The device's token couldn't be read: {why}")))?;
-    if !kept.is_some_and(|kept| same_secret(&kept, &token.secret)) {
+    if !kept.is_some_and(|kept| same_secret(&kept, &token_hash(&token.secret))) {
         return Err(not_paired());
     }
     let db = context.db();
@@ -119,7 +124,7 @@ pub async fn remove(context: &Context, id: i64) -> Result<(), ServiceError> {
     // The token first: once it is gone the device can't get in, whatever happens to its row.
     context
         .key_vault
-        .forget_device_token(id)
+        .forget_device_token_hash(id)
         .map_err(|why| ServiceError::internal("devices", format!("The device's token couldn't be removed: {why}")))?;
     let removed = device_model::remove(context.db(), id)
         .await
@@ -147,12 +152,22 @@ fn device_name(asked: &str) -> String {
     }
 }
 
+/// What this computer keeps of a token's secret: its SHA-256, as lowercase hex.
+pub fn token_hash(secret: &str) -> String {
+    use sha2::{Digest, Sha256};
+    hex(&Sha256::digest(secret.as_bytes()))
+}
+
+fn hex(bytes: &[u8]) -> String {
+    bytes.iter().map(|byte| format!("{byte:02x}")).collect()
+}
+
 /// bytes random bytes from the system, as lowercase hex.
 fn random_hex(bytes: usize) -> Result<String, ServiceError> {
     let mut random = vec![0u8; bytes];
     getrandom::fill(&mut random)
         .map_err(|e| ServiceError::internal("devices", format!("The system gave no random numbers for a code: {e}")))?;
-    Ok(random.iter().map(|byte| format!("{byte:02x}")).collect())
+    Ok(hex(&random))
 }
 
 #[cfg(test)]
@@ -164,6 +179,14 @@ mod tests {
         assert_eq!(device_name("  Pixel\n 8  "), "Pixel 8");
         assert_eq!(device_name(" "), UNNAMED_DEVICE);
         assert_eq!(device_name(&"x".repeat(200)).chars().count(), MAX_DEVICE_NAME);
+    }
+
+    #[test]
+    fn a_token_hash_is_the_secret_s_sha256() {
+        assert_eq!(
+            token_hash("abc"),
+            "ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad"
+        );
     }
 
     #[test]

@@ -1,8 +1,8 @@
 //! Where the user's API keys are kept, not in the database: Windows Credential Manager (through
 //! the keyring crate), so a key is never in the database file. Each provider's key has its own
 //! credential, and each database file its own set, so neither a second key nor a second database
-//! (--database) can replace another one's key. A paired device's token (devices) is kept the
-//! same way, in a credential of its own. Tests keep them in memory instead.
+//! (--database) can replace another one's key. A paired device's token hash (devices) is kept
+//! the same way, in a credential of its own. Tests keep them in memory instead.
 //!
 //! The app has one local user, so a credential is named by the database and provider alone.
 //! Before, each name had the local user's trongate_users id in it too; take_over_keys_named_by_user
@@ -77,18 +77,19 @@ impl KeyVault {
         self.forget_secret(&Secret::LlmKey(provider))
     }
 
-    /// Keeps the token of the paired device with this id (devices), replacing one kept before.
-    pub fn save_device_token(&self, device_id: i64, token: &str) -> Result<(), String> {
-        self.save_secret(&Secret::DeviceToken(device_id), token)
+    /// Keeps the hash of the token of the paired device with this id (devices), replacing one
+    /// kept before. The token itself is never kept on this computer.
+    pub fn save_device_token_hash(&self, device_id: i64, hash: &str) -> Result<(), String> {
+        self.save_secret(&Secret::DeviceToken(device_id), hash)
     }
 
-    /// The token of the paired device with this id, or None when none is kept.
-    pub fn device_token(&self, device_id: i64) -> Result<Option<String>, String> {
+    /// The hash of the token of the paired device with this id, or None when none is kept.
+    pub fn device_token_hash(&self, device_id: i64) -> Result<Option<String>, String> {
         self.secret(&Secret::DeviceToken(device_id))
     }
 
-    /// Forgets the token of the device with this id; none kept is fine.
-    pub fn forget_device_token(&self, device_id: i64) -> Result<(), String> {
+    /// Forgets the token hash of the device with this id; none kept is fine.
+    pub fn forget_device_token_hash(&self, device_id: i64) -> Result<(), String> {
         self.forget_secret(&Secret::DeviceToken(device_id))
     }
 
@@ -192,7 +193,7 @@ impl KeyVault {
     }
 }
 
-/// What the vault keeps: a provider's API key, or a paired device's token.
+/// What the vault keeps: a provider's API key, or the hash of a paired device's token.
 enum Secret<'a> {
     LlmKey(&'a str),
     DeviceToken(i64),
@@ -216,7 +217,7 @@ impl Secret<'_> {
     }
 }
 
-/// devices:{id}@{database}: the credential a paired device's token is kept in.
+/// devices:{id}@{database}: the credential a paired device's token hash is kept in.
 fn device_credential_user(database: &str, device_id: i64) -> String {
     format!("devices:{device_id}@{database}")
 }

@@ -205,7 +205,7 @@ pub async fn remove_besides_the_database(found: &Found, schedule: &ScanSchedule,
         }
     }
     for device in &found.devices {
-        if let Err(why) = vault.forget_device_token(device.id) {
+        if let Err(why) = vault.forget_device_token_hash(device.id) {
             failed.push(format!("The token of the device \"{}\": {why}", device.name));
         }
     }
@@ -384,7 +384,7 @@ mod tests {
         db.close().await;
         let schedule = ScanSchedule::in_memory();
         let vault = KeyVault::in_memory();
-        vault.save_device_token(id, "beef").unwrap();
+        vault.save_device_token_hash(id, "beef").unwrap();
 
         let found = find(&database, &schedule, &vault).await;
         assert_eq!(found.devices_error, None);
@@ -392,7 +392,7 @@ mod tests {
         assert!(found.anything_besides_the_database());
 
         assert!(remove_besides_the_database(&found, &schedule, &vault).await.is_empty());
-        assert_eq!(vault.device_token(id).unwrap(), None);
+        assert_eq!(vault.device_token_hash(id).unwrap(), None);
         std::fs::remove_dir_all(&folder).unwrap();
     }
 }

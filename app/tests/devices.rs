@@ -84,6 +84,12 @@ async fn a_device_pairs_once_and_then_says_hello_with_its_token() {
     assert_eq!(devices.len(), 1);
     assert!(devices[0].last_seen_at.is_some());
 
+    // Only the token's hash is kept on the computer.
+    let parsed = device_protocol::Token::parse(&token).unwrap();
+    let kept = context.key_vault.device_token_hash(parsed.device_id).unwrap().unwrap();
+    assert_ne!(kept, parsed.secret);
+    assert_eq!(kept, device_service::token_hash(&parsed.secret));
+
     // The code worked once.
     let (status, _) = send(&context, pair_request(HOST, &code)).await;
     assert_eq!(status, StatusCode::UNAUTHORIZED);
