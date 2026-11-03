@@ -1,6 +1,8 @@
 //! The desktop window (iced): Match, the settings screens (Language models, Local model, Job
 //! searches, Setup, the Jobnet extension), the Task manager and Settings, with a status line for
-//! Laya and the app's own model under them. Its screens print what the service layer gives them
+//! Laya and the app's own model under them, and a bell beside the app's name for what the app
+//! told the user (notifications_screen), whose system notifications open their place when
+//! clicked. Its screens print what the service layer gives them
 //! (dashboard, setup_steps). A link the service layer gives as a path ("setup#cv", "match/12")
 //! opens the screen for it (place_for); the server runs beside the window for the Jobnet
 //! extension.
@@ -18,6 +20,7 @@ mod learned_terms;
 mod local_model;
 mod match_screen;
 mod matching;
+mod notifications_screen;
 mod settings_screen;
 mod setup_screen;
 mod style;
@@ -40,6 +43,7 @@ use crate::context::Context;
 use crate::dashboard::{self, Dashboard, Findings, Health, Work};
 use crate::job_scan::scan_service;
 use crate::laya::laya_client::LayaState;
+use crate::notifications::notification_model;
 
 /// The window's title.
 const TITLE: &str = "JobFinder";
@@ -78,6 +82,7 @@ pub enum Screen {
     LearnedTerms,
     Setup,
     JoblogExtension,
+    Notifications,
 }
 
 /// What the Match screen shows, read together.
@@ -92,6 +97,8 @@ pub struct Overview {
 pub struct Read {
     overview: Result<Overview, String>,
     status: Vec<(Health, String)>,
+    /// The bell's count: notifications not read yet (0 when it couldn't be read; logged).
+    unread: i64,
 }
 
 /// The window's state.
@@ -104,6 +111,8 @@ pub struct Shell {
     /// The status line, read with the overview (it looks in the llama folder, too slow for
     /// every redraw).
     status: Vec<(Health, String)>,
+    /// The bell's count, read with the overview.
+    unread: i64,
     /// The last thing a click said (Scan now's answer, a page that couldn't open).
     said: Option<String>,
     language_models: language_models::State,
@@ -116,6 +125,7 @@ pub struct Shell {
     learned_terms: learned_terms::State,
     setup: setup_screen::State,
     extension: extension_screen::State,
+    notifications: notifications_screen::State,
 }
 
 /// Clone, as iced's buttons need; a reload's answer is shared rather than copied.
@@ -140,6 +150,9 @@ pub enum Message {
     LearnedTerms(learned_terms::Msg),
     Setup(setup_screen::Msg),
     Extension(extension_screen::Msg),
+    Notifications(notifications_screen::Msg),
+    /// A system notification was clicked: its link, which the window comes up on.
+    NotificationClicked(String),
 }
 
 /// Opens the window and runs until it is closed.
@@ -213,6 +226,7 @@ fn boot(launch: &Mutex<Option<Launch>>) -> (Shell, Task<Message>) {
         .take()
         .expect("the window boots once");
     let ticks = ticks(&runtime);
+    let clicks = notification_clicks(&context);
     let shell = Shell {
         context,
         runtime,
@@ -229,12 +243,15 @@ fn boot(launch: &Mutex<Option<Launch>>) -> (Shell, Task<Message>) {
         learned_terms: learned_terms::State::default(),
         setup: setup_screen::State::default(),
         extension: extension_screen::State::default(),
+        notifications: notifications_screen::State::default(),
+        unread: 0,
     };
     let tasks = Task::batch([
         Task::done(Message::Reload),
         iced::system::theme().map(Message::ThemeMode),
         Task::run(received(front), |()| Message::Front),
         Task::run(received(ticks), |()| Message::Reload),
+        Task::run(received(clicks), Message::NotificationClicked),
         first_run(&shell),
     ]);
     (shell, tasks)
@@ -251,6 +268,16 @@ fn ticks(runtime: &Handle) -> UnboundedReceiver<()> {
             }
         }
     });
+    receiver
+}
+
+/// The links of the system notifications clicked while the window is open.
+fn notification_clicks(context: &Context) -> UnboundedReceiver<String> {
+    let (sender, receiver) = unbounded_channel();
+    context.toasts.on_click(Arc::new(move |link| {
+        // The window was closed: nobody to open it in.
+        let _ = sender.send(link);
+    }));
     receiver
 }
 
@@ -380,6 +407,15 @@ async fn read(context: Arc<Context>) -> Arc<Read> {
     Arc::new(Read {
         overview: overview(&context).await,
         status: vec![laya_status(&context), local_model_status(&context)],
+        unread: unread(&context).await,
+    })
+}
+
+/// The bell's count; 0 when it can't be read (logged).
+async fn unread(context: &Context) -> i64 {
+    notification_model::unread(context.db()).await.unwrap_or_else(|e| {
+        crate::log_line!("The bell's count couldn't be read: {e}");
+        0
     })
 }
 
@@ -416,8 +452,21 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
                 Screen::LearnedTerms => return Task::done(Message::LearnedTerms(learned_terms::Msg::Load)),
                 Screen::Setup => return Task::done(Message::Setup(setup_screen::Msg::Load)),
                 Screen::JoblogExtension => extension_screen::shown(&mut shell.extension),
+                Screen::Notifications => {
+                    // Opening it marks them read.
+                    shell.unread = 0;
+                    return Task::done(Message::Notifications(notifications_screen::Msg::Load));
+                }
                 Screen::Settings => {}
             }
+        }
+        Message::Notifications(notifications_screen::Msg::Open(link)) => return Task::done(Message::OpenPage(link)),
+        Message::Notifications(msg) => {
+            let runner = shell.runner();
+            return notifications_screen::update(&mut shell.notifications, msg, &runner).map(Message::Notifications);
+        }
+        Message::NotificationClicked(link) => {
+            return Task::done(Message::Front).chain(Task::done(Message::OpenPage(link)));
         }
         Message::TaskManager(msg) => {
             let runner = shell.runner();
@@ -480,6 +529,10 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
             }
             shell.overview = Some(read.overview);
             shell.status = read.status;
+            // On the Notifications screen they are read as they come.
+            if shell.screen != Screen::Notifications {
+                shell.unread = read.unread;
+            }
         }
         Message::Setup(setup_screen::Msg::ShowLanguageModels) => {
             return Task::done(Message::Show(Screen::LanguageModels));
@@ -580,6 +633,7 @@ fn view(shell: &Shell) -> Element<'_, Message> {
         Screen::LearnedTerms => learned_terms::view(&shell.learned_terms).map(Message::LearnedTerms),
         Screen::Setup => setup_screen::view(&shell.setup).map(Message::Setup),
         Screen::JoblogExtension => extension_screen::view(&shell.extension, &shell.context).map(Message::Extension),
+        Screen::Notifications => notifications_screen::view(&shell.notifications).map(Message::Notifications),
     };
     let mut page = Column::new().spacing(GAP).max_width(PAGE_MAX_WIDTH);
     if let Some(said) = &shell.said {
@@ -602,7 +656,7 @@ fn view(shell: &Shell) -> Element<'_, Message> {
             .height(Fill),
         status_line(&shell.status),
     ];
-    container(row![sidebar(shell.screen), main])
+    container(row![sidebar(shell.screen, shell.unread), main])
         .width(Fill)
         .height(Fill)
         .style(style::page)
@@ -618,10 +672,18 @@ const SIDEBAR_WIDTH: f32 = 200.0;
 /// The accent strip's size beside the selected sidebar item.
 const STRIP_SIZE: Size = Size::new(3.0, 16.0);
 
-/// The app's name and its screens, as Windows 11's Settings has them.
-fn sidebar(current: Screen) -> Element<'static, Message> {
+/// The app's name with the bell beside it, and its screens, as Windows 11's Settings has them.
+fn sidebar(current: Screen, unread: i64) -> Element<'static, Message> {
     column![
-        container(text(TITLE).font(style::semibold()).size(style::SECTION_SIZE)).padding([8.0, 12.0]),
+        row![
+            text(TITLE)
+                .font(style::semibold())
+                .size(style::SECTION_SIZE)
+                .width(Fill),
+            bell(current == Screen::Notifications, unread),
+        ]
+        .padding(iced::Padding::new(4.0).left(12.0))
+        .align_y(Center),
         nav_item("Match", Screen::Match, current),
         nav_item("Language models", Screen::LanguageModels, current),
         nav_item("Local model", Screen::LocalModel, current),
@@ -634,6 +696,32 @@ fn sidebar(current: Screen) -> Element<'static, Message> {
     .width(SIDEBAR_WIDTH)
     .into()
 }
+
+/// The bell, with how many notifications aren't read yet on a badge; it opens Notifications.
+fn bell(selected: bool, unread: i64) -> Element<'static, Message> {
+    let glyph = text(style::BELL).font(style::icon_font()).size(style::SECTION_SIZE);
+    let mut bell = row![glyph].spacing(4).align_y(Center);
+    if unread > 0 {
+        let count = if unread > MOST_UNREAD_SHOWN {
+            format!("{MOST_UNREAD_SHOWN}+")
+        } else {
+            unread.to_string()
+        };
+        bell = bell.push(
+            container(text(count).font(style::semibold()).size(style::CAPTION_SIZE))
+                .padding([0.0, 6.0])
+                .style(style::badge),
+        );
+    }
+    button(bell)
+        .padding([6.0, 8.0])
+        .style(style::subtle_button(selected))
+        .on_press(Message::Show(Screen::Notifications))
+        .into()
+}
+
+/// The highest count the bell's badge shows; past it, "99+".
+const MOST_UNREAD_SHOWN: i64 = 99;
 
 fn nav_item(label: &'static str, screen: Screen, current: Screen) -> Element<'static, Message> {
     let selected = screen == current || (screen == Screen::Settings && opened_from_settings(current));

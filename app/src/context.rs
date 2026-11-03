@@ -19,6 +19,7 @@ use crate::laya::laya_client::LayaClient;
 use crate::llama::llama_server::LlamaServer;
 use crate::matches::match_service;
 use crate::matches::page_reader::Readers;
+use crate::notifications::Toasts;
 use crate::scan_schedule::ScanSchedule;
 use crate::task_manager::running_work::RunningWork;
 use crate::taxonomy::Taxonomy;
@@ -54,6 +55,8 @@ pub struct Context {
     pub running: Arc<RunningWork>,
     /// Whether a game runs, as last looked (game_mode).
     pub game_mode: GameMode,
+    /// How the system's notifications are raised (notifications; none unless main sets it).
+    pub toasts: Toasts,
 }
 
 /// The database file the app runs on.
@@ -82,6 +85,7 @@ impl Context {
             signed_in: None,
             running: Arc::default(),
             game_mode: GameMode::default(),
+            toasts: Toasts::default(),
         }
     }
 

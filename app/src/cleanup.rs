@@ -5,6 +5,7 @@
 //! - the job scan's schedule (Task Scheduler's task, or the systemd user timer), which would
 //!   otherwise keep running a program that is gone;
 //! - the API keys in Credential Manager (or the keyring);
+//! - JobFinder's name for Windows' notifications, in the user's registry (notifications);
 //! - what the app wrote or downloaded next to the database: the Jobnet extension's files,
 //!   llama.cpp and its models, Laya's model;
 //! - and only when asked again, the database itself, with its -wal and -shm files and the app's
@@ -190,6 +191,9 @@ pub async fn remove_besides_the_database(found: &Found, schedule: &ScanSchedule,
         if let Err(e) = std::fs::remove_dir_all(folder) {
             failed.push(format!("{}: {e}", folder.display()));
         }
+    }
+    if let Err(why) = crate::notifications::forget_system_name() {
+        failed.push(format!("JobFinder's name for Windows notifications: {why}"));
     }
     failed
 }

@@ -44,6 +44,7 @@ use crate::matches::match_service::{self, MatchRequest};
 use crate::matches::page_reader::ReadWith;
 use crate::matches::still_open::{self, CheckReport};
 use crate::matches::{Profile, llm_key, match_model, page_reader};
+use crate::notifications::{self, scan_notices};
 use crate::profile;
 use crate::service_error::{ErrorKind, ServiceError};
 use crate::task_manager::running_work::{self, Stopped, WorkKind};
@@ -326,20 +327,21 @@ fn lock_failed(e: &std::io::Error) -> ServiceError {
 }
 
 /// What a scan stopped in the task manager says.
-const STOPPED_SCAN: &str = "The scan was stopped in the task manager.";
+pub const STOPPED_SCAN: &str = "The scan was stopped in the task manager.";
 
 /// Scans every active search that isn't paused and wasn't scanned too recently for who started
 /// it (Started), and matches the new posts it finds. The one scan behind
 /// `jobfinder scan`, Scan now and a desktop window. It is listed in the task manager while it
 /// runs, and stops when asked there (also from another JobFinder's window: scan_lock's stop
-/// file), after the post it is on is marked failed.
+/// file), after the post it is on is marked failed. How it went is told when it ends
+/// (scan_notices::scan_ended).
 pub async fn scan(context: Arc<Context>, started: Started) -> Result<ScanReport, ServiceError> {
     let list = Arc::clone(&context.running);
-    match list
+    let scanned = match list
         .run(
             WorkKind::Scan,
             "Every active search",
-            scan_holding_lock(context, started),
+            scan_holding_lock(Arc::clone(&context), started),
         )
         .await
     {
@@ -348,7 +350,9 @@ pub async fn scan(context: Arc<Context>, started: Started) -> Result<ScanReport,
             crate::log_line!("job_scan: {STOPPED_SCAN} It didn't finish in time, so it was cut off.");
             Err(ServiceError::new(ErrorKind::Failed, STOPPED_SCAN))
         }
-    }
+    };
+    notifications::tell_all(&context, scan_notices::scan_ended(&scanned)).await;
+    scanned
 }
 
 async fn scan_holding_lock(context: Arc<Context>, started: Started) -> Result<ScanReport, ServiceError> {
@@ -1248,12 +1252,18 @@ async fn match_claimed(
         return Ok(false);
     }
     let mut errors = Vec::new();
-    if tailors(saved.score, post.tailor_from_score) {
+    let good = tailors(saved.score, post.tailor_from_score);
+    if good {
         errors.extend(write_document(context, &saved, RESUME, timeline).await);
         errors.extend(write_document(context, &saved, APPLICATION, timeline).await);
     }
     set(MATCHED, errors.join(" "), Some(match_id), found).await?;
-    Ok(!dismissed_meanwhile(context, post_id, match_id).await?)
+    let kept = !dismissed_meanwhile(context, post_id, match_id).await?;
+    // A post the user added (by its link, or from the extension) is one they are looking at.
+    if kept && good && post.job_search_run_id.is_some() {
+        notifications::tell(context, scan_notices::good_match(&saved)).await;
+    }
+    Ok(kept)
 }
 
 /// Whether reading a post failed because it was stopped in the task manager: the post's match,

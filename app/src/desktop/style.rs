@@ -186,6 +186,19 @@ pub fn font() -> Font {
     }
 }
 
+/// The bell beside the app's name: Segoe Fluent Icons' Ringer on Windows 11, the emoji's bell
+/// elsewhere.
+pub const BELL: &str = if cfg!(windows) { "\u{EA8F}" } else { "\u{1F514}" };
+
+/// The font the bell is drawn in: Windows 11's icon font there, else the system's own.
+pub fn icon_font() -> Font {
+    if cfg!(windows) {
+        Font::with_name("Segoe Fluent Icons")
+    } else {
+        Font::DEFAULT
+    }
+}
+
 /// The font in its semibold weight, for titles and names.
 pub fn semibold() -> Font {
     Font {
