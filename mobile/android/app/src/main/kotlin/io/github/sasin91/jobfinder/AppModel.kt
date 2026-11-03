@@ -11,6 +11,8 @@ import io.github.sasin91.jobfinder.protocol.EVALUATION_WORKING
 import io.github.sasin91.jobfinder.protocol.Evaluation
 import io.github.sasin91.jobfinder.protocol.ListName
 import io.github.sasin91.jobfinder.protocol.MAX_EVALUATE_CHARS
+import io.github.sasin91.jobfinder.protocol.MAX_EVALUATE_HTML
+import io.github.sasin91.jobfinder.protocol.isLink
 import io.github.sasin91.jobfinder.protocol.MatchDetails
 import io.github.sasin91.jobfinder.protocol.MatchRow
 import io.github.sasin91.jobfinder.protocol.PairingLink
@@ -29,12 +31,21 @@ import kotlinx.coroutines.launch
 /** How often the posts sent are asked about while one is being matched, in milliseconds. */
 private const val EVALUATIONS_POLL_MS = 2_000L
 
+/**
+ * Whether a link opens in the app's reader: an https link. The app refuses plain http (its
+ * network security config), so an http link goes to the computer, which reads it itself.
+ */
+private fun opensInApp(text: String) = isLink(text) && text.trim().lowercase().startsWith("https://")
+
 /** What the app shows. */
 sealed interface Screen {
     data object Matches : Screen
     data class Match(val id: Long) : Screen
     data object Send : Screen
     data object Scan : Screen
+
+    /** A shared or pasted link, shown in the app so the page goes to the computer as shown. */
+    data class Read(val url: String) : Screen
 }
 
 data class PairState(
@@ -124,14 +135,14 @@ class AppModel(application: Application) : AndroidViewModel(application) {
             is Screen.Match -> if (_match.value.id != screen.id || _match.value.error != null) loadMatch(screen.id)
             Screen.Matches -> if (!_list.value.loaded) refresh()
             Screen.Send -> refreshEvaluations()
-            Screen.Scan -> Unit
+            Screen.Scan, is Screen.Read -> Unit
         }
     }
 
     /** Back from where the app is; false when there is nowhere to go back to. */
     fun back(): Boolean {
         if (_screen.value == Screen.Matches) return false
-        _screen.value = Screen.Matches
+        _screen.value = if (_screen.value is Screen.Read) Screen.Send else Screen.Matches
         return true
     }
 
@@ -165,6 +176,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
                 _pair.value = PairState()
                 _list.value = ListState()
                 refresh()
+                // A post shared before pairing waits in the box: go on to send it.
+                if (_send.value.text.isNotBlank()) show(Screen.Send)
             } catch (e: DeviceError) {
                 _pair.update { it.copy(busy = false, error = e.message) }
             }
@@ -260,34 +273,81 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     fun typePost(text: String) = _send.update { it.copy(text = text, error = null) }
 
-    /** A post shared from another app: shown in the box to send. */
+    /**
+     * A post shared from another app: shown in the box to send, and a link opens to be read. The
+     * link stays in the box too, so it isn't lost when the device has to pair first (the pairing
+     * screen shows instead of the reader) or the reader is left.
+     */
     fun shared(text: String) {
-        _send.update { it.copy(text = text.trim().take(MAX_EVALUATE_CHARS), error = null) }
+        val trimmed = text.trim()
+        _send.update { it.copy(text = trimmed.take(MAX_EVALUATE_CHARS), error = null) }
+        if (opensInApp(trimmed) && _pairing.value != null) {
+            show(Screen.Read(trimmed))
+            return
+        }
         show(Screen.Send)
     }
 
+    /** Sends the text in the box; a link in it opens first, to be sent as its page. */
     fun sendPost() {
-        val client = client() ?: return
         val text = _send.value.text.trim()
         if (text.isEmpty()) {
             _send.update { it.copy(error = "Paste or share a link to a job post, or its text.") }
             return
         }
+        if (opensInApp(text)) {
+            // The link stays in the box until it is sent, to try again if sending fails.
+            _send.update { it.copy(error = null) }
+            show(Screen.Read(text))
+            return
+        }
+        send(text) { client -> client.evaluate(text) }
+    }
+
+    /** Sends the page at url as the app showed it. */
+    fun sendPage(url: String, html: String) {
+        if (html.length > MAX_EVALUATE_HTML) {
+            _send.update { it.copy(text = url, error = "That page is too large to send. Send its link instead.") }
+            show(Screen.Send)
+            return
+        }
+        val draft = readerDraft(url)
+        show(Screen.Send)
+        send(draft) { client -> client.evaluatePage(url, html) }
+    }
+
+    /** Sends only the link: the computer reads the page itself. */
+    fun sendLink(url: String) {
+        val draft = readerDraft(url)
+        show(Screen.Send)
+        send(draft) { client -> client.evaluate(url) }
+    }
+
+    /**
+     * The link the reader was opened with, which is what the box holds: the page sent from it may
+     * be at another url (a short link or a tracking link that redirected).
+     */
+    private fun readerDraft(url: String): String = (_screen.value as? Screen.Read)?.url ?: url
+
+    /** Sends what start sends, noting it on the Send screen; draft is what the box held. */
+    private fun send(draft: String, start: suspend (DeviceClient) -> Evaluation) {
+        val client = client() ?: return
         _send.update { it.copy(sending = true, error = null) }
         session.launch {
             try {
-                val started = client.evaluate(text)
+                val started = start(client)
                 _send.update { state ->
                     state.copy(
                         // A post shared while this one was sent stays in the box.
-                        text = if (state.text.trim() == text) "" else state.text,
+                        text = if (state.text.trim() == draft) "" else state.text,
                         sending = false,
                         evaluations = listOf(started) + state.evaluations.filter { it.id != started.id },
                     )
                 }
                 pollWhileWorking()
             } catch (e: DeviceError) {
-                _send.update { it.copy(sending = false) }
+                // What wasn't sent goes back in an empty box (a shared link), to try again.
+                _send.update { it.copy(sending = false, text = it.text.ifBlank { draft }) }
                 failed(e) { why -> _send.update { it.copy(error = why) } }
             }
         }

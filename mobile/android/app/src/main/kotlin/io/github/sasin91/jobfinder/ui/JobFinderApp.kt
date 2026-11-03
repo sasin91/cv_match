@@ -15,6 +15,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.ui.Modifier
 import io.github.sasin91.jobfinder.AppModel
 import io.github.sasin91.jobfinder.Screen
@@ -47,6 +48,18 @@ fun JobFinderApp(model: AppModel) {
     }
 
     LaunchedEffect(pairing) { model.loadFirst() }
+    (screen as? Screen.Read)?.let { read ->
+        // A new link (shared while one is open) gets a web view of its own.
+        key(read.url) {
+            ReaderScreen(
+                url = read.url,
+                onMatch = model::sendPage,
+                onSendLink = model::sendLink,
+                onBack = { model.back() },
+            )
+        }
+        return
+    }
     val list by model.list.collectAsState()
     val match by model.match.collectAsState()
     val send by model.send.collectAsState()
@@ -98,7 +111,7 @@ fun JobFinderApp(model: AppModel) {
                 onUnpair = model::unpair,
                 modifier = inside,
             )
-            Screen.Scan -> Unit
+            Screen.Scan, is Screen.Read -> Unit
         }
     }
 }

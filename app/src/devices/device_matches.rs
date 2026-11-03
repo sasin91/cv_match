@@ -7,13 +7,15 @@
 use std::sync::Arc;
 
 use device_protocol::{
-    EvaluateAsk, Evaluation, Evaluations, ListName, MAX_EVALUATE_CHARS, MatchDetails, MatchRow, Matches, MatchesAsk,
-    OpeningText, Requirement, RequirementGroup,
+    EvaluateAsk, Evaluation, Evaluations, ListName, MAX_EVALUATE_CHARS, MAX_EVALUATE_HTML, MatchDetails, MatchRow,
+    Matches, MatchesAsk, OpeningText, Requirement, RequirementGroup,
 };
 
 use super::device_model::Device;
 use super::evaluations::{Outcome, WORKING_PER_DEVICE};
 use crate::context::Context;
+use crate::job_scan::job_search_rules;
+use crate::job_sites;
 use crate::matches::match_model::{LISTS, SHORTLIST};
 use crate::matches::match_result::MatchResult;
 use crate::matches::match_service::{self, MatchAnswer, MatchAsk};
@@ -124,20 +126,8 @@ pub fn evaluate(
     ask: &EvaluateAsk,
     now: i64,
 ) -> Result<Evaluation, ServiceError> {
-    let text = ask.text.trim().to_string();
-    if text.is_empty() {
-        return Err(ServiceError::new(
-            ErrorKind::Invalid,
-            "Send a link to a job post, or the post's text.",
-        ));
-    }
-    if text.chars().count() > MAX_EVALUATE_CHARS {
-        return Err(ServiceError::new(
-            ErrorKind::Invalid,
-            format!("That's longer than a job post: send at most {MAX_EVALUATE_CHARS} characters, or a link to it."),
-        ));
-    }
-    let Some(evaluation) = context.devices.evaluations.start(device.id, &text, now) else {
+    let post = post_sent(ask)?;
+    let Some(evaluation) = context.devices.evaluations.start(device.id, &post.shown, now) else {
         return Err(ServiceError::new(
             ErrorKind::Invalid,
             format!(
@@ -152,7 +142,7 @@ pub fn evaluate(
         let context = task_context;
         let work = context
             .running
-            .run(WorkKind::Matching, what, evaluate_now(&context, device_id, id, &text));
+            .run(WorkKind::Matching, what, evaluate_now(&context, device_id, id, &post));
         let outcome = match work.await {
             Ok(Ok(outcome)) => Ok(outcome),
             Ok(Err(e)) => {
@@ -169,6 +159,64 @@ pub fn evaluate(
     Ok(evaluation)
 }
 
+/// A post as a device sent it, ready to match.
+struct PostSent {
+    /// The post's text, or a link to fetch it from.
+    job_text: String,
+    /// Where the post was read, for a page the device sent.
+    job_url: String,
+    /// What the evaluation and the task manager show of it: the link, or the post's first line.
+    shown: String,
+}
+
+/// What ask sent, checked: the page the device showed (read as the extension's pages are), or a
+/// link or text. A link to a LinkedIn or Indeed post is written as the site writes it, without
+/// what the device's browser added (Cloudflare's challenge token, say).
+fn post_sent(ask: &EvaluateAsk) -> Result<PostSent, ServiceError> {
+    if !ask.html.is_empty() {
+        let url = ask.url.trim();
+        if !job_search_rules::is_http_link(url) || url.chars().count() > job_search_rules::MAX_URL {
+            return Err(ServiceError::new(
+                ErrorKind::Invalid,
+                "Only a web page (https://…) can be sent to JobFinder.",
+            ));
+        }
+        if ask.html.len() > MAX_EVALUATE_HTML {
+            return Err(ServiceError::new(ErrorKind::TooLarge, "The page is too large to read."));
+        }
+        let url = job_sites::post_link(url);
+        let page = job_sites::sent_page(&url, &ask.html).map_err(|why| ServiceError::new(ErrorKind::Invalid, why))?;
+        return Ok(PostSent {
+            job_text: page.text,
+            shown: url.clone(),
+            job_url: url,
+        });
+    }
+    let text = ask.text.trim();
+    if text.is_empty() {
+        return Err(ServiceError::new(
+            ErrorKind::Invalid,
+            "Send a link to a job post, or the post's text.",
+        ));
+    }
+    if text.chars().count() > MAX_EVALUATE_CHARS {
+        return Err(ServiceError::new(
+            ErrorKind::Invalid,
+            format!("That's longer than a job post: send at most {MAX_EVALUATE_CHARS} characters, or a link to it."),
+        ));
+    }
+    let text = if match_service::is_link(text) {
+        job_sites::post_link(text)
+    } else {
+        text.to_string()
+    };
+    Ok(PostSent {
+        shown: text.clone(),
+        job_text: text,
+        job_url: String::new(),
+    })
+}
+
 /// The job posts device sent while the app has run, the latest first.
 pub fn evaluations(context: &Context, device: &Device) -> Evaluations {
     Evaluations {
@@ -178,7 +226,7 @@ pub fn evaluations(context: &Context, device: &Device) -> Evaluations {
 
 /// Matches text with the user's profile as the Match screen would, saying each step on the
 /// evaluation.
-async fn evaluate_now(context: &Context, device_id: i64, id: u64, text: &str) -> Result<Outcome, ServiceError> {
+async fn evaluate_now(context: &Context, device_id: i64, id: u64, post: &PostSent) -> Result<Outcome, ServiceError> {
     let evaluations = &context.devices.evaluations;
     let cv_text = profile::text_for_user(context.db())
         .await
@@ -191,8 +239,8 @@ async fn evaluate_now(context: &Context, device_id: i64, id: u64, text: &str) ->
         })?;
     let read_cv = evaluations.read_cv();
     let ask = MatchAsk {
-        job_text: text,
-        job_url: "",
+        job_text: &post.job_text,
+        job_url: &post.job_url,
         cv_text: &cv_text,
         read_cv: read_cv.as_ref(),
     };

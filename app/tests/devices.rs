@@ -251,6 +251,7 @@ async fn a_post_sent_without_a_profile_says_so() {
     let token = paired(&context).await;
     let ask = serde_json::to_value(EvaluateAsk {
         text: "PHP-udvikler\nVi søger en PHP-udvikler.".to_string(),
+        ..EvaluateAsk::default()
     })
     .unwrap();
     let (status, body) = send(&context, post(EVALUATE_PATH, Some(&token), ask)).await;
@@ -286,5 +287,40 @@ async fn an_empty_post_is_refused() {
         post(EVALUATE_PATH, Some(&token), serde_json::json!({"text": "  "})),
     )
     .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
+}
+
+#[tokio::test]
+async fn a_page_the_device_showed_is_read_there_not_fetched() {
+    let context = context().await;
+    context.db().execute(sqlx::raw_sql(PROFILE)).await.unwrap();
+    let token = paired(&context).await;
+    let description = "Vi søger en erfaren PHP-udvikler til vores team i Odense. ".repeat(5);
+    let html = format!(
+        r#"<html><body><h1 data-testid="jobsearch-JobInfoHeader-title">PHP-udvikler</h1>
+          <div data-testid="inlineHeader-companyName">Acme A/S</div>
+          <div id="jobDescriptionText"><p>{description}</p></div></body></html>"#
+    );
+    let ask = serde_json::to_value(EvaluateAsk {
+        url: "https://dk.indeed.com/viewjob?jk=0123456789abcdef&__cf_chl_rt_tk=abc".to_string(),
+        html,
+        ..EvaluateAsk::default()
+    })
+    .unwrap();
+    let (status, body) = send(&context, post(EVALUATE_PATH, Some(&token), ask)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let started: Evaluation = serde_json::from_str(&body).unwrap();
+    // The link as Indeed writes it, without the browser's challenge token.
+    assert_eq!(started.sent, "https://dk.indeed.com/viewjob?jk=0123456789abcdef");
+    let evaluation = finished(&context, &token, started.id).await;
+    assert_eq!(evaluation.state, EVALUATION_DONE, "{}", evaluation.said);
+}
+
+#[tokio::test]
+async fn a_page_needs_a_web_link() {
+    let context = context().await;
+    let token = paired(&context).await;
+    let ask = serde_json::json!({"url": "file:///etc/passwd", "html": "<html></html>"});
+    let (status, body) = send(&context, post(EVALUATE_PATH, Some(&token), ask)).await;
     assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
 }
