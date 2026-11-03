@@ -1,8 +1,8 @@
-//! The Notifications screen, which the bell beside the app's name opens: what the app told the
-//! user (notifications), newest first, each opening the place it is about. Opening it marks the
-//! ones it shows as read, so the bell's count goes.
+//! The notification drawer, which the bell in the status line opens from the bottom of the
+//! window: what the app told the user (notifications), newest first, each opening the place it
+//! is about. Opening it marks the ones it shows as read, so the bell's count goes.
 
-use iced::widget::{Column, button, column, row, text};
+use iced::widget::{button, column, container, row, scrollable, text};
 use iced::{Center, Element, Fill, Task};
 
 use super::style;
@@ -58,8 +58,10 @@ fn health_of(kind: Option<Kind>) -> Health {
 pub enum Msg {
     Load,
     Loaded(Result<Vec<NotificationRow>, String>),
-    /// A row was clicked: the window opens its link.
+    /// A row was clicked: the window opens its link, and the drawer closes.
     Open(String),
+    /// Close was clicked.
+    Close,
 }
 
 pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
@@ -85,31 +87,56 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             );
         }
         Msg::Loaded(rows) => state.rows = Some(rows),
-        // The shell opens it.
-        Msg::Open(_) => {}
+        // The shell opens it, and closes the drawer.
+        Msg::Open(_) | Msg::Close => {}
     }
     Task::none()
 }
 
+/// The drawer's height: about five notifications, with the page still showing above it.
+const DRAWER_HEIGHT: f32 = 360.0;
+/// Space between the drawer and the window's sides.
+const DRAWER_MARGIN: f32 = 16.0;
+
+/// The drawer: its header with Close, and the notifications under it, scrolled when there are
+/// more than fit.
 pub fn view(state: &State) -> Element<'_, Msg> {
-    let title = widgets::page_title(
-        "Notifications",
-        widgets::note(format!(
-            "Good matches the job scan found, and how each scan went. Kept for {} days.",
-            notification_model::KEEP_DAYS
-        )),
-    );
+    let header = row![
+        column![
+            widgets::section_title("Notifications"),
+            widgets::caption(format!(
+                "Good matches the job scan found, and how each scan went. Kept for {} days.",
+                notification_model::KEEP_DAYS
+            )),
+        ]
+        .spacing(2)
+        .width(Fill),
+        button(text("Close").size(style::BODY_SIZE))
+            .padding([4.0, 10.0])
+            .style(style::subtle_button(false))
+            .on_press(Msg::Close),
+    ]
+    .align_y(Center)
+    .padding(ROW_PADDING);
     let body: Element<'_, Msg> = match &state.rows {
-        None => widgets::note("Reading…"),
-        Some(Err(why)) => widgets::message_bar(Health::Attention, why.as_str()),
-        Some(Ok(rows)) if rows.is_empty() => widgets::card(
-            column![widgets::note("Nothing yet. The job scan tells you here what it finds.")]
+        None => container(widgets::note("Reading…")).padding(ROW_PADDING).into(),
+        Some(Err(why)) => container(widgets::errors_line(why.as_str()))
+            .padding(ROW_PADDING)
+            .into(),
+        Some(Ok(rows)) if rows.is_empty() => {
+            container(widgets::note("Nothing yet. The job scan tells you here what it finds."))
                 .padding(ROW_PADDING)
-                .into(),
-        ),
-        Some(Ok(rows)) => widgets::card(widgets::rows(rows.iter().map(notification_row))),
+                .into()
+        }
+        Some(Ok(rows)) => scrollable(widgets::rows(rows.iter().map(notification_row)))
+            .height(Fill)
+            .into(),
     };
-    Column::new().spacing(GAP).push(title).push(body).into()
+    let drawer = column![header, widgets::divider(), body];
+    container(container(drawer).width(Fill).height(DRAWER_HEIGHT).style(style::card))
+        .padding(iced::Padding::from([0.0, DRAWER_MARGIN]).top(DRAWER_MARGIN))
+        .width(Fill)
+        .into()
 }
 
 fn notification_row(row: &NotificationRow) -> Element<'_, Msg> {
