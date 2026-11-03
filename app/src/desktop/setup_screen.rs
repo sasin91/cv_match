@@ -8,6 +8,7 @@ use std::sync::Arc;
 use iced::widget::{Column, button, checkbox, column, container, pick_list, row, text, text_editor};
 use iced::{Center, Element, Fill, Task};
 
+use super::drawings;
 use super::matching::{Picked, pick_file};
 use super::style;
 use super::widgets::{self, CARD_PADDING};
@@ -205,10 +206,15 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
 }
 
 pub fn view(state: &State) -> Element<'_, Msg> {
-    let title = widgets::page_title(
-        "Set up JobFinder",
-        widgets::note("Four steps, then the dashboard. Everything stays on this computer."),
-    );
+    let title = row![
+        widgets::page_title(
+            "Set up JobFinder",
+            widgets::note("Four steps, then the dashboard. Everything stays on this computer."),
+        ),
+        drawings::drawing(&drawings::HERO),
+    ]
+    .spacing(GAP)
+    .align_y(Center);
     let mut screen = Column::new().spacing(GAP * 1.5).push(title);
     if let Some((health, said)) = &state.said {
         screen = screen.push(widgets::message_bar(*health, said.as_str()));

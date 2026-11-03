@@ -9,6 +9,7 @@ use std::time::Duration;
 use iced::widget::{Column, button, checkbox, column, container, row, text, text_editor, text_input};
 use iced::{Center, Element, Fill, Task};
 
+use super::drawings;
 use super::style;
 use super::widgets::{self, CARD_PADDING, ROW_PADDING};
 use super::{GAP, Runner};
@@ -646,9 +647,7 @@ fn list_view(state: &State) -> Element<'_, Msg> {
     }
     screen = screen.push(actions);
     let searches: Element<'_, Msg> = if list.searches.is_empty() {
-        container(widgets::note("You have no job searches yet."))
-            .padding(CARD_PADDING)
-            .into()
+        drawings::empty(&drawings::FINDS, "You have no job searches yet.")
     } else {
         widgets::rows(list.searches.iter().map(search_row))
     };
@@ -785,9 +784,7 @@ fn search_view(state: &State) -> Element<'_, Msg> {
     screen = screen.push(widgets::section("Add a job post", add_post_card(state, search.id)));
 
     let posts: Element<'_, Msg> = if state.posts.is_empty() {
-        container(widgets::note("No job posts found yet."))
-            .padding(CARD_PADDING)
-            .into()
+        drawings::empty(&drawings::REST, "No job posts found yet.")
     } else {
         widgets::rows(state.posts.iter().map(|post| post_row(post, state.busy)))
     };

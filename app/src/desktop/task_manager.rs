@@ -6,6 +6,7 @@
 use iced::widget::{Column, button, column, container, mouse_area, pin, row, space, stack, text};
 use iced::{Center, Element, Fill, Length, Point, Task};
 
+use super::drawings;
 use super::style;
 use super::widgets::{self, ROW_PADDING};
 use super::{GAP, Runner};
@@ -165,11 +166,7 @@ pub fn view(state: &State) -> Element<'_, Msg> {
     };
     if rows.is_empty() {
         return screen
-            .push(widgets::card(
-                container(widgets::note("Nothing runs now."))
-                    .padding(ROW_PADDING)
-                    .into(),
-            ))
+            .push(widgets::card(drawings::empty(&drawings::REST, "Nothing runs now.")))
             .into();
     }
     let list = column![

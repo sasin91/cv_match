@@ -14,6 +14,7 @@ mod apply;
 mod batch;
 mod devices_screen;
 mod documents;
+mod drawings;
 mod extension_screen;
 mod history;
 mod job_searches;

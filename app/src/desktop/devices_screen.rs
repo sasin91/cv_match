@@ -6,6 +6,7 @@ use device_protocol::{PAIRING_CODE_SECONDS, PORT, PairingLink};
 use iced::widget::{Column, button, column, container, qr_code, row, text};
 use iced::{Center, Element, Fill, Task};
 
+use super::drawings;
 use super::style;
 use super::widgets::{self, CARD_PADDING, ROW_PADDING};
 use super::{GAP, Runner};
@@ -268,7 +269,9 @@ fn paired_part(state: &State) -> Element<'_, Msg> {
     let devices = match &state.devices {
         None => return padded(widgets::note("Reading…")),
         Some(Err(why)) => return padded(widgets::errors_line(why.as_str())),
-        Some(Ok(devices)) if devices.is_empty() => return padded(widgets::note("No device is paired yet.")),
+        Some(Ok(devices)) if devices.is_empty() => {
+            return drawings::empty(&drawings::PHONE, "No device is paired yet.");
+        }
         Some(Ok(devices)) => devices,
     };
     widgets::rows(devices.iter().map(|device| device_row(device, state.busy)))
