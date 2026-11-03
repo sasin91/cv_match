@@ -284,7 +284,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
             return
         }
         if (isLink(text)) {
-            _send.update { it.copy(text = "", error = null) }
+            // The link stays in the box until it is sent, to try again if sending fails.
+            _send.update { it.copy(error = null) }
             show(Screen.Read(text))
             return
         }
@@ -294,7 +295,7 @@ class AppModel(application: Application) : AndroidViewModel(application) {
     /** Sends the page at url as the app showed it. */
     fun sendPage(url: String, html: String) {
         if (html.length > MAX_EVALUATE_HTML) {
-            _send.update { it.copy(error = "That page is too large to send. Send its link instead.") }
+            _send.update { it.copy(text = url, error = "That page is too large to send. Send its link instead.") }
             show(Screen.Send)
             return
         }
@@ -325,7 +326,8 @@ class AppModel(application: Application) : AndroidViewModel(application) {
                 }
                 pollWhileWorking()
             } catch (e: DeviceError) {
-                _send.update { it.copy(sending = false) }
+                // What wasn't sent goes back in an empty box (a shared link), to try again.
+                _send.update { it.copy(sending = false, text = it.text.ifBlank { draft }) }
                 failed(e) { why -> _send.update { it.copy(error = why) } }
             }
         }
