@@ -35,6 +35,19 @@ computer keeps it in Windows Credential Manager (the system keyring on Linux), n
 database. The Devices screen lists each paired device with when it was last seen. **Remove**
 stops its token at once.
 
+## What a paired device can do
+
+Each request is a `POST` with JSON, and the device's token as `Authorization: Bearer <token>`.
+The shapes are in `app/device-protocol`.
+
+| Path | What it does |
+| --- | --- |
+| `/v1/device/hello` | Says which JobFinder version the device is paired with. |
+| `/v1/device/matches` | A batch of a list of saved matches, the shortlist when no `list` is named. |
+| `/v1/device/match` | One saved match: score, job, and each requirement with its verdict. |
+| `/v1/device/evaluate` | Matches a job post (a link or its text) with your profile, as the Match screen would. It shows in the task manager as "From <device>: …" and is saved like any match. Without an AI model it is the free match, which isn't saved. |
+| `/v1/device/evaluations` | What became of the posts this device sent since JobFinder started. |
+
 ## From before
 
 If you set up `tailscale serve` for the old web pages on port 443, stop that with

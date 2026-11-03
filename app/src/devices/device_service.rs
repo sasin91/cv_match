@@ -132,6 +132,7 @@ pub async fn remove(context: &Context, id: i64) -> Result<(), ServiceError> {
     if !removed {
         return Err(ServiceError::new(ErrorKind::NotFound, "That device isn't paired."));
     }
+    context.devices.evaluations.forget(id);
     crate::log_line!("devices: removed device {id}.");
     Ok(())
 }

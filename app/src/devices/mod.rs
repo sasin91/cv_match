@@ -6,11 +6,14 @@
 //! device-protocol crate.
 //!
 //! Devices holds what pairing needs while the app runs: the one pairing code shown now, and the
-//! computer's tailnet name, which is the only Host device_server answers to.
+//! computer's tailnet name, which is the only Host device_server answers to; and the job posts
+//! devices sent to be matched (evaluations).
 
+pub mod device_matches;
 pub mod device_model;
 pub mod device_server;
 pub mod device_service;
+pub mod evaluations;
 pub mod tailscale;
 
 use std::sync::Mutex;
@@ -27,6 +30,8 @@ pub struct Devices {
     tailnet: Mutex<TailnetName>,
     /// Why device_server isn't listening, when it couldn't (its port taken, say).
     pub not_listening: Mutex<Option<String>>,
+    /// The job posts devices sent to be matched, and what became of them.
+    pub evaluations: evaluations::Evaluations,
 }
 
 struct PairingCode {

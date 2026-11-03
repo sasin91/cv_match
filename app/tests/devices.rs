@@ -1,17 +1,23 @@
 //! A device pairs once with the code the window shows, then reaches the app with its token, and
-//! only at the computer's tailnet name; a removed device can't any more.
+//! only at the computer's tailnet name; a removed device can't any more. A paired device reads
+//! the saved matches and sends job posts to be matched with the profile.
 
 use std::sync::{Arc, LazyLock};
 
 use axum::body::Body;
 use axum::http::{Request, StatusCode, header};
-use device_protocol::{HELLO_PATH, Hello, PAIR_PATH, PairAnswer, PairAsk, PairingLink};
+use device_protocol::{
+    EVALUATE_PATH, EVALUATION_DONE, EVALUATION_FAILED, EVALUATION_WORKING, EVALUATIONS_PATH, EvaluateAsk, Evaluation,
+    Evaluations, HELLO_PATH, Hello, MATCH_PATH, MATCHES_PATH, MatchDetails, Matches, PAIR_PATH, PairAnswer, PairAsk,
+    PairingLink,
+};
 use http_body_util::BodyExt;
 use jobfinder::account::key_vault::KeyVault;
 use jobfinder::context::Context;
 use jobfinder::db;
 use jobfinder::devices::{device_server, device_service};
 use jobfinder::taxonomy::Taxonomy;
+use sqlx::Executor;
 use tower::ServiceExt;
 
 const TAILNET_NAME: &str = "pc.tail1234.ts.net";
@@ -140,4 +146,145 @@ async fn without_tailscale_no_pairing_code_is_shown() {
     let context = Context::new(db, TAXONOMY.clone(), KeyVault::in_memory());
     context.devices.set_tailnet_name(None, now());
     assert!(device_service::new_pairing_link(&context, now()).is_err());
+}
+
+/// One saved match with one requirement met.
+const SAVED_MATCH: &str = "
+INSERT INTO matches (id, job_title, company, job_url, job_text, score, points, max_points, tag, created_at)
+VALUES (21, 'PHP-udvikler', 'Firma', 'https://www.jobindex.dk/job/1', 'Vi søger en PHP-udvikler.', 0.86, 9, 10, 'top', 1760000000);
+INSERT INTO match_items (match_id, criterion, text, verdict, decided_by, reason, sort_order)
+VALUES (21, 'requirements', 'PHP', 'met', 'exact', 'Named in the CV.', 0);
+";
+
+/// A profile to match job posts with.
+const PROFILE: &str = "
+INSERT INTO profile (id, name, title, about, created_at, updated_at)
+VALUES (1, 'Sofie Andersen', 'Udvikler', 'PHP, Laravel, MySQL', 1760000000, 1760000000);
+";
+
+/// How many times a test asks for a device's evaluations before giving up on one finishing.
+const EVALUATION_POLLS: usize = 200;
+
+/// How long a test waits between asking, in milliseconds.
+const EVALUATION_POLL_MS: u64 = 25;
+
+/// A paired device's token.
+async fn paired(context: &Arc<Context>) -> String {
+    let code = shown_code(context);
+    let (_, body) = send(context, pair_request(HOST, &code)).await;
+    serde_json::from_str::<PairAnswer>(&body).unwrap().token
+}
+
+fn post(path: &str, token: Option<&str>, body: serde_json::Value) -> Request<Body> {
+    let mut request = Request::post(path)
+        .header(header::HOST, HOST)
+        .header(header::CONTENT_TYPE, "application/json");
+    if let Some(token) = token {
+        request = request.header(header::AUTHORIZATION, format!("Bearer {token}"));
+    }
+    request.body(Body::from(body.to_string())).unwrap()
+}
+
+/// The evaluation id once it is no longer working.
+async fn finished(context: &Arc<Context>, token: &str, id: u64) -> Evaluation {
+    for _ in 0..EVALUATION_POLLS {
+        let (status, body) = send(context, post(EVALUATIONS_PATH, Some(token), serde_json::json!({}))).await;
+        assert_eq!(status, StatusCode::OK, "{body}");
+        let evaluations: Evaluations = serde_json::from_str(&body).unwrap();
+        let evaluation = evaluations.evaluations.into_iter().find(|e| e.id == id).unwrap();
+        if evaluation.state != EVALUATION_WORKING {
+            return evaluation;
+        }
+        tokio::time::sleep(std::time::Duration::from_millis(EVALUATION_POLL_MS)).await;
+    }
+    panic!("evaluation {id} never finished");
+}
+
+#[tokio::test]
+async fn only_a_paired_device_reads_matches_or_sends_posts() {
+    let context = context().await;
+    for path in [MATCHES_PATH, MATCH_PATH, EVALUATE_PATH, EVALUATIONS_PATH] {
+        let body = serde_json::json!({"id": 21, "text": "PHP"});
+        let (status, _) = send(&context, post(path, None, body)).await;
+        assert_eq!(status, StatusCode::UNAUTHORIZED, "{path}");
+    }
+}
+
+#[tokio::test]
+async fn a_device_reads_the_lists_and_a_saved_match() {
+    let context = context().await;
+    context.db().execute(sqlx::raw_sql(SAVED_MATCH)).await.unwrap();
+    let token = paired(&context).await;
+
+    let (status, body) = send(&context, post(MATCHES_PATH, Some(&token), serde_json::json!({}))).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let shortlist: Matches = serde_json::from_str(&body).unwrap();
+    assert_eq!(shortlist.list, device_protocol::SHORTLIST);
+    assert!(shortlist.lists.iter().any(|list| list.name == "all"));
+
+    let (status, body) = send(
+        &context,
+        post(MATCHES_PATH, Some(&token), serde_json::json!({"list": "all"})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let all: Matches = serde_json::from_str(&body).unwrap();
+    assert_eq!(all.list, "all");
+    assert_eq!(all.matches.len(), 1);
+    assert_eq!(all.matches[0].id, 21);
+
+    let (status, body) = send(&context, post(MATCH_PATH, Some(&token), serde_json::json!({"id": 21}))).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let details: MatchDetails = serde_json::from_str(&body).unwrap();
+    assert_eq!(details.job_url, "https://www.jobindex.dk/job/1");
+    let rows: Vec<_> = details.sections.iter().flat_map(|section| &section.rows).collect();
+    assert_eq!(rows.len(), 1);
+    assert_eq!(rows[0].verdict, "met");
+
+    let (status, _) = send(&context, post(MATCH_PATH, Some(&token), serde_json::json!({"id": 99}))).await;
+    assert_eq!(status, StatusCode::NOT_FOUND);
+}
+
+#[tokio::test]
+async fn a_post_sent_without_a_profile_says_so() {
+    let context = context().await;
+    let token = paired(&context).await;
+    let ask = serde_json::to_value(EvaluateAsk {
+        text: "PHP-udvikler\nVi søger en PHP-udvikler.".to_string(),
+    })
+    .unwrap();
+    let (status, body) = send(&context, post(EVALUATE_PATH, Some(&token), ask)).await;
+    assert_eq!(status, StatusCode::OK, "{body}");
+    let started: Evaluation = serde_json::from_str(&body).unwrap();
+    assert_eq!(started.sent, "PHP-udvikler");
+    let evaluation = finished(&context, &token, started.id).await;
+    assert_eq!(evaluation.state, EVALUATION_FAILED);
+    assert!(evaluation.said.contains("no profile"), "{}", evaluation.said);
+}
+
+#[tokio::test]
+async fn without_a_model_a_post_sent_is_the_free_match_and_not_saved() {
+    let context = context().await;
+    context.db().execute(sqlx::raw_sql(PROFILE)).await.unwrap();
+    let token = paired(&context).await;
+    let ask = serde_json::json!({"text": "PHP-udvikler\nDin profil\n- Erfaring med PHP\n- Kendskab til Docker"});
+    let (_, body) = send(&context, post(EVALUATE_PATH, Some(&token), ask)).await;
+    let started: Evaluation = serde_json::from_str(&body).unwrap();
+    let evaluation = finished(&context, &token, started.id).await;
+    assert_eq!(evaluation.state, EVALUATION_DONE, "{}", evaluation.said);
+    assert_eq!(evaluation.match_id, None);
+    assert!(evaluation.percent.is_some());
+    assert!(evaluation.said.starts_with("Not saved"), "{}", evaluation.said);
+}
+
+#[tokio::test]
+async fn an_empty_post_is_refused() {
+    let context = context().await;
+    let token = paired(&context).await;
+    let (status, body) = send(
+        &context,
+        post(EVALUATE_PATH, Some(&token), serde_json::json!({"text": "  "})),
+    )
+    .await;
+    assert_eq!(status, StatusCode::UNPROCESSABLE_ENTITY, "{body}");
 }
