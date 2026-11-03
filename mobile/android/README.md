@@ -5,6 +5,11 @@ The phone and tablet app. It pairs with JobFinder on your computer over Tailscal
 match with each requirement and its verdict, and sends job posts to be matched. You can paste a
 link or text, or share a post to JobFinder from your browser.
 
+A shared or pasted link opens inside the app first. If the site asks for a check (Indeed's
+Cloudflare does), you pass it there. Then **Match it** sends the page as the phone showed it, and
+the computer reads it the way it reads the Jobnet extension's pages, without fetching it again.
+**Send the link** lets the computer read the page itself instead.
+
 ## Getting the app
 
 Every pull request and push to `main` that touches `mobile/android` builds a debug APK. Open the

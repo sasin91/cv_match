@@ -6,7 +6,7 @@
 use std::net::{Ipv4Addr, SocketAddr};
 use std::sync::Arc;
 
-use axum::extract::{Request, State};
+use axum::extract::{DefaultBodyLimit, Request, State};
 use axum::http::{HeaderMap, StatusCode, header};
 use axum::middleware::{self, Next};
 use axum::response::{IntoResponse, Response};
@@ -14,12 +14,19 @@ use axum::routing::post;
 use axum::{Json, Router};
 use device_protocol::{
     EVALUATE_PATH, EVALUATIONS_PATH, EvaluateAsk, Evaluation, Evaluations, HELLO_PATH, Hello, MATCH_PATH, MATCHES_PATH,
-    MatchAsk, MatchDetails, Matches, MatchesAsk, PAIR_PATH, PORT, PairAnswer, PairAsk,
+    MAX_EVALUATE_HTML, MatchAsk, MatchDetails, Matches, MatchesAsk, PAIR_PATH, PORT, PairAnswer, PairAsk,
 };
 
 use super::{device_matches, device_service, tailscale};
 use crate::api_error::ApiError;
 use crate::context::Context;
+
+/// Bytes of JSON around a page a device sends (its link, the escaping of its HTML), at most: HTML
+/// escaped as JSON can grow by its quotes and backslashes, so a page may take twice its size.
+const EVALUATE_JSON_ROOM: usize = MAX_EVALUATE_HTML;
+
+/// Most bytes evaluate reads of what a device sends: a page's HTML, and its JSON.
+const EVALUATE_BYTES: usize = MAX_EVALUATE_HTML + EVALUATE_JSON_ROOM;
 
 pub fn router(context: Arc<Context>) -> Router {
     Router::new()
@@ -27,7 +34,7 @@ pub fn router(context: Arc<Context>) -> Router {
         .route(HELLO_PATH, post(hello))
         .route(MATCHES_PATH, post(matches))
         .route(MATCH_PATH, post(match_details))
-        .route(EVALUATE_PATH, post(evaluate))
+        .route(EVALUATE_PATH, post(evaluate).layer(DefaultBodyLimit::disable()))
         .route(EVALUATIONS_PATH, post(evaluations))
         .fallback(not_here)
         .method_not_allowed_fallback(not_here)
@@ -80,13 +87,19 @@ async fn match_details(
 }
 
 /// POST v1/device/evaluate: a job post to match with the user's profile; answered as it starts.
-async fn evaluate(
-    State(context): State<Arc<Context>>,
-    headers: HeaderMap,
-    Json(ask): Json<EvaluateAsk>,
-) -> Result<Json<Evaluation>, ApiError> {
+/// The device's token is checked before its body (which may be a page's HTML) is read.
+async fn evaluate(State(context): State<Arc<Context>>, request: Request) -> Result<Json<Evaluation>, ApiError> {
     let now = now();
-    let device = device_service::device_for(&context, authorization(&headers), now).await?;
+    let device = device_service::device_for(&context, authorization(request.headers()), now).await?;
+    let body = axum::body::to_bytes(request.into_body(), EVALUATE_BYTES)
+        .await
+        .map_err(|_| ApiError::new(StatusCode::PAYLOAD_TOO_LARGE, "The page is too large to read."))?;
+    let ask: EvaluateAsk = serde_json::from_slice(&body).map_err(|e| {
+        ApiError::new(
+            StatusCode::BAD_REQUEST,
+            format!("JobFinder couldn't read what was sent: {e}"),
+        )
+    })?;
     Ok(Json(device_matches::evaluate(&context, &device, &ask, now)?))
 }
 

@@ -45,7 +45,7 @@ The shapes are in `app/device-protocol`.
 | `/v1/device/hello` | Says which JobFinder version the device is paired with. |
 | `/v1/device/matches` | A batch of a list of saved matches, the shortlist when no `list` is named. |
 | `/v1/device/match` | One saved match: score, job, and each requirement with its verdict. |
-| `/v1/device/evaluate` | Matches a job post (a link or its text) with your profile, as the Match screen would. It shows in the task manager as "From <device>: …" and is saved like any match. Without an AI model it is the free match, which isn't saved. |
+| `/v1/device/evaluate` | Matches a job post (a link, its text, or its page as the phone showed it) with your profile, as the Match screen would. It shows in the task manager as "From <device>: …" and is saved like any match. Without an AI model it is the free match, which isn't saved. |
 | `/v1/device/evaluations` | What became of the posts this device sent since JobFinder started. |
 
 ## From before

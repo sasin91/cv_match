@@ -103,4 +103,28 @@ class DeviceClientTest {
         assertNull(evaluation.matchId)
         assertEquals("""{"text":"PHP-udvikler"}""", server.takeRequest().body.readUtf8())
     }
+
+    @Test
+    fun aPageGoesAsItsLinkAndHtml() = runTest {
+        server.enqueue(
+            MockResponse().setBody(
+                """{"id":2,"sent":"https://dk.indeed.com/viewjob?jk=ab","sent_at":1,"state":"working","said":""}""",
+            ),
+        )
+        client().evaluatePage("https://dk.indeed.com/viewjob?jk=ab", "<html></html>")
+        assertEquals(
+            """{"url":"https://dk.indeed.com/viewjob?jk=ab","html":"<html></html>"}""",
+            server.takeRequest().body.readUtf8(),
+        )
+    }
+}
+
+class IsLinkTest {
+    @Test
+    fun oneWebLinkIsALink() {
+        assertTrue(isLink(" https://dk.indeed.com/viewjob?jk=ab "))
+        assertTrue(!isLink("PHP-udvikler https://x.dk"))
+        assertTrue(!isLink("https://"))
+        assertTrue(!isLink("jobfinder-pair://pc:8766/ab"))
+    }
 }

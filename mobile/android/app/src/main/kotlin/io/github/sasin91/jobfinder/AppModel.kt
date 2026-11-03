@@ -11,6 +11,8 @@ import io.github.sasin91.jobfinder.protocol.EVALUATION_WORKING
 import io.github.sasin91.jobfinder.protocol.Evaluation
 import io.github.sasin91.jobfinder.protocol.ListName
 import io.github.sasin91.jobfinder.protocol.MAX_EVALUATE_CHARS
+import io.github.sasin91.jobfinder.protocol.MAX_EVALUATE_HTML
+import io.github.sasin91.jobfinder.protocol.isLink
 import io.github.sasin91.jobfinder.protocol.MatchDetails
 import io.github.sasin91.jobfinder.protocol.MatchRow
 import io.github.sasin91.jobfinder.protocol.PairingLink
@@ -35,6 +37,9 @@ sealed interface Screen {
     data class Match(val id: Long) : Screen
     data object Send : Screen
     data object Scan : Screen
+
+    /** A shared or pasted link, shown in the app so the page goes to the computer as shown. */
+    data class Read(val url: String) : Screen
 }
 
 data class PairState(
@@ -124,14 +129,14 @@ class AppModel(application: Application) : AndroidViewModel(application) {
             is Screen.Match -> if (_match.value.id != screen.id || _match.value.error != null) loadMatch(screen.id)
             Screen.Matches -> if (!_list.value.loaded) refresh()
             Screen.Send -> refreshEvaluations()
-            Screen.Scan -> Unit
+            Screen.Scan, is Screen.Read -> Unit
         }
     }
 
     /** Back from where the app is; false when there is nowhere to go back to. */
     fun back(): Boolean {
         if (_screen.value == Screen.Matches) return false
-        _screen.value = Screen.Matches
+        _screen.value = if (_screen.value is Screen.Read) Screen.Send else Screen.Matches
         return true
     }
 
@@ -262,25 +267,58 @@ class AppModel(application: Application) : AndroidViewModel(application) {
 
     /** A post shared from another app: shown in the box to send. */
     fun shared(text: String) {
-        _send.update { it.copy(text = text.trim().take(MAX_EVALUATE_CHARS), error = null) }
+        val trimmed = text.trim()
+        if (isLink(trimmed)) {
+            show(Screen.Read(trimmed))
+            return
+        }
+        _send.update { it.copy(text = trimmed.take(MAX_EVALUATE_CHARS), error = null) }
         show(Screen.Send)
     }
 
+    /** Sends the text in the box; a link in it opens first, to be sent as its page. */
     fun sendPost() {
-        val client = client() ?: return
         val text = _send.value.text.trim()
         if (text.isEmpty()) {
             _send.update { it.copy(error = "Paste or share a link to a job post, or its text.") }
             return
         }
+        if (isLink(text)) {
+            _send.update { it.copy(text = "", error = null) }
+            show(Screen.Read(text))
+            return
+        }
+        send(text) { client -> client.evaluate(text) }
+    }
+
+    /** Sends the page at url as the app showed it. */
+    fun sendPage(url: String, html: String) {
+        if (html.length > MAX_EVALUATE_HTML) {
+            _send.update { it.copy(error = "That page is too large to send. Send its link instead.") }
+            show(Screen.Send)
+            return
+        }
+        show(Screen.Send)
+        send(url) { client -> client.evaluatePage(url, html) }
+    }
+
+    /** Sends only the link: the computer reads the page itself. */
+    fun sendLink(url: String) {
+        show(Screen.Send)
+        send(url) { client -> client.evaluate(url) }
+    }
+
+    /** Sends what start sends, noting it on the Send screen; draft is what the box held. */
+    private fun send(draft: String, start: suspend (DeviceClient) -> Evaluation) {
+        val client = client() ?: return
         _send.update { it.copy(sending = true, error = null) }
         session.launch {
             try {
-                val started = client.evaluate(text)
+                val started = start(client)
                 _send.update { state ->
                     state.copy(
                         // A post shared while this one was sent stays in the box.
-                        text = if (state.text.trim() == text) "" else state.text,
+                        text = if (state.text.trim() == draft) "" else state.text,
                         sending = false,
                         evaluations = listOf(started) + state.evaluations.filter { it.id != started.id },
                     )

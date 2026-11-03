@@ -55,7 +55,11 @@ class DeviceClient(
         post(MATCH_PATH, MatchAsk(id), MatchAsk.serializer(), MatchDetails.serializer())
 
     suspend fun evaluate(text: String): Evaluation =
-        post(EVALUATE_PATH, EvaluateAsk(text), EvaluateAsk.serializer(), Evaluation.serializer())
+        post(EVALUATE_PATH, EvaluateAsk(text = text), EvaluateAsk.serializer(), Evaluation.serializer())
+
+    /** Sends the post's page as this device showed it, so the computer needn't fetch it. */
+    suspend fun evaluatePage(url: String, html: String): Evaluation =
+        post(EVALUATE_PATH, EvaluateAsk(url = url, html = html), EvaluateAsk.serializer(), Evaluation.serializer())
 
     suspend fun evaluations(): Evaluations = post(EVALUATIONS_PATH, null, null, Evaluations.serializer())
 

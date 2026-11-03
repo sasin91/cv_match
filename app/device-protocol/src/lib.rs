@@ -262,12 +262,26 @@ pub struct Requirement {
     pub alternatives: Vec<Requirement>,
 }
 
-/// A job post a device sends to be matched with the user's profile.
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
+/// A job post a device sends to be matched with the user's profile: a link or the post's text,
+/// or the post's page as the device showed it (url and html), which the computer reads as the
+/// extension's pages are read, so a site that asks the computer's browser for a check (Indeed's
+/// Cloudflare) needn't be read there.
+#[derive(Debug, Clone, Default, PartialEq, Eq, Serialize, Deserialize)]
 pub struct EvaluateAsk {
-    /// A link to the post (as shared from a browser), or its text.
+    /// A link to the post (as shared from a browser), or its text; empty when html is sent.
+    #[serde(default)]
     pub text: String,
+    /// The page's link, with html.
+    #[serde(default)]
+    pub url: String,
+    /// The page's HTML as the device's web view showed it; empty when text is sent.
+    #[serde(default)]
+    pub html: String,
 }
+
+/// Most bytes of a page's HTML a device may send to EVALUATE_PATH: a job post's page is well
+/// under 2 MB; this leaves room for a heavy one.
+pub const MAX_EVALUATE_HTML: usize = 10_000_000;
 
 /// Evaluation::state while the post is being read and matched.
 pub const EVALUATION_WORKING: &str = "working";

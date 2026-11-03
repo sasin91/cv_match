@@ -121,8 +121,24 @@ data class Requirement(
     val alternatives: List<Requirement> = emptyList(),
 )
 
+/**
+ * A post to match: a link or its text, or the post's page as this device showed it (url and
+ * html), which the computer reads as the Jobnet extension's pages are read.
+ */
 @Serializable
-data class EvaluateAsk(val text: String)
+data class EvaluateAsk(val text: String = "", val url: String = "", val html: String = "")
+
+/** Most bytes of a page's HTML the computer takes at EVALUATE_PATH. */
+const val MAX_EVALUATE_HTML = 10_000_000
+
+/** Whether text is one web link and nothing else. */
+fun isLink(text: String): Boolean {
+    val trimmed = text.trim()
+    val lower = trimmed.lowercase()
+    return (lower.startsWith("https://") || lower.startsWith("http://")) &&
+        trimmed.length > "https://".length &&
+        trimmed.none { it.isWhitespace() }
+}
 
 @Serializable
 data class Evaluation(

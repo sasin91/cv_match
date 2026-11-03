@@ -47,6 +47,15 @@ fun JobFinderApp(model: AppModel) {
     }
 
     LaunchedEffect(pairing) { model.loadFirst() }
+    (screen as? Screen.Read)?.let { read ->
+        ReaderScreen(
+            url = read.url,
+            onMatch = model::sendPage,
+            onSendLink = model::sendLink,
+            onBack = { model.back() },
+        )
+        return
+    }
     val list by model.list.collectAsState()
     val match by model.match.collectAsState()
     val send by model.send.collectAsState()
@@ -98,7 +107,7 @@ fun JobFinderApp(model: AppModel) {
                 onUnpair = model::unpair,
                 modifier = inside,
             )
-            Screen.Scan -> Unit
+            Screen.Scan, is Screen.Read -> Unit
         }
     }
 }
