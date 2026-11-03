@@ -244,6 +244,8 @@ pub enum Msg {
     },
     Filter(&'static str),
     OpenReject(bool),
+    /// "Open job post": the post the match was made from, in the browser.
+    OpenJobPost(String),
     Tick(&'static str, bool),
     Note(&'static str, String),
     Reject,
@@ -490,6 +492,11 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             }
             state.list.read = None;
             return Task::done(Msg::Changed);
+        }
+        Msg::OpenJobPost(url) => {
+            if let Err(why) = super::open_in_browser(&url) {
+                state.said = Some((Health::Attention, why));
+            }
         }
         Msg::KeepOpen => {
             let Some(id) = shown_mut(state).and_then(|shown| shown.result.saved_id) else {
@@ -1416,8 +1423,10 @@ fn result_view(shown: &Shown, busy: bool) -> Element<'_, Msg> {
     if let Some(opening) = &result.opening {
         view = view.push(opening_bar(opening, busy));
     }
-    if let Some(reject) = &result.reject {
-        view = view.push(reject_card(shown, reject, busy));
+    let job_post = job_post_button(&result.job_url);
+    match &result.reject {
+        Some(reject) => view = view.push(reject_card(shown, reject, job_post, busy)),
+        None => view = view.extend(job_post),
     }
     if let Some(disqualifier) = &result.disqualifier {
         let mut lines = column![
@@ -1572,7 +1581,6 @@ pub(super) fn tag_health(tag: &str) -> Health {
     }
 }
 
-/// Not interested, its form, or the rejected match's Bring back.
 /// Whether a saved match's job still takes applications; a closed one can be said to be open.
 fn opening_bar(opening: &OpeningLine, busy: bool) -> Element<'_, Msg> {
     let mut line = row![
@@ -1603,7 +1611,33 @@ fn opening_bar(opening: &OpeningLine, busy: bool) -> Element<'_, Msg> {
         .into()
 }
 
-fn reject_card<'a>(shown: &'a Shown, reject: &'a RejectButton, busy: bool) -> Element<'a, Msg> {
+/// "Open job post", for a result whose post was read from a web page; None for a pasted post.
+fn job_post_button<'a>(job_url: &str) -> Option<Element<'a, Msg>> {
+    let url = job_url.trim();
+    is_web_link(url).then(|| {
+        button(text(OPEN_JOB_POST).size(style::BODY_SIZE))
+            .style(style::standard_button)
+            .on_press(Msg::OpenJobPost(url.to_string()))
+            .into()
+    })
+}
+
+/// The label of the button that opens the job post in the browser.
+const OPEN_JOB_POST: &str = "Open job post";
+
+/// Whether a link is a web page's (http or https), so a stray word in the field opens nothing.
+fn is_web_link(url: &str) -> bool {
+    url::Url::parse(url).is_ok_and(|parsed| matches!(parsed.scheme(), "http" | "https"))
+}
+
+/// Not interested and Open job post beside it, the form Not interested opens, or the rejected
+/// match's Bring back.
+fn reject_card<'a>(
+    shown: &'a Shown,
+    reject: &'a RejectButton,
+    job_post: Option<Element<'a, Msg>>,
+    busy: bool,
+) -> Element<'a, Msg> {
     if reject.rejected {
         return widgets::card(
             container(
@@ -1616,6 +1650,7 @@ fn reject_card<'a>(shown: &'a Shown, reject: &'a RejectButton, busy: bool) -> El
                         .style(style::standard_button)
                         .on_press_maybe((!busy).then_some(Msg::BringBack)),
                 ]
+                .extend(job_post)
                 .spacing(14)
                 .align_y(Center),
             )
@@ -1624,10 +1659,14 @@ fn reject_card<'a>(shown: &'a Shown, reject: &'a RejectButton, busy: bool) -> El
         );
     }
     if !shown.rejecting {
-        return button(text(reject.open).size(style::BODY_SIZE))
-            .style(style::standard_button)
-            .on_press_maybe((!busy).then_some(Msg::OpenReject(true)))
-            .into();
+        return row![
+            button(text(reject.open).size(style::BODY_SIZE))
+                .style(style::standard_button)
+                .on_press_maybe((!busy).then_some(Msg::OpenReject(true)))
+        ]
+        .extend(job_post)
+        .spacing(8)
+        .into();
     }
     let mut form = column![
         text("Why not? Tick all that apply")
@@ -1770,6 +1809,16 @@ fn join_reason(text: &str, reason: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn only_a_web_link_opens_the_job_post() {
+        assert!(is_web_link("https://www.jobindex.dk/job/1"));
+        assert!(is_web_link("http://acme.dk/jobs/1"));
+        assert!(!is_web_link(""));
+        assert!(!is_web_link("pasted text"));
+        assert!(!is_web_link("file:///C:/job.pdf"));
+        assert!(job_post_button("  ").is_none());
+    }
 
     #[test]
     fn an_answer_to_an_older_read_is_dropped() {

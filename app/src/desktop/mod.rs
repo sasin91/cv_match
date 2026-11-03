@@ -620,6 +620,15 @@ fn place_for(path: &str) -> Option<Place> {
     })
 }
 
+/// Opens a link (a job post, a mailto:) in the user's default browser or mail app. When that
+/// fails it is logged, and the answer says so for the screen to show.
+fn open_in_browser(url: &str) -> Result<(), String> {
+    webbrowser::open(url).map_err(|e| {
+        crate::log_line!("Couldn't open {url} in the browser: {e}");
+        format!("Couldn't open the browser ({e}). Open {url} in it yourself.")
+    })
+}
+
 /// Goes to a place.
 fn go_to(place: Place) -> Task<Message> {
     let show = |screen| Task::done(Message::Show(screen));

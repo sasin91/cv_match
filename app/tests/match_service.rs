@@ -38,11 +38,13 @@ async fn the_free_match_answers_a_result_to_print() {
     let result = match_service::quick_match(
         &context,
         "PHP-udvikler\nDin profil\n- Erfaring med PHP\n- Kendskab til Docker",
+        "https://www.jobindex.dk/job/1",
         "Udvikler\nPHP, Laravel, MySQL",
     )
     .await
     .unwrap();
     assert_eq!(result.saved_id, None);
+    assert_eq!(result.job_url, "https://www.jobindex.dk/job/1");
     assert!(result.sections.iter().any(|section| !section.rows.is_empty()));
     assert!(result.cv_found.is_some());
 }
@@ -50,7 +52,7 @@ async fn the_free_match_answers_a_result_to_print() {
 #[tokio::test]
 async fn the_free_match_says_what_is_missing_from_its_input() {
     let context = context().await;
-    let error = match_service::quick_match(&context, "", "PHP").await.unwrap_err();
+    let error = match_service::quick_match(&context, "", "", "PHP").await.unwrap_err();
     assert_eq!(error.kind, ErrorKind::Invalid);
     assert_eq!(error.message, "Paste or upload both the CV and the job post.");
 }
@@ -257,6 +259,7 @@ async fn a_laya_model_that_cant_load_is_said_under_the_score() {
     let result = match_service::quick_match(
         &context,
         "PHP-udvikler\nDin profil\n- Erfaring med PHP",
+        "",
         "Udvikler\nPHP, Laravel",
     )
     .await
