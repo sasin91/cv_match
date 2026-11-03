@@ -311,15 +311,23 @@ class AppModel(application: Application) : AndroidViewModel(application) {
             show(Screen.Send)
             return
         }
+        val draft = readerDraft(url)
         show(Screen.Send)
-        send(url) { client -> client.evaluatePage(url, html) }
+        send(draft) { client -> client.evaluatePage(url, html) }
     }
 
     /** Sends only the link: the computer reads the page itself. */
     fun sendLink(url: String) {
+        val draft = readerDraft(url)
         show(Screen.Send)
-        send(url) { client -> client.evaluate(url) }
+        send(draft) { client -> client.evaluate(url) }
     }
+
+    /**
+     * The link the reader was opened with, which is what the box holds: the page sent from it may
+     * be at another url (a short link or a tracking link that redirected).
+     */
+    private fun readerDraft(url: String): String = (_screen.value as? Screen.Read)?.url ?: url
 
     /** Sends what start sends, noting it on the Send screen; draft is what the box held. */
     private fun send(draft: String, start: suspend (DeviceClient) -> Evaluation) {
