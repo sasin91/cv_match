@@ -225,6 +225,12 @@ fn run_cleanup(args: &[String]) -> ExitCode {
     if let Some(why) = &found.keys_error {
         println!("  (the API keys couldn't be read: {why})");
     }
+    for device in &found.devices {
+        println!("- the token of the paired device \"{}\"", device.name);
+    }
+    if let Some(why) = &found.devices_error {
+        println!("  (the paired devices couldn't be read: {why})");
+    }
     for folder in &found.folders {
         println!("- {}", folder.display());
     }
@@ -233,7 +239,7 @@ fn run_cleanup(args: &[String]) -> ExitCode {
     }
     let mut failed = Vec::new();
     if !found.anything_besides_the_database() {
-        println!("No schedule, keys or downloads to remove.");
+        println!("No schedule, keys, device tokens or downloads to remove.");
     } else if ask("Remove these?") {
         failed.extend(runtime.block_on(cleanup::remove_besides_the_database(&found, &schedule, &vault)));
     } else {

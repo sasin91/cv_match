@@ -36,6 +36,9 @@ pub struct State {
 #[derive(Debug, Clone)]
 pub enum Msg {
     Load,
+    /// Reads the paired devices again, as a device may have paired since.
+    LoadDevices,
+    DevicesLoaded(Result<Vec<Device>, String>),
     Loaded(Box<(TailscaleState, Result<Vec<Device>, String>)>),
     Serve,
     Served(Result<(), String>),
@@ -61,6 +64,13 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                 },
             );
         }
+        Msg::LoadDevices => {
+            return runner.run(
+                |context| async move { device_service::devices(&context).await.map_err(|e| e.message) },
+                |read| Msg::DevicesLoaded(read.and_then(|devices| devices)),
+            );
+        }
+        Msg::DevicesLoaded(devices) => state.devices = Some(devices),
         Msg::Loaded(read) => {
             let (tailscale, devices) = *read;
             state.tailscale = Some(tailscale);
@@ -138,6 +148,11 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
         }
     }
     Task::none()
+}
+
+/// Whether a pairing code shows, so a device may pair any moment.
+pub fn pairing_shown(state: &State) -> bool {
+    state.pairing.is_some()
 }
 
 /// Clears what the last visit showed: an old pairing code never shows again.

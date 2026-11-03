@@ -1,7 +1,10 @@
 //! The devices table: the devices paired with the app. Their tokens are in the key vault
 //! (account::key_vault), not here.
 
-use sqlx::SqlitePool;
+use std::path::Path;
+
+use sqlx::sqlite::SqliteConnectOptions;
+use sqlx::{Connection, SqliteConnection, SqlitePool};
 
 /// A paired device, as the Devices screen lists it.
 #[derive(Debug, Clone, PartialEq)]
@@ -85,4 +88,37 @@ pub async fn remove(db: &SqlitePool, id: i64) -> sqlx::Result<bool> {
     .execute(db)
     .await?;
     Ok(removed.rows_affected() > 0)
+}
+
+/// The devices paired with the database file at path, read without changing it, for the cleanup
+/// (whose app isn't running): none when there is no file, or no devices table in it yet.
+pub async fn in_file(path: &Path) -> sqlx::Result<Vec<Device>> {
+    if !path.exists() {
+        return Ok(Vec::new());
+    }
+    let options = SqliteConnectOptions::new().filename(path).read_only(true);
+    let mut connection = SqliteConnection::connect_with(&options).await?;
+    let has_table = sqlx::query_scalar!(
+        r#"
+        SELECT COUNT(*) AS "count!: i64"
+        FROM sqlite_master
+        WHERE type = 'table' AND name = 'devices'
+        "#
+    )
+    .fetch_one(&mut connection)
+    .await?
+        > 0;
+    if !has_table {
+        return Ok(Vec::new());
+    }
+    sqlx::query_as!(
+        Device,
+        r#"
+        SELECT id AS "id!", name, paired_at, last_seen_at
+        FROM devices
+        ORDER BY paired_at, id
+        "#
+    )
+    .fetch_all(&mut connection)
+    .await
 }

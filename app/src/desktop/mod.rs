@@ -547,7 +547,12 @@ fn update(shell: &mut Shell, message: Message) -> Task<Message> {
             return language_models::update(&mut shell.language_models, msg, &runner).map(Message::LanguageModels);
         }
         Message::Reload => {
-            return on_runtime(&shell.runtime, read(Arc::clone(&shell.context)), Message::Loaded);
+            let reload = on_runtime(&shell.runtime, read(Arc::clone(&shell.context)), Message::Loaded);
+            // A device that pairs with the code shown is listed without leaving the screen.
+            if shell.screen == Screen::Devices && devices_screen::pairing_shown(&shell.devices) {
+                return Task::batch([reload, Task::done(Message::Devices(devices_screen::Msg::LoadDevices))]);
+            }
+            return reload;
         }
         Message::Loaded(read) => {
             let read = Arc::unwrap_or_clone(read);
