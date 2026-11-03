@@ -139,6 +139,11 @@ pub struct State {
 }
 
 impl State {
+    /// The page shown.
+    pub fn page(&self) -> Page {
+        self.page
+    }
+
     /// Back to the list, as a visit from the sidebar starts.
     pub fn show_list(&mut self) {
         self.page = Page::List;
