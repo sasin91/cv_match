@@ -1848,8 +1848,9 @@ fn reject_card<'a>(
     widgets::card(container(form).padding(CARD_PADDING).into())
 }
 
-/// The width of a reason's checkbox, so the notes line up.
-const REASON_WIDTH: f32 = 200.0;
+/// The width of a reason's checkbox, so the notes line up; room for the longest label,
+/// "Already applied to this position", on one line.
+const REASON_WIDTH: f32 = 260.0;
 
 /// A group of requirements with the rows the filter shows; None when it shows none.
 fn section_card<'a>(section: &'a Section, filter: &'static str) -> Option<Element<'a, Msg>> {
