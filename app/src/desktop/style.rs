@@ -170,6 +170,12 @@ pub fn colors(theme: &Theme) -> &'static Colors {
     }
 }
 
+/// Behind words a revision added: marigold, see-through, as a highlighter pen, so it reads on
+/// light and dark paper alike.
+pub const ADDED_BACKGROUND: Color = Color::from_rgba(0.886, 0.639, 0.231, 0.35);
+/// Words a revision removed, struck through: a mid red that reads on light and dark paper.
+pub const REMOVED_TEXT: Color = Color::from_rgb(0.80, 0.25, 0.22);
+
 /// Corner radius of cards and the warning bar, as the web page's cards.
 pub const CARD_RADIUS: f32 = 12.0;
 /// Corner radius of buttons, fields and sidebar items.

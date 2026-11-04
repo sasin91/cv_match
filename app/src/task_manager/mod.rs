@@ -86,6 +86,22 @@ const STOP: &str = "Stop";
 /// The menu's word for letting a model go.
 const UNLOAD: &str = "Unload";
 
+/// The rows of kind's work at the top of the list, each with the rows under it: a screen's
+/// own part of the task manager ("Writing" and its model calls on the match page).
+pub fn of_kind(rows: Vec<TaskRow>, kind: WorkKind) -> Vec<TaskRow> {
+    let mut kept = Vec::new();
+    let mut within = false;
+    for row in rows {
+        if row.depth == 0 {
+            within = matches!(row.task, Task::Work(_)) && row.kind == kind.label();
+        }
+        if within {
+            kept.push(row);
+        }
+    }
+    kept
+}
+
 /// Everything running now, the work first (each piece followed by the pieces under it), then
 /// what is kept loaded.
 pub async fn rows(context: &Context) -> Vec<TaskRow> {
@@ -262,6 +278,40 @@ mod tests {
         let db = crate::db::open_in_memory().await.unwrap();
         let taxonomy = Arc::new(crate::taxonomy::Taxonomy::load());
         Arc::new(Context::new(db, taxonomy, KeyVault::with_key_in_memory()))
+    }
+
+    #[tokio::test]
+    async fn a_kinds_part_of_the_list_is_its_work_with_the_rows_under_it() {
+        let context = context().await;
+        let (started_tx, started_rx) = tokio::sync::oneshot::channel();
+        let list = Arc::clone(&context.running);
+        let other = Arc::clone(&context.running);
+        let writing = tokio::spawn(async move {
+            list.run(WorkKind::Writing, "The application for Acme", async move {
+                running_work::part(WorkKind::ModelCall, "gpt-5.4-mini", async move {
+                    let _ = started_tx.send(());
+                    std::future::pending::<()>().await;
+                })
+                .await
+            })
+            .await
+        });
+        started_rx.await.unwrap();
+        let (download_tx, download_rx) = tokio::sync::oneshot::channel();
+        let download = tokio::spawn(async move {
+            other
+                .run(WorkKind::Download, "model.gguf", async move {
+                    let _ = download_tx.send(());
+                    std::future::pending::<()>().await;
+                })
+                .await
+        });
+        download_rx.await.unwrap();
+        let writing_rows = of_kind(rows(&context).await, WorkKind::Writing);
+        let shown: Vec<(usize, &str)> = writing_rows.iter().map(|row| (row.depth, row.what.as_str())).collect();
+        assert_eq!(shown, vec![(0, "The application for Acme"), (1, "gpt-5.4-mini")]);
+        writing.abort();
+        download.abort();
     }
 
     #[tokio::test]
