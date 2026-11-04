@@ -59,6 +59,12 @@ pub struct Job {
     /// when it states none (seniority::level_of).
     #[serde(skip_serializing_if = "String::is_empty")]
     pub level: String,
+    /// The language the job is done in, in English ("Danish", "Finnish"): the one the post is
+    /// written in, unless the post names another working language. "" when the post wasn't read
+    /// by a model (Free_reader doesn't tell languages apart). matcher::criteria makes it a
+    /// requirement the candidate must speak.
+    #[serde(skip_serializing_if = "String::is_empty")]
+    pub working_language: String,
 }
 
 /// One thing a job post asks for. Requirements sharing an `alt_group` are alternatives

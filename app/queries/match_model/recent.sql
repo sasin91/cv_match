@@ -28,10 +28,10 @@ SELECT
   (
     SELECT i.text
     FROM match_items i
-    WHERE i.match_id = m.id AND i.criterion = 'location' AND i.verdict = 'missing'
+    WHERE i.match_id = m.id AND i.criterion IN ('location', 'language', 'level') AND i.verdict = 'missing'
     ORDER BY i.sort_order
     LIMIT 1
-  ) AS location_missed,
+  ) AS missed_disqualifier,
   j.status AS "jobnet_status?",
   j.logged_at AS jobnet_logged_at,
   m.rejected_at,

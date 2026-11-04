@@ -1,7 +1,7 @@
 //! The tailored résumé as fields: a header
 //! (name, title, contact, links), intro paragraphs, experience, project and education entries
 //! (title, organisation, location, dates, summary, bullets, note), skills and languages, and the
-//! section headings in the post's language.
+//! section headings in the language it is written in.
 //!
 //! tailor_resume asks the model for schema() and passes its answer through clean(); text() writes
 //! the plain-text version the page shows and copies, and pdf_writer::resume_pdf lays the fields
@@ -10,7 +10,7 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{Value, json};
 
-/// The headings the model names in the post's language, with the English ones as the fallback.
+/// The headings the model names in the language the résumé is written in, with the English ones as the fallback.
 pub const HEADINGS: [(&str, &str); 5] = [
     ("experience_heading", "Experience"),
     ("skills_heading", "Skills"),

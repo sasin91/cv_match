@@ -28,9 +28,10 @@ pub mod credit {
 }
 
 /// The most a match may score when it has a likely disqualifier: the post asks the candidate to
-/// live somewhere they don't (a missing required location), or is for another career level (a
-/// student job for someone with ten years of work). Just under "medium", so it ranks below real
-/// fits and isn't tailored right away.
+/// live somewhere they don't (a missing required location), to speak a language they don't (a
+/// missing required language, or the language the job is done in), or is for another career
+/// level (a student job for someone with ten years of work). Just under "medium", so it ranks
+/// below real fits and isn't tailored right away.
 pub const DISQUALIFIED_INDEX: f64 = 0.59;
 
 /// The legacy ranker's tags, by the lowest match index that earns them.
@@ -56,10 +57,14 @@ pub const SKILLS: &str = "skills";
 pub const TITLE: &str = "title";
 pub const RESPONSIBILITIES: &str = "responsibilities";
 pub const LOCATION: &str = "location";
+pub const LANGUAGE: &str = "language";
 pub const LEVEL: &str = "level";
 
 /// The criteria that aren't weighed, but whose miss caps the score at DISQUALIFIED_INDEX.
-pub const DISQUALIFIERS: [&str; 2] = [LOCATION, LEVEL];
+pub const DISQUALIFIERS: [&str; 3] = [LOCATION, LANGUAGE, LEVEL];
+
+/// The id of the item for the language the job is done in (Job::working_language).
+const WORKING_LANGUAGE_ID: &str = "w0";
 
 /// One thing a verdict is given on, or a group of alternatives met by the best of them.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -236,6 +241,12 @@ impl<'a> Matcher<'a> {
             }
         }
 
+        // The taxonomy's language terms are too loose to go by ("dansk" has "english" as a
+        // synonym), and a language decides whether the job can be done at all: one not named in
+        // the CV goes to the model.
+        if item.kind == LANGUAGE {
+            return None;
+        }
         let found = self.map_term(&item.text, None)?;
         let term = &self.taxonomy.terms[found.index];
         let label = term.preferred_da();
@@ -340,12 +351,18 @@ fn weight_of(criterion: &str) -> i64 {
 ///
 /// Soft skills are left out: they are not scored (see soft_skills()). Required location
 /// requirements are their own group, location, when the post has any: not weighed, but a missing
-/// one caps the score. A nice-to-have location is a relevant skill like any other. The post's
-/// career level, when it states one, is the group level: not weighed either, but a mismatch with
-/// the candidate's years caps the score too.
+/// one caps the score. A nice-to-have location is a relevant skill like any other. Required
+/// languages, and the language the job is done in (Job::working_language), are the group
+/// language the same way: a job in a language the candidate doesn't speak isn't one they can do,
+/// however well the rest fits. The post's career level, when it states one, is the group level:
+/// not weighed either, but a mismatch with the candidate's years caps the score too.
 pub fn criteria(job: &Job) -> Groups {
-    let mut lists: IndexMap<&str, Vec<Item>> =
-        IndexMap::from([(REQUIREMENTS, vec![]), (SKILLS, vec![]), (LOCATION, vec![])]);
+    let mut lists: IndexMap<&str, Vec<Item>> = IndexMap::from([
+        (REQUIREMENTS, vec![]),
+        (SKILLS, vec![]),
+        (LOCATION, vec![]),
+        (LANGUAGE, vec![]),
+    ]);
     // "list:alt_group" => (list, position)
     let mut groups: IndexMap<String, (&str, usize)> = IndexMap::new();
     for (i, r) in job.requirements.iter().enumerate() {
@@ -369,8 +386,10 @@ pub fn criteria(job: &Job) -> Groups {
         };
         let list = if !r.required {
             SKILLS
-        } else if r.kind == "location" {
+        } else if r.kind == LOCATION {
             LOCATION
+        } else if r.kind == LANGUAGE {
+            LANGUAGE
         } else {
             REQUIREMENTS
         };
@@ -445,6 +464,10 @@ pub fn criteria(job: &Job) -> Groups {
         }]
     };
     let location = lists.swap_remove(LOCATION).unwrap_or_default();
+    let mut languages = lists.swap_remove(LANGUAGE).unwrap_or_default();
+    if let Some(working) = working_language_item(job, &languages) {
+        languages.push(working);
+    }
     let mut out = Groups::new();
     out.insert(REQUIREMENTS.into(), lists.swap_remove(REQUIREMENTS).unwrap_or_default());
     out.insert(SKILLS.into(), lists.swap_remove(SKILLS).unwrap_or_default());
@@ -452,6 +475,9 @@ pub fn criteria(job: &Job) -> Groups {
     out.insert(RESPONSIBILITIES.into(), responsibilities);
     if !location.is_empty() {
         out.insert(LOCATION.into(), location);
+    }
+    if !languages.is_empty() {
+        out.insert(LANGUAGE.into(), languages);
     }
     if let Some(level) = level_item(job) {
         out.insert(LEVEL.into(), vec![level]);
@@ -474,33 +500,70 @@ fn level_item(job: &Job) -> Option<Item> {
     })
 }
 
-/// The post's likely disqualifiers the candidate misses: a location the model judged they miss,
-/// and a career level their years don't fit. They cap the score.
-pub fn missed_disqualifiers<'g>(groups: &'g Groups, verdicts: &Verdicts) -> Vec<&'g Item> {
-    let mut missed = missed_locations(groups, verdicts);
-    missed.extend(
-        groups
-            .get(LEVEL)
+/// The language the job is done in as an item of the group language, unless a required language
+/// already names it ("Finsk (fluent)" for a Finnish post) or the post wasn't read with one.
+fn working_language_item(job: &Job, languages: &[Item]) -> Option<Item> {
+    let working = job.working_language.trim();
+    if working.is_empty() || languages.iter().any(|item| names_language(item, working)) {
+        return None;
+    }
+    Some(Item {
+        id: WORKING_LANGUAGE_ID.into(),
+        kind: LANGUAGE.into(),
+        text: working.into(),
+        english: Some(working.into()),
+        min_years: None,
+        min_level: None,
+        alternatives: None,
+    })
+}
+
+/// Whether a language item (or one of its alternatives) names the language, in English.
+fn names_language(item: &Item, language: &str) -> bool {
+    let language = language.to_lowercase();
+    let named = |item: &Item| {
+        [Some(item.text.as_str()), item.english.as_deref()]
             .into_iter()
             .flatten()
-            .filter(|item| verdicts.get(&item.id).is_some_and(|v| v.verdict == "missing")),
-    );
+            .any(|text| text.to_lowercase().contains(&language))
+    };
+    named(item) || item.alternatives.iter().flatten().any(named)
+}
+
+/// The post's likely disqualifiers the candidate misses, with the criterion each is under: a
+/// location or a language the model judged they miss, and a career level their years don't fit.
+/// They cap the score.
+pub fn missed_disqualifiers<'g>(groups: &'g Groups, verdicts: &Verdicts) -> Vec<(&'g str, &'g Item)> {
+    let mut missed = Vec::new();
+    for (criterion, items) in groups {
+        if !DISQUALIFIERS.contains(&criterion.as_str()) {
+            continue;
+        }
+        let misses = |item: &&Item| {
+            verdicts
+                .get(&item.id)
+                .is_some_and(|v| v.verdict == "missing" && judged_enough(criterion, v))
+        };
+        missed.extend(items.iter().filter(misses).map(|item| (criterion.as_str(), item)));
+    }
     missed
 }
 
-/// The post's location items the model judged the candidate misses: what caps the score. Only
-/// the model weighs where someone lives, so a location nobody judged (no AI key) never caps it.
-pub fn missed_locations<'g>(groups: &'g Groups, verdicts: &Verdicts) -> Vec<&'g Item> {
-    groups
-        .get(LOCATION)
+/// Whether a verdict may disqualify under the criterion. Only the model weighs where someone lives
+/// and which languages they speak, so a location or language nobody judged (no AI key) never caps
+/// the score; a career level is plain arithmetic on the CV's years.
+fn judged_enough(criterion: &str, verdict: &Verdict) -> bool {
+    criterion == LEVEL || verdict.by == "llm"
+}
+
+/// The post's items under the criteria only the model judges (location, language): to Laya they
+/// are required qualifications too, once the model has weighed them.
+fn judged_disqualifiers<'g>(groups: &'g Groups, verdicts: &'g Verdicts) -> impl Iterator<Item = &'g Item> {
+    [LOCATION, LANGUAGE]
         .into_iter()
+        .filter_map(|criterion| groups.get(criterion))
         .flatten()
-        .filter(|item| {
-            verdicts
-                .get(&item.id)
-                .is_some_and(|v| v.verdict == "missing" && v.by == "llm")
-        })
-        .collect()
+        .filter(|item| verdicts.get(&item.id).is_some_and(|v| v.by == "llm"))
 }
 
 /// The post's soft skills, shown as tags but not scored.
@@ -555,13 +618,9 @@ pub fn combine(groups: &Groups, verdicts: &Verdicts) -> Verdicts {
 /// checkpoint ranked well in the bake-off (eval/laya/run_laya_summary.py). A partial match counts
 /// as missing there, marked "(partly)".
 pub fn laya_summary(job: &Job, groups: &Groups, verdicts: &Verdicts) -> String {
-    // A required location is a required qualification to Laya too, once the model has weighed
-    // it: unjudged, it isn't known to be missing. So is the post's career level.
-    let judged = groups
-        .get(LOCATION)
-        .into_iter()
-        .flatten()
-        .filter(|item| verdicts.get(&item.id).is_some_and(|v| v.by == "llm"));
+    // A required location or language is a required qualification to Laya too, once the model
+    // has weighed it: unjudged, it isn't known to be missing. So is the post's career level.
+    let judged = judged_disqualifiers(groups, verdicts);
     let level = groups.get(LEVEL).into_iter().flatten();
     let items: Vec<&Item> = groups
         .get(REQUIREMENTS)
@@ -699,5 +758,107 @@ mod tests {
     fn a_post_without_a_level_has_no_level_group() {
         let (groups, _) = php_post("");
         assert!(!groups.contains_key(LEVEL));
+    }
+
+    /// A PHP post written in Finnish, with PHP and the title met.
+    fn finnish_post(requirements: Vec<super::super::Requirement>) -> (Groups, Verdicts) {
+        let php = super::super::Requirement {
+            value: "PHP".into(),
+            kind: "skill".into(),
+            required: true,
+            ..Default::default()
+        };
+        let job = Job {
+            job_title: "Lehtori".into(),
+            requirements: std::iter::once(php).chain(requirements).collect(),
+            working_language: "Finnish".into(),
+            ..Job::default()
+        };
+        let groups = criteria(&job);
+        let mut verdicts = Verdicts::new();
+        for id in ["r0", "t0"] {
+            verdicts.insert(
+                id.into(),
+                verdict_of("met", "taxonomy", "exact", String::new(), String::new()),
+            );
+        }
+        (groups, verdicts)
+    }
+
+    #[test]
+    fn a_job_in_a_language_the_candidate_doesnt_speak_is_capped_below_medium() {
+        let (groups, mut verdicts) = finnish_post(vec![]);
+        assert_eq!(groups[LANGUAGE][0].text, "Finnish");
+        verdicts.insert(
+            WORKING_LANGUAGE_ID.into(),
+            verdict_of(
+                "missing",
+                "llm",
+                "judgement",
+                String::new(),
+                "The CV names no Finnish.".into(),
+            ),
+        );
+        let score = score(&groups, &verdicts);
+        assert_eq!(score.index, DISQUALIFIED_INDEX);
+        assert!(!score.parts.contains_key(LANGUAGE), "languages aren't weighed");
+        let missed = missed_disqualifiers(&groups, &verdicts);
+        assert_eq!(missed.len(), 1);
+        assert_eq!(missed[0].0, LANGUAGE);
+    }
+
+    #[test]
+    fn a_language_the_candidate_speaks_leaves_the_score_alone() {
+        let (groups, mut verdicts) = finnish_post(vec![]);
+        verdicts.insert(
+            WORKING_LANGUAGE_ID.into(),
+            verdict_of("met", "taxonomy", "exact", "Finnish".into(), String::new()),
+        );
+        assert_eq!(score(&groups, &verdicts).index, 1.0);
+    }
+
+    #[test]
+    fn a_language_nobody_judged_never_caps_the_score() {
+        let (groups, mut verdicts) = finnish_post(vec![]);
+        verdicts.insert(
+            WORKING_LANGUAGE_ID.into(),
+            verdict_of("missing", "taxonomy", "not_found", String::new(), String::new()),
+        );
+        assert_eq!(score(&groups, &verdicts).index, 1.0);
+    }
+
+    #[test]
+    fn a_required_language_is_a_disqualifier_and_names_the_working_language() {
+        let finnish = super::super::Requirement {
+            value: "Suomen kieli".into(),
+            english: "Finnish".into(),
+            kind: LANGUAGE.into(),
+            required: true,
+            min_level: "fluent".into(),
+            ..Default::default()
+        };
+        let (groups, _) = finnish_post(vec![finnish]);
+        assert_eq!(groups[REQUIREMENTS].len(), 1, "only PHP is weighed");
+        let languages: Vec<&str> = groups[LANGUAGE].iter().map(|item| item.text.as_str()).collect();
+        assert_eq!(languages, ["Suomen kieli (fluent)"], "Finnish is asked for once");
+    }
+
+    #[test]
+    fn a_nice_to_have_language_stays_a_relevant_skill() {
+        let swedish = super::super::Requirement {
+            value: "Swedish".into(),
+            kind: LANGUAGE.into(),
+            required: false,
+            ..Default::default()
+        };
+        let (groups, _) = finnish_post(vec![swedish]);
+        assert_eq!(groups[SKILLS][0].text, "Swedish");
+        assert_eq!(groups[LANGUAGE].len(), 1, "only the working language");
+    }
+
+    #[test]
+    fn a_post_read_without_a_language_has_no_language_group() {
+        let (groups, _) = php_post("");
+        assert!(!groups.contains_key(LANGUAGE));
     }
 }

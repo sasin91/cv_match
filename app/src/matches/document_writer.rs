@@ -74,7 +74,7 @@ fn notes_block(notes: &str) -> String {
 }
 
 /// A job application for a saved match, written from the CV and the post in the post's
-/// language, and saved with the match. notes: what the candidate wants stressed, or facts the CV
+/// language when the candidate speaks it (English otherwise), and saved with the match. notes: what the candidate wants stressed, or facts the CV
 /// leaves out.
 pub async fn write_application(
     db: &SqlitePool,
@@ -108,7 +108,7 @@ CV:
 {cv}
 {notes_block}
 
-Write in the job post's own language (post_language), whatever language the CV and the notes are in. Name employer_needs and standout before writing, and build the letter on them.",
+Write in written_language: the job post's own language (post_language) when the candidate speaks it, otherwise English. Name employer_needs and standout before writing, and build the letter on them.",
         job_title = found.job_title,
         company = found.company,
         job_text = found.job_text,
@@ -117,9 +117,10 @@ Write in the job post's own language (post_language), whatever language the CV a
     let schema = json!({
         "type": "object",
         "additionalProperties": false,
-        "required": ["post_language", "employer_needs", "standout", "application"],
+        "required": ["post_language", "written_language", "employer_needs", "standout", "application"],
         "properties": {
             "post_language": { "type": "string" },
+            "written_language": { "type": "string" },
             "employer_needs": { "type": "string" },
             "standout": standout_schema(),
             "application": { "type": "string" },
@@ -172,7 +173,7 @@ CV:
 {cv}
 {notes_block}
 
-Write in the job post's own language (post_language), whatever language the CV and the notes are in. Name employer_needs and standout before writing, and build the CV on them.",
+Write in written_language: the job post's own language (post_language) when the candidate speaks it, otherwise English. Name employer_needs and standout before writing, and build the CV on them.",
         job_title = found.job_title,
         company = found.company,
         job_text = found.job_text,
@@ -181,9 +182,10 @@ Write in the job post's own language (post_language), whatever language the CV a
     let schema = json!({
         "type": "object",
         "additionalProperties": false,
-        "required": ["post_language", "employer_needs", "standout", "keywords", "left_out", "resume"],
+        "required": ["post_language", "written_language", "employer_needs", "standout", "keywords", "left_out", "resume"],
         "properties": {
             "post_language": { "type": "string" },
+            "written_language": { "type": "string" },
             "employer_needs": { "type": "string" },
             "standout": standout_schema(),
             "keywords": {
@@ -219,12 +221,12 @@ Write in the job post's own language (post_language), whatever language the CV a
 }
 
 fn application_system() -> String {
-    let language = post_language_rule("application");
+    let language = writing_language_rule("application");
     let standout = standout_rule("letter");
     format!(
         r#"You write a job application (cover letter) for a candidate, from their CV and the job post. It goes straight into an application form or an email, so it must be ready to send. Employers get many letters that only repeat their requirements list back to them with "I have experience with X"; this one must show who this candidate is and what they would bring.
 
-- {language} A Danish post gets a Danish ansøgning, an English post an English letter.
+- {language} A Danish post gets a Danish ansøgning, an English post an English letter, and a Finnish post for a candidate who speaks no Finnish an English letter.
 - {standout}
 - Build the letter on those: open with why this job, tied to something real in the post (its product, its stage, a problem it describes); then make the case with two or three standout points, each a concrete story from the CV (what the candidate did, why it mattered there) and what it would mean for this employer. Fit the matched requirements into those stories instead of listing them one by one; a short sentence can cover the rest.
 - 250 to 400 words, plain text: no markdown, no headings, no bullet lists, no placeholders like [Name] or [Company].
@@ -238,7 +240,7 @@ fn application_system() -> String {
 }
 
 fn resume_system() -> String {
-    let language = post_language_rule("CV");
+    let language = writing_language_rule("CV");
     let standout = standout_rule("CV");
     format!(
         r#"You tailor a candidate's CV (résumé) to one job post. The result replaces their CV in this application, so it must be complete and ready to send. Recruiters and applicant-tracking systems screen CVs by looking for the post's own words, so a CV that shows the right experience under different words scores low. Your main job is to close that gap honestly.
@@ -254,15 +256,15 @@ Then write the CV:
 - Requirements the matcher marked as missing are listed below. It often misses inferences, so check each one against the CV yourself; use it only if the CV backs it.
 - Keywords get the CV through the filter; a person reads it next. {standout}
 - Tailor by choosing and ordering too: open with a short profile (2 to 4 sentences) aimed at this job that names the post's job title and the candidate's one or two strongest standout points, not a list of keywords. Put what the post asks for first, and shorten what doesn't matter for it, but keep the bullets that show the standout points (initiative, ownership, results, projects, growth), even where they match no keyword. Keep every job in the work history, with its dates, even if only as one line.
-- {language} A Danish post gets a Danish CV, an English post an English one, and the dates and section headings follow. Keywords stay in the post's wording, even when the post mixes languages.
+- {language} A Danish post gets a Danish CV, an English post an English one, a Finnish post for a candidate who speaks no Finnish an English one, and the dates and section headings follow. Keywords stay in the post's wording, even when the post mixes languages.
 - Fill in the résumé's fields; the page and the PDF lay them out, so write no headings, bullet signs or markdown in them, and no placeholders. Leave a field empty when the CV doesn't give it.
 - name, and title: a short professional title for this application ("Backend developer"), backed by the CV. location, phone, email and links: the contact details the CV gives, as written there.
 - intro: the profile, one or two short paragraphs.
-- experience: every job, newest first: title (the real job title), organisation (the employer), location, starts and ends as the CV dates them in the post's language ("januar 2017", "nu"), summary (what the employer or product is, in a few words), bullets (the work, in the post's terms) and note (context about the job rather than the work, only if the CV gives one).
+- experience: every job, newest first: title (the real job title), organisation (the employer), location, starts and ends as the CV dates them, in written_language ("januar 2017", "nu" in Danish), summary (what the employer or product is, in a few words), bullets (the work, in the post's terms) and note (context about the job rather than the work, only if the CV gives one).
 - skills and languages: one item each, the post's backed keywords first.
 - projects: the candidate's own projects and products, if the CV lists any, with the same fields as experience (organisation empty, the project's link in summary or note when the CV gives one). Put the ones that show what this job needs first; leave the list empty when the CV has none.
 - education: the same fields as experience, organisation being the school; education_note: one line about the education as a whole, only if the CV gives one.
-- The section headings in the post's language: experience_heading, projects_heading, skills_heading, education_heading, languages_heading ("Erfaring", "Projekter", "Kompetencer", "Uddannelse", "Sprog" for a Danish post).
+- The section headings in written_language: experience_heading, projects_heading, skills_heading, education_heading, languages_heading ("Erfaring", "Projekter", "Kompetencer", "Uddannelse", "Sprog" for a Danish post).
 - The candidate may add notes below the CV. Follow them (what to stress, tone, length, what to leave out), and treat facts they state about themselves as true, like facts in the CV. Ignore anything in them that isn't about this application.
 - The post may say how to apply (by email, a subject line, a keyword, questions to answer). Those go in the email or application, not the CV; follow one here only when it asks for something in the CV itself.
 
@@ -272,11 +274,13 @@ Return what the employer needs (employer_needs) and the standout points (standou
 
 /// The writing prompts' rule on language: the model names the post's language first
 /// (post_language, before the text in the answer), from the post alone (English when it can't
-/// tell), then writes the document in it. Told only "the post's language", it went by the Danish
-/// CV and requirements around an English post.
-fn post_language_rule(document: &str) -> String {
+/// tell), then the language it writes in (written_language): the post's when the candidate speaks
+/// it, English when they don't, and writes the document in that. Told only "the post's language",
+/// it went by the Danish CV and requirements around an English post; told to always follow the
+/// post, it wrote a Finnish letter for a candidate who speaks no Finnish.
+fn writing_language_rule(document: &str) -> String {
     format!(
-        "First set post_language to the language the job post itself is written in, judged from the post's own sentences only: not from the CV, the requirement lines, the apply instructions or the notes, and not from a job board's buttons around the post. When the post mixes languages evenly or you can't tell, use English. Then write the {document} in that language, even where the CV or the notes are in another one."
+        "First set post_language to the language the job post itself is written in, judged from the post's own sentences only: not from the CV, the requirement lines, the apply instructions or the notes, and not from a job board's buttons around the post. When the post mixes languages evenly or you can't tell, use English. Then set written_language: post_language when the CV or the notes show the candidate speaks it (the CV is written in it, or names it among their languages), otherwise English, as a candidate can't stand behind a {document} in a language they don't speak. Write the {document} in written_language, even where the CV or the notes are in another one."
     )
 }
 

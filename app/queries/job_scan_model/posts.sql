@@ -27,10 +27,10 @@ SELECT
   (
     SELECT i.text
     FROM match_items i
-    WHERE i.match_id = m.id AND i.criterion = 'location' AND i.verdict = 'missing'
+    WHERE i.match_id = m.id AND i.criterion IN ('location', 'language', 'level') AND i.verdict = 'missing'
     ORDER BY i.sort_order
     LIMIT 1
-  ) AS "location_missed?: String"
+  ) AS "missed_disqualifier?: String"
 FROM scanned_job_posts p
 LEFT JOIN matches m ON m.id = p.match_id
 WHERE p.job_search_id = ?1

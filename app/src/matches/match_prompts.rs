@@ -18,6 +18,8 @@ requirements is one list of what a candidate must or should have. Keep each entr
 - min_years: the years of experience asked for ("et par år" = 2, "flere års" = 3, none stated = 0).
 - min_level: the level asked for, in English, when the post states one ("flydende" = "fluent", "modersmål" = "native", "kandidat" = "master's degree", "senior"); empty otherwise.
 
+working_language: the language the job is done in, named in English ("Danish", "English", "Finnish"). It is the language the post's own sentences are written in, even when the post never asks for it: a post in Finnish expects a Finnish speaker. Only when the post names another working language ("our working language is English", "you don't need to speak Danish") is it that one. Judge it from the post's own text, not from a job board's buttons around it.
+
 level: the career level the post is for, when it says so: "student" (studiejob, studentermedhjælper, elev, lærling), "intern" (praktik, internship), "graduate" (nyuddannet, trainee), "junior", "senior" or "lead" (lead, principal, teamleder); empty when it states none or several.
 
 responsibilities: at most 6, a few words each.
@@ -42,6 +44,11 @@ A location requirement is about where the candidate lives, against the place and
 - "partial" when the commute is longer but the post doesn't ask for someone close or local, or when nothing says where they live,
 - "missing" when the post asks for someone close, local or living in the area and they live farther (Slagelse is about 100 km from Copenhagen: "missing" for "located close to Copenhagen").
 Its reason names both places and the rough distance or commute.
+
+A language requirement is about the languages the candidate speaks:
+- "met" when the CV names the language (at the level asked, if any) or is itself written in it,
+- "partial" when the CV names it at a lower level than asked, or names a closely related language the candidate could work in (Norwegian or Swedish for Danish),
+- "missing" otherwise: a language is no skill to infer, and Danish is no Finnish.
 
 Be strict: a guess is "missing". evidence quotes the CV briefly, empty when missing. reason is one short sentence in English."#;
 
@@ -81,8 +88,9 @@ struct Judgement {
     verdicts: Vec<Judged>,
 }
 
-/// A job post as { job_title, job_title_en, company, requirements, responsibilities, level }. The post
-/// isn't translated: written first, a translation turned the requirements' own words English.
+/// A job post as { job_title, job_title_en, company, requirements, responsibilities, level,
+/// working_language }. The post isn't translated: written first, a translation turned the
+/// requirements' own words English.
 pub async fn read_job(llm: &Llm, text: &str) -> Result<Job, LlmException> {
     let answer = llm
         .structured(
@@ -174,7 +182,7 @@ fn job_schema() -> Value {
     json!({
         "type": "object",
         "additionalProperties": false,
-        "required": ["job_title", "job_title_en", "company", "requirements", "responsibilities", "level"],
+        "required": ["job_title", "job_title_en", "company", "requirements", "responsibilities", "level", "working_language"],
         "properties": {
             "job_title": { "type": "string" },
             "job_title_en": { "type": "string" },
@@ -182,6 +190,7 @@ fn job_schema() -> Value {
             "requirements": { "type": "array", "items": requirement },
             "responsibilities": strings(),
             "level": { "type": "string", "enum": level_choices() },
+            "working_language": { "type": "string" },
         },
     })
 }

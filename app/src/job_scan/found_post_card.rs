@@ -36,7 +36,7 @@ pub struct FoundPostCard {
     pub status_name: String,
     /// Why matching failed; a dismissed post keeps quiet about it.
     pub error: String,
-    /// "Likely disqualifier: Located close to Copenhagen" for a missed location, else "".
+    /// "Likely disqualifier: Located close to Copenhagen" (or "Finnish") for a missed disqualifier, else "".
     pub disqualifier: String,
     pub match_link: Option<MatchLink>,
     /// Failed, not a job post, or left unmatched by a scan that stopped: Try again.
@@ -64,7 +64,7 @@ impl FoundPostCard {
             status_name: status_name(&post.status).to_string(),
             error: if dismissed { String::new() } else { post.error.clone() },
             disqualifier: post
-                .location_missed
+                .missed_disqualifier
                 .as_ref()
                 .map(|missed| format!("Likely disqualifier: {missed}"))
                 .unwrap_or_default(),
@@ -134,7 +134,7 @@ mod tests {
             tag: Some("good".to_string()),
             has_application: true,
             has_resume: true,
-            location_missed: Some("Located close to Copenhagen".to_string()),
+            missed_disqualifier: Some("Located close to Copenhagen".to_string()),
         }
     }
 
