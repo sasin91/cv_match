@@ -303,6 +303,14 @@ pub async fn mark_applied(context: &Context, id: i64) -> Result<Applied, Service
     })
 }
 
+/// Copy as prompt: saved match id as a prompt for a chatbot of the candidate's own
+/// (document_writer::chat_prompt), with the application and résumé as shown (empty when not
+/// written).
+pub async fn chat_prompt(context: &Context, id: i64, application: &str, resume: &str) -> Result<String, ServiceError> {
+    let found = saved_match(context, id).await?;
+    Ok(document_writer::chat_prompt(context.db(), &found, application, resume).await?)
+}
+
 /// A PDF of a saved match's document, named for the job.
 #[derive(Debug, Clone)]
 pub struct PdfFile {

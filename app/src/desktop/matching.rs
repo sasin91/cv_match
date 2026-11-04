@@ -21,9 +21,11 @@ use super::widgets::{self, CARD_PADDING, ROW_PADDING};
 use super::{GAP, Runner, Step};
 use crate::context::Context;
 use crate::dashboard::Health;
-use crate::matches::document_box::APPLICATION;
+use crate::matches::document_box::{APPLICATION, RESUME};
 use crate::matches::document_question::Answer as QuestionAnswer;
 use crate::matches::document_writer::Revision;
+use crate::matches::joblog;
+use crate::matches::joblog_panel::Logged;
 use crate::matches::match_model::LISTS;
 use crate::matches::match_result::{MatchResult, OpeningLine, Section};
 use crate::matches::match_service::{
@@ -264,6 +266,16 @@ pub enum Msg {
     OpenReject(bool),
     /// "Open job post": the post the match was made from, in the browser.
     OpenJobPost(String),
+    /// "Copy as prompt" in the footer: the shown saved match as a prompt for a chatbot.
+    CopyPrompt,
+    PromptMade(Result<String, String>),
+    /// "Mark as applied" in the footer: the shown saved match was applied for.
+    MarkApplied,
+    MarkedApplied {
+        id: i64,
+        /// The joblog status and entry as saved.
+        outcome: Result<(&'static str, Logged), String>,
+    },
     Tick(&'static str, bool),
     Note(&'static str, String),
     Reject,
@@ -528,6 +540,65 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                 state.said = Some((Health::Attention, why));
             }
         }
+        Msg::CopyPrompt => {
+            let Some(shown) = shown_mut(state) else {
+                return Task::none();
+            };
+            let Some(id) = shown.result.saved_id else {
+                return Task::none();
+            };
+            let written = |kind| written_text(shown, kind).unwrap_or_default();
+            let (application, resume) = (written(APPLICATION), written(RESUME));
+            state.busy = true;
+            return runner.run(
+                move |context| async move { match_service::chat_prompt(&context, id, &application, &resume).await },
+                |made| Msg::PromptMade(made.and_then(|made| made.map_err(|e| e.message))),
+            );
+        }
+        Msg::PromptMade(made) => {
+            state.busy = false;
+            match made {
+                Ok(prompt) => {
+                    state.said = Some((
+                        Health::Ready,
+                        "Copied as a prompt: paste it into the chatbot you use.".to_string(),
+                    ));
+                    return iced::clipboard::write(prompt);
+                }
+                Err(why) => state.said = Some((Health::Attention, why)),
+            }
+        }
+        Msg::MarkApplied => {
+            let Some(id) = shown_mut(state).and_then(|shown| shown.result.saved_id) else {
+                return Task::none();
+            };
+            state.busy = true;
+            return runner.run(
+                move |context| async move { apply::mark_applied(&context, id).await },
+                move |outcome| Msg::MarkedApplied {
+                    id,
+                    outcome: outcome.and_then(|outcome| outcome),
+                },
+            );
+        }
+        Msg::MarkedApplied { id, outcome } => {
+            state.busy = false;
+            match outcome {
+                Ok((status, logged)) => {
+                    for shown in results_of(state, id) {
+                        shown.result.applied_on = logged.applied_on.clone();
+                        if let Some(sections) = shown.applying.as_mut() {
+                            sections.joblog_saved(status, &logged);
+                        }
+                    }
+                    state.said = Some((Health::Ready, marked_applied(status, &logged.applied_on)));
+                    // It moves from the shortlist to "Applied, not on Jobnet yet".
+                    state.list.read = None;
+                    return Task::done(Msg::Changed);
+                }
+                Err(why) => state.said = Some((Health::Attention, why)),
+            }
+        }
         Msg::KeepOpen => {
             let Some(id) = shown_mut(state).and_then(|shown| shown.result.saved_id) else {
                 return Task::none();
@@ -690,6 +761,8 @@ fn starts_work(msg: &Msg) -> bool {
             | Msg::BringBack
             | Msg::CheckOpen
             | Msg::KeepOpen
+            | Msg::MarkApplied
+            | Msg::CopyPrompt
             | Msg::Doc(_, DocMsg::Write(_) | DocMsg::Revise(_) | DocMsg::SavePdf(..))
             | Msg::Apply(_, _, ApplyMsg::SavePdf(_))
     )
@@ -1101,6 +1174,8 @@ fn applying(state: &mut State, id: i64, view: u64, msg: ApplyMsg, runner: &Runne
     // that saved it has gone since.
     if let ApplyMsg::Saved(Ok((status, logged))) = &msg {
         for other in results_of(state, id) {
+            // The footer's Mark as applied or Applied day follows the status saved.
+            other.result.applied_on = logged.applied_on.clone();
             if let Some(sections) = other.applying.as_mut().filter(|a| a.view() != view) {
                 sections.joblog_saved(status, logged);
             }
@@ -1286,7 +1361,13 @@ fn new_view(state: &State) -> Element<'_, Msg> {
         page = page.push(batch::view(batch));
     }
     if let Some(shown) = &state.fresh {
-        page = page.push(result_view(shown, state.busy, &state.working));
+        // Only a saved match's page has the footer, so a fresh result keeps its Open job post.
+        page = page.push(result_view(
+            shown,
+            state.busy,
+            &state.working,
+            job_post_button(&shown.result.job_url),
+        ));
     }
     page.into()
 }
@@ -1541,24 +1622,29 @@ fn saved_view(state: &State) -> Element<'_, Msg> {
     page.push(match &state.saved {
         None => widgets::note("Reading the match…"),
         Some(Err(why)) => widgets::message_bar(Health::Attention, why.as_str()),
-        Some(Ok(shown)) => result_view(shown, state.busy, &state.working),
+        Some(Ok(shown)) => result_view(shown, state.busy, &state.working, None),
     })
     .into()
 }
 
 // ---------- a result ----------
 
-fn result_view<'a>(shown: &'a Shown, busy: bool, working: &'a Working) -> Element<'a, Msg> {
+/// A result; job_post: its Open job post, for a page without the footer (footer), None on one with.
+fn result_view<'a>(
+    shown: &'a Shown,
+    busy: bool,
+    working: &'a Working,
+    job_post: Option<Element<'a, Msg>>,
+) -> Element<'a, Msg> {
     let result = &shown.result;
     let mut view = Column::new().spacing(GAP * 1.5).push(score_card(result));
     if let Some(opening) = &result.opening {
         view = view.push(opening_bar(opening, busy));
     }
-    let job_post = job_post_button(&result.job_url);
-    match &result.reject {
-        Some(reject) => view = view.push(reject_card(shown, reject, job_post, busy)),
-        None => view = view.extend(job_post),
+    if let Some(reject) = &result.reject {
+        view = view.push(reject_card(shown, reject, busy));
     }
+    view = view.extend(job_post);
     if let Some(disqualifier) = &result.disqualifier {
         let mut lines = column![
             text(disqualifier.heading)
@@ -1753,6 +1839,88 @@ fn job_post_button<'a>(job_url: &str) -> Option<Element<'a, Msg>> {
     })
 }
 
+/// The match details' footer, under the page: the application's and résumé's PDFs, the job post,
+/// Copy as prompt, and Mark as applied, or the day it was applied for. None off a saved match's page.
+pub fn footer(state: &State) -> Option<Element<'_, Msg>> {
+    let Page::Saved(_) = state.page else {
+        return None;
+    };
+    let shown = state.saved.as_ref()?.as_ref().ok()?;
+    let id = shown.result.saved_id?;
+    let busy = state.busy;
+    // Mark as applied leads; the row wraps onto more lines in a narrow window.
+    let mut actions = Row::new()
+        .spacing(8)
+        .align_y(Center)
+        .push(applied_action(&shown.result.applied_on, busy));
+    for (label, kind) in FOOTER_PDFS {
+        let save = Msg::Doc(id, DocMsg::SavePdf(kind, None));
+        actions = actions.push(
+            button(text(label).size(style::BODY_SIZE))
+                .style(style::standard_button)
+                .on_press_maybe((!busy && is_written(shown, kind)).then_some(save)),
+        );
+    }
+    actions = actions.extend(job_post_button(&shown.result.job_url));
+    actions = actions.push(
+        button(text(COPY_PROMPT).size(style::BODY_SIZE))
+            .style(style::standard_button)
+            .on_press_maybe((!busy).then_some(Msg::CopyPrompt)),
+    );
+    Some(actions.wrap().vertical_spacing(8).into())
+}
+
+/// The footer's PDF buttons: their labels and the kind each saves.
+const FOOTER_PDFS: [(&str, &str); 2] = [("Application PDF…", APPLICATION), ("Résumé PDF…", RESUME)];
+
+/// The label of the footer's button that copies the match as a prompt for a chatbot.
+const COPY_PROMPT: &str = "Copy as prompt";
+
+/// The shown match's kind as in its box; None when it isn't written.
+fn written_text(shown: &Shown, kind: &str) -> Option<String> {
+    shown
+        .docs
+        .as_ref()
+        .and_then(|docs| docs.text_of(kind, None))
+        .filter(|text| !text.trim().is_empty())
+}
+
+/// Whether the shown match has kind written, so its PDF has a text.
+fn is_written(shown: &Shown, kind: &str) -> bool {
+    written_text(shown, kind).is_some()
+}
+
+/// Mark as applied, or the day it was applied for (applied_on, dd-mm-yyyy) once it is.
+fn applied_action<'a>(applied_on: &str, busy: bool) -> Element<'a, Msg> {
+    if applied_on.is_empty() {
+        return button(text(MARK_APPLIED).size(style::BODY_SIZE))
+            .padding([6.0, 18.0])
+            .style(style::primary_button)
+            .on_press_maybe((!busy).then_some(Msg::MarkApplied))
+            .into();
+    }
+    row![
+        style::mark(Health::Ready),
+        text(format!("Applied {applied_on}")).size(style::BODY_SIZE),
+    ]
+    .spacing(8)
+    .align_y(Center)
+    .into()
+}
+
+/// The label of the footer's button that marks the match as applied for.
+const MARK_APPLIED: &str = "Mark as applied";
+
+/// What Mark as applied says it did: status as Jobnet has it (Soegt), and the day.
+fn marked_applied(status: &str, applied_on: &str) -> String {
+    let status = joblog::search_status(status).unwrap_or(status);
+    if applied_on.is_empty() {
+        format!("Marked as applied: {status}.")
+    } else {
+        format!("Marked as applied: {status}, {applied_on}.")
+    }
+}
+
 /// The label of the button that opens the job post in the browser.
 const OPEN_JOB_POST: &str = "Open job post";
 
@@ -1761,14 +1929,8 @@ fn is_web_link(url: &str) -> bool {
     url::Url::parse(url).is_ok_and(|parsed| matches!(parsed.scheme(), "http" | "https"))
 }
 
-/// Not interested and Open job post beside it, the form Not interested opens, or the rejected
-/// match's Bring back.
-fn reject_card<'a>(
-    shown: &'a Shown,
-    reject: &'a RejectButton,
-    job_post: Option<Element<'a, Msg>>,
-    busy: bool,
-) -> Element<'a, Msg> {
+/// Not interested, the form it opens, or the rejected match's Bring back.
+fn reject_card<'a>(shown: &'a Shown, reject: &'a RejectButton, busy: bool) -> Element<'a, Msg> {
     if reject.rejected {
         return widgets::card(
             container(
@@ -1781,7 +1943,6 @@ fn reject_card<'a>(
                         .style(style::standard_button)
                         .on_press_maybe((!busy).then_some(Msg::BringBack)),
                 ]
-                .extend(job_post)
                 .spacing(14)
                 .align_y(Center),
             )
@@ -1795,8 +1956,6 @@ fn reject_card<'a>(
                 .style(style::standard_button)
                 .on_press_maybe((!busy).then_some(Msg::OpenReject(true)))
         ]
-        .extend(job_post)
-        .spacing(8)
         .into();
     }
     let mut form = column![
@@ -1950,6 +2109,11 @@ mod tests {
         assert!(!is_web_link("pasted text"));
         assert!(!is_web_link("file:///C:/job.pdf"));
         assert!(job_post_button("  ").is_none());
+        assert_eq!(
+            marked_applied("Soegt", "04-11-2026"),
+            "Marked as applied: Søgt, 04-11-2026."
+        );
+        assert_eq!(marked_applied("Samtale", ""), "Marked as applied: Samtale.");
     }
 
     #[test]

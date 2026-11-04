@@ -9,6 +9,7 @@ use sqlx::SqlitePool;
 use super::apply_instructions;
 use super::document_box::Keyword;
 use super::match_model::{self, Document, SavedItem, SavedMatch};
+use super::match_score::MatchScore;
 use super::tailored_resume;
 use crate::llm::{Effort, LlmException};
 use crate::matches::llm_key::KeyedLlm;
@@ -171,36 +172,15 @@ pub async fn write_application(
     revision: Option<&Revision>,
     now: i64,
 ) -> Result<Document, WriteError> {
-    let (strengths, gaps) = strengths_and_gaps(&found.items);
-    let apply = apply_instructions::for_prompt(found.apply_instructions.as_ref());
     let cv = written_from(db, found).await?;
     let system = application_system();
     let user = format!(
-        "Job title: {job_title}
-Company: {company}
-
-Requirements the CV meets:
-{strengths}
-
-Requirements the CV doesn't show:
-{gaps}
-
-{apply}
-
-Job post:
-
-{job_text}
-
-CV:
-
-{cv}
+        "{brief}
 {notes_block}
 {revision_block}
 
 Write in written_language: the job post's own language (post_language) when the candidate speaks it, otherwise English. Name employer_needs and standout before writing, and build the letter on them.",
-        job_title = found.job_title,
-        company = found.company,
-        job_text = found.job_text,
+        brief = match_brief(found, &cv),
         notes_block = notes_block(notes),
         revision_block = revision_block(revision, "application"),
     );
@@ -405,6 +385,67 @@ fn standout_schema() -> Value {
     })
 }
 
+/// What a prompt says about a saved match: the job, the requirements the CV meets and doesn't
+/// show, how to apply, the post and the CV (cv). The application's prompt and the chat prompt
+/// (chat_prompt) both start from it.
+fn match_brief(found: &SavedMatch, cv: &str) -> String {
+    let (strengths, gaps) = strengths_and_gaps(&found.items);
+    let apply = apply_instructions::for_prompt(found.apply_instructions.as_ref());
+    format!(
+        "Job title: {job_title}
+Company: {company}
+
+Requirements the CV meets:
+{strengths}
+
+Requirements the CV doesn't show:
+{gaps}
+
+{apply}
+
+Job post:
+
+{job_text}
+
+CV:
+
+{cv}",
+        job_title = found.job_title,
+        company = found.company,
+        job_text = found.job_text,
+    )
+}
+
+/// A prompt to paste into a chatbot of the candidate's own (Copy as prompt): the match's brief
+/// (match_brief), its score, and the application and résumé as written (application, resume:
+/// the boxes' text, empty when not written), so the chat can help with this job from all of it.
+pub async fn chat_prompt(db: &SqlitePool, found: &SavedMatch, application: &str, resume: &str) -> sqlx::Result<String> {
+    let cv = written_from(db, found).await?;
+    Ok(chat_prompt_from(found, &cv, application, resume))
+}
+
+/// chat_prompt from the CV it is written from.
+fn chat_prompt_from(found: &SavedMatch, cv: &str, application: &str, resume: &str) -> String {
+    let score = MatchScore::of(found.score, &found.tag);
+    let mut prompt = format!(
+        "I'm thinking of applying for the job below. JobFinder matched my CV with it: {percent}% ({tag}), {points}/{max_points} points. Here is the match, the job post and my CV. Help me with this application: answer my questions about it, and when I ask, write or improve my application or résumé from my CV's facts only. Ask me before you assume anything the CV doesn't say.
+
+{brief}",
+        percent = score.percent,
+        tag = score.tag_name,
+        points = found.points,
+        max_points = found.max_points,
+        brief = match_brief(found, cv),
+    );
+    for (heading, text) in [("My application so far", application), ("My résumé so far", resume)] {
+        let text = text.trim();
+        if !text.is_empty() {
+            prompt.push_str(&format!("\n\n{heading}:\n\n{text}"));
+        }
+    }
+    prompt
+}
+
 /// A saved match's verdicts as two bullet lists for a prompt: what the CV meets (with its
 /// evidence) and what it doesn't show. The job title isn't a requirement to write about.
 fn strengths_and_gaps(items: &[SavedItem]) -> (String, String) {
@@ -471,6 +512,42 @@ fn left_out(terms: &Value) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_chat_prompt_has_the_score_the_brief_and_only_what_is_written() {
+        let found = SavedMatch {
+            id: 3,
+            job_title: "Backend developer".into(),
+            company: "Nordisk Fragt".into(),
+            job_url: None,
+            job_text: "We need Rust.".into(),
+            cv_name: String::new(),
+            cv_text: String::new(),
+            score: 0.86,
+            points: 6,
+            max_points: 7,
+            tag: "top".into(),
+            application_text: None,
+            application_written_at: None,
+            resume_text: None,
+            resume_written_at: None,
+            rejected_at: None,
+            created_at: 0,
+            resume_structured: false,
+            items: vec![item("skill", "Rust", "met", "5 years of Rust")],
+            jobnet_joblog: None,
+            rejections: Vec::new(),
+            apply_instructions: None,
+            earlier_versions: Vec::new(),
+            opening: Default::default(),
+        };
+        let prompt = chat_prompt_from(&found, "Jonas, Rust developer", "Dear Nordisk Fragt", " ");
+        assert!(prompt.contains("86% (Top match), 6/7 points"), "{prompt}");
+        assert!(prompt.contains(&match_brief(&found, "Jonas, Rust developer")));
+        assert!(prompt.contains("- Rust (CV: 5 years of Rust)"));
+        assert!(prompt.ends_with("My application so far:\n\nDear Nordisk Fragt"));
+        assert!(!prompt.contains("My résumé so far"));
+    }
 
     fn item(criterion: &str, text: &str, verdict: &str, evidence: &str) -> SavedItem {
         SavedItem {
