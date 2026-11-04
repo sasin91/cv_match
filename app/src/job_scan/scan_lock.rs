@@ -197,7 +197,7 @@ mod tests {
         let mut context = Context::new(
             db,
             std::sync::Arc::new(crate::taxonomy::Taxonomy::load()),
-            crate::account::key_vault::KeyVault::in_memory(),
+            crate::account::key_vault::KeyVault::with_key_in_memory(),
         );
         context.database.path = database.to_string();
         context

@@ -29,7 +29,7 @@ VALUES (21, 'requirements', 'PHP', 'met', 'exact', 'Named in the CV.', 0);
 async fn context() -> Context {
     let db = db::open_in_memory().await.unwrap();
     db.execute(sqlx::raw_sql(SEED)).await.unwrap();
-    Context::new(db, TAXONOMY.clone(), KeyVault::in_memory())
+    Context::new(db, TAXONOMY.clone(), KeyVault::with_key_in_memory())
 }
 
 #[tokio::test]

@@ -456,7 +456,7 @@ fn saved_row<'a>(key: &'a SavedKey, state: &'a State) -> Element<'a, Msg> {
     .width(Fill);
     if key.unreadable {
         lines = lines.push(
-            text("This key isn't in Windows Credential Manager anymore, so the AI can't use it. Save it again below.")
+            text("This key isn't kept anymore, so the AI can't use it. Save it again below.")
                 .size(style::CAPTION_SIZE)
                 .style(style::health_text(Health::Attention)),
         );
@@ -646,7 +646,7 @@ fn key_form<'a>(view: &'a AccountView, state: &'a State) -> Element<'a, Msg> {
                 .style(style::text_field)
                 .width(FIELD_WIDTH)
                 .into(),
-            Some("Kept in Windows Credential Manager and never shown again."),
+            Some("Kept sealed in your database and never shown again."),
         ));
     }
     form = form.push(widgets::field(

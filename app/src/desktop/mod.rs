@@ -962,7 +962,7 @@ mod tests {
         let context = runtime.block_on(async {
             let db = crate::db::open_in_memory().await.unwrap();
             let taxonomy = Arc::new(crate::taxonomy::Taxonomy::load());
-            Arc::new(Context::new(db, taxonomy, KeyVault::in_memory()))
+            Arc::new(Context::new(db, taxonomy, KeyVault::with_key_in_memory()))
         });
         let (_front, front) = unbounded_channel();
         let launch = Mutex::new(Some(Launch {
@@ -1028,7 +1028,7 @@ mod tests {
         let context = runtime.block_on(async {
             let db = crate::db::open_in_memory().await.unwrap();
             let taxonomy = Arc::new(crate::taxonomy::Taxonomy::load());
-            Arc::new(Context::new(db, taxonomy, KeyVault::in_memory()))
+            Arc::new(Context::new(db, taxonomy, KeyVault::with_key_in_memory()))
         });
         let handle = runtime.handle().clone();
         // The window's thread: no runtime entered, as in run_window.

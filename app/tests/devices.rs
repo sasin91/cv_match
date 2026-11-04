@@ -28,7 +28,7 @@ static TAXONOMY: LazyLock<Arc<Taxonomy>> = LazyLock::new(|| Arc::new(Taxonomy::l
 /// The app's context, with Tailscale's name just read.
 async fn context() -> Arc<Context> {
     let db = db::open_in_memory().await.unwrap();
-    let context = Context::new(db, TAXONOMY.clone(), KeyVault::in_memory());
+    let context = Context::new(db, TAXONOMY.clone(), KeyVault::with_key_in_memory());
     context.devices.set_tailnet_name(Some(TAILNET_NAME.to_string()), now());
     Arc::new(context)
 }
@@ -92,7 +92,12 @@ async fn a_device_pairs_once_and_then_says_hello_with_its_token() {
 
     // Only the token's hash is kept on the computer.
     let parsed = device_protocol::Token::parse(&token).unwrap();
-    let kept = context.key_vault.device_token_hash(parsed.device_id).unwrap().unwrap();
+    let kept = context
+        .key_vault
+        .device_token_hash(context.db(), parsed.device_id)
+        .await
+        .unwrap()
+        .unwrap();
     assert_ne!(kept, parsed.secret);
     assert_eq!(kept, device_service::token_hash(&parsed.secret));
 
@@ -143,7 +148,7 @@ async fn only_the_tailnet_name_is_answered() {
 #[tokio::test]
 async fn without_tailscale_no_pairing_code_is_shown() {
     let db = db::open_in_memory().await.unwrap();
-    let context = Context::new(db, TAXONOMY.clone(), KeyVault::in_memory());
+    let context = Context::new(db, TAXONOMY.clone(), KeyVault::with_key_in_memory());
     context.devices.set_tailnet_name(None, now());
     assert!(device_service::new_pairing_link(&context, now()).is_err());
 }

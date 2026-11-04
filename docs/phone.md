@@ -31,8 +31,8 @@ the port, but they get nothing without a token.
 
 Press **Show a pairing code** on the Devices screen and scan the QR code with the JobFinder app on
 the device. A code works once, for five minutes. The device then gets a token of its own. The
-computer keeps it in Windows Credential Manager (the system keyring on Linux), not in the
-database. The Devices screen lists each paired device with when it was last seen. **Remove**
+computer keeps only its hash, sealed in the database's secrets table with the key file beside
+the database. The Devices screen lists each paired device with when it was last seen. **Remove**
 stops its token at once.
 
 ## What a paired device can do

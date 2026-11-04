@@ -53,7 +53,7 @@ async fn seeded() -> SqlitePool {
 
 async fn app() -> axum::Router {
     let db = seeded().await;
-    let context = Context::new(db, TAXONOMY.clone(), KeyVault::in_memory());
+    let context = Context::new(db, TAXONOMY.clone(), KeyVault::with_key_in_memory());
     server::router(Arc::new(AppState::new(Arc::new(context), PORT)))
 }
 
@@ -296,7 +296,7 @@ async fn a_second_start_brings_the_window_to_the_front_or_is_told_there_is_none(
     assert_eq!(send(front()).await.0, StatusCode::NOT_FOUND);
 
     let db = seeded().await;
-    let context = Context::new(db, TAXONOMY.clone(), KeyVault::in_memory());
+    let context = Context::new(db, TAXONOMY.clone(), KeyVault::with_key_in_memory());
     let mut state = AppState::new(Arc::new(context), PORT);
     let (window, mut asked) = tokio::sync::mpsc::unbounded_channel();
     state.front = Some(window);
@@ -318,7 +318,11 @@ fn extension_json(path: &str, json: &str) -> Request<Body> {
 #[tokio::test]
 async fn the_extension_sends_the_post_the_browser_shows_to_a_search() {
     let db = db::open_in_memory().await.unwrap();
-    let context = Arc::new(Context::new(db.clone(), TAXONOMY.clone(), KeyVault::in_memory()));
+    let context = Arc::new(Context::new(
+        db.clone(),
+        TAXONOMY.clone(),
+        KeyVault::with_key_in_memory(),
+    ));
     let app = server::router(Arc::new(AppState::new(Arc::clone(&context), PORT)));
     let description = "Vi søger en erfaren PHP-udvikler til vores team i Odense. ".repeat(5);
     let html = format!(

@@ -529,7 +529,7 @@ mod tests {
         let context = Context::new(
             pool.clone(),
             std::sync::Arc::new(crate::taxonomy::Taxonomy::load()),
-            crate::account::key_vault::KeyVault::in_memory(),
+            crate::account::key_vault::KeyVault::with_key_in_memory(),
         );
         let report = check(&context, Duration::ZERO).await.unwrap();
         assert_eq!(

@@ -22,7 +22,7 @@ const OPENAI_KEY: &str = "sk-proj-0123456789abcdef";
 /// The work's shared state on a new, empty in-memory database: a first run.
 async fn context() -> Context {
     let db = db::open_in_memory().await.unwrap();
-    Context::new(db, TAXONOMY.clone(), KeyVault::in_memory())
+    Context::new(db, TAXONOMY.clone(), KeyVault::with_key_in_memory())
 }
 
 fn openai_form(api_key: &str) -> KeyForm {

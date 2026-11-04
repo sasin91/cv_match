@@ -1,6 +1,6 @@
 //! The user's own language model keys (llm_keys), one per provider, and which one each use
-//! runs on (use_for_*: each use is on for one key at most). The keys themselves are in Windows
-//! Credential Manager (KeyVault); the table keeps each one's provider, model, last 4 characters
+//! runs on (use_for_*: each use is on for one key at most). The keys themselves are sealed in the
+//! secrets table (KeyVault); this table keeps each one's provider, model, last 4 characters
 //! and, for a local model, base_url. A plain key only leaves here through key_for() and
 //! key_of(), for the llm module.
 
@@ -138,33 +138,33 @@ pub fn picked_for<'a>(saved: &'a [Saved], use_: &str) -> Option<&'a Saved> {
 }
 
 /// The key to call the model with for use_, or None without a usable one: none picked for it,
-/// or picked but no longer in Credential Manager.
+/// or picked but its key is no longer kept.
 pub async fn key_for(db: &SqlitePool, vault: &KeyVault, use_: &str) -> Result<Option<KeyFor>, Error> {
     let _together = vault.lock().await;
     let saved = saved(db).await?;
     match picked_for(&saved, use_) {
-        Some(picked) => with_key(vault, picked),
+        Some(picked) => with_key(db, vault, picked).await,
         None => Ok(None),
     }
 }
 
-/// The provider's saved key, or None when none is saved or it is no longer in Credential Manager.
+/// The provider's saved key, or None when none is saved or its key is no longer kept.
 pub async fn key_of(db: &SqlitePool, vault: &KeyVault, provider: &str) -> Result<Option<KeyFor>, Error> {
     let _together = vault.lock().await;
     let saved = saved(db).await?;
     match saved.iter().find(|saved| saved.provider == provider) {
-        Some(found) => with_key(vault, found),
+        Some(found) => with_key(db, vault, found).await,
         None => Ok(None),
     }
 }
 
-/// A saved key with its key from Credential Manager, or None when it isn't there. A local model
-/// saved without a key runs with none. The caller holds the vault's lock.
-pub fn with_key(vault: &KeyVault, saved: &Saved) -> Result<Option<KeyFor>, Error> {
+/// A saved key with its key from the vault, or None when it isn't there. A local model saved
+/// without a key runs with none. The caller holds the vault's lock.
+pub async fn with_key(db: &SqlitePool, vault: &KeyVault, saved: &Saved) -> Result<Option<KeyFor>, Error> {
     let api_key = if saved.key_hint.is_empty() {
         Some(String::new())
     } else {
-        kept_key(vault, saved)?
+        kept_key(db, vault, saved).await?
     };
     Ok(api_key.map(|api_key| KeyFor {
         provider: saved.provider.clone(),
@@ -175,19 +175,27 @@ pub fn with_key(vault: &KeyVault, saved: &Saved) -> Result<Option<KeyFor>, Error
     }))
 }
 
-/// The saved key's key in Credential Manager. A key kept before keys were kept per provider is
-/// moved to its provider's credential the first time it is read, when its last characters show
-/// it is this row's.
-fn kept_key(vault: &KeyVault, saved: &Saved) -> Result<Option<String>, Error> {
-    if let Some(key) = vault.key_for(&saved.provider).map_err(Error::Vault)? {
+/// The saved key's key in the vault. A key kept before keys were kept per provider is moved to
+/// its provider's secret the first time it is read, when its last characters show it is this
+/// row's.
+async fn kept_key(db: &SqlitePool, vault: &KeyVault, saved: &Saved) -> Result<Option<String>, Error> {
+    if let Some(key) = vault.key_for(db, &saved.provider).await.map_err(Error::Vault)? {
         return Ok(Some(key));
     }
-    let before = vault.key_from_before_providers().map_err(Error::Vault)?;
+    let before = vault.key_from_before_providers(db).await.map_err(Error::Vault)?;
     let Some(key) = before.filter(|key| key_hint(key) == saved.key_hint) else {
         return Ok(None);
     };
-    vault.save(&saved.provider, &key).map_err(Error::Vault)?;
-    vault.delete_key_from_before_providers().map_err(Error::Vault)?;
+    let mut tx = crate::db::write_transaction(db).await?;
+    vault
+        .save(&mut *tx, &saved.provider, &key)
+        .await
+        .map_err(Error::Vault)?;
+    vault
+        .delete_key_from_before_providers(&mut *tx)
+        .await
+        .map_err(Error::Vault)?;
+    tx.commit().await?;
     Ok(Some(key))
 }
 
@@ -224,11 +232,10 @@ fn moved_uses(before: &[Saved], chosen: &UseChoices) -> Vec<&'static str> {
 
 /// Saves the provider's key, replacing the one saved for it before (its uses stay as they were);
 /// other providers' keys stay. A new provider's key takes the uses no other key has. api_key ""
-/// (a local model without one) keeps no key in Credential Manager.
+/// (a local model without one) keeps no key.
 ///
-/// The row and the credential change together, under the vault's lock, so no one reads one
-/// without the other: the row is written in a transaction, a failed credential write leaves the
-/// row as it was, and a failed commit puts the previous key back.
+/// The row and the key are written in one transaction, under the vault's lock, so no one reads
+/// one without the other.
 pub async fn save(
     db: &SqlitePool,
     vault: &KeyVault,
@@ -244,28 +251,17 @@ pub async fn save(
     sqlx::query_file!("queries/account_model/save.sql", provider, model, base_url, hint, now)
         .execute(&mut *tx)
         .await?;
-    let previous = vault.key_for(provider).map_err(Error::Vault)?;
-    keep(vault, provider, api_key)?;
-    if let Err(e) = tx.commit().await {
-        if let Err(restore) = keep(vault, provider, previous.as_deref().unwrap_or("")) {
-            crate::log_line!("account: the previous key couldn't be put back after a failed save: {restore}");
-        }
-        return Err(e.into());
-    }
+    let kept = if api_key.is_empty() {
+        vault.delete(&mut *tx, provider).await
+    } else {
+        vault.save(&mut *tx, provider, api_key).await
+    };
+    kept.map_err(Error::Vault)?;
+    tx.commit().await?;
     Ok(())
 }
 
-/// Keeps api_key as the user's key for provider in Credential Manager, or none when it is "".
-fn keep(vault: &KeyVault, provider: &str, api_key: &str) -> Result<(), Error> {
-    let kept = if api_key.is_empty() {
-        vault.delete(provider)
-    } else {
-        vault.save(provider, api_key)
-    };
-    kept.map_err(Error::Vault)
-}
-
-/// Deletes the provider's saved key, from the table and from Credential Manager. The uses it was
+/// Deletes the provider's saved key, its row and its key together. The uses it was
 /// picked for run on no key until another is picked, and forget their tasks' models.
 pub async fn delete_key(db: &SqlitePool, vault: &KeyVault, provider: &str) -> Result<(), Error> {
     let _together = vault.lock().await;
@@ -280,8 +276,9 @@ pub async fn delete_key(db: &SqlitePool, vault: &KeyVault, provider: &str) -> Re
         .execute(&mut *tx)
         .await?;
     task_model::forget_for_uses(&mut tx, &picked).await?;
+    vault.delete(&mut *tx, provider).await.map_err(Error::Vault)?;
     tx.commit().await?;
-    vault.delete(provider).map_err(Error::Vault)
+    Ok(())
 }
 
 /// What the page calls a provider.
@@ -305,6 +302,7 @@ fn key_hint(api_key: &str) -> String {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::account::key_vault::Secret;
     use crate::db;
 
     const OPENAI_KEY: &str = "sk-proj-0123456789abcdWXYZ";
@@ -329,7 +327,7 @@ mod tests {
     #[tokio::test]
     async fn a_saved_key_is_in_the_vault_and_only_its_hint_in_the_table() {
         let db = opened().await;
-        let vault = KeyVault::in_memory();
+        let vault = KeyVault::with_key_in_memory();
         save(&db, &vault, OPENAI, "", "", OPENAI_KEY).await.unwrap();
         let found = saved(&db).await.unwrap();
         assert_eq!(found.len(), 1);
@@ -341,13 +339,13 @@ mod tests {
 
         delete_key(&db, &vault, OPENAI).await.unwrap();
         assert_eq!(saved(&db).await.unwrap(), []);
-        assert_eq!(vault.key_for(OPENAI).unwrap(), None);
+        assert_eq!(vault.key_for(&db, OPENAI).await.unwrap(), None);
     }
 
     #[tokio::test]
     async fn a_second_providers_key_is_kept_beside_the_first() {
         let db = opened().await;
-        let vault = KeyVault::in_memory();
+        let vault = KeyVault::with_key_in_memory();
         save(&db, &vault, ANTHROPIC, "", "", ANTHROPIC_KEY).await.unwrap();
         save(&db, &vault, OPENAI, "", "", OPENAI_KEY).await.unwrap();
 
@@ -364,7 +362,7 @@ mod tests {
     #[tokio::test]
     async fn each_use_runs_on_the_key_picked_for_it() {
         let db = opened().await;
-        let vault = KeyVault::in_memory();
+        let vault = KeyVault::with_key_in_memory();
         save(&db, &vault, ANTHROPIC, "claude-opus-5-5", "", ANTHROPIC_KEY)
             .await
             .unwrap();
@@ -397,7 +395,7 @@ mod tests {
     #[tokio::test]
     async fn a_use_moved_to_another_key_forgets_its_tasks_models() {
         let db = opened().await;
-        let vault = KeyVault::in_memory();
+        let vault = KeyVault::with_key_in_memory();
         save(&db, &vault, LLAMA_CPP, "", "", "").await.unwrap();
         save(&db, &vault, OPENAI, "", "", OPENAI_KEY).await.unwrap();
         let models = [
@@ -426,43 +424,52 @@ mod tests {
     #[tokio::test]
     async fn a_key_missing_from_the_vault_is_not_usable() {
         let db = opened().await;
-        let vault = KeyVault::in_memory();
+        let vault = KeyVault::with_key_in_memory();
         save(&db, &vault, OPENAI, "", "", OPENAI_KEY).await.unwrap();
-        vault.delete(OPENAI).unwrap();
+        vault.delete(&db, OPENAI).await.unwrap();
         assert_eq!(saved(&db).await.unwrap().len(), 1);
         assert!(key_for(&db, &vault, RESUME).await.unwrap().is_none());
     }
 
     #[tokio::test]
-    async fn the_key_kept_before_providers_moves_to_its_providers_credential() {
+    async fn the_key_kept_before_providers_moves_to_its_providers_secret() {
         let db = opened().await;
-        let vault = KeyVault::in_memory();
+        let vault = KeyVault::with_key_in_memory();
         save(&db, &vault, OPENAI, "", "", OPENAI_KEY).await.unwrap();
-        vault.delete(OPENAI).unwrap();
-        vault.save("", OPENAI_KEY).unwrap();
+        vault.delete(&db, OPENAI).await.unwrap();
+        vault
+            .keep(&db, &Secret::KeyFromBeforeProviders, OPENAI_KEY)
+            .await
+            .unwrap();
 
         let key = key_for(&db, &vault, RESUME).await.unwrap().unwrap();
         assert_eq!(key.api_key, OPENAI_KEY);
-        assert_eq!(vault.key_for(OPENAI).unwrap().as_deref(), Some(OPENAI_KEY));
-        assert_eq!(vault.key_from_before_providers().unwrap(), None);
+        assert_eq!(vault.key_for(&db, OPENAI).await.unwrap().as_deref(), Some(OPENAI_KEY));
+        assert_eq!(vault.key_from_before_providers(&db).await.unwrap(), None);
     }
 
     #[tokio::test]
     async fn a_key_kept_before_providers_that_isnt_the_rows_stays_put() {
         let db = opened().await;
-        let vault = KeyVault::in_memory();
+        let vault = KeyVault::with_key_in_memory();
         save(&db, &vault, ANTHROPIC, "", "", ANTHROPIC_KEY).await.unwrap();
-        vault.delete(ANTHROPIC).unwrap();
-        vault.save("", OPENAI_KEY).unwrap();
+        vault.delete(&db, ANTHROPIC).await.unwrap();
+        vault
+            .keep(&db, &Secret::KeyFromBeforeProviders, OPENAI_KEY)
+            .await
+            .unwrap();
 
         assert!(key_of(&db, &vault, ANTHROPIC).await.unwrap().is_none());
-        assert_eq!(vault.key_from_before_providers().unwrap().as_deref(), Some(OPENAI_KEY));
+        assert_eq!(
+            vault.key_from_before_providers(&db).await.unwrap().as_deref(),
+            Some(OPENAI_KEY)
+        );
     }
 
     #[tokio::test]
     async fn a_local_model_runs_without_a_key() {
         let db = opened().await;
-        let vault = KeyVault::in_memory();
+        let vault = KeyVault::with_key_in_memory();
         save(&db, &vault, LOCAL, "llama3.1:8b", "http://localhost:11434/v1", "")
             .await
             .unwrap();

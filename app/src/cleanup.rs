@@ -4,12 +4,14 @@
 //!
 //! - the job scan's schedule (Task Scheduler's task, or the systemd user timer), which would
 //!   otherwise keep running a program that is gone;
-//! - the API keys in Credential Manager (or the keyring);
+//! - what the app kept in Windows Credential Manager (or the keyring) before its secrets table,
+//!   when any is left there (account::former_keys);
 //! - JobFinder's name for Windows' notifications, in the user's registry (notifications);
 //! - what the app wrote or downloaded next to the database: the Jobnet extension's files,
 //!   llama.cpp and its models, Laya's model;
-//! - and only when asked again, the database itself, with its -wal and -shm files and the app's
-//!   log (app_log) beside it.
+//! - and only when asked again, the database itself, with its -wal and -shm files, its key file
+//!   (account::data_key) and the app's log (app_log) beside it. The API keys and the paired
+//!   devices' tokens are in the database, so they go with it.
 //!
 //! The data folder itself goes too when it is the default one (%APPDATA%\JobFinder) and nothing
 //! else is left in it; a folder that --database names is never removed, only the app's own
@@ -17,7 +19,8 @@
 
 use std::path::{Path, PathBuf};
 
-use crate::account::key_vault::KeyVault;
+use crate::account::former_keys::{self, Credential, FormerKeys};
+use crate::account::key_vault::Secret;
 use crate::devices::device_model::{self, Device};
 use crate::scan_schedule::ScanSchedule;
 use crate::{app_log, extension, laya, llama};
@@ -29,10 +32,11 @@ pub struct Found {
     pub schedule: Option<u32>,
     /// The schedule couldn't be read.
     pub schedule_error: Option<String>,
-    /// The providers whose keys are kept ("" is the key from before providers).
-    pub keys: Vec<&'static str>,
-    pub keys_error: Option<String>,
-    /// The paired devices, whose tokens are kept beside the keys (devices).
+    /// What is left in Credential Manager (the keyring) from before the secrets table.
+    pub left_in_credentials: Vec<Credential>,
+    /// Credential Manager (the keyring) couldn't be read.
+    pub credentials_error: Option<String>,
+    /// The paired devices, whose tokens may be left there too.
     pub devices: Vec<Device>,
     pub devices_error: Option<String>,
     /// The folders the app wrote next to the database that are there.
@@ -47,8 +51,7 @@ impl Found {
     /// Whether anything but the database is there to remove.
     pub fn anything_besides_the_database(&self) -> bool {
         self.schedule.is_some()
-            || !self.keys.is_empty()
-            || !self.devices.is_empty()
+            || !self.left_in_credentials.is_empty()
             || !self.folders.is_empty()
             || self.notification_name
     }
@@ -136,8 +139,8 @@ pub fn hold(database: &Path, how: Hold) -> Result<Held, InUse> {
     Ok(Held { _files: files })
 }
 
-/// The database's own files: the file, SQLite's -wal, -shm and -journal beside it, and the app's
-/// log in its folder (the lock file goes after the cleanup lets go of it).
+/// The database's own files: the file, SQLite's -wal, -shm and -journal beside it, its key file,
+/// and the app's log in its folder (the lock file goes after the cleanup lets go of it).
 pub fn database_files(database: &Path) -> Vec<PathBuf> {
     let mut files = vec![database.to_path_buf()];
     for suffix in [
@@ -152,31 +155,47 @@ pub fn database_files(database: &Path) -> Vec<PathBuf> {
         name.push(suffix);
         files.push(PathBuf::from(name));
     }
+    files.push(crate::account::data_key::key_file(database));
     let data_folder = database.parent().unwrap_or(Path::new("."));
     files.extend([app_log::FILE, app_log::OLD_FILE, app_log::LOCK_FILE].map(|name| data_folder.join(name)));
     files
 }
 
-/// Looks for what the app left for database, whose keys vault keeps.
-pub async fn find(database: &Path, schedule: &ScanSchedule, vault: &KeyVault) -> Found {
+/// Whether the cleanup looks in Credential Manager (the keyring) for what is left there.
+pub enum Credentials {
+    /// It looks; former_user_id is the local user's id while the database had trongate_users,
+    /// which named its keys' credentials then.
+    LookIn { former_user_id: Option<i64> },
+    /// It doesn't (tests, which mustn't touch the system's store).
+    Skip,
+}
+
+/// Looks for what the app left for database.
+pub async fn find(database: &Path, schedule: &ScanSchedule, credentials: Credentials) -> Found {
     let (schedule, schedule_error) = match schedule.interval_hours().await {
         Ok(hours) => (hours, None),
         Err(why) => (None, Some(why)),
-    };
-    let (keys, keys_error) = match vault.kept() {
-        Ok(keys) => (keys, None),
-        Err(why) => (Vec::new(), Some(why)),
     };
     let (devices, devices_error) = match device_model::in_file(database).await {
         Ok(devices) => (devices, None),
         Err(e) => (Vec::new(), Some(e.to_string())),
     };
+    let (left_in_credentials, credentials_error) = match credentials {
+        Credentials::LookIn { former_user_id } => {
+            let device_ids = devices.iter().map(|device| device.id).collect();
+            match FormerKeys::of(database, former_user_id, device_ids).left() {
+                Ok(left) => (left, None),
+                Err(why) => (Vec::new(), Some(why)),
+            }
+        }
+        Credentials::Skip => (Vec::new(), None),
+    };
     Found {
         database: database.to_path_buf(),
         schedule,
         schedule_error,
-        keys,
-        keys_error,
+        left_in_credentials,
+        credentials_error,
         devices,
         devices_error,
         folders: app_folders(database)
@@ -191,22 +210,18 @@ pub async fn find(database: &Path, schedule: &ScanSchedule, vault: &KeyVault) ->
     }
 }
 
-/// Removes the schedule, the keys and the app's folders; what couldn't be removed, said why.
-pub async fn remove_besides_the_database(found: &Found, schedule: &ScanSchedule, vault: &KeyVault) -> Vec<String> {
+/// Removes the schedule, what is left in the credentials and the app's folders; what couldn't be
+/// removed, said why.
+pub async fn remove_besides_the_database(found: &Found, schedule: &ScanSchedule) -> Vec<String> {
     let mut failed = Vec::new();
     if found.schedule.is_some()
         && let Err(why) = schedule.remove().await
     {
         failed.push(format!("The job scan's schedule: {why}"));
     }
-    for provider in &found.keys {
-        if let Err(why) = vault.delete(provider) {
-            failed.push(format!("The {} key: {why}", key_name(provider)));
-        }
-    }
-    for device in &found.devices {
-        if let Err(why) = vault.forget_device_token_hash(device.id) {
-            failed.push(format!("The token of the device \"{}\": {why}", device.name));
+    for credential in &found.left_in_credentials {
+        if let Err(why) = former_keys::remove(credential) {
+            failed.push(format!("{}: {why}", left_name(&credential.secret, &found.devices)));
         }
     }
     for folder in &found.folders {
@@ -251,13 +266,17 @@ fn same_folder(a: &Path, b: &Path) -> bool {
     }
 }
 
-/// What the cleanup calls a provider's key.
-pub fn key_name(provider: &str) -> &'static str {
-    crate::account::account_model::PROVIDERS
-        .iter()
-        .find(|(name, _)| *name == provider)
-        .map(|(_, label)| *label)
-        .unwrap_or("earlier")
+/// What the cleanup calls a secret left in a credential: "the OpenAI key", "the token of the
+/// paired device \"Pixel 8\"".
+pub fn left_name(secret: &Secret<'_>, devices: &[Device]) -> String {
+    match secret {
+        Secret::LlmKey(provider) => format!("the {} key", crate::account::account_model::provider_label(provider)),
+        Secret::KeyFromBeforeProviders => "the earlier key".to_string(),
+        Secret::DeviceTokenHash(id) => match devices.iter().find(|device| device.id == *id) {
+            Some(device) => format!("the token of the paired device \"{}\"", device.name),
+            None => format!("the token of paired device {id}"),
+        },
+    }
 }
 
 #[cfg(test)]
@@ -277,6 +296,7 @@ mod tests {
                 "/data/jobfinder.sqlite.scan.lock",
                 "/data/jobfinder.sqlite.scan.stop",
                 "/data/jobfinder.sqlite.scan.pause",
+                "/data/jobfinder.sqlite-key",
                 "/data/jobfinder.log",
                 "/data/jobfinder.old.log",
                 "/data/jobfinder.log.lock"
@@ -341,7 +361,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn the_cleanup_removes_the_schedule_the_keys_and_the_folders_and_keeps_the_database() {
+    async fn the_cleanup_removes_the_schedule_and_the_folders_and_keeps_the_database() {
         let folder = std::env::temp_dir().join(format!("jobfinder-cleanup-{}", std::process::id()));
         std::fs::create_dir_all(folder.join("llama/models")).unwrap();
         std::fs::write(folder.join("llama/models/a.gguf"), "x").unwrap();
@@ -351,48 +371,45 @@ mod tests {
 
         let schedule = ScanSchedule::in_memory();
         schedule.register(4).await.unwrap();
-        let vault = KeyVault::in_memory();
-        vault.save("openai", "sk-1").unwrap();
+        let key_file = crate::account::data_key::key_file(&database);
+        std::fs::write(&key_file, "key").unwrap();
 
-        let found = find(&database, &schedule, &vault).await;
+        let found = find(&database, &schedule, Credentials::Skip).await;
         assert_eq!(found.schedule, Some(4));
-        assert_eq!(found.keys, ["openai"]);
         assert_eq!(found.folders, [folder.join("llama")]);
-        assert_eq!(found.database_files, std::slice::from_ref(&database));
+        assert_eq!(found.database_files, [database.clone(), key_file.clone()]);
         assert!(found.anything_besides_the_database());
 
-        assert!(remove_besides_the_database(&found, &schedule, &vault).await.is_empty());
+        assert!(remove_besides_the_database(&found, &schedule).await.is_empty());
         assert_eq!(schedule.interval_hours().await.unwrap(), None);
-        assert_eq!(vault.key_for("openai").unwrap(), None);
         assert!(!folder.join("llama").exists());
         assert!(database.exists(), "the database stays unless asked again");
+        assert!(key_file.exists(), "its key file stays with it");
         assert!(folder.join("mine").exists(), "nothing else in the folder is touched");
 
         assert!(remove_database(&found).is_empty());
         assert!(!database.exists());
+        assert!(!key_file.exists(), "the key file goes with the database");
         assert!(!remove_default_folder(&database, Path::new("/elsewhere")));
         std::fs::remove_dir_all(&folder).unwrap();
     }
 
     #[tokio::test]
-    async fn the_cleanup_forgets_the_paired_devices_tokens() {
+    async fn the_paired_devices_are_named_by_their_names() {
         let folder = std::env::temp_dir().join(format!("jobfinder-cleanup-devices-{}", std::process::id()));
         std::fs::create_dir_all(&folder).unwrap();
         let database = folder.join("jobfinder.sqlite");
         let db = crate::db::open(&database).await.unwrap();
         let id = device_model::add(&db, "Pixel 8", 1).await.unwrap();
         db.close().await;
-        let schedule = ScanSchedule::in_memory();
-        let vault = KeyVault::in_memory();
-        vault.save_device_token_hash(id, "beef").unwrap();
 
-        let found = find(&database, &schedule, &vault).await;
+        let found = find(&database, &ScanSchedule::in_memory(), Credentials::Skip).await;
         assert_eq!(found.devices_error, None);
-        assert_eq!(found.devices.iter().map(|device| device.id).collect::<Vec<_>>(), [id]);
-        assert!(found.anything_besides_the_database());
-
-        assert!(remove_besides_the_database(&found, &schedule, &vault).await.is_empty());
-        assert_eq!(vault.device_token_hash(id).unwrap(), None);
+        assert_eq!(
+            left_name(&Secret::DeviceTokenHash(id), &found.devices),
+            "the token of the paired device \"Pixel 8\""
+        );
+        assert_eq!(left_name(&Secret::LlmKey("openai"), &[]), "the OpenAI key");
         std::fs::remove_dir_all(&folder).unwrap();
     }
 }

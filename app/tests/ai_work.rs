@@ -139,7 +139,7 @@ fn resume_answer() -> Value {
 async fn with_model() -> (Arc<Context>, SqlitePool, Arc<AtomicUsize>) {
     let db = db::open_in_memory().await.unwrap();
     db.execute(sqlx::raw_sql(SEED)).await.unwrap();
-    let vault = KeyVault::in_memory();
+    let vault = KeyVault::with_key_in_memory();
     let (base_url, calls) = stand_in_model().await;
     account_model::save(&db, &vault, "local", "stand-in", &base_url, "")
         .await

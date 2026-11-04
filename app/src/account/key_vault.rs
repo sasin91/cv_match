@@ -1,57 +1,67 @@
-//! Where the user's API keys are kept, not in the database: Windows Credential Manager (through
-//! the keyring crate), so a key is never in the database file. Each provider's key has its own
-//! credential, and each database file its own set, so neither a second key nor a second database
-//! (--database) can replace another one's key. A paired device's token hash (devices) is kept
-//! the same way, in a credential of its own. Tests keep them in memory instead.
+//! Where the app's secrets are kept: the user's API keys and the paired devices' token hashes, in
+//! the database's secrets table, each sealed under the database's data key (data_key), which is
+//! kept in a file beside the database and protected by the system. The same on every system, and
+//! one database's secrets are its own: a second database (--database) has its own table and key.
 //!
-//! The app has one local user, so a credential is named by the database and provider alone.
-//! Before, each name had the local user's trongate_users id in it too; take_over_keys_named_by_user
-//! moves those once.
+//! Before the secrets table they were in Windows Credential Manager (the keyring elsewhere);
+//! former_keys moves them here once.
 //!
-//! A key and its row in llm_keys are two stores, so whoever reads or changes them takes the
-//! vault's lock() first: a reader never pairs one key's row with another key.
+//! A key and its row in llm_keys are read and changed together, so whoever does takes the vault's
+//! lock() first: a reader never pairs one key's row with another key.
 
-use std::collections::HashMap;
-use std::sync::Mutex;
+use sqlx::SqliteExecutor;
 
-/// The service the keys' credentials are filed under in Credential Manager.
-const SERVICE: &str = "JobFinder";
-
-/// The service the keys were filed under while the app was called Recruiter; see
-/// take_over_former_keys().
-const FORMER_SERVICE: &str = "Recruiter";
-
-/// The provider part of the credential the app kept its one key in before a key was kept per
-/// provider (user_llm_keys@{database}); see key_from_before_providers().
-const BEFORE_PROVIDERS: &str = "";
+use super::data_key::DataKey;
 
 pub struct KeyVault {
-    store: Store,
+    /// The database's data key, or why it couldn't be read; each secret's read or write says so.
+    data_key: Result<DataKey, String>,
     /// Held while a key and its row are read or changed together.
     together: tokio::sync::Mutex<()>,
 }
 
-enum Store {
-    /// Windows Credential Manager (the system's secret store on other platforms), for the
-    /// database at this full path.
-    CredentialManager { database: String },
-    /// Keys in this process only, for tests: provider => key.
-    InMemory(Mutex<HashMap<String, String>>),
+/// What the vault keeps.
+#[derive(Debug, Clone, Copy, PartialEq)]
+pub enum Secret<'a> {
+    /// A provider's API key.
+    LlmKey(&'a str),
+    /// The one key the app kept before it kept a key per provider; see key_from_before_providers().
+    KeyFromBeforeProviders,
+    /// The hash of the token of the paired device with this id (devices). The token itself is
+    /// never kept on this computer.
+    DeviceTokenHash(i64),
+}
+
+impl Secret<'_> {
+    /// Its name in the secrets table, which is sealed into its value too.
+    pub fn name(&self) -> String {
+        match self {
+            Secret::LlmKey(provider) => format!("llm_key:{provider}"),
+            Secret::KeyFromBeforeProviders => "llm_key_from_before_providers".to_string(),
+            Secret::DeviceTokenHash(device_id) => format!("device_token_hash:{device_id}"),
+        }
+    }
 }
 
 impl KeyVault {
-    /// Windows Credential Manager, for the database at this full path.
-    pub fn credential_manager(database: String) -> Self {
-        Self::with(Store::CredentialManager { database })
+    /// The vault of the database at this path, its data key in the file beside it (made there
+    /// when there is none yet).
+    pub fn of_database(database: &std::path::Path) -> Self {
+        let data_key = DataKey::of_database(database);
+        if let Err(why) = &data_key {
+            crate::log_line!("secrets: {why}");
+        }
+        Self::with(data_key)
     }
 
-    pub fn in_memory() -> Self {
-        Self::with(Store::InMemory(Mutex::new(HashMap::new())))
+    /// A vault whose data key is kept nowhere: for a database that lives in memory (tests).
+    pub fn with_key_in_memory() -> Self {
+        Self::with(DataKey::random())
     }
 
-    fn with(store: Store) -> Self {
+    fn with(data_key: Result<DataKey, String>) -> Self {
         KeyVault {
-            store,
+            data_key,
             together: tokio::sync::Mutex::new(()),
         }
     }
@@ -63,277 +73,181 @@ impl KeyVault {
     }
 
     /// Keeps key as the user's key for provider, replacing the one kept for it before.
-    pub fn save(&self, provider: &str, key: &str) -> Result<(), String> {
-        self.save_secret(&Secret::LlmKey(provider), key)
+    pub async fn save<'c>(&self, db: impl SqliteExecutor<'c>, provider: &str, key: &str) -> Result<(), String> {
+        self.keep(db, &Secret::LlmKey(provider), key).await
     }
 
     /// The user's key for provider, or None when none is kept.
-    pub fn key_for(&self, provider: &str) -> Result<Option<String>, String> {
-        self.secret(&Secret::LlmKey(provider))
+    pub async fn key_for<'c>(&self, db: impl SqliteExecutor<'c>, provider: &str) -> Result<Option<String>, String> {
+        self.kept(db, &Secret::LlmKey(provider)).await
     }
 
     /// Forgets the user's key for provider; none kept is fine.
-    pub fn delete(&self, provider: &str) -> Result<(), String> {
-        self.forget_secret(&Secret::LlmKey(provider))
+    pub async fn delete<'c>(&self, db: impl SqliteExecutor<'c>, provider: &str) -> Result<(), String> {
+        self.forget(db, &Secret::LlmKey(provider)).await
     }
 
-    /// Keeps the hash of the token of the paired device with this id (devices), replacing one
-    /// kept before. The token itself is never kept on this computer.
-    pub fn save_device_token_hash(&self, device_id: i64, hash: &str) -> Result<(), String> {
-        self.save_secret(&Secret::DeviceToken(device_id), hash)
+    /// Keeps the hash of the token of the paired device with this id, replacing one kept before.
+    pub async fn save_device_token_hash<'c>(
+        &self,
+        db: impl SqliteExecutor<'c>,
+        device_id: i64,
+        hash: &str,
+    ) -> Result<(), String> {
+        self.keep(db, &Secret::DeviceTokenHash(device_id), hash).await
     }
 
     /// The hash of the token of the paired device with this id, or None when none is kept.
-    pub fn device_token_hash(&self, device_id: i64) -> Result<Option<String>, String> {
-        self.secret(&Secret::DeviceToken(device_id))
+    pub async fn device_token_hash<'c>(
+        &self,
+        db: impl SqliteExecutor<'c>,
+        device_id: i64,
+    ) -> Result<Option<String>, String> {
+        self.kept(db, &Secret::DeviceTokenHash(device_id)).await
     }
 
     /// Forgets the token hash of the device with this id; none kept is fine.
-    pub fn forget_device_token_hash(&self, device_id: i64) -> Result<(), String> {
-        self.forget_secret(&Secret::DeviceToken(device_id))
-    }
-
-    fn save_secret(&self, secret: &Secret, value: &str) -> Result<(), String> {
-        match &self.store {
-            Store::CredentialManager { database } => secret.entry(database)?.set_password(value).map_err(failed),
-            Store::InMemory(kept) => {
-                lock(kept).insert(secret.in_memory_name(), value.to_string());
-                Ok(())
-            }
-        }
-    }
-
-    fn secret(&self, secret: &Secret) -> Result<Option<String>, String> {
-        match &self.store {
-            Store::CredentialManager { database } => password_of(&secret.entry(database)?),
-            Store::InMemory(kept) => Ok(lock(kept).get(&secret.in_memory_name()).cloned()),
-        }
-    }
-
-    fn forget_secret(&self, secret: &Secret) -> Result<(), String> {
-        match &self.store {
-            Store::CredentialManager { database } => forget(&secret.entry(database)?),
-            Store::InMemory(kept) => {
-                lock(kept).remove(&secret.in_memory_name());
-                Ok(())
-            }
-        }
+    pub async fn forget_device_token_hash<'c>(
+        &self,
+        db: impl SqliteExecutor<'c>,
+        device_id: i64,
+    ) -> Result<(), String> {
+        self.forget(db, &Secret::DeviceTokenHash(device_id)).await
     }
 
     /// The one key the app kept for the user before it kept a key per provider, or None. It
     /// belongs to whichever provider's row was saved then; the caller moves it there.
-    pub fn key_from_before_providers(&self) -> Result<Option<String>, String> {
-        self.key_for(BEFORE_PROVIDERS)
+    pub async fn key_from_before_providers<'c>(&self, db: impl SqliteExecutor<'c>) -> Result<Option<String>, String> {
+        self.kept(db, &Secret::KeyFromBeforeProviders).await
     }
 
     /// Forgets the key from before providers, once it is moved.
-    pub fn delete_key_from_before_providers(&self) -> Result<(), String> {
-        self.delete(BEFORE_PROVIDERS)
+    pub async fn delete_key_from_before_providers<'c>(&self, db: impl SqliteExecutor<'c>) -> Result<(), String> {
+        self.forget(db, &Secret::KeyFromBeforeProviders).await
     }
 
-    /// Moves the keys that the app kept while it was called Recruiter (under FORMER_SERVICE, for
-    /// the database then at former_database's full path, named by the local user's id then) to
-    /// this vault. How many were moved; none kept there is fine.
-    pub fn take_over_former_keys(&self, former_database: &str, former_user_id: i64) -> Result<usize, String> {
-        self.take_over(|provider| {
-            entry_named(
-                FORMER_SERVICE,
-                &credential_user_named_by_user(former_database, former_user_id, provider),
-            )
-        })
+    /// Keeps value as secret, sealed, replacing the one kept before.
+    pub async fn keep<'c>(&self, db: impl SqliteExecutor<'c>, secret: &Secret<'_>, value: &str) -> Result<(), String> {
+        let name = secret.name();
+        let sealed = self.data_key()?.seal(&name, value)?;
+        let now = chrono::Utc::now().timestamp();
+        sqlx::query!(
+            r#"
+            INSERT INTO secrets (name, sealed, updated_at)
+            VALUES (?1, ?2, ?3)
+            ON CONFLICT (name) DO UPDATE SET sealed = excluded.sealed, updated_at = excluded.updated_at
+            "#,
+            name,
+            sealed,
+            now
+        )
+        .execute(db)
+        .await
+        .map(|_| ())
+        .map_err(|e| failed(&name, "kept", e))
     }
 
-    /// Moves the keys this database's credentials kept while their names had the local user's
-    /// trongate_users id in them (before migration 0010_one_local_user) to the names without it.
-    /// How many were moved; none kept there is fine.
-    pub fn take_over_keys_named_by_user(&self, former_user_id: i64) -> Result<usize, String> {
-        let Store::CredentialManager { database } = &self.store else {
-            return Ok(0);
-        };
-        self.take_over(|provider| {
-            entry_named(
-                SERVICE,
-                &credential_user_named_by_user(database, former_user_id, provider),
-            )
-        })
-    }
-
-    /// Moves each provider's key from the credential former names for it to this vault: kept
-    /// here unless a key for its provider already is, and then forgotten there. How many were
-    /// moved.
-    fn take_over(&self, former: impl Fn(&str) -> Result<keyring::Entry, String>) -> Result<usize, String> {
-        if let Store::InMemory(_) = self.store {
-            return Ok(0);
-        }
-        let mut moved = 0;
-        for provider in every_provider() {
-            let former = former(provider)?;
-            let Some(key) = password_of(&former)? else {
-                continue;
-            };
-            if self.key_for(provider)?.is_none() {
-                self.save(provider, &key)?;
-                moved += 1;
-            }
-            forget(&former)?;
-        }
-        Ok(moved)
-    }
-
-    /// The providers a key is kept for, the key from before providers among them (as ""), for
-    /// the cleanup.
-    pub fn kept(&self) -> Result<Vec<&'static str>, String> {
-        let mut kept = Vec::new();
-        for provider in every_provider() {
-            if self.key_for(provider)?.is_some() {
-                kept.push(provider);
-            }
-        }
-        Ok(kept)
-    }
-}
-
-/// What the vault keeps: a provider's API key, or the hash of a paired device's token.
-enum Secret<'a> {
-    LlmKey(&'a str),
-    DeviceToken(i64),
-}
-
-impl Secret<'_> {
-    /// Its credential in Credential Manager, for the database at this full path.
-    fn entry(&self, database: &str) -> Result<keyring::Entry, String> {
-        match self {
-            Secret::LlmKey(provider) => entry(database, provider),
-            Secret::DeviceToken(device_id) => entry_named(SERVICE, &device_credential_user(database, *device_id)),
+    /// secret's value, or None when none is kept.
+    pub async fn kept<'c>(&self, db: impl SqliteExecutor<'c>, secret: &Secret<'_>) -> Result<Option<String>, String> {
+        let name = secret.name();
+        let sealed = sqlx::query_scalar!(r#"SELECT sealed FROM secrets WHERE name = ?1"#, name)
+            .fetch_optional(db)
+            .await
+            .map_err(|e| failed(&name, "read", e))?;
+        match sealed {
+            Some(sealed) => self.data_key()?.open(&name, &sealed).map(Some),
+            None => Ok(None),
         }
     }
 
-    /// Its name among the in-memory store's: the provider, or device:{id}.
-    fn in_memory_name(&self) -> String {
-        match self {
-            Secret::LlmKey(provider) => provider.to_string(),
-            Secret::DeviceToken(device_id) => format!("device:{device_id}"),
-        }
+    /// Forgets secret; none kept is fine.
+    pub async fn forget<'c>(&self, db: impl SqliteExecutor<'c>, secret: &Secret<'_>) -> Result<(), String> {
+        let name = secret.name();
+        sqlx::query!(r#"DELETE FROM secrets WHERE name = ?1"#, name)
+            .execute(db)
+            .await
+            .map(|_| ())
+            .map_err(|e| failed(&name, "removed", e))
+    }
+
+    fn data_key(&self) -> Result<&DataKey, String> {
+        self.data_key.as_ref().map_err(Clone::clone)
     }
 }
 
-/// devices:{id}@{database}: the credential a paired device's token hash is kept in.
-fn device_credential_user(database: &str, device_id: i64) -> String {
-    format!("devices:{device_id}@{database}")
-}
-
-/// Every provider a key can be kept for, the key from before providers among them (as "").
-fn every_provider() -> impl Iterator<Item = &'static str> {
-    super::account_model::PROVIDERS
-        .iter()
-        .map(|(provider, _)| *provider)
-        .chain([BEFORE_PROVIDERS])
-}
-
-/// The credential for provider's key in Credential Manager.
-fn entry(database: &str, provider: &str) -> Result<keyring::Entry, String> {
-    entry_named(SERVICE, &credential_user(database, provider))
-}
-
-/// The credential named user, filed under service.
-fn entry_named(service: &str, user: &str) -> Result<keyring::Entry, String> {
-    keyring::Entry::new(service, user).map_err(failed)
-}
-
-/// The key kept in credential, or None when there is none.
-fn password_of(credential: &keyring::Entry) -> Result<Option<String>, String> {
-    match credential.get_password() {
-        Ok(key) => Ok(Some(key)),
-        Err(keyring::Error::NoEntry) => Ok(None),
-        Err(e) => Err(failed(e)),
-    }
-}
-
-/// Forgets credential; none kept is fine.
-fn forget(credential: &keyring::Entry) -> Result<(), String> {
-    match credential.delete_credential() {
-        Ok(()) | Err(keyring::Error::NoEntry) => Ok(()),
-        Err(e) => Err(failed(e)),
-    }
-}
-
-/// user_llm_keys:{provider}@{database}, or user_llm_keys@{database} for the key from before
-/// providers.
-fn credential_user(database: &str, provider: &str) -> String {
-    if provider == BEFORE_PROVIDERS {
-        format!("user_llm_keys@{database}")
-    } else {
-        format!("user_llm_keys:{provider}@{database}")
-    }
-}
-
-/// The name a credential had while it was named by the local user's id too:
-/// user_llm_keys:{id}:{provider}@{database}, or user_llm_keys:{id}@{database} for the key from
-/// before providers.
-fn credential_user_named_by_user(database: &str, user_id: i64, provider: &str) -> String {
-    if provider == BEFORE_PROVIDERS {
-        format!("user_llm_keys:{user_id}@{database}")
-    } else {
-        format!("user_llm_keys:{user_id}:{provider}@{database}")
-    }
-}
-
-fn failed(e: keyring::Error) -> String {
-    format!("Windows Credential Manager: {e}")
-}
-
-fn lock(keys: &Mutex<HashMap<String, String>>) -> std::sync::MutexGuard<'_, HashMap<String, String>> {
-    keys.lock().unwrap_or_else(|poisoned| poisoned.into_inner())
+fn failed(name: &str, done: &str, e: sqlx::Error) -> String {
+    format!("The secret {name} couldn't be {done}: the database said {e}")
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
 
-    #[test]
-    fn a_kept_key_is_read_back_until_deleted() {
-        let vault = KeyVault::in_memory();
-        assert_eq!(vault.key_for("openai").unwrap(), None);
-        vault.save("openai", "sk-one").unwrap();
-        vault.save("openai", "sk-two").unwrap();
-        assert_eq!(vault.key_for("openai").unwrap().as_deref(), Some("sk-two"));
-        vault.delete("openai").unwrap();
-        vault.delete("openai").unwrap();
-        assert_eq!(vault.key_for("openai").unwrap(), None);
+    async fn db() -> sqlx::SqlitePool {
+        crate::db::open_in_memory().await.unwrap()
     }
 
-    #[test]
-    fn each_provider_keeps_its_own_key() {
-        let vault = KeyVault::in_memory();
-        vault.save("anthropic", "sk-ant-one").unwrap();
-        vault.save("openai", "sk-two").unwrap();
-        assert_eq!(vault.key_for("anthropic").unwrap().as_deref(), Some("sk-ant-one"));
-        assert_eq!(vault.key_for("openai").unwrap().as_deref(), Some("sk-two"));
+    #[tokio::test]
+    async fn a_kept_key_is_read_back_until_deleted() {
+        let db = db().await;
+        let vault = KeyVault::with_key_in_memory();
+        assert_eq!(vault.key_for(&db, "openai").await.unwrap(), None);
+        vault.save(&db, "openai", "sk-one").await.unwrap();
+        vault.save(&db, "openai", "sk-two").await.unwrap();
+        assert_eq!(vault.key_for(&db, "openai").await.unwrap().as_deref(), Some("sk-two"));
+        vault.delete(&db, "openai").await.unwrap();
+        vault.delete(&db, "openai").await.unwrap();
+        assert_eq!(vault.key_for(&db, "openai").await.unwrap(), None);
     }
 
-    #[test]
-    fn each_database_and_provider_has_its_own_credential() {
-        let main = r"C:\Users\me\AppData\Roaming\JobFinder\jobfinder.sqlite";
-        assert_ne!(
-            credential_user(main, "openai"),
-            credential_user(r"C:\Users\me\scratch.sqlite", "openai")
-        );
-        assert_ne!(credential_user(main, "openai"), credential_user(main, "anthropic"));
-        assert_eq!(credential_user(main, "openai"), format!("user_llm_keys:openai@{main}"));
-        assert_eq!(credential_user(main, BEFORE_PROVIDERS), format!("user_llm_keys@{main}"));
-    }
-
-    #[test]
-    fn the_names_from_before_have_the_local_users_id() {
-        let main = r"C:\Users\me\AppData\Roaming\JobFinder\jobfinder.sqlite";
+    #[tokio::test]
+    async fn each_provider_keeps_its_own_key() {
+        let db = db().await;
+        let vault = KeyVault::with_key_in_memory();
+        vault.save(&db, "anthropic", "sk-ant-one").await.unwrap();
+        vault.save(&db, "openai", "sk-two").await.unwrap();
         assert_eq!(
-            credential_user_named_by_user(main, 3, "openai"),
-            format!("user_llm_keys:3:openai@{main}")
+            vault.key_for(&db, "anthropic").await.unwrap().as_deref(),
+            Some("sk-ant-one")
         );
-        assert_eq!(
-            credential_user_named_by_user(main, 3, BEFORE_PROVIDERS),
-            format!("user_llm_keys:3@{main}"),
-            "the credential the app kept its one key in before providers"
-        );
+        assert_eq!(vault.key_for(&db, "openai").await.unwrap().as_deref(), Some("sk-two"));
+    }
+
+    #[tokio::test]
+    async fn the_table_holds_no_key_in_plain_text() {
+        let db = db().await;
+        let vault = KeyVault::with_key_in_memory();
+        vault.save(&db, "openai", "sk-plain-to-find").await.unwrap();
+        let sealed: Vec<u8> = sqlx::query_scalar("SELECT sealed FROM secrets")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+        assert!(!sealed.windows(5).any(|window| window == b"plain"));
+    }
+
+    #[tokio::test]
+    async fn another_databases_key_cant_open_them() {
+        let db = db().await;
+        KeyVault::with_key_in_memory()
+            .save(&db, "openai", "sk-one")
+            .await
+            .unwrap();
+        let why = KeyVault::with_key_in_memory().key_for(&db, "openai").await.unwrap_err();
+        assert!(why.contains("another key file"), "{why}");
+    }
+
+    #[tokio::test]
+    async fn a_vault_without_its_key_says_why() {
+        let db = db().await;
+        let vault = KeyVault::with(Err("The key file x couldn't be read: denied".to_string()));
+        let why = vault.save(&db, "openai", "sk-one").await.unwrap_err();
+        assert!(why.contains("denied"), "{why}");
+    }
+
+    #[test]
+    fn each_secret_has_its_own_name() {
+        assert_eq!(Secret::LlmKey("openai").name(), "llm_key:openai");
+        assert_eq!(Secret::DeviceTokenHash(3).name(), "device_token_hash:3");
+        assert_ne!(Secret::KeyFromBeforeProviders.name(), Secret::LlmKey("").name());
     }
 }

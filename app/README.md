@@ -121,9 +121,12 @@ can't use it.
 
 The AI features run on your own keys, saved on Language models (`account`): an OpenAI key, an Anthropic key, or a local OpenAI-compatible server
 such as Ollama (`http://localhost:11434/v1`) or LM Studio (`http://localhost:1234/v1`), which
-needs a model name and usually no key. One key is kept per provider. Each goes in Windows
-Credential Manager (service `JobFinder`, user `user_llm_keys:{provider}@` and the database
-file's full path, so each provider and each database has its own key), never in the database;
+needs a model name and usually no key. One key is kept per provider, in the database's
+`secrets` table, sealed with XChaCha20-Poly1305 under the database's data key. That key is in
+its own file beside the database (`jobfinder.sqlite-key`), wrapped with DPAPI for your Windows
+user on Windows and readable only by you elsewhere, so a copy of the database alone opens no key
+(`account::data_key`). Keys saved before this were in Windows Credential Manager (the keyring on
+Linux); the app moves them into the table at start and removes them there (`account::former_keys`).
 `llm_keys` keeps a row per provider with the model, address, the key's last 4 characters
 and the uses it is picked for (each use on one key at most); `llm_task_models` keeps the
 model each task runs on, on its use's key (`account/task_model.rs`). A key saved before keys were kept
@@ -144,7 +147,7 @@ The Match screen runs each AI step on the key picked for that use: evaluating jo
 posts (extract_job, extract_cv, the judging in match), writing applications, tailoring résumés.
 With no key picked for evaluating, the free reader reads the post and CV instead, so a match is still
 saved and can have its application and résumé written. Without a key for a use, the window says
-why (none saved, none picked for the use, or gone from Credential Manager) and goes to Language models.
+why (none saved, none picked for the use, or its key no longer kept or sealed with another key file) and goes to Language models.
 
 ## The Jobnet extension
 
@@ -172,7 +175,7 @@ match: `cv_matches` is `matches`, `cv_match_id` is `match_id`, `cv_match_items` 
 - `user_llm_keys` is `llm_keys`, and `user_llm_use_models` is `llm_task_models (task, model)`.
 - `llm_keys.uses` (a SET) is three yes/no columns, `use_for_resume`,
   `use_for_application` and `use_for_job_evaluation`; `base_url` is set for a local model.
-- The API key itself goes in Windows Credential Manager, so the table has no key column.
+- The API key itself is sealed in the `secrets` table, so `llm_keys` has no key column.
 - The documents written for a match (its application and tailored résumé) are versions in
   `documents` instead of `matches.application_text` and `resume_text`, so writing one again
   keeps the one before; the newest is the one shown. Each version records the model that wrote

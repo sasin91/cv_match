@@ -74,7 +74,7 @@ pub struct AccountView {
     pub key_uses: Vec<KeyUse>,
     /// Per task whose use runs on a key, the model it runs on.
     pub task_models: Vec<TaskModelRow>,
-    /// Why Credential Manager couldn't be read, when it couldn't.
+    /// Why the secrets couldn't be read, when they couldn't.
     pub vault_error: Option<String>,
     pub providers: Vec<ProviderOption>,
     pub model: String,
@@ -235,7 +235,7 @@ pub async fn check_key(context: &Context, provider: &str) -> Result<String, Serv
 pub async fn account_view(context: &Context, typed: Option<&KeyForm>) -> Result<AccountView, ServiceError> {
     let together = context.key_vault.lock().await;
     let saved = account_model::saved(context.db()).await?;
-    let (saved_keys, vault_error) = readable(context, &saved);
+    let (saved_keys, vault_error) = readable(context, &saved).await;
     drop(together);
     let saved_models = task_model::saved(context.db()).await?;
     let downloaded = llama::model_files(context.llama.as_ref());
@@ -292,24 +292,22 @@ fn provider_to_add(saved: &[Saved], local_first: bool) -> &'static str {
         .unwrap_or(OPENAI)
 }
 
-/// The saved keys for the page, each saying whether it is gone from Credential Manager, and why
-/// Credential Manager couldn't be read, when it couldn't. The caller holds the vault's lock.
-fn readable(context: &Context, saved: &[Saved]) -> (Vec<SavedKey>, Option<String>) {
+/// The saved keys for the page, each saying whether its key is gone, and why the secrets
+/// couldn't be read, when they couldn't. The caller holds the vault's lock.
+async fn readable(context: &Context, saved: &[Saved]) -> (Vec<SavedKey>, Option<String>) {
     let mut vault_error = None;
-    let keys = saved
-        .iter()
-        .map(|saved| {
-            let unreadable = match account_model::with_key(&context.key_vault, saved) {
-                Ok(key) => key.is_none(),
-                Err(e) => {
-                    crate::log_line!("account: {e} (saved {} key)", saved.provider);
-                    vault_error.get_or_insert(e.to_string());
-                    false
-                }
-            };
-            SavedKey::from(saved, unreadable)
-        })
-        .collect();
+    let mut keys = Vec::with_capacity(saved.len());
+    for saved in saved {
+        let unreadable = match account_model::with_key(context.db(), &context.key_vault, saved).await {
+            Ok(key) => key.is_none(),
+            Err(e) => {
+                crate::log_line!("account: {e} (saved {} key)", saved.provider);
+                vault_error.get_or_insert(e.to_string());
+                false
+            }
+        };
+        keys.push(SavedKey::from(saved, unreadable));
+    }
     (keys, vault_error)
 }
 
