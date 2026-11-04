@@ -48,6 +48,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
         include_str!("../migrations/0012_notifications.sql"),
     ),
     ("0013_devices", include_str!("../migrations/0013_devices.sql")),
+    ("0014_secrets", include_str!("../migrations/0014_secrets.sql")),
 ];
 
 /// How long a write waits for another connection's write to finish, in milliseconds.
@@ -94,8 +95,8 @@ pub fn without_verbatim_prefix(path: String) -> String {
 /// What std::fs::canonicalize puts before a path on Windows.
 const VERBATIM_PREFIX: &str = r"\\?\";
 
-/// A file's full path, which names its key's credential (key_vault); as given when it can't be
-/// resolved. On Windows it starts with \\?\, as std::fs::canonicalize gives it.
+/// A file's full path, which named its keys' credentials (account::former_keys); as given when it
+/// can't be resolved. On Windows it starts with \\?\, as std::fs::canonicalize gives it.
 pub fn full_path(file: &Path) -> String {
     std::fs::canonicalize(file)
         .unwrap_or_else(|_| file.to_path_buf())

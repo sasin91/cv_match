@@ -25,10 +25,11 @@ use std::path::PathBuf;
 use std::process::ExitCode;
 use std::sync::Arc;
 
+use jobfinder::account::former_keys::FormerKeys;
 use jobfinder::account::key_vault::KeyVault;
 use jobfinder::app_log::{self, Opened};
 use jobfinder::context::{Context, DatabaseFile};
-use jobfinder::devices::{device_server, tailscale};
+use jobfinder::devices::{device_model, device_server, tailscale};
 use jobfinder::from_recruiter::{self, Moved};
 use jobfinder::instance::{self, Running};
 use jobfinder::job_scan::scan_service;
@@ -205,13 +206,11 @@ fn run_cleanup(args: &[String]) -> ExitCode {
     let Some(runtime) = runtime() else {
         return ExitCode::FAILURE;
     };
-    // The keys' credentials are named by the database's full path, so it is read before the
-    // database is gone.
-    let vault = KeyVault::credential_manager(db::full_path(&database));
     let former_user_id = runtime.block_on(former_user_id_in(&database));
     let schedule = scan_schedule(&database);
-    runtime.block_on(take_over_kept_elsewhere(&database, &vault, former_user_id, &schedule));
-    let found = runtime.block_on(cleanup::find(&database, &schedule, &vault));
+    runtime.block_on(take_over_former_schedule(&database, &schedule));
+    let credentials = cleanup::Credentials::LookIn { former_user_id };
+    let found = runtime.block_on(cleanup::find(&database, &schedule, credentials));
 
     println!("JobFinder's cleanup, for {}:", database.display());
     match (found.schedule, &found.schedule_error) {
@@ -219,14 +218,15 @@ fn run_cleanup(args: &[String]) -> ExitCode {
         (None, Some(why)) => println!("  (the job scan's schedule couldn't be read: {why})"),
         (None, None) => {}
     }
-    for provider in &found.keys {
-        println!("- the {} key", cleanup::key_name(provider));
+    for credential in &found.left_in_credentials {
+        println!(
+            "- {}, left in {} from before",
+            cleanup::left_name(&credential.secret, &found.devices),
+            SYSTEM_STORE
+        );
     }
-    if let Some(why) = &found.keys_error {
-        println!("  (the API keys couldn't be read: {why})");
-    }
-    for device in &found.devices {
-        println!("- the token of the paired device \"{}\"", device.name);
+    if let Some(why) = &found.credentials_error {
+        println!("  ({SYSTEM_STORE} couldn't be read: {why})");
     }
     if let Some(why) = &found.devices_error {
         println!("  (the paired devices couldn't be read: {why})");
@@ -239,9 +239,9 @@ fn run_cleanup(args: &[String]) -> ExitCode {
     }
     let mut failed = Vec::new();
     if !found.anything_besides_the_database() {
-        println!("No schedule, keys, device tokens or downloads to remove.");
+        println!("No schedule, leftover keys or downloads to remove.");
     } else if ask("Remove these?") {
-        failed.extend(runtime.block_on(cleanup::remove_besides_the_database(&found, &schedule, &vault)));
+        failed.extend(runtime.block_on(cleanup::remove_besides_the_database(&found, &schedule)));
     } else {
         println!("Nothing was removed.");
         return ended_by_hand(ExitCode::SUCCESS);
@@ -254,7 +254,7 @@ fn run_cleanup(args: &[String]) -> ExitCode {
         drop(held);
     } else {
         println!(
-            "Your database, {}, holds your profile, matches and applications, and can't be brought back once deleted.",
+            "Your database, {}, holds your profile, matches, applications, API keys and paired devices, and can't be brought back once deleted.",
             database.display()
         );
         if ask("Delete your database too?") {
@@ -532,11 +532,7 @@ fn app_context(
         jobfinder::log_line!("{why} Matching uses the shipped taxonomy without the learned labels.");
         Taxonomy::load()
     });
-    let mut context = Context::new(
-        db,
-        Arc::new(taxonomy),
-        KeyVault::credential_manager(db::full_path(database)),
-    );
+    let mut context = Context::new(db, Arc::new(taxonomy), KeyVault::of_database(database));
     context.database = DatabaseFile {
         path: db::shown_path(database),
         made_now,
@@ -544,12 +540,8 @@ fn app_context(
     context.scan_schedule = scan_schedule(database);
     context.toasts = Toasts::system();
     forget_old_notifications(runtime, context.db());
-    runtime.block_on(take_over_kept_elsewhere(
-        database,
-        &context.key_vault,
-        former_user_id,
-        &context.scan_schedule,
-    ));
+    runtime.block_on(move_former_keys(database, &context, former_user_id));
+    runtime.block_on(take_over_former_schedule(database, &context.scan_schedule));
     let data_folder = database.parent().unwrap_or(std::path::Path::new("."));
     let laya_folder = laya_folder.unwrap_or_else(|| data_folder.join(laya_client::FOLDER));
     context.laya = LayaClient::from_folder(&laya_folder);
@@ -598,39 +590,39 @@ fn said_move(moved: Result<Moved, String>) -> Result<(), String> {
     Ok(())
 }
 
-/// Moves what the app kept outside the database under former names: the API keys named by the
-/// local user's id (former_user_id, while the database had trongate_users), and what it kept
-/// while it was called Recruiter: the API keys, and on the default database the job scan's
-/// schedule. What failed is logged; the app goes on.
-async fn take_over_kept_elsewhere(
-    database: &std::path::Path,
-    vault: &KeyVault,
-    former_user_id: Option<i64>,
-    schedule: &ScanSchedule,
-) {
-    if let Some(user_id) = former_user_id {
-        match vault.take_over_keys_named_by_user(user_id) {
-            Ok(0) => {}
-            Ok(moved) => jobfinder::say!("Moved {moved} API key(s) to their names without the user id."),
-            Err(why) => jobfinder::log_line!("The API keys kept under the user's id couldn't be moved: {why}"),
+/// Where the app kept its secrets before the secrets table, as the cleanup names it.
+const SYSTEM_STORE: &str = if cfg!(windows) {
+    "Windows Credential Manager"
+} else {
+    "the system keyring"
+};
+
+/// Moves the API keys and device token hashes the app kept in Credential Manager (the keyring)
+/// into the secrets table (account::former_keys): under the database's own names, the names with
+/// the local user's id (former_user_id, while the database had trongate_users), and Recruiter's.
+/// What failed is logged; the app goes on, and tries again at the next start.
+async fn move_former_keys(database: &std::path::Path, context: &Context, former_user_id: Option<i64>) {
+    let device_ids = match device_model::all(context.db()).await {
+        Ok(devices) => devices.iter().map(|device| device.id).collect(),
+        Err(e) => {
+            jobfinder::log_line!("The paired devices couldn't be read to move their tokens: {e}");
+            Vec::new()
         }
+    };
+    let former = FormerKeys::of(database, former_user_id, device_ids);
+    match former.move_into(&context.key_vault, context.db()).await {
+        Ok(0) => {}
+        Ok(moved) => jobfinder::say!(
+            "Moved {moved} API key(s) and device token(s) from {SYSTEM_STORE} into the database's secrets, sealed with its key file."
+        ),
+        Err(why) => jobfinder::log_line!("Nothing more was moved from {SYSTEM_STORE} into the secrets table: {why}"),
     }
-    if from_recruiter::former_left_in_place(database) {
-        // Its keys and schedule stay with the former database (said at the move).
-        return;
-    }
-    // Recruiter's keys were named by the local user's id; a database without trongate_users
-    // was opened by JobFinder already, which took them over then.
-    if let Some(user_id) = former_user_id {
-        match vault.take_over_former_keys(&from_recruiter::former_key_database(database), user_id) {
-            Ok(0) => {}
-            Ok(moved) => {
-                jobfinder::say!("Moved {moved} API key(s) from Recruiter's name in Credential Manager to JobFinder's.")
-            }
-            Err(why) => jobfinder::log_line!("The API keys kept under Recruiter's name couldn't be moved: {why}"),
-        }
-    }
-    if !from_recruiter::is_default(database) {
+}
+
+/// Moves the job scan's schedule from Recruiter's name, on the default database, unless the former
+/// database was left in place beside it. What failed is logged; the app goes on.
+async fn take_over_former_schedule(database: &std::path::Path, schedule: &ScanSchedule) {
+    if from_recruiter::former_left_in_place(database) || !from_recruiter::is_default(database) {
         return;
     }
     match schedule

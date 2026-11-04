@@ -279,7 +279,7 @@ fn database_step(database: &DatabaseStep) -> Element<'_, Msg> {
     column![
         text(format!("{kept} {}.", database.path)).size(style::BODY_SIZE),
         widgets::caption(
-            "Your matches, profile and settings are in this one file. Your API keys are in Windows Credential Manager (your keyring on Linux), not in it."
+            "Your matches, profile, settings and API keys are in this one file. The keys are sealed with a key file kept beside it, so a copy of the database alone doesn't give them away."
         ),
     ]
     .spacing(6)

@@ -57,7 +57,8 @@ pub async fn pair(context: &Context, ask: &PairAsk, now: i64) -> Result<PairAnsw
     };
     if let Err(why) = context
         .key_vault
-        .save_device_token_hash(device_id, &token_hash(&token.secret))
+        .save_device_token_hash(context.db(), device_id, &token_hash(&token.secret))
+        .await
     {
         // A device without a kept token could never be known again: don't keep it at all.
         if let Err(e) = device_model::remove(context.db(), device_id).await {
@@ -87,7 +88,8 @@ pub async fn device_for(context: &Context, authorization: Option<&str>, now: i64
         .ok_or_else(not_paired)?;
     let kept = context
         .key_vault
-        .device_token_hash(token.device_id)
+        .device_token_hash(context.db(), token.device_id)
+        .await
         .map_err(|why| ServiceError::internal("devices", format!("The device's token couldn't be read: {why}")))?;
     if !kept.is_some_and(|kept| same_secret(&kept, &token_hash(&token.secret))) {
         return Err(not_paired());
@@ -124,7 +126,8 @@ pub async fn remove(context: &Context, id: i64) -> Result<(), ServiceError> {
     // The token first: once it is gone the device can't get in, whatever happens to its row.
     context
         .key_vault
-        .forget_device_token_hash(id)
+        .forget_device_token_hash(context.db(), id)
+        .await
         .map_err(|why| ServiceError::internal("devices", format!("The device's token couldn't be removed: {why}")))?;
     let removed = device_model::remove(context.db(), id)
         .await

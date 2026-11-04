@@ -19,7 +19,7 @@ static TAXONOMY: LazyLock<Arc<Taxonomy>> = LazyLock::new(|| Arc::new(Taxonomy::l
 /// The work on a new database: nothing in it but the local user.
 async fn context() -> Arc<Context> {
     let db = db::open_in_memory().await.unwrap();
-    Arc::new(Context::new(db, TAXONOMY.clone(), KeyVault::in_memory()))
+    Arc::new(Context::new(db, TAXONOMY.clone(), KeyVault::with_key_in_memory()))
 }
 
 fn form(name: &str, keywords: &str) -> SearchForm {

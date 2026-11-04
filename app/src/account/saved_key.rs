@@ -19,7 +19,7 @@ pub struct SavedKey {
     pub base_url: String,
     /// The day it was saved, as "30 Oct 2026".
     pub saved_on: String,
-    /// Saved, but no longer in Credential Manager.
+    /// Saved, but its key is no longer kept (or can't be opened).
     pub unreadable: bool,
 }
 

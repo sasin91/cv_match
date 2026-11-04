@@ -7,7 +7,7 @@
 //! - the job scan's former schedule is moved to the new one (ScanSchedule::take_over_former).
 //!
 //! And at each start on any database, the API keys kept under the former name in Credential
-//! Manager move to the new one (KeyVault::take_over_former_keys). Each step is done only when
+//! Manager move into the secrets table (account::former_keys). Each step is done only when
 //! there is something left to take over, so later starts find nothing and change nothing.
 
 use std::path::{Path, PathBuf};

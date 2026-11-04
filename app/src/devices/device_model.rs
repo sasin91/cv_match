@@ -1,5 +1,5 @@
-//! The devices table: the devices paired with the app. Their tokens are in the key vault
-//! (account::key_vault), not here.
+//! The devices table: the devices paired with the app. Their token hashes are in the secrets
+//! table (account::key_vault), not here.
 
 use std::path::Path;
 

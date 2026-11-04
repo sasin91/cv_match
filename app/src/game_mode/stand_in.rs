@@ -68,7 +68,7 @@ pub async fn now(context: &Context) -> Result<Option<StandIn>, ServiceError> {
     Ok(cloud_key(context).await?.map(|key| StandIn { key, playing }))
 }
 
-/// The user's first saved cloud key (CLOUD_PROVIDERS) that is in Credential Manager, on its own
+/// The user's first saved cloud key (CLOUD_PROVIDERS) whose key is kept, on its own
 /// model.
 async fn cloud_key(context: &Context) -> Result<Option<KeyFor>, ServiceError> {
     for provider in CLOUD_PROVIDERS {

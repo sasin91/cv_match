@@ -41,8 +41,7 @@ form.
 
 The app was called Recruiter before. On the default database, the first start of JobFinder moves
 the app's files in `%APPDATA%\Recruiter` to `%APPDATA%\JobFinder` (renaming `recruiter.sqlite`
-and `recruiter.log` to the new names; any other database there stays), moves the API keys from Credential Manager's `Recruiter` entries to
-`JobFinder` ones, and replaces the `Recruiter\Job scan` task with `JobFinder\Job scan` at the
+and `recruiter.log` to the new names; any other database there stays), moves the API keys from Credential Manager's `Recruiter` entries into the database's secrets, and replaces the `Recruiter\Job scan` task with `JobFinder\Job scan` at the
 same interval (on Linux, the `recruiter-scan` timer with `jobfinder-scan`). It won't start while
 Recruiter still runs on that folder; close it first. If you loaded the Jobnet extension, remove it
 in Edge and load it again from `%APPDATA%\JobFinder\jobnet-joblog` (its ID stays the same). Delete the old `recruiter.exe` afterwards:
@@ -84,8 +83,10 @@ applications, tailoring résumés) and, under each, the model each of its tasks 
 job posts, reading CVs and judging the match (evaluating job posts), writing applications, and
 tailoring résumés. With this app's own model, job posts are read with Gemma 4 E4B and CVs read
 and judged with Qwen3 4B when those files are in `llama\models`; otherwise a task runs on the
-key's own model. **Check key** sends one tiny request. The keys go in Windows Credential Manager under
-`JobFinder`, never in the database. With no model named, OpenAI keys run on gpt-5.4-mini.
+key's own model. **Check key** sends one tiny request. The keys are kept in the database, sealed
+with a key file beside it (`jobfinder.sqlite-key`), which on Windows only your Windows user can
+open: a copy of the database alone gives no key away, and a database moved to another computer
+needs its keys saved again. With no model named, OpenAI keys run on gpt-5.4-mini.
 
 ### Laya's model
 
@@ -155,9 +156,9 @@ double-click it. Moving it later is fine; at its next start the job scan's sched
 
 To remove it, close it and run `jobfinder.exe cleanup` (`./JobFinder-x86_64.AppImage cleanup` on
 Linux), then delete the file. The cleanup lists what the app keeps outside its file and asks before
-removing it: the job scan's schedule, the API keys in Credential Manager (or the keyring), and the
-Jobnet extension's files, llama.cpp and Laya next to the database. It then asks separately whether
-to delete the database too (no unless you type y), and says that the extension itself is removed
+removing it: the job scan's schedule, any API keys still left in Credential Manager (or the keyring)
+from before they moved into the database, and the Jobnet extension's files, llama.cpp and Laya next to the database. It then asks separately whether
+to delete the database too, with its key file and the keys sealed in it (no unless you type y), and says that the extension itself is removed
 in Edge. Give it `--database` for a database elsewhere. When it can't start (the port is taken, the database can't be opened), a small
 window says why.
 
@@ -166,8 +167,8 @@ window says why.
 Take `JobFinder-x86_64.AppImage` from a release (or build it with `cargo build --release` in
 `app/`), make it executable and run it from wherever you keep it. There is nothing to install:
 delete the file to remove it. Tools like AppImageLauncher can add it to the applications menu. The
-database is `~/.local/share/JobFinder/jobfinder.sqlite`, and API keys go in the keyring (the
-Secret Service: GNOME Keyring or KWallet), which has to be running to save one.
+database is `~/.local/share/JobFinder/jobfinder.sqlite`, and the API keys are sealed in it with
+the key file beside it (`jobfinder.sqlite-key`, readable only by you), so no keyring is needed.
 
 The job scan's schedule is a systemd user timer, `jobfinder-scan.timer`, in
 `~/.config/systemd/user` (`systemctl --user list-timers` shows it), running the AppImage file
@@ -222,9 +223,9 @@ With a real key saved on Language models, check these by hand after a change:
       AppImage) to another folder and start it from there. The task's action (or the timer's
       service) now runs it from the new folder.
 - [ ] **The cleanup:** with the app closed, run `jobfinder.exe cleanup --database` on a test
-      database with a scheduled scan and a saved key. It lists them, removes them on y (the task is
-      gone from Task Scheduler, the key from Credential Manager), and keeps the database unless the
-      second question gets a y. With the app open it refuses.
+      database with a scheduled scan. It lists it, removes it on y (the task is gone from Task
+      Scheduler), and keeps the database and its key file unless the second question gets a y.
+      With the app open it refuses.
 - [ ] **The Match screen and Setup:** start with `--database` naming a new file. The window
       opens on Setup, which suggests the app's own model on a PC with a good graphics card, else
       an OpenAI key. Set one up and land back on Setup; read a PDF CV into the profile; pick how
@@ -266,7 +267,11 @@ With a real key saved on Language models, check these by hand after a change:
 - [ ] **Rejecting:** Not interested moves a match to Rejected, and Bring back returns it.
 - [ ] **Jobnet:** on jobnet.dk, the extension's panel lists your matches, fills in a joblog entry
       and marks the match as on Jobnet.
-- [ ] **Errors:** delete the key in Credential Manager, or switch a use off, and try a match.
+- [ ] **Keys move in:** start this build on a database whose keys are in Credential Manager.
+      The log says how many moved, Language models still shows them, and Credential Manager no
+      longer has `JobFinder` entries for that database.
+- [ ] **Errors:** rename `jobfinder.sqlite-key` away (the app makes a new one), or switch a use
+      off, and try a match.
       The window says why and goes to Language models, and `jobfinder.log` logs it.
 - [ ] **Nothing else on 8765:** http://127.0.0.1:8765/match in a browser says the app has no
       web pages.

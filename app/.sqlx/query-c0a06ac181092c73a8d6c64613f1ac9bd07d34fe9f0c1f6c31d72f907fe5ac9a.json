@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT sealed FROM secrets WHERE name = ?1",
+  "describe": {
+    "columns": [
+      {
+        "name": "sealed",
+        "ordinal": 0,
+        "type_info": "Blob",
+        "origin": {
+          "Table": {
+            "table": "secrets",
+            "name": "sealed"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false
+    ]
+  },
+  "hash": "c0a06ac181092c73a8d6c64613f1ac9bd07d34fe9f0c1f6c31d72f907fe5ac9a"
+}
