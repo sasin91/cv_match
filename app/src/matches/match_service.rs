@@ -9,7 +9,8 @@ use super::ai_match::{self, AiMatch, Matching};
 use super::application_delivery::ApplicationDelivery;
 use super::cv_links::CvLink;
 use super::document_box::{self, DocumentBox, RESUME};
-use super::document_writer::{self, WriteError};
+use super::document_question::{self, Answer as QuestionAnswer, Question};
+use super::document_writer::{self, Revision, WriteError};
 use super::free_reader::{FreeReader, YearMonth};
 use super::joblog::{self, Entry};
 use super::joblog_panel::{JoblogPanel, Logged};
@@ -841,6 +842,7 @@ pub async fn write(
     id: i64,
     notes: &str,
     kind: &'static str,
+    revision: Option<Revision>,
     abandoned: WhenAbandoned,
 ) -> Result<DocumentBox, ServiceError> {
     let found = saved_match(&context, id).await?;
@@ -857,11 +859,11 @@ pub async fn write(
             let db = task_context.db();
             let now = chrono::Utc::now().timestamp();
             if kind == RESUME {
-                document_writer::tailor_resume(db, &task_found, &keyed, &notes, now)
+                document_writer::tailor_resume(db, &task_found, &keyed, &notes, revision.as_ref(), now)
                     .await
                     .map(|tailored| (tailored.keywords, tailored.left_out))
             } else {
-                document_writer::write_application(db, &task_found, &keyed, &notes, now)
+                document_writer::write_application(db, &task_found, &keyed, &notes, revision.as_ref(), now)
                     .await
                     .map(|_| (Vec::new(), Vec::new()))
             }
@@ -899,6 +901,50 @@ pub async fn write(
     .with_keywords(keywords, &left_out))
 }
 
+/// The model that writes question.kind answers the question in a comment thread on a passage
+/// of saved match id's document, with a change for its next revision. Listed in the task manager as the
+/// writing is; nothing is saved.
+pub async fn ask_about(context: &Context, id: i64, question: &Question) -> Result<QuestionAnswer, ServiceError> {
+    const WORK: &str = "match/ask_about";
+    if question.comment.passage.trim().is_empty() {
+        return Err(ServiceError::new(
+            ErrorKind::Invalid,
+            "Highlight a part of the text first.",
+        ));
+    }
+    if question.asked().is_empty() {
+        return Err(ServiceError::new(
+            ErrorKind::Invalid,
+            "Write what you want to know about it.",
+        ));
+    }
+    if question.comment.passage.chars().count() > document_question::MAX_PASSAGE {
+        return Err(ServiceError::new(
+            ErrorKind::Invalid,
+            format!("Highlight at most {} characters.", document_question::MAX_PASSAGE),
+        ));
+    }
+    if question.asked().chars().count() > document_question::MAX_QUESTION {
+        return Err(ServiceError::new(
+            ErrorKind::Invalid,
+            format!("Ask in at most {} characters.", document_question::MAX_QUESTION),
+        ));
+    }
+    let found = saved_match(context, id).await?;
+    let keyed = llm_key::llm(context, task_model::writing(question.kind)).await?;
+    let what = format!("Question on {}", writing_label(question.kind, &found).to_lowercase());
+    let asking = document_question::ask(context.db(), &found, &keyed, question);
+    let answered = Arc::clone(&context.running)
+        .run(WorkKind::Writing, what, asking)
+        .await
+        .unwrap_or_else(|Stopped| Err(WriteError::Empty(Stopped::SAID)));
+    answered.map_err(|e| match e {
+        WriteError::Llm(e) => ServiceError::llm(WORK, &e),
+        WriteError::Database(e) => ServiceError::from(e),
+        WriteError::Empty(why) => ServiceError::failed(WORK, why),
+    })
+}
+
 /// What write_document came to: the boxes as they are now, and the tailored résumé's own match.
 #[derive(Debug)]
 pub struct WriteAnswer {
@@ -917,20 +963,31 @@ pub struct WriteAnswer {
 /// Writes kind for saved match id, as the match page does: tailoring the résumé writes the
 /// application too when there is none yet and the key may write it, and then matches the
 /// résumé against the post (compare_resume). Each of those runs when the other fails, so
-/// neither has to be written again to get it.
+/// neither has to be written again to get it. revision: the version it rewrites, with the
+/// candidate's comments on it; None writes it from the CV alone.
 pub async fn write_document(
     context: Arc<Context>,
     id: i64,
     notes: &str,
     kind: &'static str,
+    revision: Option<Revision>,
     say: Say<'_>,
 ) -> Result<WriteAnswer, ServiceError> {
-    say(if kind == RESUME {
-        "Tailoring the résumé…"
-    } else {
-        "Writing the application…"
+    say(match (kind == RESUME, revision.is_some()) {
+        (true, false) => "Tailoring the résumé…",
+        (true, true) => "Revising the résumé…",
+        (false, false) => "Writing the application…",
+        (false, true) => "Revising the application…",
     });
-    let written = write(Arc::clone(&context), id, notes, kind, WhenAbandoned::KeepWriting).await?;
+    let written = write(
+        Arc::clone(&context),
+        id,
+        notes,
+        kind,
+        revision,
+        WhenAbandoned::KeepWriting,
+    )
+    .await?;
     if kind != RESUME {
         return Ok(WriteAnswer {
             boxes: boxes_with(&context, id, written).await?,
@@ -950,6 +1007,7 @@ pub async fn write_document(
             id,
             notes,
             document_box::APPLICATION,
+            None,
             WhenAbandoned::KeepWriting,
         )
         .await

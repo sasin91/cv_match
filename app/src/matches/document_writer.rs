@@ -87,8 +87,95 @@ async fn years_of_work(db: &SqlitePool, now: i64) -> sqlx::Result<String> {
     Ok(years_line(years.and_then(|years| years.years())))
 }
 
+/// A rewrite of a written version the candidate commented on, as a pull request's review is
+/// sent: the version as it was in its box (edits included), and the comment threads on its
+/// passages.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Revision {
+    pub previous: String,
+    pub comments: Vec<Comment>,
+}
+
+/// A comment thread on one passage of a written version: what the candidate said, and the
+/// writer's answers when they asked (document_question).
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Comment {
+    /// The text they highlighted, as it stands in the version.
+    pub passage: String,
+    pub said: Vec<Said>,
+}
+
+/// One line of a comment thread.
+#[derive(Debug, Clone, PartialEq)]
+pub struct Said {
+    pub by: By,
+    pub text: String,
+}
+
+/// Who said a line of a comment thread.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum By {
+    Candidate,
+    /// The model that writes the document, answering a question.
+    Writer,
+}
+
+impl By {
+    /// As the prompt and the panel name them.
+    pub fn label(self) -> &'static str {
+        match self {
+            By::Candidate => "Candidate",
+            By::Writer => "Writer",
+        }
+    }
+}
+
+/// A thread's lines as the prompt has them: "  Candidate: …", one per line.
+pub(super) fn thread_lines(said: &[Said]) -> String {
+    said.iter()
+        .map(|line| format!("  {}: {}", line.by.label(), line.text.trim().replace('\n', " ")))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The comments as a list: "- On “passage”:" and its thread under it.
+fn comment_lines(comments: &[Comment]) -> String {
+    comments
+        .iter()
+        .map(|c| format!("- On “{}”:\n{}", c.passage.trim(), thread_lines(&c.said)))
+        .collect::<Vec<_>>()
+        .join("\n")
+}
+
+/// The previous version and the comments on it, as a block to end the prompt with, or "" for a
+/// first writing.
+fn revision_block(revision: Option<&Revision>, document: &str) -> String {
+    let Some(revision) = revision else {
+        return String::new();
+    };
+    format!(
+        "\nThe previous version of the {document}, as the candidate has it:\n\n{previous}\n\nThe candidate's comments on it:\n{comments}\n\nThis is a revision: write an improved version of the previous one. Keep what the comments don't touch close to how it was, change what each comment thread asks for or agrees on, and never write again what a thread says is wrong. Treat facts the candidate states in the threads as true, like facts in the CV.",
+        previous = revision.previous.trim(),
+        comments = comment_lines(&revision.comments),
+    )
+}
+
+/// The notes a version is saved with: the candidate's, and the comments it was revised on, so
+/// Earlier versions says why it changed.
+pub fn saved_notes(notes: &str, revision: Option<&Revision>) -> String {
+    let Some(revision) = revision.filter(|revision| !revision.comments.is_empty()) else {
+        return notes.to_string();
+    };
+    let comments = format!("Revised on these comments:\n{}", comment_lines(&revision.comments));
+    if notes.is_empty() {
+        comments
+    } else {
+        format!("{notes}\n{comments}")
+    }
+}
+
 /// The notes as a block to end the prompt with, or "" when there are none.
-fn notes_block(notes: &str) -> String {
+pub(super) fn notes_block(notes: &str) -> String {
     if notes.is_empty() {
         String::new()
     } else {
@@ -104,6 +191,7 @@ pub async fn write_application(
     found: &SavedMatch,
     llm: &KeyedLlm,
     notes: &str,
+    revision: Option<&Revision>,
     now: i64,
 ) -> Result<Document, WriteError> {
     let (strengths, gaps) = strengths_and_gaps(&found.items);
@@ -133,12 +221,14 @@ CV:
 
 {cv}
 {notes_block}
+{revision_block}
 
 Write in the job post's own language (post_language), whatever language the CV and the notes are in. Name employer_needs and standout before writing, and build the letter on them.",
         job_title = found.job_title,
         company = found.company,
         job_text = found.job_text,
         notes_block = notes_block(notes),
+        revision_block = revision_block(revision, "application"),
     );
     let schema = json!({
         "type": "object",
@@ -159,7 +249,7 @@ Write in the job post's own language (post_language), whatever language the CV a
     if text.is_empty() {
         return Err(WriteError::Empty("The model returned an empty application. Try again."));
     }
-    Ok(match_model::save_application(db, found.id, &text, &llm.written_by, notes, now).await?)
+    Ok(match_model::save_application(db, found.id, &text, &llm.written_by, &saved_notes(notes, revision), now).await?)
 }
 
 /// The CV rewritten for a saved match's post, from the CV's own facts and the candidate's notes
@@ -171,6 +261,7 @@ pub async fn tailor_resume(
     found: &SavedMatch,
     llm: &KeyedLlm,
     notes: &str,
+    revision: Option<&Revision>,
     now: i64,
 ) -> Result<Tailored, WriteError> {
     let (strengths, gaps) = strengths_and_gaps(&found.items);
@@ -200,12 +291,14 @@ CV:
 
 {cv}
 {notes_block}
+{revision_block}
 
 Write in the job post's own language (post_language), whatever language the CV and the notes are in. Name employer_needs and standout before writing, and build the CV on them.",
         job_title = found.job_title,
         company = found.company,
         job_text = found.job_text,
         notes_block = notes_block(notes),
+        revision_block = revision_block(revision, "CV"),
     );
     let schema = json!({
         "type": "object",
@@ -239,7 +332,8 @@ Write in the job post's own language (post_language), whatever language the CV a
         return Err(WriteError::Empty("The model returned an empty résumé. Try again."));
     };
     let text = tailored_resume::text(&resume);
-    let document = match_model::save_resume_fields(db, found.id, &resume, &text, &llm.written_by, notes, now).await?;
+    let saved = saved_notes(notes, revision);
+    let document = match_model::save_resume_fields(db, found.id, &resume, &text, &llm.written_by, &saved, now).await?;
     Ok(Tailored {
         document,
         keywords: resume_keywords(&answer["keywords"]),
@@ -368,7 +462,7 @@ fn strengths_and_gaps(items: &[SavedItem]) -> (String, String) {
 
 /// What a match's application and résumé are written from: the user's profile when they have
 /// one, else the CV the match was made with.
-async fn written_from(db: &SqlitePool, found: &SavedMatch) -> sqlx::Result<String> {
+pub(super) async fn written_from(db: &SqlitePool, found: &SavedMatch) -> sqlx::Result<String> {
     Ok(profile::text_for_user(db)
         .await?
         .unwrap_or_else(|| found.cv_text.clone()))

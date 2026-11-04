@@ -135,8 +135,9 @@ async fn insert_lines(
 mod tests {
     use super::*;
     use crate::db;
+    use crate::matches::free_reader::YearMonth;
     use crate::profile::profile_fields::ProfileEntry;
-    use crate::profile::text_for_user;
+    use crate::profile::{text_for_user, text_for_user_at};
     use sqlx::Executor;
 
     fn read() -> ProfileFromCv {
@@ -173,8 +174,11 @@ mod tests {
         assert_eq!(filled_from(&db).await.unwrap(), None);
         replace_from_cv(&db, &read(), "cv.pdf").await.unwrap();
         assert_eq!(
-            text_for_user(&db).await.unwrap().unwrap(),
-            "Mette Sørensen\nUdvikler\nSlagelse · mette@example.com\n\nJeg bygger ting.\n\n\
+            text_for_user_at(&db, YearMonth { year: 2026, month: 11 })
+                .await
+                .unwrap()
+                .unwrap(),
+            "Mette Sørensen\nUdvikler\nSlagelse · mette@example.com\nYears of professional work: 9\n\nJeg bygger ting.\n\n\
              Experience\n\nUdvikler · Firma\nJanuary 2017 – now\n- Byggede en API\n\nSkills\n- PHP"
         );
         let filled = filled_from(&db).await.unwrap().unwrap();

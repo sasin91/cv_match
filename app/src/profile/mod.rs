@@ -47,7 +47,7 @@ pub async fn text_for_user(db: &SqlitePool) -> sqlx::Result<Option<String>> {
 /// The user's profile as text with the years of work counted until now, or None when they have
 /// none. The years go on their own line under the header, so the CV's readers take them as
 /// given (stated_years_of_work) instead of counting.
-async fn text_for_user_at(db: &SqlitePool, now: YearMonth) -> sqlx::Result<Option<String>> {
+pub(crate) async fn text_for_user_at(db: &SqlitePool, now: YearMonth) -> sqlx::Result<Option<String>> {
     let Some(profile) =
         sqlx::query!(r#"SELECT name, email, phone, title, location, about, years_of_work FROM profile"#)
             .fetch_optional(db)

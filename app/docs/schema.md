@@ -167,6 +167,7 @@ erDiagram
     text about
     text filled_from_cv_name
     integer filled_from_cv_at
+    integer years_of_work
     integer created_at
     integer updated_at
   }

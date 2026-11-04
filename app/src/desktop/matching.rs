@@ -16,11 +16,14 @@ use super::batch::{self, Batch};
 use super::documents::{self, DocMsg, Docs};
 use super::drawings;
 use super::style;
+use super::task_manager::Working;
 use super::widgets::{self, CARD_PADDING, ROW_PADDING};
 use super::{GAP, Runner, Step};
 use crate::context::Context;
 use crate::dashboard::Health;
 use crate::matches::document_box::APPLICATION;
+use crate::matches::document_question::Answer as QuestionAnswer;
+use crate::matches::document_writer::Revision;
 use crate::matches::match_model::LISTS;
 use crate::matches::match_result::{MatchResult, OpeningLine, Section};
 use crate::matches::match_service::{
@@ -34,6 +37,8 @@ use crate::matches::still_open;
 use crate::matches::verdict_row::VerdictRow;
 use crate::profile;
 use crate::service_error::{ErrorKind, ServiceError};
+use crate::task_manager::TaskRow;
+use crate::task_manager::running_work::WorkKind;
 
 /// The CV box's height.
 const CV_HEIGHT: f32 = 180.0;
@@ -49,6 +54,8 @@ const ALL: &str = "all";
 const FILE_KINDS: [&str; 4] = ["pdf", "txt", "md", "text"];
 /// How a PDF starts, for one picked with another name.
 const PDF_START: &[u8] = b"%PDF";
+/// How often the writing's working list is read again while it runs.
+const WORK_READ_EVERY: std::time::Duration = std::time::Duration::from_secs(1);
 
 /// The Match screen's pages.
 #[derive(Debug, Clone, Copy, PartialEq)]
@@ -174,6 +181,13 @@ pub struct State {
     back: Page,
     /// The number of the newest read, so an answer to an older one is dropped.
     request: u64,
+    /// The writing and questions of the application and résumé, as the task manager has them.
+    working: Working,
+    /// Questions to the writer waiting for their answers.
+    questions: usize,
+    /// working is read again every WORK_READ_EVERY, so a second start doesn't start a second
+    /// round.
+    watching: bool,
 }
 
 impl Default for State {
@@ -194,6 +208,9 @@ impl Default for State {
             saved: None,
             back: Page::Overview,
             request: 0,
+            working: Working::default(),
+            questions: 0,
+            watching: false,
         }
     }
 }
@@ -270,6 +287,18 @@ pub enum Msg {
     },
     /// The application and résumé of saved match id.
     Doc(i64, DocMsg),
+    /// The writer's answer to a question in a thread on passage of saved match id's kind.
+    Answered {
+        id: i64,
+        kind: &'static str,
+        passage: String,
+        answer: Arc<Result<QuestionAnswer, String>>,
+    },
+    /// Read the window's writing in the task manager (again).
+    ReadWork,
+    WorkRead(Vec<TaskRow>),
+    /// What stopping it from its working list came to.
+    WorkStopped(Result<String, String>),
     /// What writing a document of saved match id came to.
     Wrote {
         id: i64,
@@ -587,7 +616,52 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                     state.list.read = None;
                     return Task::batch(read_again).chain(Task::done(Msg::Changed));
                 }
-                Err(why) => state.said = Some((Health::Attention, why.clone())),
+                Err(why) => {
+                    for shown in results_of(state, id) {
+                        if let Some(docs) = shown.docs.as_mut() {
+                            docs.not_written();
+                        }
+                    }
+                    state.said = Some((Health::Attention, why.clone()));
+                }
+            }
+        }
+        Msg::ReadWork => {
+            return runner.run(
+                |context| async move {
+                    crate::task_manager::of_kind(crate::task_manager::rows(&context).await, WorkKind::Writing)
+                },
+                |rows| Msg::WorkRead(rows.unwrap_or_default()),
+            );
+        }
+        Msg::WorkRead(rows) => {
+            state.working = Working {
+                rows,
+                read_at: chrono::Utc::now().timestamp(),
+            };
+            // The work's row may not be listed yet when it has just started.
+            if state.busy || state.questions > 0 || !state.working.rows.is_empty() {
+                return runner.run(|_| tokio::time::sleep(WORK_READ_EVERY), |_| Msg::ReadWork);
+            }
+            state.watching = false;
+        }
+        Msg::WorkStopped(said) => {
+            if let Err(why) = said {
+                crate::log_line!("match: stopping the writing failed: {why}");
+                state.said = Some((Health::Attention, why));
+            }
+        }
+        Msg::Answered {
+            id,
+            kind,
+            passage,
+            answer,
+        } => {
+            state.questions = state.questions.saturating_sub(1);
+            for shown in results_of(state, id) {
+                if let Some(docs) = shown.docs.as_mut() {
+                    docs.answered(kind, &passage, &answer);
+                }
             }
         }
         Msg::PdfSaved(saved) => {
@@ -616,7 +690,7 @@ fn starts_work(msg: &Msg) -> bool {
             | Msg::BringBack
             | Msg::CheckOpen
             | Msg::KeepOpen
-            | Msg::Doc(_, DocMsg::Write(_) | DocMsg::SavePdf(..))
+            | Msg::Doc(_, DocMsg::Write(_) | DocMsg::Revise(_) | DocMsg::SavePdf(..))
             | Msg::Apply(_, _, ApplyMsg::SavePdf(_))
     )
 }
@@ -908,19 +982,36 @@ fn document(state: &mut State, id: i64, msg: DocMsg, runner: &Runner) -> Task<Ms
     match msg {
         DocMsg::Write(kind) if !docs.asks_first(kind) => {
             let notes = docs.notes();
-            state.busy = true;
-            state.said = Some((Health::Neutral, "Writing…".to_string()));
-            runner.run_saying(
-                move |context, say| async move { match_service::write_document(context, id, &notes, kind, &*say).await },
-                move |step| match step {
-                    Step::Said(line) => Msg::Matching(line),
-                    Step::Done(answer) => Msg::Wrote {
+            write_document(state, id, notes, kind, None, runner)
+        }
+        DocMsg::Revise(kind) => match docs.revision(kind) {
+            Some(revision) => {
+                let notes = docs.notes();
+                write_document(state, id, notes, kind, Some(revision), runner)
+            }
+            None => Task::none(),
+        },
+        DocMsg::Stop(task) => runner.run(
+            move |context| async move { crate::task_manager::stop(&context, task).await },
+            |said| Msg::WorkStopped(said.and_then(|said| said.map_err(|e| e.message))),
+        ),
+        DocMsg::Ask(kind, thread) => match docs.comment(kind, thread, true) {
+            Some(question) => {
+                let passage = question.comment.passage.clone();
+                state.questions += 1;
+                let asking = runner.run(
+                    move |context| async move { match_service::ask_about(&context, id, &question).await },
+                    move |answer| Msg::Answered {
                         id,
+                        kind,
+                        passage: passage.clone(),
                         answer: Arc::new(answer.and_then(|answer| answer.map_err(|e| e.message))),
                     },
-                },
-            )
-        }
+                );
+                Task::batch([asking, watch_work(state)])
+            }
+            None => Task::none(),
+        },
         DocMsg::Copy(kind, version) => match docs.text_of(kind, version) {
             Some(copied) => {
                 state.said = Some((Health::Ready, "Copied to clipboard.".to_string()));
@@ -939,6 +1030,45 @@ fn document(state: &mut State, id: i64, msg: DocMsg, runner: &Runner) -> Task<Ms
             Task::none()
         }
     }
+}
+
+/// Writes saved match id's kind with notes, or revises it on revision's threads.
+fn write_document(
+    state: &mut State,
+    id: i64,
+    notes: String,
+    kind: &'static str,
+    revision: Option<Revision>,
+    runner: &Runner,
+) -> Task<Msg> {
+    if let Some(docs) = shown_mut(state).and_then(|shown| shown.docs.as_mut()) {
+        docs.set_writing(Some(kind));
+    }
+    state.busy = true;
+    state.said = Some((Health::Neutral, "Writing…".to_string()));
+    let writing =
+        runner.run_saying(
+            move |context, say| async move {
+                match_service::write_document(context, id, &notes, kind, revision, &*say).await
+            },
+            move |step| match step {
+                Step::Said(line) => Msg::Matching(line),
+                Step::Done(answer) => Msg::Wrote {
+                    id,
+                    answer: Arc::new(answer.and_then(|answer| answer.map_err(|e| e.message))),
+                },
+            },
+        );
+    Task::batch([writing, watch_work(state)])
+}
+
+/// Starts reading the window's writing in the task manager, unless it is read already.
+fn watch_work(state: &mut State) -> Task<Msg> {
+    if state.watching {
+        return Task::none();
+    }
+    state.watching = true;
+    Task::done(Msg::ReadWork)
 }
 
 /// Saved match id's kind as a PDF, edited being its text as shown (empty: the saved text), or its
@@ -1156,7 +1286,7 @@ fn new_view(state: &State) -> Element<'_, Msg> {
         page = page.push(batch::view(batch));
     }
     if let Some(shown) = &state.fresh {
-        page = page.push(result_view(shown, state.busy));
+        page = page.push(result_view(shown, state.busy, &state.working));
     }
     page.into()
 }
@@ -1411,14 +1541,14 @@ fn saved_view(state: &State) -> Element<'_, Msg> {
     page.push(match &state.saved {
         None => widgets::note("Reading the match…"),
         Some(Err(why)) => widgets::message_bar(Health::Attention, why.as_str()),
-        Some(Ok(shown)) => result_view(shown, state.busy),
+        Some(Ok(shown)) => result_view(shown, state.busy, &state.working),
     })
     .into()
 }
 
 // ---------- a result ----------
 
-fn result_view(shown: &Shown, busy: bool) -> Element<'_, Msg> {
+fn result_view<'a>(shown: &'a Shown, busy: bool, working: &'a Working) -> Element<'a, Msg> {
     let result = &shown.result;
     let mut view = Column::new().spacing(GAP * 1.5).push(score_card(result));
     if let Some(opening) = &result.opening {
@@ -1521,7 +1651,7 @@ fn result_view(shown: &Shown, busy: bool) -> Element<'_, Msg> {
     if let (Some(docs), Some(id)) = (&shown.docs, result.saved_id) {
         view = view.push(widgets::section(
             "Application and résumé",
-            documents::view(docs, busy).map(move |msg| Msg::Doc(id, msg)),
+            documents::view(docs, busy, working).map(move |msg| Msg::Doc(id, msg)),
         ));
     }
     if let Some(applying) = &shown.applying {

@@ -297,6 +297,63 @@ fn menu_item(label: &str, on_press: Option<Msg>) -> Element<'_, Msg> {
         .into()
 }
 
+/// How many dots the working line's indicator steps through, one more each second.
+const WORKING_DOTS: usize = 3;
+
+/// A screen's own work as the task manager has it (task_manager::of_kind), for a small list
+/// beside what it works on: rows read at read_at.
+#[derive(Debug, Clone, Default)]
+pub struct Working {
+    pub rows: Vec<TaskRow>,
+    pub read_at: i64,
+}
+
+/// The working list: a line that steps each second while it runs, and each row with what it
+/// works on, set in under the row it is part of, how long it has run, and Stop on the top ones.
+/// "Working…" alone until its rows are read.
+pub fn working_view<'a, M: Clone + 'a>(working: &'a Working, stop: impl Fn(Work) -> M + 'a) -> Element<'a, M> {
+    let step = usize::try_from(working.read_at).unwrap_or(0) % WORKING_DOTS + 1;
+    let mut list = Column::new().spacing(4).push(
+        text(format!("Working{}", ".".repeat(step)))
+            .font(style::semibold())
+            .size(style::BODY_SIZE),
+    );
+    for row in &working.rows {
+        let mut line = row![
+            space().width(INDENT * row.depth as f32),
+            text(row.kind)
+                .size(style::CAPTION_SIZE)
+                .style(style::secondary)
+                .width(Length::Fixed(KIND_WIDTH)),
+            text(row.what.as_str()).size(style::CAPTION_SIZE).width(Fill),
+            text(
+                row.running_for(working.read_at)
+                    .map(running_for_text)
+                    .unwrap_or_default()
+            )
+            .size(style::CAPTION_SIZE)
+            .style(style::secondary),
+        ]
+        .spacing(8)
+        .align_y(Center);
+        if row.depth == 0 && row.stop.is_some() {
+            let label = if row.stopping { "Stopping…" } else { "Stop" };
+            line = line.push(
+                button(text(label).size(style::CAPTION_SIZE))
+                    .padding([2.0, 8.0])
+                    .style(style::standard_button)
+                    .on_press_maybe((!row.stopping).then(|| stop(row.task))),
+            );
+        }
+        list = list.push(line);
+    }
+    container(list)
+        .padding([10.0, 14.0])
+        .width(Fill)
+        .style(style::card)
+        .into()
+}
+
 /// "1 h 04 min", "3 min 12 s", "12 s".
 fn running_for_text(running_for: std::time::Duration) -> String {
     let seconds = running_for.as_secs();
