@@ -126,25 +126,33 @@ if ($What -like 'phone-*') {
     Assert-Tool adb 'winget install Google.PlatformTools, and turn on USB debugging on the phone'
     # Where the phone keeps the file until it is copied over.
     $OnPhone = '/sdcard/jobfinder-capture'
-    function Get-PhoneMode { if ((& adb shell cmd uimode night) -match 'yes') { 'dark' } else { 'light' } }
-    function Set-PhoneMode([string]$mode) {
-        & adb shell cmd uimode night $(if ($mode -eq 'dark') { 'yes' } else { 'no' }) | Out-Null
+    # Runs adb and stops on failure (no phone, not authorised, more than one phone).
+    function Invoke-Adb {
+        $output = & adb @args
+        if ($LASTEXITCODE -ne 0) { throw "adb $($args -join ' ') failed with code $LASTEXITCODE. Is one phone plugged in with USB debugging allowed?" }
+        $output
+    }
+    # The phone's night mode setting as it is (yes, no, auto, custom_schedule, ...), to put back.
+    function Get-PhoneSetting { ((Invoke-Adb shell cmd uimode night) -join ' ') -replace '^.*:\s*', '' }
+    function Get-PhoneMode { if ((Get-PhoneSetting) -eq 'yes') { 'dark' } else { 'light' } }
+    function Set-PhoneSetting([string]$setting) {
+        Invoke-Adb shell cmd uimode night $setting | Out-Null
         Start-Sleep -Milliseconds $SettleMs
     }
     if ($What -eq 'phone-shot') {
-        $was = Get-PhoneMode
+        $was = Get-PhoneSetting
         $modes = if ($Theme -eq 'both') { @('light', 'dark') } else { @($Theme) }
         try {
             foreach ($mode in $modes) {
-                if ((Get-PhoneMode) -ne $mode) { Set-PhoneMode $mode }
+                Set-PhoneSetting $(if ($mode -eq 'dark') { 'yes' } else { 'no' })
                 $path = Join-Path $Out "phone-$Name-$mode.png"
-                & adb shell screencap -p "$OnPhone.png"
-                & adb pull "$OnPhone.png" $path | Out-Null
-                & adb shell rm "$OnPhone.png"
+                Invoke-Adb shell screencap -p "$OnPhone.png" | Out-Null
+                Invoke-Adb pull "$OnPhone.png" $path | Out-Null
+                Invoke-Adb shell rm "$OnPhone.png" | Out-Null
                 Write-Host "Saved $path"
             }
         } finally {
-            if ((Get-PhoneMode) -ne $was) { Set-PhoneMode $was }
+            if ((Get-PhoneSetting) -ne $was) { Set-PhoneSetting $was }
         }
         return
     }
@@ -153,9 +161,9 @@ if ($What -like 'phone-*') {
     $path = Join-Path $Out "phone-$Name-$(Get-PhoneMode).webm"
     for ($left = $CountdownSeconds; $left -gt 0; $left--) { Write-Host "Recording in $left..."; Start-Sleep 1 }
     Write-Host "Recording $Seconds s. Go."
-    & adb shell screenrecord --time-limit $Seconds "$OnPhone.mp4"
-    & adb pull "$OnPhone.mp4" $mp4 | Out-Null
-    & adb shell rm "$OnPhone.mp4"
+    Invoke-Adb shell screenrecord --time-limit $Seconds "$OnPhone.mp4" | Out-Null
+    Invoke-Adb pull "$OnPhone.mp4" $mp4 | Out-Null
+    Invoke-Adb shell rm "$OnPhone.mp4" | Out-Null
     & ffmpeg -hide_banner -loglevel error -y -i $mp4 -r $ClipFps -c:v libvpx-vp9 -crf $ClipCrf -b:v 0 -row-mt 1 -pix_fmt yuv420p -an $path
     if ($LASTEXITCODE -ne 0) { throw "ffmpeg stopped with code $LASTEXITCODE." }
     Remove-Item $mp4
