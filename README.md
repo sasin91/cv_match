@@ -8,7 +8,7 @@ extension (which talks to the app on http://127.0.0.1:8765). One local user, no 
 | --- | --- |
 | `app/` | the app (`jobfinder.exe`): the matching, the window, the database. See its README. |
 | `laya-server/` | Laya on ONNX Runtime in Rust: the model the app runs in-process, and a `/v1/systemone` HTTP server |
-| `assets/` | what the app builds in: the taxonomy index, the Danish postcodes, DejaVu Sans 2.37 for the PDFs, Figtree and Bricolage Grotesque for the window, and Newsreader for the phone app (`fonts`) |
+| `assets/` | what the app builds in: the taxonomy index, the Danish postcodes, DejaVu Sans 2.37 for the PDFs, and Figtree and Bricolage Grotesque for the window and the phone app (`fonts`) |
 | `extension/jobnet-joblog/` | the Jobnet extension the app ships and you load once in Edge or Chrome |
 
 ## Setting it up on Windows

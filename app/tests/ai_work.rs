@@ -10,6 +10,8 @@ use jobfinder::account::key_vault::KeyVault;
 use jobfinder::context::Context;
 use jobfinder::db;
 use jobfinder::matches::document_box::{APPLICATION, DocumentBox, RESUME};
+use jobfinder::matches::document_question::Question;
+use jobfinder::matches::document_writer::{By, Comment, Revision, Said};
 use jobfinder::matches::match_model;
 use jobfinder::matches::match_service::{self, MatchRequest};
 use jobfinder::service_error::ErrorKind;
@@ -59,6 +61,10 @@ async fn stand_in_model() -> (String, Arc<AtomicUsize>) {
                     cv_answer()
                 } else if asks("verdicts") {
                     judged(&user)
+                } else if asks("change") {
+                    asked_about(&user)
+                } else if asks("application") && user.contains("This is a revision") {
+                    json!({ "post_language": "Danish", "employer_needs": "x", "standout": [], "application": revised(&user) })
                 } else if asks("application") {
                     json!({ "post_language": "Danish", "employer_needs": "x", "standout": [], "application": "Kære Firma\n\nJeg søger stillingen." })
                 } else {
@@ -74,6 +80,30 @@ async fn stand_in_model() -> (String, Arc<AtomicUsize>) {
     let address = format!("http://{}/v1", listener.local_addr().unwrap());
     tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
     (address, calls)
+}
+
+/// A question about a passage: the answer names the passage it was asked about.
+fn asked_about(user: &str) -> Value {
+    let passage = user
+        .split("The highlighted passage:\n\n")
+        .nth(1)
+        .and_then(|rest| rest.split("\n\n").next())
+        .unwrap_or("");
+    json!({ "answer": format!("Nothing in the CV backs “{passage}”."), "change": "Say 9 years, never 16." })
+}
+
+/// A revision: the previous version with 16 changed to 9, when the comments ask for it.
+fn revised(user: &str) -> String {
+    let previous = user
+        .split("as the candidate has it:\n\n")
+        .nth(1)
+        .and_then(|rest| rest.split("\n\nThe candidate's comments on it:").next())
+        .unwrap_or("");
+    if user.contains("- On “16 år”:\n  Candidate: I have 9 years") {
+        previous.replace("16 år", "9 år")
+    } else {
+        previous.to_string()
+    }
 }
 
 fn job_answer() -> Value {
@@ -154,7 +184,7 @@ fn box_of<'a>(boxes: &'a [DocumentBox], kind: &str) -> &'a DocumentBox {
 }
 
 async fn write(context: &Arc<Context>, notes: &str, kind: &'static str) -> match_service::WriteAnswer {
-    match_service::write_document(Arc::clone(context), 21, notes, kind, &|_| {})
+    match_service::write_document(Arc::clone(context), 21, notes, kind, None, &|_| {})
         .await
         .unwrap()
 }
@@ -284,7 +314,7 @@ async fn a_key_switched_off_for_a_use_says_so() {
         job_evaluation: None,
     };
     account_model::save_uses(&db, &uses).await.unwrap();
-    let refused = match_service::write_document(Arc::clone(&context), 21, "", APPLICATION, &|_| {})
+    let refused = match_service::write_document(Arc::clone(&context), 21, "", APPLICATION, None, &|_| {})
         .await
         .unwrap_err();
     assert_eq!(refused.kind, ErrorKind::NeedKey);
@@ -315,4 +345,73 @@ async fn a_key_switched_off_for_a_use_says_so() {
         box_of(&documents.boxes, APPLICATION).off_note,
         "Your API key isn't on for writing the application."
     );
+}
+
+#[tokio::test]
+async fn a_question_about_a_highlighted_passage_is_answered_with_a_comment() {
+    let (context, _db, _calls) = with_model().await;
+    let question = Question {
+        kind: APPLICATION,
+        document: "Kære Firma\n\nJeg har arbejdet med software i 16 år.".to_string(),
+        comment: Comment {
+            passage: "16 år".to_string(),
+            said: vec![said(By::Candidate, "Where does this come from?")],
+        },
+        notes: String::new(),
+    };
+    let answer = match_service::ask_about(&context, 21, &question).await.unwrap();
+    assert_eq!(answer.answer, "Nothing in the CV backs “16 år”.");
+    assert_eq!(
+        answer.said(),
+        "Nothing in the CV backs “16 år”.\nSuggested change: Say 9 years, never 16."
+    );
+    let nothing_highlighted = Question {
+        comment: Comment {
+            passage: " ".to_string(),
+            ..question.comment.clone()
+        },
+        ..question
+    };
+    let refused = match_service::ask_about(&context, 21, &nothing_highlighted)
+        .await
+        .unwrap_err();
+    assert_eq!(refused.kind, ErrorKind::Invalid);
+}
+
+#[tokio::test]
+async fn a_revision_rewrites_the_version_on_its_comments_and_keeps_them_in_its_notes() {
+    let (context, db, _calls) = with_model().await;
+    let revision = Revision {
+        previous: "Kære Firma\n\nJeg har arbejdet med software i 16 år.".to_string(),
+        comments: vec![Comment {
+            passage: "16 år".to_string(),
+            said: vec![
+                said(By::Candidate, "I have 9 years, hired in 2017."),
+                said(By::Writer, "Then it should say 9."),
+            ],
+        }],
+    };
+    let answer = match_service::write_document(Arc::clone(&context), 21, "Kort.", APPLICATION, Some(revision), &|_| {})
+        .await
+        .unwrap();
+    assert_eq!(
+        box_of(&answer.boxes, APPLICATION).text,
+        "Kære Firma\n\nJeg har arbejdet med software i 9 år."
+    );
+    let notes: String =
+        sqlx::query_scalar("SELECT notes FROM documents WHERE kind = 'application' ORDER BY id DESC LIMIT 1")
+            .fetch_one(&db)
+            .await
+            .unwrap();
+    assert_eq!(
+        notes,
+        "Kort.\nRevised on these comments:\n- On “16 år”:\n  Candidate: I have 9 years, hired in 2017.\n  Writer: Then it should say 9."
+    );
+}
+
+fn said(by: By, text: &str) -> Said {
+    Said {
+        by,
+        text: text.to_string(),
+    }
 }

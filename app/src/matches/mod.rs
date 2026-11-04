@@ -13,6 +13,7 @@ pub mod cvr;
 pub mod dates;
 pub mod disqualifier_notice;
 pub mod document_box;
+pub mod document_question;
 pub mod document_writer;
 pub mod free_reader;
 pub mod joblog;
@@ -36,6 +37,7 @@ pub mod seniority;
 pub mod still_open;
 pub mod tailored_resume;
 pub mod taxonomy_lessons;
+pub mod text_changes;
 pub mod verdict_row;
 
 use serde::{Deserialize, Serialize};

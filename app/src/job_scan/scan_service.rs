@@ -1465,6 +1465,7 @@ async fn write_document(
         saved.id,
         "",
         kind,
+        None,
         match_service::WhenAbandoned::StopWriting,
     ))
     .await;
