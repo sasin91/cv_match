@@ -22,10 +22,11 @@ Start JobFinder, open the screen, and from the repository folder:
 | --- | --- | --- |
 | dashboard | Match, with today's matches | `.\tools\capture.ps1 shot dashboard` |
 | saved-matches | Saved matches, Shortlist | `.\tools\capture.ps1 shot saved-matches` |
-| match-why | A match's requirements and verdicts, application panel closed | `.\tools\capture.ps1 shot match-why` |
+| match-why | A match's requirements and verdicts, scrolled to the top, application panel closed | `.\tools\capture.ps1 shot match-why` |
 | job-searches | Job searches | `.\tools\capture.ps1 shot job-searches` |
 | task-manager | Task manager during a scan | `.\tools\capture.ps1 shot task-manager` |
-| setup | Set up JobFinder | `.\tools\capture.ps1 shot setup` |
+| notifications | The bell's drawer open, with a few notifications | `.\tools\capture.ps1 shot notifications` |
+| learned-terms | Settings → Learned terms, with a term open | `.\tools\capture.ps1 shot learned-terms` |
 | devices | Settings → Devices, with the phone paired | `.\tools\capture.ps1 shot devices` |
 
 Clips (about 10 seconds, in the look Windows has now). Start the command, then click through in
@@ -35,17 +36,12 @@ the window when the countdown ends:
 | --- | --- | --- |
 | scan | Press Scan now and let the task manager fill | `.\tools\capture.ps1 clip scan` |
 | match-why | Open a saved match and scroll its verdicts | `.\tools\capture.ps1 clip match-why` |
-| write | Write an application, scrolled so your address is out of view | `.\tools\capture.ps1 clip write -Seconds 15` |
 
 ## The phone
 
 | Name | Screen | Command |
 | --- | --- | --- |
-| pair | Pair: scan or paste | `.\tools\capture.ps1 phone-shot pair` |
 | matches | Matches, Shortlist | `.\tools\capture.ps1 phone-shot matches` |
 | match | One match: score ring and requirements | `.\tools\capture.ps1 phone-shot match` |
-| send | Send a post, with a card showing its result | `.\tools\capture.ps1 phone-shot send` |
-| job-post | A job link shared to the app | `.\tools\capture.ps1 phone-shot job-post` |
-| share | Clip: share a job link from the browser and press Match it | `.\tools\capture.ps1 phone-clip share -Seconds 15` |
 
 `-Theme light` or `-Theme dark` takes one look only. `-Out <folder>` saves somewhere else.
