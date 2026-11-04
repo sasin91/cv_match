@@ -135,6 +135,7 @@ async fn writing_without_a_key_points_to_the_key_page() {
         21,
         "",
         "application",
+        None,
         match_service::WhenAbandoned::KeepWriting,
     )
     .await
@@ -220,7 +221,7 @@ async fn writing_a_document_without_a_key_points_to_the_key_page_and_says_its_st
     let context = Arc::new(context().await);
     let said = std::sync::Mutex::new(Vec::new());
     let say = |step: &str| said.lock().unwrap().push(step.to_string());
-    let error = match_service::write_document(context, 21, "", "resume", &say)
+    let error = match_service::write_document(context, 21, "", "resume", None, &say)
         .await
         .unwrap_err();
     assert_eq!(error.kind, ErrorKind::NeedKey);
