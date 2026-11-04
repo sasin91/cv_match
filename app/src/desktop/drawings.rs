@@ -1,4 +1,4 @@
-//! The web page's drawings in the window: flat sage and clay scenes on a wash, in light or dark as
+//! The web page's drawings in the window: flat pine and marigold scenes on a wash, in light or dark as
 //! the system is set. The SVG files in assets/drawings use the web page's colour names
 //! (`var(--sage)`), which are filled in here for each look, so the page and the window share one
 //! file per drawing.
@@ -11,14 +11,14 @@ use iced::{Element, Length, Rectangle, Renderer, Size, Theme, mouse};
 
 /// The web page's colour names and their light and dark values (its `:root` tokens).
 const TOKENS: [(&str, u32, u32); 8] = [
-    ("--bg", 0xF5EFE4, 0x221B16),
-    ("--paper", 0xFCF9F3, 0x2D241E),
-    ("--ink", 0x2A231C, 0xF1E6D6),
-    ("--soft", 0x6F6456, 0xB8A792),
-    ("--line", 0xE2D7C4, 0x43362C),
-    ("--sage", 0x5D7A5A, 0x9DBF9A),
-    ("--clay", 0xC9774E, 0xE08F63),
-    ("--wash", 0xECE2D0, 0x352A22),
+    ("--bg", 0xEEF1EF, 0x0F1B24),
+    ("--paper", 0xF9FBFA, 0x16252F),
+    ("--ink", 0x142430, 0xE6EEF0),
+    ("--soft", 0x526270, 0x93A6B1),
+    ("--line", 0xD5DDDB, 0x263844),
+    ("--sage", 0x2E6B5B, 0x6FB59C),
+    ("--clay", 0xE2A33B, 0xF0B952),
+    ("--wash", 0xDEE7E3, 0x1B2C37),
 ];
 
 /// One drawing, ready in both looks, and its size in the window.

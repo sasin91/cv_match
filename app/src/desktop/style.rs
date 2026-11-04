@@ -1,6 +1,6 @@
-//! The window's look, the same as JobFinder's web page: oat paper with warm ink in light mode, a
-//! warm evening brown in dark mode, Newsreader for titles and Figtree for the rest, sage green
-//! as the accent, rust for links, ink for the main button, and status marks on soft tinted pills;
+//! The window's look, the same as JobFinder's web page: cool Nordic paper with navy ink in light
+//! mode, a deep fjord blue in dark mode, Bricolage Grotesque for titles and Figtree for the rest,
+//! pine green as the accent, fjord blue for links, ink for the main button, and status marks on soft tinted pills;
 //! light or dark as the system is set (theme). Every colour, size and font the screens use is
 //! named here, so they stay one design.
 
@@ -23,7 +23,7 @@ const fn hex(rgb: u32) -> Color {
 
 /// Every colour of one look, light or dark.
 pub struct Colors {
-    /// The page behind the cards: oat paper.
+    /// The page behind the cards: cool paper.
     pub page: Color,
     /// A card's face, and a field's or a plain button's.
     pub card: Color,
@@ -89,76 +89,76 @@ pub struct Colors {
 
 /// The light look: morning paper.
 pub const LIGHT: Colors = Colors {
-    page: hex(0xF5EFE4),
-    card: hex(0xFCF9F3),
-    card_border: hex(0xE2D7C4),
-    divider: hex(0xEBE2D2),
-    text: hex(0x2A231C),
-    text_secondary: hex(0x6F6456),
-    accent: hex(0x4F6D4D),
-    accent_hover: hex(0x5D7A5A),
-    on_accent: hex(0xFCF9F3),
-    accent_tint: hex(0xE1E9DC),
-    primary: hex(0x2A231C),
-    primary_hover: hex(0x3D342A),
-    primary_pressed: hex(0x4D4236),
-    on_primary: hex(0xF5EFE4),
-    link: hex(0x8A4A2F),
-    link_hover: hex(0x6A361F),
-    subtle_hover: hex(0xECE4D6),
-    subtle_pressed: hex(0xE3D9C8),
-    control_hover: hex(0xF7F1E7),
-    control_pressed: hex(0xEFE7DA),
-    field_border: hex(0xD4C7B2),
-    placeholder: hex(0x9A8E7E),
+    page: hex(0xEEF1EF),
+    card: hex(0xF9FBFA),
+    card_border: hex(0xD5DDDB),
+    divider: hex(0xE1E7E5),
+    text: hex(0x142430),
+    text_secondary: hex(0x526270),
+    accent: hex(0x2E6B5B),
+    accent_hover: hex(0x3A7B69),
+    on_accent: hex(0xF9FBFA),
+    accent_tint: hex(0xDCEBE5),
+    primary: hex(0x142430),
+    primary_hover: hex(0x22384A),
+    primary_pressed: hex(0x2E475B),
+    on_primary: hex(0xEEF1EF),
+    link: hex(0x1F5C8A),
+    link_hover: hex(0x174A70),
+    subtle_hover: hex(0xE2E8E6),
+    subtle_pressed: hex(0xD8E0DE),
+    control_hover: hex(0xF2F6F5),
+    control_pressed: hex(0xE8EEEC),
+    field_border: hex(0xC3CFCD),
+    placeholder: hex(0x8796A0),
     shadow: 0.07,
-    success: hex(0x4F6D4D),
-    success_tint: hex(0xE1E9DC),
+    success: hex(0x2E6B5B),
+    success_tint: hex(0xDCEBE5),
     warning: hex(0x8A5A12),
     warning_tint: hex(0xF8EAD0),
     warning_border: hex(0xE6CD98),
     danger: hex(0xB23A26),
     danger_hover: hex(0x9E3221),
     danger_pressed: hex(0x8A2B1C),
-    neutral: hex(0x6F6456),
-    neutral_tint: hex(0xECE4D6),
+    neutral: hex(0x526270),
+    neutral_tint: hex(0xE2E8E6),
 };
 
 /// The dark look: a warm evening brown.
 pub const DARK: Colors = Colors {
-    page: hex(0x221B16),
-    card: hex(0x2D241E),
-    card_border: hex(0x43362C),
-    divider: hex(0x3A2F27),
-    text: hex(0xF1E6D6),
-    text_secondary: hex(0xB8A792),
-    accent: hex(0x9DBF9A),
-    accent_hover: hex(0xAFCCAC),
-    on_accent: hex(0x221B16),
-    accent_tint: hex(0x2F3A2C),
-    primary: hex(0xF1E6D6),
-    primary_hover: hex(0xE4D6C2),
-    primary_pressed: hex(0xD6C6B0),
-    on_primary: hex(0x221B16),
-    link: hex(0xE6A46A),
-    link_hover: hex(0xEEB27C),
-    subtle_hover: hex(0x342A23),
-    subtle_pressed: hex(0x2F261F),
-    control_hover: hex(0x352B24),
-    control_pressed: hex(0x2A221C),
-    field_border: hex(0x57473A),
-    placeholder: hex(0x8F8070),
+    page: hex(0x0F1B24),
+    card: hex(0x16252F),
+    card_border: hex(0x263844),
+    divider: hex(0x1E2F3A),
+    text: hex(0xE6EEF0),
+    text_secondary: hex(0x93A6B1),
+    accent: hex(0x6FB59C),
+    accent_hover: hex(0x85C4AD),
+    on_accent: hex(0x0F1B24),
+    accent_tint: hex(0x1D3A35),
+    primary: hex(0xE6EEF0),
+    primary_hover: hex(0xD3DEE2),
+    primary_pressed: hex(0xBFCDD3),
+    on_primary: hex(0x0F1B24),
+    link: hex(0x7DB6E3),
+    link_hover: hex(0x97C6EA),
+    subtle_hover: hex(0x1B2C37),
+    subtle_pressed: hex(0x172631),
+    control_hover: hex(0x1C2D38),
+    control_pressed: hex(0x13212B),
+    field_border: hex(0x33495A),
+    placeholder: hex(0x6F8492),
     shadow: 0.3,
-    success: hex(0x9DBF9A),
-    success_tint: hex(0x2F3A2C),
-    warning: hex(0xE9B45A),
-    warning_tint: hex(0x45351C),
-    warning_border: hex(0x5F4A26),
-    danger: hex(0xB8452F),
-    danger_hover: hex(0xA33D29),
-    danger_pressed: hex(0x8F3524),
-    neutral: hex(0xB8A792),
-    neutral_tint: hex(0x3A2F27),
+    success: hex(0x6FB59C),
+    success_tint: hex(0x1D3A35),
+    warning: hex(0xF0B952),
+    warning_tint: hex(0x3A3018),
+    warning_border: hex(0x5A4A22),
+    danger: hex(0xC4513A),
+    danger_hover: hex(0xAE4632),
+    danger_pressed: hex(0x983D2C),
+    neutral: hex(0x93A6B1),
+    neutral_tint: hex(0x1E2F3A),
 };
 
 /// The look a theme is: dark or light.
@@ -214,21 +214,21 @@ pub fn theme(mode: Mode) -> Theme {
 const FIGTREE: &[u8] = include_bytes!("../../../assets/fonts/Figtree-Regular.ttf");
 /// Figtree's semibold, for names and buttons.
 const FIGTREE_SEMIBOLD: &[u8] = include_bytes!("../../../assets/fonts/Figtree-SemiBold.ttf");
-/// Newsreader, the web page's serif, for titles (SIL Open Font License,
-/// assets/fonts/OFL-Newsreader.txt).
-const NEWSREADER: &[u8] = include_bytes!("../../../assets/fonts/Newsreader-Regular.ttf");
+/// Bricolage Grotesque bold, the web page's heading face, for titles (SIL Open Font License,
+/// assets/fonts/OFL-BricolageGrotesque.txt).
+const BRICOLAGE: &[u8] = include_bytes!("../../../assets/fonts/BricolageGrotesque-Bold.ttf");
 
 /// The fonts built into the program, for the window to load at start.
-pub const FONTS: [&[u8]; 3] = [FIGTREE, FIGTREE_SEMIBOLD, NEWSREADER];
+pub const FONTS: [&[u8]; 3] = [FIGTREE, FIGTREE_SEMIBOLD, BRICOLAGE];
 
 /// The font everything is written in: Figtree.
 pub fn font() -> Font {
     Font::with_name("Figtree")
 }
 
-/// The font titles are written in: Newsreader.
+/// The font titles are written in: Bricolage Grotesque.
 pub fn title_font() -> Font {
-    Font::with_name("Newsreader")
+    Font::with_name("Bricolage Grotesque")
 }
 
 /// The bell beside the app's name: Segoe Fluent Icons' Ringer on Windows 11, the emoji's bell
