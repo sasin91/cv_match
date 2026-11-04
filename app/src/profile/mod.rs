@@ -8,6 +8,8 @@ pub mod profile_model;
 use chrono::NaiveDate;
 use sqlx::SqlitePool;
 
+use crate::matches::free_reader::{self, YearMonth};
+
 /// The entry sections in the order the text lists them, with their headings.
 pub const SECTIONS: [(&str, &str); 3] = [
     ("experience", "Experience"),
@@ -86,6 +88,31 @@ pub async fn text_for_user(db: &SqlitePool) -> sqlx::Result<Option<String>> {
         }
     }
     Ok(Some(blocks.join("\n\n")))
+}
+
+/// Whole years of professional work the profile's work history (its experience entries) covers
+/// until now, overlaps counted once, or None when there is no profile or no dated job in it.
+/// Education and the candidate's own projects aren't work, so they never count: left to count
+/// the years themselves from the whole CV, the writing models counted from the earliest date in
+/// it and claimed years the candidate hasn't worked.
+pub async fn years_of_work(db: &SqlitePool, now: YearMonth) -> sqlx::Result<Option<i64>> {
+    let jobs: Vec<Entry> = entries(db)
+        .await?
+        .into_iter()
+        .filter(|entry| entry.section == "experience" && entry.started_on.is_some())
+        .collect();
+    if jobs.is_empty() {
+        return Ok(None);
+    }
+    Ok(Some(free_reader::years_worked(&work_history_dates(&jobs), now)))
+}
+
+/// The jobs' date ranges, one per line, the way the free reader reads a work history.
+fn work_history_dates(jobs: &[Entry]) -> String {
+    jobs.iter()
+        .map(|job| months(job.started_on.as_deref(), job.ended_on.as_deref()))
+        .collect::<Vec<_>>()
+        .join("\n")
 }
 
 /// The user's profile links (LinkedIn, GitHub, ...) as (label, url) in their order.
@@ -228,5 +255,39 @@ mod tests {
              Education\n\nDatamatiker · Zealand\n – June 2016\n\n\
              Skills\n- PHP\n- Rust"
         );
+    }
+
+    /// Made up: school until 2014, an own project from 2010, two jobs from January 2017. Only
+    /// the jobs count, and the gap and the overlap don't add years.
+    #[tokio::test]
+    async fn only_the_jobs_count_as_years_of_work() {
+        let db = db::open_in_memory().await.unwrap();
+        assert_eq!(
+            years_of_work(&db, YearMonth { year: 2026, month: 11 }).await.unwrap(),
+            None
+        );
+        db.execute(sqlx::raw_sql(
+            r#"
+             INSERT INTO profile (id, name, email, phone, title, location, about, created_at, updated_at)
+             VALUES (1, 'Kim', '', '', '', '', '', 0, 0);
+             INSERT INTO profile_entries (id, section, title, organisation, started_on, ended_on, sort_order, created_at, updated_at)
+             VALUES (1, 'education', 'Webudvikler', 'School', '2012-08-01', '2014-06-01', 0, 0, 0),
+                    (2, 'project', 'Own site', '', '2010-01-01', NULL, 0, 0, 0);
+            "#,
+        ))
+        .await
+        .unwrap();
+        let now = YearMonth { year: 2026, month: 11 };
+        assert_eq!(years_of_work(&db, now).await.unwrap(), None);
+        db.execute(sqlx::raw_sql(
+            r#"
+             INSERT INTO profile_entries (id, section, title, organisation, started_on, ended_on, sort_order, created_at, updated_at)
+             VALUES (3, 'experience', 'Developer', 'Old Firm', '2017-01-01', '2021-06-01', 0, 0, 0),
+                    (4, 'experience', 'Lead', 'New Firm', '2021-03-01', NULL, 1, 0, 0);
+            "#,
+        ))
+        .await
+        .unwrap();
+        assert_eq!(years_of_work(&db, now).await.unwrap(), Some(9));
     }
 }

@@ -27,7 +27,7 @@ const READ_CV: &str = r#"You read a CV and list what it shows the candidate can 
 
 Keep each skill atomic (one technology, tool, method or language per item) and name it as commonly written ("Laravel", "Kubernetes", "CI/CD").
 Name each list by the kind of term it holds: title (job titles held), skill, language, certificate (certifications), education.
-experience_years: total years of professional work, from the dates.
+experience_years: total years of professional work, from the dates of the jobs only: not education, studies or the candidate's own projects, and overlapping jobs counted once.
 location: where the candidate lives, as the CV gives it (town and postcode as written); empty when it doesn't say.
 Include the languages the CV is written in or names.
 text_en: the whole CV as plain English text, translated if it is in another language, otherwise as given; keep every fact, drop layout."#;
