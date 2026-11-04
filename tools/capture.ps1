@@ -31,10 +31,12 @@ param(
     [ValidateSet('light', 'dark', 'both')][string]$Theme = 'both',
     # How long a clip records (the phone stops at 180).
     [ValidateRange(1, 180)][int]$Seconds = 10,
-    # Where the files go.
-    [string]$Out = (Join-Path $PSScriptRoot '..\site\media')
+    # Where the files go (site\media in the repository when left out).
+    [string]$Out
 )
 $ErrorActionPreference = 'Stop'
+# Windows PowerShell 5.1 leaves $PSScriptRoot empty in a parameter's default, so it is set here.
+if (-not $Out) { $Out = Join-Path (Split-Path -Parent $MyInvocation.MyCommand.Path) '..\site\media' }
 
 # The window's size on screen, in pixels, for every picture (16:10).
 $WindowWidth = 1280

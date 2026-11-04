@@ -672,7 +672,7 @@ fn signed_in_section(list: &SearchList) -> Element<'_, Msg> {
             .style(style::standard_button)
             .on_press(Msg::SignIn),
     );
-    widgets::section("LinkedIn and Indeed", section.into())
+    widgets::section("LinkedIn and Indeed", container(section).padding(CARD_PADDING).into())
 }
 
 /// A saved search: its name and chip, what it looks for and found, opening its page.
