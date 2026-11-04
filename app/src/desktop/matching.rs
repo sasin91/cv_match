@@ -1174,6 +1174,8 @@ fn applying(state: &mut State, id: i64, view: u64, msg: ApplyMsg, runner: &Runne
     // that saved it has gone since.
     if let ApplyMsg::Saved(Ok((status, logged))) = &msg {
         for other in results_of(state, id) {
+            // The footer's Mark as applied or Applied day follows the status saved.
+            other.result.applied_on = logged.applied_on.clone();
             if let Some(sections) = other.applying.as_mut().filter(|a| a.view() != view) {
                 sections.joblog_saved(status, logged);
             }
@@ -1359,7 +1361,13 @@ fn new_view(state: &State) -> Element<'_, Msg> {
         page = page.push(batch::view(batch));
     }
     if let Some(shown) = &state.fresh {
-        page = page.push(result_view(shown, state.busy, &state.working));
+        // Only a saved match's page has the footer, so a fresh result keeps its Open job post.
+        page = page.push(result_view(
+            shown,
+            state.busy,
+            &state.working,
+            job_post_button(&shown.result.job_url),
+        ));
     }
     page.into()
 }
@@ -1614,14 +1622,20 @@ fn saved_view(state: &State) -> Element<'_, Msg> {
     page.push(match &state.saved {
         None => widgets::note("Reading the match…"),
         Some(Err(why)) => widgets::message_bar(Health::Attention, why.as_str()),
-        Some(Ok(shown)) => result_view(shown, state.busy, &state.working),
+        Some(Ok(shown)) => result_view(shown, state.busy, &state.working, None),
     })
     .into()
 }
 
 // ---------- a result ----------
 
-fn result_view<'a>(shown: &'a Shown, busy: bool, working: &'a Working) -> Element<'a, Msg> {
+/// A result; job_post: its Open job post, for a page without the footer (footer), None on one with.
+fn result_view<'a>(
+    shown: &'a Shown,
+    busy: bool,
+    working: &'a Working,
+    job_post: Option<Element<'a, Msg>>,
+) -> Element<'a, Msg> {
     let result = &shown.result;
     let mut view = Column::new().spacing(GAP * 1.5).push(score_card(result));
     if let Some(opening) = &result.opening {
@@ -1630,6 +1644,7 @@ fn result_view<'a>(shown: &'a Shown, busy: bool, working: &'a Working) -> Elemen
     if let Some(reject) = &result.reject {
         view = view.push(reject_card(shown, reject, busy));
     }
+    view = view.extend(job_post);
     if let Some(disqualifier) = &result.disqualifier {
         let mut lines = column![
             text(disqualifier.heading)
