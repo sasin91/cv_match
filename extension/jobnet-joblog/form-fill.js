@@ -41,7 +41,7 @@
   run(picked);
 
   async function run(match) {
-    const box = panel(match.label);
+    const box = panel(match);
     let fields;
     try {
       fields = readFields();
@@ -325,7 +325,7 @@
 
   // ---------- the box ----------
 
-  function panel(label) {
+  function panel(match) {
     const host = document.createElement("div");
     host.id = ROOT_ID;
     // A shadow root keeps the page's styles out of the box and the box's out of the page.
@@ -348,6 +348,10 @@
         li.note { color: #4d5b63; }
         li[data-key] { cursor: pointer; }
         .end { margin: 8px 0 0; font-weight: 600; }
+        .applied { font: inherit; width: 100%; margin-top: 8px; padding: 8px; border-radius: 8px; cursor: pointer;
+                   border: 1px solid #2E6B5B; background: #2E6B5B; color: #fff; font-weight: 600; }
+        .applied:disabled { opacity: 0.6; cursor: default; }
+        .marked { margin: 6px 0 0; color: #4d5b63; }
         [hidden] { display: none !important; }
       </style>
       <div class="box" role="region" aria-label="JobFinder: application form">
@@ -356,10 +360,26 @@
         <p class="status" role="status">Reading the form…</p>
         <ul class="log" hidden></ul>
         <p class="end" hidden>Nothing was sent. Read every answer, then send the form yourself.</p>
+        <button class="applied" type="button" hidden>I sent it: mark as applied</button>
+        <p class="marked" role="status" hidden></p>
       </div>`;
     const $ = (selector) => shadow.querySelector(selector);
-    $(".match").textContent = label;
+    $(".match").textContent = match.label;
     $(".close").addEventListener("click", () => host.remove());
+    // Once the form is sent, the match is marked as applied for in JobFinder (Søgt), so it
+    // shows under "Applied, not on Jobnet yet" for the joblog.
+    $(".applied").addEventListener("click", async () => {
+      $(".applied").disabled = true;
+      $(".marked").hidden = false;
+      $(".marked").textContent = "Telling JobFinder…";
+      try {
+        const applied = await ask({ type: "applied", id: match.id });
+        $(".marked").textContent = `Marked as applied in JobFinder: ${applied.status}, ${applied.applied_on}.`;
+      } catch (error) {
+        $(".marked").textContent = error.message;
+        $(".applied").disabled = false;
+      }
+    });
     document.body.append(host);
     return {
       status(said) {
@@ -380,6 +400,7 @@
       done() {
         $(".status").hidden = true;
         $(".end").hidden = false;
+        $(".applied").hidden = false;
       },
     };
   }

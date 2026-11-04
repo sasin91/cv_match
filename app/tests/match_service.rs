@@ -115,6 +115,25 @@ async fn a_joblog_status_must_be_one_of_jobnets() {
 }
 
 #[tokio::test]
+async fn marking_applied_sets_soegt_but_keeps_samtale_and_the_joblog() {
+    let context = context().await;
+    let applied = match_service::mark_applied(&context, 21).await.unwrap();
+    assert_eq!(applied.status, "Søgt");
+    assert_eq!(applied.applied_on.len(), "dd-mm-yyyy".len());
+
+    match_service::save_joblog_status(&context, 21, "Samtale", true)
+        .await
+        .unwrap();
+    let again = match_service::mark_applied(&context, 21).await.unwrap();
+    assert_eq!(again.status, "Samtale");
+    let saved = match_service::saved_match(&context, 21).await.unwrap();
+    assert!(saved.jobnet_joblog.unwrap().logged_at.is_some());
+
+    let error = match_service::mark_applied(&context, 99).await.unwrap_err();
+    assert_eq!(error.kind, ErrorKind::NotFound);
+}
+
+#[tokio::test]
 async fn link_fetches_stop_after_the_limit() {
     let context = context().await;
     let now = chrono::Utc::now().timestamp();

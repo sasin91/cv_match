@@ -15,6 +15,8 @@
 // (match/joblog_status), keeping its status;
 // {type: "application_form", id, fields} what goes in the fields of an
 // employer's application form (match/application_form), for form-fill.js;
+// {type: "applied", id} marks a match as applied for (match/applied), answering
+// {status, applied_on};
 // {type: "searches"} the job searches a post can be sent to (job_scan/search_names);
 // {type: "send_page", search_id, url, html} adds the post the browser shows to
 // one, from its HTML as shown (job_scan/submit_page), and answers what
@@ -87,6 +89,14 @@ async function answer(message) {
         body: JSON.stringify({ id: Number(message.id), fields: message.fields }),
       }),
     );
+    return response.json();
+  }
+  if (message.type === "applied") {
+    const response = await call("match/applied", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: Number(message.id) }),
+    });
     return response.json();
   }
   if (message.type === "searches") {

@@ -277,6 +277,32 @@ pub async fn save_joblog_status(
     ))
 }
 
+/// A match marked as applied for: its status in Jobnet's words ("Søgt") and the day it was
+/// applied for, dd-mm-yyyy.
+#[derive(Debug, Clone, PartialEq, serde::Serialize)]
+pub struct Applied {
+    pub status: String,
+    pub applied_on: String,
+}
+
+/// Marks saved match id as applied for: Søgt, unless it is further along already (Samtale),
+/// keeping whether it is in the Jobnet joblog. Applied for once, it keeps the first day.
+pub async fn mark_applied(context: &Context, id: i64) -> Result<Applied, ServiceError> {
+    let found = saved_match(context, id).await?;
+    let saved = found.jobnet_joblog.as_ref();
+    let status = saved
+        .map(|saved| saved.status.as_str())
+        .filter(|status| match_model::APPLIED_STATUSES.contains(status))
+        .unwrap_or(joblog::APPLIED_STATUS);
+    let logged = saved.is_some_and(|saved| saved.logged_at.is_some());
+    let now = chrono::Utc::now().timestamp();
+    let saved = match_model::save_integration(context.db(), found.id, JOBNET_JOBLOG, status, logged, now).await?;
+    Ok(Applied {
+        status: joblog::search_status(status).unwrap_or(status).to_string(),
+        applied_on: joblog::applied_on(saved.as_ref()),
+    })
+}
+
 /// A PDF of a saved match's document, named for the job.
 #[derive(Debug, Clone)]
 pub struct PdfFile {
