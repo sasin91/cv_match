@@ -270,7 +270,8 @@ impl<'a> FreeReader<'a> {
     }
 
     /// The CV in extract_cv's shape: the skills, roles and titles it names, and the years between
-    /// the dates of its work history.
+    /// the dates of its work history, or the years it states on the profile's years line (the
+    /// number the candidate confirmed), which win.
     pub fn cv(&mut self, text: &str) -> Profile {
         let lines = lines(text);
         let mut skills: IndexSet<String> = IndexSet::new();
@@ -295,7 +296,8 @@ impl<'a> FreeReader<'a> {
             text_en: text.to_string(),
             title: titles.into_iter().collect(),
             skill: skills.into_iter().collect(),
-            experience_years: years_worked(&work.join("\n"), self.now),
+            experience_years: crate::profile::stated_years_of_work(text)
+                .unwrap_or_else(|| years_worked(&work.join("\n"), self.now)),
             ..Profile::default()
         }
     }
