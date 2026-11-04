@@ -97,9 +97,9 @@ mod tests {
 
     #[test]
     fn a_cvs_own_links_are_read_in_its_order() {
-        let cv = "Jonas Hansen\nSlagelse · jonas.kerwin.hansen@gmail.com\nFull CV online: sasin91.xyz/cv\n\
-            https://github.com/sasin91 · https://www.linkedin.com/in/jonas-hansen-2b6828110\n\
-            Node.js/React, Vue.js. See www.linkedin.com/in/jonas-hansen-2b6828110 or https://jonas.dev/work.\n\
+        let cv = "Jonas Hansen\nSlagelse · me@example.com\nFull CV online: sasin91.xyz/cv\n\
+            https://github.com/sasin91 · https://www.linkedin.com/in/jonas-hansen-example\n\
+            Node.js/React, Vue.js. See www.linkedin.com/in/jonas-hansen-example or https://jonas.dev/work.\n\
             Also gitlab.com/sasin91, email someone@github.com\n\
             Talks: https://example.com/profile;view=full, (https://example.com/wiki/PHP_(language)) and https://example.com/a?b=1,2.";
         let read: Vec<String> = read(cv)
@@ -110,7 +110,7 @@ mod tests {
             read,
             [
                 "GitHub: https://github.com/sasin91",
-                "LinkedIn: https://www.linkedin.com/in/jonas-hansen-2b6828110",
+                "LinkedIn: https://www.linkedin.com/in/jonas-hansen-example",
                 "Website: https://jonas.dev/work",
                 "GitLab: https://gitlab.com/sasin91",
                 "Website: https://example.com/profile;view=full",
