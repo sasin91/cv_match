@@ -1,5 +1,10 @@
 JobFinder checks the job sites for you while your PC is on, matches each post with your CV, and starts the application. Free and open source (BSD 2-Clause).
 
+## New in 0.1.1
+
+- **Years of work.** Letters and résumés no longer guess how long you have worked. The count comes from the dates of the jobs in your profile, and you can correct it on the Setup screen. The match without an AI model uses the same number.
+- If you ran 0.1.0, start the new file the same way: your database is updated the first time it opens.
+
 ## Download
 
 - **Windows 11:** `jobfinder.exe`. Keep it where you like and double-click it. Nothing is installed.
