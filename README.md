@@ -150,8 +150,9 @@ pairs a device with a QR code. See [docs/phone.md](docs/phone.md).
 
 ### From a release
 
-Pushing a `v*` tag builds a GitHub release with `jobfinder.exe` for Windows and
-`JobFinder-x86_64.AppImage` for Linux. Neither is installed: keep the file where you like and
+Pushing a `v*` tag builds a GitHub release with `jobfinder.exe` for Windows,
+`JobFinder-x86_64.AppImage` for Linux and their `SHA256SUMS`, with `docs/release-notes.md` as its
+text (`.github/workflows/release.yml`; run by hand, it only builds the files). Neither is installed: keep the file where you like and
 double-click it. Moving it later is fine; at its next start the job scan's schedule follows it.
 
 To remove it, close it and run `jobfinder.exe cleanup` (`./JobFinder-x86_64.AppImage cleanup` on
@@ -164,8 +165,8 @@ window says why.
 
 ### On Linux (and WSL)
 
-Take `JobFinder-x86_64.AppImage` from a release (or build it with `cargo build --release` in
-`app/`), make it executable and run it from wherever you keep it. There is nothing to install:
+Take `JobFinder-x86_64.AppImage` from a release (it needs glibc 2.38 or newer: Ubuntu 24.04,
+Debian 13, Fedora 39 or later), or build it with `cargo build --release` in `app/`; make it executable and run it from wherever you keep it. There is nothing to install:
 delete the file to remove it. Tools like AppImageLauncher can add it to the applications menu. The
 database is `~/.local/share/JobFinder/jobfinder.sqlite`, and the API keys are sealed in it with
 the key file beside it (`jobfinder.sqlite-key`, readable only by you), so no keyring is needed.

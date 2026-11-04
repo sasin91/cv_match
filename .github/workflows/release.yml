@@ -3,18 +3,24 @@ name: release
 # The programs for a release: pushing a tag like v0.2.0 builds the app and attaches it to that
 # tag's GitHub release.
 #
-# - Windows: jobfinder.exe, which runs from wherever it is kept (nothing to install).
+# - Windows: jobfinder.exe, which runs from wherever it is kept (nothing to install). It needs
+#   Microsoft's Visual C++ Redistributable (MSVCP140.dll), which the ONNX Runtime linked in for Laya
+#   is built against; most PCs have it, and the release notes link it for those that don't.
 # - Linux: JobFinder-x86_64.AppImage, which runs from wherever it is kept (nothing to install).
-#   Built on the oldest Ubuntu runner, so it runs on distributions with an older glibc too.
+#   Built on Ubuntu 24.04: the ONNX Runtime linked in for Laya needs glibc 2.38 or newer, so it
+#   runs on Ubuntu 24.04, Debian 13, Fedora 39 and later.
 #
-# Run by hand, it builds the same files as workflow artifacts instead.
+# The two build jobs only build; one publish job then makes the release with both files and their
+# SHA256SUMS, so two jobs never race to make the same release.
+#
+# Run by hand, it builds the same files as workflow artifacts and publishes nothing.
 on:
   push:
     tags: ['v*']
   workflow_dispatch:
 
 permissions:
-  contents: write
+  contents: read
 
 jobs:
   windows:
@@ -28,29 +34,34 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
+        with:
+          components: llvm-tools
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: app
       - run: cargo build --release
+      - name: List the DLLs the exe needs
+        # The release notes say what a PC must have: a DLL here beyond Windows' own and the
+        # Visual C++ Redistributable's (VCRUNTIME140, MSVCP140) needs a line there too.
+        shell: pwsh
+        run: |
+          $sysroot = rustc --print sysroot
+          $objdump = Get-ChildItem -Recurse -Filter llvm-objdump.exe "$sysroot/lib/rustlib" | Select-Object -First 1
+          & $objdump.FullName -p target/release/jobfinder.exe | Select-String 'DLL Name' | ForEach-Object { $_.Line.Trim() }
       - name: Put the program in dist
         shell: pwsh
         run: |
           New-Item -ItemType Directory -Force dist | Out-Null
           Copy-Item target/release/jobfinder.exe dist/jobfinder.exe
-      - if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            app/dist/jobfinder.exe
-      - if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: jobfinder-windows
           path: app/dist/
+          if-no-files-found: error
 
   linux:
     name: Linux AppImage
-    runs-on: ubuntu-22.04
+    runs-on: ubuntu-24.04
     defaults:
       run:
         working-directory: app
@@ -80,13 +91,32 @@ jobs:
             https://github.com/AppImage/appimagetool/releases/download/continuous/appimagetool-x86_64.AppImage
           chmod +x appimagetool
           ./appimagetool AppDir dist/JobFinder-x86_64.AppImage
-      - if: startsWith(github.ref, 'refs/tags/')
-        uses: softprops/action-gh-release@v2
-        with:
-          files: |
-            app/dist/JobFinder-x86_64.AppImage
-      - if: ${{ !startsWith(github.ref, 'refs/tags/') }}
-        uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v4
         with:
           name: jobfinder-linux
           path: app/dist/
+          if-no-files-found: error
+
+  publish:
+    name: GitHub release
+    if: startsWith(github.ref, 'refs/tags/')
+    needs: [windows, linux]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/download-artifact@v4
+        with:
+          path: dist
+          merge-multiple: true
+      - name: Checksums
+        working-directory: dist
+        run: sha256sum jobfinder.exe JobFinder-x86_64.AppImage > SHA256SUMS
+      - uses: softprops/action-gh-release@v2
+        with:
+          body_path: docs/release-notes.md
+          files: |
+            dist/jobfinder.exe
+            dist/JobFinder-x86_64.AppImage
+            dist/SHA256SUMS
