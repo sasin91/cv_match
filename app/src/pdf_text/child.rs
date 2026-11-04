@@ -32,6 +32,9 @@ pub enum Failed {
 /// The child's side: the PDF on stdin, its text on stdout. Exits UNREADABLE with why on stderr.
 pub fn run() -> std::process::ExitCode {
     use std::io::{Read, Write};
+    // A panic in the parser is caught (text_of) and said once on stderr as its reason; the
+    // default hook would print it there first, so this process (and only it) prints none.
+    std::panic::set_hook(Box::new(|_| {}));
     let mut bytes = Vec::new();
     if let Err(e) = std::io::stdin().read_to_end(&mut bytes) {
         eprint!("the file couldn't be read: {e}");

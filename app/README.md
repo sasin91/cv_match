@@ -73,7 +73,7 @@ same database brings the window to the front. Its options are `--port`, `--datab
 - Apply: by email (recipient, subject, body, mailto link) or on the employer's site, with the
   PDFs and your profile links, and the match's Jobnet joblog entry;
 - the application, the tailored résumé, the CV and the job post as PDFs;
-- reading a PDF CV's text in the app (`src/pdf_text`, from sappkit's PDF reader, in a child
+- reading a PDF CV's text in the app (`src/pdf_text`, with the pdf-extract crate, in a child
   process), so it works offline;
 - Language models and Local model, below;
 - Laya's reading of the free match and the AI match, when its model is there (below).
