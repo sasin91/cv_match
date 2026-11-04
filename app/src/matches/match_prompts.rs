@@ -45,9 +45,9 @@ A location requirement is about where the candidate lives, against the place and
 - "missing" when the post asks for someone close, local or living in the area and they live farther (Slagelse is about 100 km from Copenhagen: "missing" for "located close to Copenhagen").
 Its reason names both places and the rough distance or commute.
 
-A language requirement is about the languages the candidate speaks:
-- "met" when the CV names the language (at the level asked, if any) or is itself written in it,
-- "partial" when the CV names it at a lower level than asked, or names a closely related language the candidate could work in (Norwegian or Swedish for Danish),
+A language requirement is about the languages the candidate speaks, judged from "The candidate's languages" line only: it lists the languages the original CV is written in or names. The CV below may be an English translation, so the language it is written in says nothing.
+- "met" when that line names the language (at the level asked, if any; the CV may say the level),
+- "partial" when the CV gives it at a lower level than asked, or the line names a closely related language the candidate could work in (Norwegian or Swedish for Danish),
 - "missing" otherwise: a language is no skill to infer, and Danish is no Finnish.
 
 Be strict: a guess is "missing". evidence quotes the CV briefly, empty when missing. reason is one short sentence in English."#;
@@ -62,6 +62,9 @@ const JUDGE_TOKENS: u32 = 4096;
 
 /// What judge() says where the CV doesn't say where the candidate lives.
 const LIVES_NOT_STATED: &str = "not stated";
+
+/// What judge() says where the CV's read found no languages.
+const LANGUAGES_NOT_STATED: &str = "none stated";
 
 /// A requirement the taxonomy couldn't decide, for the model to judge.
 #[derive(Debug, Clone, PartialEq)]
@@ -121,12 +124,16 @@ pub async fn read_cv(llm: &Llm, text: &str) -> Result<Profile, LlmException> {
 
 /// The model's verdict on each requirement the taxonomy couldn't decide. location is where the
 /// candidate lives (as the CV gives it), for location requirements; "" when it isn't known.
+/// languages are the ones the original CV is written in or names (Profile::language), for
+/// language requirements: cv_text is often the CV's English translation, which would make
+/// English look spoken and hide the CV's own language.
 pub async fn judge(
     llm: &Llm,
     job_title: &str,
     items: &[Undecided],
     cv_text: &str,
     location: &str,
+    languages: &[String],
 ) -> Result<Vec<Judged>, LlmException> {
     let list = items
         .iter()
@@ -138,12 +145,24 @@ pub async fn judge(
     } else {
         location
     };
-    let user =
-        format!("Job title: {job_title}\nThe candidate lives in: {lives}\n\nRequirements:\n{list}\n\nCV:\n\n{cv_text}");
+    let spoken = spoken_languages(languages);
+    let user = format!(
+        "Job title: {job_title}\nThe candidate lives in: {lives}\nThe candidate's languages: {spoken}\n\nRequirements:\n{list}\n\nCV:\n\n{cv_text}"
+    );
     let answer = llm
         .structured(JUDGE, &user, &judge_schema(), Effort::Medium, JUDGE_TOKENS)
         .await?;
     Ok(shaped::<Judgement>(answer, "verdicts")?.verdicts)
+}
+
+/// The candidate's languages as judge() names them: "Dansk, Engelsk", or LANGUAGES_NOT_STATED.
+fn spoken_languages(languages: &[String]) -> String {
+    let named: Vec<&str> = languages.iter().map(|l| l.trim()).filter(|l| !l.is_empty()).collect();
+    if named.is_empty() {
+        LANGUAGES_NOT_STATED.to_string()
+    } else {
+        named.join(", ")
+    }
 }
 
 /// The model's answer as T, or an error saying it wasn't the shape asked for.
@@ -242,4 +261,16 @@ fn judge_schema() -> Value {
             },
         },
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn the_judge_gets_the_cvs_own_languages() {
+        let languages = vec!["Dansk".to_string(), " ".to_string(), "Engelsk".to_string()];
+        assert_eq!(spoken_languages(&languages), "Dansk, Engelsk");
+        assert_eq!(spoken_languages(&[]), LANGUAGES_NOT_STATED);
+    }
 }
