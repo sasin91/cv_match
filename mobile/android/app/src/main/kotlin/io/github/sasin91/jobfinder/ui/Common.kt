@@ -12,7 +12,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 
-/** An error as the app shows it: in clay, in a card, where it happened. */
+/** An error as the app shows it: in the danger colour, in a card, where it happened. */
 @Composable
 fun ErrorCard(message: String, modifier: Modifier = Modifier) {
     Card(
