@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import io.github.sasin91.jobfinder.MatchState
 import io.github.sasin91.jobfinder.protocol.MatchDetails
 import io.github.sasin91.jobfinder.protocol.Requirement
+import io.github.sasin91.jobfinder.protocol.SavedTime
 
 /** The size of the score ring. */
 private val RING = 72.dp
@@ -106,7 +107,7 @@ private fun Details(details: MatchDetails) {
         }
     }
     if (details.savedAt.isNotEmpty()) {
-        Text("Saved ${details.savedAt}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
+        Text("Saved ${SavedTime.of(details.savedAt)}", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
     }
 }
 

@@ -232,6 +232,7 @@ async fn a_device_reads_the_lists_and_a_saved_match() {
     assert_eq!(all.list, "all");
     assert_eq!(all.matches.len(), 1);
     assert_eq!(all.matches[0].id, 21);
+    assert_eq!(all.matches[0].about, "86% · Top match");
 
     let (status, body) = send(&context, post(MATCH_PATH, Some(&token), serde_json::json!({"id": 21}))).await;
     assert_eq!(status, StatusCode::OK, "{body}");

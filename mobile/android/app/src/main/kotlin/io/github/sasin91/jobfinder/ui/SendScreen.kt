@@ -73,7 +73,8 @@ fun SendScreen(
         }
         item {
             TextButton(onClick = onUnpair, modifier = Modifier.padding(vertical = 16.dp)) {
-                Text("Unpair this device")
+                // Unpairing can't be undone from the phone: the danger colour, as the desktop's.
+                Text("Unpair this device", color = MaterialTheme.colorScheme.error)
             }
         }
     }

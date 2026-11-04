@@ -187,10 +187,10 @@ pub struct Matches {
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 pub struct MatchRow {
     pub id: i64,
-    /// "top", "good", "fair" or "low".
+    /// "top", "good", "medium" or "poor".
     pub tag: String,
     pub title: String,
-    /// "81% good · likely disqualifier: Located close to Copenhagen".
+    /// "81% · Good match · likely disqualifier: Located close to Copenhagen".
     pub about: String,
     pub saved_at: String,
     pub saved_on: String,
