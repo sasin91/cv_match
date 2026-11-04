@@ -14,6 +14,7 @@ use iced::{Center, Element, Fill, Task};
 use super::apply::{self, ApplyMsg, Applying};
 use super::batch::{self, Batch};
 use super::documents::{self, DocMsg, Docs};
+use super::drawings;
 use super::style;
 use super::widgets::{self, CARD_PADDING, ROW_PADDING};
 use super::{GAP, Runner, Step};
@@ -1355,7 +1356,7 @@ fn list_view<'a>(state: &'a State, current: &'static str) -> Element<'a, Msg> {
         None => widgets::note("Reading the saved matches…"),
         Some(Err(why)) => widgets::message_bar(Health::Attention, why.as_str()),
         Some(Ok(())) if state.list.rows.is_empty() => {
-            widgets::card(container(widgets::note(state.list.empty)).padding(CARD_PADDING).into())
+            widgets::card(drawings::empty(&drawings::FINDS, state.list.empty))
         }
         Some(Ok(())) => widgets::card(widgets::rows(state.list.rows.iter().map(saved_row))),
     };

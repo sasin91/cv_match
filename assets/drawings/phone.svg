@@ -1,0 +1,34 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 420 300">
+<rect width="420" height="300" rx="24" fill="var(--wash)"/>
+<rect x="20" y="246" width="380" height="10" rx="5" fill="var(--line)"/>
+<path d="M176 66 a12 12 0 0 1 3 -23 a18 18 0 0 1 34 -5 a14 14 0 0 1 6 27 z" fill="var(--bg)" stroke="var(--soft)" stroke-width="2.5" stroke-dasharray="4 4" stroke-linejoin="round"/>
+<path d="M172 30 l52 42" stroke="var(--clay)" stroke-width="4" stroke-linecap="round"/>
+<rect x="30" y="104" width="142" height="98" rx="10" fill="var(--ink)"/>
+<rect x="40" y="114" width="122" height="78" rx="4" fill="var(--paper)"/>
+<circle cx="54" cy="130" r="5" fill="var(--sage)"/><rect x="66" y="126" width="62" height="8" rx="4" fill="var(--line)"/>
+<circle cx="54" cy="152" r="5" fill="var(--sage)"/><rect x="66" y="148" width="78" height="8" rx="4" fill="var(--line)"/>
+<circle cx="54" cy="174" r="5" fill="var(--clay)"/><rect x="66" y="170" width="54" height="8" rx="4" fill="var(--line)"/>
+<path d="M90 202 l-8 34 h38 l-8 -34 z" fill="var(--ink)"/>
+<rect x="66" y="234" width="70" height="12" rx="6" fill="var(--ink)"/>
+<g transform="rotate(-8 168 222)">
+<rect x="146" y="198" width="44" height="48" rx="4" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/>
+<rect x="152" y="204" width="12" height="12" rx="2" fill="var(--ink)"/><rect x="172" y="204" width="12" height="12" rx="2" fill="var(--ink)"/>
+<rect x="152" y="224" width="12" height="12" rx="2" fill="var(--ink)"/>
+<rect x="172" y="224" width="5" height="5" fill="var(--ink)"/><rect x="179" y="231" width="5" height="5" fill="var(--ink)"/><rect x="172" y="236" width="5" height="4" fill="var(--ink)"/>
+</g>
+<path d="M172 148 C 220 108, 258 196, 300 152" fill="none" stroke="var(--sage)" stroke-opacity=".28" stroke-width="22" stroke-linecap="round"/>
+<path d="M172 148 C 220 108, 258 196, 300 152" fill="none" stroke="var(--sage)" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round"/>
+<path d="M228 140 v-9 a10 10 0 0 1 20 0 v9" fill="none" stroke="var(--ink)" stroke-width="5"/>
+<rect x="221" y="138" width="34" height="28" rx="6" fill="var(--clay)" stroke="var(--ink)" stroke-width="3"/>
+<circle cx="238" cy="150" r="3.5" fill="var(--ink)"/><path d="M238 152 v6" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"/>
+<g transform="rotate(6 334 160)">
+<rect x="300" y="88" width="72" height="140" rx="14" fill="var(--ink)"/>
+<rect x="307" y="100" width="58" height="114" rx="6" fill="var(--paper)"/>
+<circle cx="336" cy="128" r="15" fill="none" stroke="var(--line)" stroke-width="5"/>
+<path d="M336 113 a15 15 0 1 1 -14.3 19.6" fill="none" stroke="var(--sage)" stroke-width="5" stroke-linecap="round"/>
+<rect x="316" y="154" width="40" height="6" rx="3" fill="var(--line)"/>
+<path d="M318 172 l4 4 l8 -8" stroke="var(--sage)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="334" y="170" width="22" height="5" rx="2.5" fill="var(--line)"/>
+<path d="M318 188 l4 4 l8 -8" stroke="var(--sage)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="334" y="186" width="18" height="5" rx="2.5" fill="var(--line)"/>
+<path d="M319 201 l8 8 M327 201 l-8 8" stroke="var(--clay)" stroke-width="3" stroke-linecap="round"/><rect x="334" y="202" width="20" height="5" rx="2.5" fill="var(--line)"/>
+</g>
+</svg>

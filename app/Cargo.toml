@@ -66,7 +66,7 @@ device-protocol = { path = "device-protocol" }
 # Pairing codes and device tokens, from the system's random source.
 getrandom = "0.3"
 # The desktop window (desktop/), pinned: its releases come about yearly and change the API.
-iced = { version = "=0.14.0", features = ["qr_code"] }
+iced = { version = "=0.14.0", features = ["qr_code", "canvas", "svg"] }
 # The window's Open file dialog: Windows' own, and the desktop portal on Linux (no GTK to build).
 rfd = "0.17"
 
