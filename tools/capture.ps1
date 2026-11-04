@@ -71,6 +71,7 @@ public static class Win {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
     [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hWnd, int x, int y, int w, int h, bool repaint);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int w, int h, uint flags);
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
     [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hWnd, int attr, out RECT rect, int size);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -94,11 +95,22 @@ function Get-JobFinderWindow {
     $process.MainWindowHandle
 }
 
+# Keeps the window above every other window, or lets it go back to normal.
+function Set-OnTop([IntPtr]$hwnd, [bool]$onTop) {
+    $HWND_TOPMOST = [IntPtr](-1); $HWND_NOTOPMOST = [IntPtr](-2)
+    $SWP_NOSIZE = 0x1; $SWP_NOMOVE = 0x2; $SWP_SHOWWINDOW = 0x40
+    $after = if ($onTop) { $HWND_TOPMOST } else { $HWND_NOTOPMOST }
+    [void][Win]::SetWindowPos($hwnd, $after, 0, 0, 0, 0, $SWP_NOSIZE -bor $SWP_NOMOVE -bor $SWP_SHOWWINDOW)
+}
+
 # Puts the window in front at the set size, near the top left of the main screen.
 function Set-Window([IntPtr]$hwnd) {
     $SW_RESTORE = 9
     [void][Win]::ShowWindow($hwnd, $SW_RESTORE)
     [void][Win]::MoveWindow($hwnd, 40, 40, $WindowWidth, $WindowHeight, $true)
+    # Windows won't hand the focus to another program from a script, so pin the window above the
+    # rest instead; the screen grab only sees what is on top.
+    Set-OnTop $hwnd $true
     [void][Win]::SetForegroundWindow($hwnd)
     Start-Sleep -Milliseconds $SettleMs
 }
@@ -215,33 +227,37 @@ if ($What -like 'phone-*') {
 }
 
 $hwnd = Get-JobFinderWindow
-Set-Window $hwnd
+try {
+    Set-Window $hwnd
 
-if ($What -eq 'shot') {
-    $was = Get-Mode
-    $modes = if ($Theme -eq 'both') { @('light', 'dark') } else { @($Theme) }
-    try {
-        foreach ($mode in $modes) {
-            if ((Get-Mode) -ne $mode) { Set-Mode $mode }
-            [void][Win]::SetForegroundWindow($hwnd)
-            Wait-Look $hwnd $mode
-            Save-Shot $hwnd (Join-Path $Out "$Name-$mode.png")
+    if ($What -eq 'shot') {
+        $was = Get-Mode
+        $modes = if ($Theme -eq 'both') { @('light', 'dark') } else { @($Theme) }
+        try {
+            foreach ($mode in $modes) {
+                if ((Get-Mode) -ne $mode) { Set-Mode $mode }
+                [void][Win]::SetForegroundWindow($hwnd)
+                Wait-Look $hwnd $mode
+                Save-Shot $hwnd (Join-Path $Out "$Name-$mode.png")
+            }
+        } finally {
+            if ((Get-Mode) -ne $was) { Set-Mode $was }
         }
-    } finally {
-        if ((Get-Mode) -ne $was) { Set-Mode $was }
+        return
     }
-    return
-}
 
-Assert-Tool ffmpeg $FfmpegHow
-$frame = Get-Frame $hwnd
-# VP9 wants even sizes.
-$width = ($frame.Right - $frame.Left) -band -2; $height = ($frame.Bottom - $frame.Top) -band -2
-$path = Join-Path $Out "$Name-$(Get-Mode).webm"
-for ($left = $CountdownSeconds; $left -gt 0; $left--) { Write-Host "Recording in $left..."; Start-Sleep 1 }
-Write-Host "Recording $Seconds s. Go."
-& ffmpeg -hide_banner -loglevel error -y -f gdigrab -framerate $ClipFps `
-    -offset_x $frame.Left -offset_y $frame.Top -video_size "${width}x${height}" -draw_mouse 1 -i desktop `
-    -t $Seconds -c:v libvpx-vp9 -crf $ClipCrf -b:v 0 -row-mt 1 -pix_fmt yuv420p -an $path
-if ($LASTEXITCODE -ne 0) { throw "ffmpeg stopped with code $LASTEXITCODE." }
-Write-Host "Saved $path"
+    Assert-Tool ffmpeg $FfmpegHow
+    $frame = Get-Frame $hwnd
+    # VP9 wants even sizes.
+    $width = ($frame.Right - $frame.Left) -band -2; $height = ($frame.Bottom - $frame.Top) -band -2
+    $path = Join-Path $Out "$Name-$(Get-Mode).webm"
+    for ($left = $CountdownSeconds; $left -gt 0; $left--) { Write-Host "Recording in $left..."; Start-Sleep 1 }
+    Write-Host "Recording $Seconds s. Go."
+    & ffmpeg -hide_banner -loglevel error -y -f gdigrab -framerate $ClipFps `
+        -offset_x $frame.Left -offset_y $frame.Top -video_size "${width}x${height}" -draw_mouse 1 -i desktop `
+        -t $Seconds -c:v libvpx-vp9 -crf $ClipCrf -b:v 0 -row-mt 1 -pix_fmt yuv420p -an $path
+    if ($LASTEXITCODE -ne 0) { throw "ffmpeg stopped with code $LASTEXITCODE." }
+    Write-Host "Saved $path"
+} finally {
+    Set-OnTop $hwnd $false
+}
