@@ -67,7 +67,9 @@ private val Dark = darkColorScheme(
     surfaceContainerLow = Color(0xFF16252F),
     outline = Color(0xFF263844),
     outlineVariant = Color(0xFF1E2F3A),
-    error = Color(0xFFC4513A),
+    // The desktop's dark danger (C4513A) is a button face; as text on a card it reads at only
+    // 3.4:1, so the phone's errors and missing marks use this lighter red (5.8:1 on a card).
+    error = Color(0xFFE8806B),
     onError = Color(0xFF0F1B24),
 )
 
@@ -79,7 +81,7 @@ object Marks {
         return when (kind) {
             "met", "top", "good" -> if (dark) Color(0xFF6FB59C) else Color(0xFF2E6B5B)
             "partial", "medium", "fair" -> if (dark) Color(0xFFF0B952) else Color(0xFF8A5A12)
-            "missing", "poor", "low" -> if (dark) Color(0xFFC4513A) else Color(0xFFB23A26)
+            "missing", "poor", "low" -> if (dark) Color(0xFFE8806B) else Color(0xFFB23A26)
             else -> MaterialTheme.colorScheme.onSurfaceVariant
         }
     }
