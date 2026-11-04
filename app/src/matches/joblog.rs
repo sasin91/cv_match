@@ -43,6 +43,8 @@ pub const APPLIED: [(&str, &str); 3] = [
 
 /// The status until the candidate says otherwise.
 pub const NOT_APPLIED: &str = "IkkeSoegt";
+/// The status a match gets when the candidate says they applied (Søgt).
+pub const APPLIED_STATUS: &str = "Soegt";
 
 // Jobnet's limits: part time is at most 36 hours, notes 2000 characters.
 pub const MAX_PART_TIME_HOURS: i64 = 36;

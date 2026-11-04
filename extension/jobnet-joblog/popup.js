@@ -8,6 +8,7 @@
 // form-fill.js goes into the page with the match picked, and does the rest
 // there, so the popup may close. The match whose post the page comes from (its
 // address, or the company in the address or title) is picked to start with.
+// "Mark as applied" marks that match as applied for in JobFinder.
 
 const api = globalThis.browser ?? globalThis.chrome;
 // The search picked last, picked again next time.
@@ -21,6 +22,7 @@ const said = document.getElementById("said");
 const matchList = document.getElementById("match");
 const fill = document.getElementById("fill");
 const filled = document.getElementById("filled");
+const applied = document.getElementById("applied");
 // Words a company's name ends with that say nothing about which company it is.
 const LEGAL_FORMS = ["as", "aps", "is", "ps", "ks", "ivs", "amba", "inc", "ltd", "llc", "gmbh", "ab", "oy"];
 // How much each sign that the page belongs to a match counts.
@@ -97,6 +99,7 @@ async function showMatches(tab) {
   const best = all.reduce((best, match) => (likeness(match, tab) > likeness(best, tab) ? match : best), all[0]);
   matchList.value = String(best.id);
   fill.disabled = false;
+  applied.disabled = false;
 }
 
 async function fillForm(tab) {
@@ -119,6 +122,19 @@ async function fillForm(tab) {
   fill.disabled = false;
 }
 
+// Marks the picked match as applied for in JobFinder (Søgt), for an
+// application sent some other way than a form it filled in.
+async function markApplied() {
+  applied.disabled = true;
+  try {
+    const marked = await ask({ type: "applied", id: Number(matchList.value) });
+    filled.textContent = `Marked as applied in JobFinder: ${marked.status}, ${marked.applied_on}.`;
+  } catch (error) {
+    filled.textContent = error.message;
+  }
+  applied.disabled = false;
+}
+
 async function start() {
   const [tab] = await api.tabs.query({ active: true, currentWindow: true });
   if (!tab?.url || !/^https?:/.test(tab.url)) {
@@ -131,6 +147,7 @@ async function start() {
     filled.textContent = error.message;
   });
   fill.addEventListener("click", () => fillForm(tab));
+  applied.addEventListener("click", markApplied);
   try {
     await showSearches();
   } catch (error) {

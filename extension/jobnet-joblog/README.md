@@ -122,6 +122,12 @@ app/src/matches/application_form.rs):
   and the application. It leaves empty what they don't say (salary, notice
   period, start date), and a choice is always one of the form's own options.
 
+Once you have sent the form, press "I sent it: mark as applied" in the box:
+the match is marked as applied for in JobFinder (Søgt, today, unless it is at
+Samtale already), so it shows under "Applied, not on Jobnet yet" and the
+Jobnet joblog panel offers it first. "Mark as applied" in the popup does the
+same for the picked match, for an application you sent some other way.
+
 Fields that already have something in them are kept as they are. A consent or
 privacy box is never ticked, and nothing is sent: read every answer, then send
 the form yourself.

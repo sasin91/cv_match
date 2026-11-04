@@ -141,6 +141,21 @@ pub async fn application_form(State(state): State<Arc<AppState>>, Json(input): J
     Ok(Json(answers).into_response())
 }
 
+/// applied's body.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct AppliedInput {
+    id: serde_json::Value,
+}
+
+/// POST match/applied {id}: the candidate sent their application (on the employer's form, say):
+/// the match is marked as applied for (match_service::mark_applied), so it shows under "Applied,
+/// not on Jobnet yet". Answers {status, applied_on}.
+pub async fn applied(State(state): State<Arc<AppState>>, Json(input): Json<AppliedInput>) -> Answer {
+    let applied = match_service::mark_applied(&state.context, id_in_body(&input.id)).await?;
+    Ok(Json(applied).into_response())
+}
+
 /// GET job_scan/search_names: the searches the extension can send a post to, as JSON
 /// {searches: [{id, name, active}]}, active ones first.
 pub async fn search_names(State(state): State<Arc<AppState>>) -> Answer {
