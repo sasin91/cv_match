@@ -13,6 +13,10 @@
 // {type: "pdf", id, kind} one of its PDFs as {name, base64};
 // {type: "logged", id, status} marks it as entered in Jobnet's joblog
 // (match/joblog_status), keeping its status;
+// {type: "application_form", id, fields} what goes in the fields of an
+// employer's application form (match/application_form), for form-fill.js;
+// {type: "applied", id} marks a match as applied for (match/applied), answering
+// {status, applied_on};
 // {type: "searches"} the job searches a post can be sent to (job_scan/search_names);
 // {type: "send_page", search_id, url, html} adds the post the browser shows to
 // one, from its HTML as shown (job_scan/submit_page), and answers what
@@ -21,6 +25,20 @@
 
 const api = globalThis.browser ?? globalThis.chrome;
 const DEFAULT_BASE = "http://127.0.0.1:8765/";
+// The browser stops an idle service worker after 30 seconds, a wait for
+// JobFinder's answer included, and a model answering a form's questions can
+// take minutes. Each extension call starts that time again, so one is made
+// this often while the answer is awaited.
+const KEEP_AWAKE_MS = 20000;
+
+async function keptAwake(work) {
+  const timer = setInterval(() => api.runtime.getPlatformInfo(), KEEP_AWAKE_MS);
+  try {
+    return await work;
+  } finally {
+    clearInterval(timer);
+  }
+}
 
 async function base() {
   const { base } = await api.storage.local.get("base");
@@ -62,6 +80,24 @@ async function answer(message) {
       body: JSON.stringify({ id: Number(message.id), status: message.status, logged: true }),
     });
     return true;
+  }
+  if (message.type === "application_form") {
+    const response = await keptAwake(
+      call("match/application_form", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: Number(message.id), fields: message.fields }),
+      }),
+    );
+    return response.json();
+  }
+  if (message.type === "applied") {
+    const response = await call("match/applied", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: Number(message.id) }),
+    });
+    return response.json();
   }
   if (message.type === "searches") {
     return (await (await call("job_scan/search_names")).json()).searches ?? [];

@@ -59,6 +59,8 @@ pub fn router(state: Arc<AppState>) -> Router {
         .route("/match/joblog/{id}", get(extension_api::joblog))
         .route("/match/joblog_status", post(extension_api::joblog_status))
         .route("/match/pdf", post(extension_api::pdf))
+        .route("/match/application_form", post(extension_api::application_form))
+        .route("/match/applied", post(extension_api::applied))
         .route("/job_scan/search_names", get(extension_api::search_names))
         .route(
             "/job_scan/submit_page",

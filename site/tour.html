@@ -1,0 +1,215 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>How JobFinder works</title>
+<meta name="description" content="Screens and clips from a real JobFinder: the scan, why a job matched, the letter it drafts, and what it does in the background.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#eef1ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1b24" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="How JobFinder works">
+<meta property="og:description" content="Finds the jobs you'd have missed, tells you why they fit, and starts the application. Free, and it runs on your own PC.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="media/dashboard-light.png">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/bricolage-grotesque-700.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/figtree-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="col">
+    <nav aria-label="Main">
+      <a class="home" href="./"><strong>JobFinder</strong></a>
+      <span class="links"><a href="tour.html" aria-current="page">How it works</a><a href="screens.html">Screens</a><a href="phone.html">Phone</a><a href="questions.html">Questions</a><a href="https://github.com/sasin91/jobfinder">GitHub</a></span>
+      <span class="actions">
+        <a class="btn small" href="https://github.com/sasin91/jobfinder/releases/latest">Download</a>
+        <details class="menu"><summary aria-label="Menu">Menu</summary><div class="sheet"><a href="tour.html" aria-current="page">How it works</a><a href="screens.html">Screens</a><a href="phone.html">Phone</a><a href="questions.html">Questions</a><a href="https://github.com/sasin91/jobfinder">GitHub</a></div></details>
+      </span>
+    </nav>
+  </div>
+</header>
+<div class="col">
+  <!-- The real app, in the reader's own light or dark -->
+  <section class="page-head">
+    <span class="eyebrow">How it works</span>
+    <h1>Four things it does, <em>so you don't have to.</em></h1>
+    <p class="lede">Clips from the author's own JobFinder, in light or dark to match your system.</p>
+  </section>
+
+  <section class="split step">
+    <div style="display:grid;gap:14px"><span class="eyebrow">Step 1</span><h2>It reads the job sites.</h2><p class="lede">Every two hours while your PC is on, or when you press Scan now. Jobnet, Jobindex, LinkedIn and Indeed, and the task manager shows what it's reading.</p></div>
+    <figure><div class="frame"><video autoplay muted loop playsinline preload="metadata" aria-label="A scan starting: the task manager fills with the job scan and a browser reading LinkedIn" width="1266" height="793"><source src="media/scan-dark.webm" type="video/webm" media="(prefers-color-scheme: dark)"><source src="media/scan-light.webm" type="video/webm"></video></div></figure>
+  </section>
+
+  <section class="split step">
+    <figure><div class="frame"><video autoplay muted loop playsinline preload="metadata" aria-label="Scrolling through a match's requirements, each with a verdict and the line from the CV that shows it" width="1266" height="793"><source src="media/match-why-dark.webm" type="video/webm" media="(prefers-color-scheme: dark)"><source src="media/match-why-light.webm" type="video/webm"></video></div></figure>
+    <div style="display:grid;gap:14px"><span class="eyebrow">Step 2</span><h2>It tells you why a job fits.</h2><p class="lede">Each match lists the post's requirements, whether you meet them, and the line from your CV that shows it. Ten seconds tells you whether it's worth your evening.</p></div>
+  </section>
+
+  <!-- The letter, and the dove that carries it -->
+  <section class="split">
+    <article class="letter" aria-label="Example application letter">
+      <svg class="clip" viewBox="0 0 26 64" aria-hidden="true"><path d="M8 58 V12 a5 5 0 0 1 10 0 V50 a9 9 0 0 1 -18 0 V16" fill="none" stroke="var(--soft)" stroke-width="3" stroke-linecap="round"/></svg>
+      <div class="from"><b>Sofie Andersen</b>Søndergade 12, 2. tv.<br>8000 Aarhus C<br>20 45 67 89</div>
+      <div class="to">Nordlager A/S<br>Att.: Mette Holm<br>Industrivej 4<br>8200 Aarhus N</div>
+      <div class="date">Aarhus, 3. november 2026</div>
+      <p class="subject">Ansøgning: Lagerkoordinator</p>
+      <p>Kære Mette Holm</p>
+      <p>I søger en lagerkoordinator, der kender SAP og kan holde styr på et travlt lager. Det har jeg gjort de sidste fire år hos en grossist i Hasselager, hvor jeg planlagde vagter for tolv kolleger og tog mig af varemodtagelsen.</p>
+      <p>Jeg har truckcertifikat B, og jeg er vant til nattevagter i højsæsonen. Jeg vil rigtig gerne fortælle mere om, hvad jeg kan bidrage med hos Nordlager.</p>
+      <p>Med venlig hilsen</p>
+      <div class="sign">Sofie Andersen</div>
+      <div class="name">Sofie Andersen</div>
+      <div class="att"><span>Bilag: CV (tilpasset), 1 side</span><span>Version 3</span></div>
+    </article>
+    <div style="display:grid;gap:16px">
+      <span class="eyebrow">Step 3</span>
+      <h2>A letter written <em>for this job</em>, not for every job.</h2>
+      <p class="lede">It uses what the post asks for and what your CV shows. Ask for another go and the old one is kept, so you can always go back.</p>
+      <div class="versions"><span>Version 3 · today 16:40 · "shorter, mention the night shifts"</span><span>Version 2 · today 16:31</span><span>Version 1 · today 16:28</span></div>
+      <figure class="dove">
+        <svg viewBox="0 0 320 190" role="img" aria-label="A white dove flying with a sealed envelope hanging from its beak">
+          <ellipse cx="60" cy="40" rx="34" ry="12" fill="var(--wash)"/>
+          <ellipse cx="270" cy="168" rx="40" ry="12" fill="var(--wash)"/>
+          <path d="M8 176 C 50 170, 60 140, 86 126" fill="none" stroke="var(--soft)" stroke-width="2.5" stroke-dasharray="2 9" stroke-linecap="round"/>
+          <path d="M124 118 L 84 102 L 94 120 L 80 134 L 126 128 Z" fill="var(--dove)" stroke="var(--dove-line)" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M120 112 C 140 80, 200 80, 222 100 C 236 112, 238 126, 226 132 C 200 148, 150 146, 120 130 Z" fill="var(--dove)" stroke="var(--dove-line)" stroke-width="2.5"/>
+          <circle cx="236" cy="92" r="15" fill="var(--dove)" stroke="var(--dove-line)" stroke-width="2.5"/>
+          <path d="M249 87 L 264 92 L 249 98 Z" fill="var(--clay)"/>
+          <circle cx="240" cy="88" r="2.4" fill="var(--dove-line)"/>
+          <path d="M150 106 C 136 74, 142 40, 164 16 C 170 30, 176 30, 182 14 C 190 30, 196 30, 206 18 C 210 32, 216 32, 226 26 C 220 58, 206 86, 192 106 Z" fill="var(--dove)" stroke="var(--dove-line)" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M164 92 C 164 66, 170 44, 178 28 M178 96 C 182 72, 190 50, 200 34 M190 100 C 198 78, 208 58, 218 40" fill="none" stroke="var(--dove-line)" stroke-width="1.6" stroke-opacity=".45" stroke-linecap="round"/>
+          <path d="M262 94 L 266 132" stroke="var(--dove-line)" stroke-width="1.6"/>
+          <g transform="rotate(8 268 150)">
+            <rect x="244" y="132" width="50" height="34" rx="3" fill="var(--dove)" stroke="var(--dove-line)" stroke-width="2"/>
+            <path d="M244 134 L 269 152 L 294 134" fill="none" stroke="var(--dove-line)" stroke-width="2" stroke-linejoin="round"/>
+            <circle cx="269" cy="152" r="5" fill="var(--rust)"/>
+          </g>
+        </svg>
+        <figcaption>Tailor-made résumés and applications, ready for delivery.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section class="split step">
+    <figure style="margin:0">
+      <svg viewBox="0 0 420 300" role="img" aria-label="A drawing of a browser on a job post, with the JobFinder button in the toolbar, and a Jobnet joblog form filled in, with a PDF attached">
+        <rect width="420" height="300" rx="24" fill="var(--wash)"/>
+        <g transform="rotate(-2 170 140)">
+          <rect x="28" y="40" width="250" height="180" rx="12" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/>
+          <path d="M28 52 a12 12 0 0 1 12 -12 h226 a12 12 0 0 1 12 12 v18 h-250 z" fill="var(--line)"/>
+          <circle cx="44" cy="55" r="4" fill="var(--soft)"/><circle cx="58" cy="55" r="4" fill="var(--soft)"/>
+          <rect x="74" y="49" width="140" height="12" rx="6" fill="var(--paper)"/>
+          <rect x="230" y="47" width="36" height="16" rx="5" fill="var(--sage)"/>
+          <circle cx="248" cy="55" r="4" fill="none" stroke="var(--paper)" stroke-width="2.4"/><path d="M251 58 l4 4" stroke="var(--paper)" stroke-width="2.4" stroke-linecap="round"/>
+          <rect x="46" y="88" width="120" height="12" rx="4" fill="var(--ink)"/>
+          <rect x="46" y="110" width="200" height="6" rx="3" fill="var(--line)"/>
+          <rect x="46" y="124" width="180" height="6" rx="3" fill="var(--line)"/>
+          <rect x="46" y="138" width="190" height="6" rx="3" fill="var(--line)"/>
+          <rect x="46" y="152" width="150" height="6" rx="3" fill="var(--line)"/>
+        </g>
+        <path d="M250 34 C 300 10, 340 30, 330 70" fill="none" stroke="var(--soft)" stroke-width="2.5" stroke-dasharray="2 8" stroke-linecap="round"/>
+        <text x="296" y="26" style="font:500 19px var(--hand)" fill="var(--rust)" transform="rotate(4 296 26)">match it</text>
+        <g transform="rotate(4 320 190)">
+          <rect x="262" y="98" width="132" height="168" rx="8" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/>
+          <rect x="276" y="114" width="64" height="9" rx="3" fill="var(--soft)"/>
+          <rect x="276" y="134" width="104" height="14" rx="4" fill="var(--bg)" stroke="var(--line)"/><path d="M282 141 l4 4 l8 -8" stroke="var(--sage)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="276" y="156" width="104" height="14" rx="4" fill="var(--bg)" stroke="var(--line)"/><path d="M282 163 l4 4 l8 -8" stroke="var(--sage)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="276" y="178" width="104" height="14" rx="4" fill="var(--bg)" stroke="var(--line)"/><path d="M282 185 l4 4 l8 -8" stroke="var(--sage)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+          <rect x="276" y="202" width="34" height="42" rx="3" fill="var(--clay)"/><text x="293" y="228" text-anchor="middle" font-family="Figtree, sans-serif" font-size="10" font-weight="700" fill="var(--ink)">PDF</text>
+          <rect x="318" y="226" width="62" height="18" rx="9" fill="none" stroke="var(--ink)" stroke-width="2"/><text x="349" y="239" text-anchor="middle" font-family="Figtree, sans-serif" font-size="10" font-weight="600" fill="var(--ink)">Gem</text>
+        </g>
+        <text x="40" y="270" style="font:500 19px var(--hand)" fill="var(--rust)" transform="rotate(-2 40 270)">you check it and press Gem</text>
+      </svg>
+    </figure>
+    <div style="display:grid;gap:14px">
+      <span class="eyebrow">Step 4 · the browser extension</span>
+      <h2>It sends the post, <em>and fills in your joblog.</em></h2>
+      <p class="lede">A small extension for Edge and Chrome that talks to JobFinder on your PC.</p>
+      <div class="whys">
+        <div><svg viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="8" fill="none" stroke="var(--sage)" stroke-width="3"/></svg><div><b>Spotted a job? Match it.</b><p>Press the JobFinder button on any job post you have open, and the post goes to JobFinder to be matched against your CV, as it is on the page.</p></div></div>
+        <div><svg viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="8" fill="none" stroke="var(--sage)" stroke-width="3"/></svg><div><b>On dagpenge? Your joblog, filled in.</b><p>On Jobnet's "Opret joblog", pick the match and it fills in the job, the company, the postcode and the date, and attaches your application, CV and the post as PDFs.</p></div></div>
+        <div><svg viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="8" fill="none" stroke="var(--clay)" stroke-width="3"/></svg><div><b>Best effort, and honest about it.</b><p>Jobnet only accepts companies and postcodes from its own lists, so it picks the closest one and tells you what it filled and what it couldn't. It never presses Gem: you check the form and save it yourself.</p></div></div>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">And also</span>
+    <h2 style="margin-top:12px">The parts you don't see.</h2>
+    <div class="feats">
+      <div class="feat">
+        <div class="scene">
+          <svg viewBox="0 0 240 160" aria-hidden="true">
+            <path d="M30 96 c-8 -46 40 -80 92 -74 c52 6 96 30 88 72 c-8 44 -60 58 -108 52 c-40 -4 -66 -20 -72 -50 z" fill="var(--wash)"/>
+            <rect x="80" y="30" width="70" height="118" rx="4" fill="var(--clay)"/>
+            <rect x="88" y="40" width="54" height="44" rx="3" fill="none" stroke="var(--paper)" stroke-opacity=".5" stroke-width="3"/>
+            <rect x="88" y="92" width="54" height="46" rx="3" fill="none" stroke="var(--paper)" stroke-opacity=".5" stroke-width="3"/>
+            <circle cx="138" cy="90" r="5" fill="var(--ink)"/>
+            <circle cx="176" cy="90" r="13" fill="none" stroke="var(--ink)" stroke-width="6"/>
+            <path d="M163 90 h-22 m6 0 v8 m8 -8 v6" stroke="var(--ink)" stroke-width="6" stroke-linecap="round"/>
+            <rect x="160" y="40" width="38" height="18" rx="4" fill="var(--sage)"/>
+            <text x="179" y="53" text-anchor="middle" font-family="Figtree, sans-serif" font-size="11" font-weight="600" fill="var(--paper)">IN</text>
+          </svg>
+          <span class="note">signed in as you</span>
+        </div>
+        <h3>Reads the sites you sign in to</h3>
+        <p>LinkedIn and Indeed hide many jobs behind a login. JobFinder opens them in its own browser on your PC, signed in as you, slowly and politely.</p>
+      </div>
+      <div class="feat">
+        <div class="scene">
+          <svg viewBox="0 0 240 160" aria-hidden="true">
+            <circle cx="120" cy="84" r="72" fill="var(--wash)"/>
+            <path d="M178 50 a9 9 0 0 1 2 -17 a13 13 0 0 1 25 -3 a10 10 0 0 1 4 20 z" fill="var(--bg)" stroke="var(--soft)" stroke-width="2.5" stroke-dasharray="4 4" stroke-linejoin="round"/>
+            <path d="M176 22 l36 34" stroke="var(--clay)" stroke-width="4" stroke-linecap="round"/>
+            <rect x="52" y="40" width="118" height="80" rx="8" fill="var(--ink)"/>
+            <rect x="60" y="48" width="102" height="64" rx="3" fill="var(--paper)"/>
+            <circle cx="80" cy="66" r="9" fill="var(--sage)"/>
+            <rect x="96" y="60" width="50" height="6" rx="3" fill="var(--soft)"/>
+            <rect x="96" y="70" width="38" height="4" rx="2" fill="var(--line)"/>
+            <rect x="72" y="84" width="76" height="4" rx="2" fill="var(--line)"/>
+            <rect x="72" y="94" width="62" height="4" rx="2" fill="var(--line)"/>
+            <rect x="100" y="120" width="22" height="14" fill="var(--ink)"/>
+            <rect x="84" y="132" width="54" height="7" rx="3" fill="var(--ink)"/>
+            <g transform="rotate(10 168 112)">
+              <path d="M156 102 v-10 a12 12 0 0 1 24 0 v10" fill="none" stroke="var(--ink)" stroke-width="6"/>
+              <rect x="148" y="100" width="40" height="34" rx="6" fill="var(--clay)" stroke="var(--ink)" stroke-width="3"/>
+              <circle cx="168" cy="114" r="4" fill="var(--ink)"/>
+              <rect x="166" y="116" width="4" height="9" rx="2" fill="var(--ink)"/>
+            </g>
+          </svg>
+          <span class="note">home, not the cloud</span>
+        </div>
+        <h3>Stays on your PC</h3>
+        <p>It can run its own AI model, so your CV never has to leave your computer. No subscriptions required.</p>
+      </div>
+    </div>
+  </section>
+
+  <section><div class="next"><a href="screens.html"><b>Screens</b><span>Every screen of the app, one at a time.</span><i>Have a look →</i></a><a href="phone.html"><b>The phone app</b><span>Your shortlist in your pocket, over a private line.</span><i>Read more →</i></a><a href="questions.html"><b>Questions</b><span>Why not ChatGPT? Is my CV sent anywhere? Is it free?</span><i>Read more →</i></a></div></section>
+  <footer id="download">
+    <span>JobFinder · free and open source · Windows 11 and Linux<br>Made by Jonas Kerwin Hansen, built with help from Claude.</span>
+    <span style="display:flex;gap:20px;flex-wrap:wrap"><a href="https://github.com/sasin91/jobfinder/releases/latest">Download</a><a href="https://github.com/sasin91/jobfinder">Source on GitHub</a></span>
+  </footer>
+</div>
+<script>
+// The header gets its hairline once the page has scrolled.
+(() => {
+  const top = document.querySelector('header.top');
+  const mark = () => top.classList.toggle('scrolled', scrollY > 4);
+  addEventListener('scroll', mark, { passive: true }); mark();
+  // The phone menu closes on a click elsewhere or on Escape.
+  const menu = top.querySelector('.menu');
+  addEventListener('click', e => { if (menu.open && !menu.contains(e.target)) menu.open = false; });
+  addEventListener('keydown', e => { if (e.key === 'Escape' && menu.open) { menu.open = false; menu.querySelector('summary').focus(); } });
+})();
+
+// With reduced motion asked for, the clips wait for a click instead of playing on their own.
+if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  for (const v of document.querySelectorAll('video')) { v.removeAttribute('autoplay'); v.pause(); v.controls = true; }
+}
+</script>
+</body>
+</html>

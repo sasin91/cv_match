@@ -4,7 +4,7 @@
 //!
 //! A learned label starts as a candidate, which matching doesn't use. Each match that teaches it
 //! again is a sighting; at SIGHTINGS_TO_ACTIVATE it turns active, and the Context's Taxonomy is
-//! built again and swapped in whole (reload). The Learned terms screen approves, rejects and
+//! built again and swapped in whole (reload). The Taxonomy screen approves, rejects and
 //! renames labels by hand.
 
 use std::collections::{HashMap, HashSet};
@@ -22,7 +22,7 @@ pub const SIGHTINGS_TO_ACTIVATE: i64 = 2;
 /// The first id of a term the app makes itself, above every shipped id.
 pub const FIRST_LEARNED_TERM_ID: i64 = 1_000_000;
 
-/// Most labels the Learned terms screen lists, or a search finds.
+/// Most labels the Taxonomy screen lists, or a search finds.
 pub const MAX_LISTED: i64 = 200;
 
 /// Where a label comes from (taxonomy_labels.source).
@@ -48,7 +48,7 @@ pub struct Lesson {
     pub learned_from: &'static str,
 }
 
-/// A label as the Learned terms screen lists it.
+/// A label as the Taxonomy screen lists it.
 #[derive(Debug, Clone, PartialEq)]
 pub struct ListedLabel {
     pub id: i64,
@@ -84,7 +84,7 @@ pub async fn open(db: &SqlitePool) -> Result<Taxonomy, String> {
 /// Rejects the candidate labels only the judge taught whose words share none with their term's
 /// labels (Taxonomy::shares_word_stem), as taxonomy_lessons now asks of a judge's lesson: such a
 /// label came from a met verdict alone ("SSA til aftenvagt" for Laravel), before that rule. They
-/// are rejected rather than deleted, so they aren't learned again and the Learned terms screen
+/// are rejected rather than deleted, so they aren't learned again and the Taxonomy screen
 /// still shows them; Approve takes one back.
 async fn reject_unfounded_judge_candidates(db: &SqlitePool, taxonomy: &Taxonomy, now: i64) -> sqlx::Result<()> {
     let candidates = sqlx::query!(
@@ -493,7 +493,7 @@ async fn rename_in_database(db: &SqlitePool, id: i64, text: &str, now: i64) -> s
     tx.commit().await
 }
 
-/// What the Learned terms screen does to a label.
+/// What the Taxonomy screen does to a label.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum Review {
     Approve,

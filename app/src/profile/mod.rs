@@ -39,6 +39,33 @@ struct Entry {
 /// The profile's one row: profile.id is always this (its CHECK, migration 0011_one_user_schema).
 pub const PROFILE_ID: i64 = 1;
 
+/// The profile's top: who the candidate is and how to reach them, as the profile page has it.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Contact {
+    pub name: String,
+    pub email: String,
+    /// "" when the profile has none.
+    pub phone: String,
+    pub title: String,
+    pub location: String,
+    pub about: String,
+}
+
+/// The profile's top, or None when the user has no profile.
+pub async fn contact(db: &SqlitePool) -> sqlx::Result<Option<Contact>> {
+    let row = sqlx::query!(r#"SELECT name, email, phone, title, location, about FROM profile"#)
+        .fetch_optional(db)
+        .await?;
+    Ok(row.map(|row| Contact {
+        name: row.name,
+        email: row.email,
+        phone: row.phone.unwrap_or_default(),
+        title: row.title,
+        location: row.location,
+        about: row.about,
+    }))
+}
+
 /// The user's profile as text, or None when they have none.
 pub async fn text_for_user(db: &SqlitePool) -> sqlx::Result<Option<String>> {
     text_for_user_at(db, YearMonth::of(chrono::Utc::now().timestamp())).await
@@ -48,19 +75,20 @@ pub async fn text_for_user(db: &SqlitePool) -> sqlx::Result<Option<String>> {
 /// none. The years go on their own line under the header, so the CV's readers take them as
 /// given (stated_years_of_work) instead of counting.
 pub(crate) async fn text_for_user_at(db: &SqlitePool, now: YearMonth) -> sqlx::Result<Option<String>> {
-    let Some(profile) =
-        sqlx::query!(r#"SELECT name, email, phone, title, location, about, years_of_work FROM profile"#)
-            .fetch_optional(db)
-            .await?
-    else {
+    let Some(profile) = contact(db).await? else {
         return Ok(None);
     };
     let entries = entries(db).await?;
     let links = links_for_user(db).await?;
-    let (name, email, phone) = (profile.name, profile.email, profile.phone);
-    let (title, location, about) = (profile.title, profile.location, profile.about);
+    let Contact {
+        name,
+        email,
+        phone,
+        title,
+        location,
+        about,
+    } = profile;
 
-    let phone = phone.unwrap_or_default();
     let contact = join_present(&[&location, &phone, &email], " · ");
     let link_line = links
         .iter()
@@ -68,7 +96,7 @@ pub(crate) async fn text_for_user_at(db: &SqlitePool, now: YearMonth) -> sqlx::R
         .collect::<Vec<_>>()
         .join(" · ");
     let years = YearsOfWork {
-        saved: profile.years_of_work,
+        saved: saved_years_of_work(db).await?.flatten(),
         counted: counted_years_of_work(&entries, now),
     }
     .years()
@@ -132,14 +160,18 @@ impl YearsOfWork {
 
 /// The candidate's years of work, saved and counted until now, or None when there is no profile.
 pub async fn years_of_work(db: &SqlitePool, now: YearMonth) -> sqlx::Result<Option<YearsOfWork>> {
-    let Some(saved) = sqlx::query_scalar!(r#"SELECT years_of_work FROM profile"#)
-        .fetch_optional(db)
-        .await?
-    else {
+    let Some(saved) = saved_years_of_work(db).await? else {
         return Ok(None);
     };
     let counted = counted_years_of_work(&entries(db).await?, now);
     Ok(Some(YearsOfWork { saved, counted }))
+}
+
+/// The years of work the candidate saved (None until they do), or None when there is no profile.
+async fn saved_years_of_work(db: &SqlitePool) -> sqlx::Result<Option<Option<i64>>> {
+    sqlx::query_scalar!(r#"SELECT years_of_work FROM profile"#)
+        .fetch_optional(db)
+        .await
 }
 
 /// Whole years of professional work the jobs (the experience entries) cover until now, overlaps

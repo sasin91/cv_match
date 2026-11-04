@@ -35,8 +35,8 @@ impl SavedMatchRow {
         if m.cv_name.ends_with(TAILORED_CV) {
             notes.push("tailored résumé".to_string());
         }
-        if let Some(location) = &m.location_missed {
-            notes.push(format!("likely disqualifier: {location}"));
+        if let Some(missed) = &m.missed_disqualifier {
+            notes.push(format!("likely disqualifier: {missed}"));
         }
         let about: Vec<String> = std::iter::once(match_score::short_label(m.score, &m.tag))
             .chain(notes.iter().cloned())

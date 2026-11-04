@@ -1,0 +1,174 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>JobFinder: job hunting, without the grind</title>
+<meta name="description" content="JobFinder checks Jobnet, Jobindex, LinkedIn and Indeed for you while your PC is on, picks out the few posts that fit your CV, tells you why, and starts the application. Free, open source, and runs on your own PC.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#eef1ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1b24" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="JobFinder: job hunting, without the grind">
+<meta property="og:description" content="Finds the jobs you'd have missed, tells you why they fit, and starts the application. Free, and it runs on your own PC.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="media/dashboard-light.png">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/bricolage-grotesque-700.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/figtree-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<header class="top">
+  <div class="col">
+    <nav aria-label="Main">
+      <a class="home" href="./"><strong>JobFinder</strong></a>
+      <span class="links"><a href="tour.html">How it works</a><a href="screens.html">Screens</a><a href="phone.html">Phone</a><a href="questions.html">Questions</a><a href="https://github.com/sasin91/jobfinder">GitHub</a></span>
+      <span class="actions">
+        <a class="btn small" href="https://github.com/sasin91/jobfinder/releases/latest">Download</a>
+        <details class="menu"><summary aria-label="Menu">Menu</summary><div class="sheet"><a href="tour.html">How it works</a><a href="screens.html">Screens</a><a href="phone.html">Phone</a><a href="questions.html">Questions</a><a href="https://github.com/sasin91/jobfinder">GitHub</a></div></details>
+      </span>
+    </nav>
+  </div>
+</header>
+<div class="col">
+  <!-- Hero: A2 type, A5 drawing -->
+  <div class="hero split">
+    <div class="stack">
+      <h1>Job hunting, <em>without the grind.</em></h1>
+      <p class="lede">JobFinder checks the job sites for you while your PC is on, picks out the few that fit your CV, and starts the application.</p>
+      <a class="btn" href="https://github.com/sasin91/jobfinder/releases/latest">Download for Windows</a>
+      <p class="small">Completely free, and runs locally while staying out of your way. No AI subscription required.<br>Also for Linux: <a href="https://github.com/sasin91/jobfinder/releases/latest">the AppImage</a>. Nothing to install.</p>
+    </div>
+    <svg viewBox="0 0 400 300" role="img" aria-label="A drawing of a mug of coffee beside a laptop showing three job cards">
+      <rect width="400" height="300" rx="24" fill="var(--wash)"/>
+      <rect x="20" y="226" width="360" height="12" rx="6" fill="var(--line)"/>
+      <rect x="96" y="70" width="210" height="140" rx="10" fill="var(--ink)"/>
+      <rect x="106" y="80" width="190" height="120" rx="5" fill="var(--paper)"/>
+      <rect x="80" y="210" width="242" height="16" rx="5" fill="var(--soft)"/>
+      <rect x="118" y="92" width="166" height="28" rx="6" fill="var(--bg)"/>
+      <rect x="126" y="101" width="70" height="10" rx="3" fill="var(--sage)"/>
+      <circle cx="268" cy="106" r="9" fill="var(--sage)"/>
+      <rect x="118" y="126" width="166" height="28" rx="6" fill="var(--bg)"/>
+      <rect x="126" y="135" width="88" height="10" rx="3" fill="var(--sage)"/>
+      <circle cx="268" cy="140" r="9" fill="var(--sage)"/>
+      <rect x="118" y="160" width="166" height="28" rx="6" fill="var(--bg)"/>
+      <rect x="126" y="169" width="60" height="10" rx="3" fill="var(--clay)"/>
+      <circle cx="268" cy="174" r="9" fill="var(--clay)"/>
+      <rect x="318" y="168" width="44" height="58" rx="8" fill="var(--clay)"/>
+      <path d="M362 182 q18 0 18 14 q0 14 -18 14" fill="none" stroke="var(--clay)" stroke-width="7" stroke-linecap="round"/>
+      <path d="M332 158 q-6 -10 0 -20 M346 158 q-6 -10 0 -20" fill="none" stroke="var(--soft)" stroke-width="3" stroke-linecap="round"/>
+      <path d="M40 226 q4 -40 24 -60 q6 22 -4 60 z" fill="var(--sage)"/>
+      <path d="M58 226 q16 -30 40 -38 q-8 24 -26 38 z" fill="var(--sage)" opacity=".7"/>
+    </svg>
+  </div>
+
+  <!-- Proof: A4's digest -->
+  <section class="split">
+    <div style="display:grid;gap:16px">
+      <span class="eyebrow">What you come back to</span>
+      <h2>Kick back and relax. <em>Let JobFinder handle the chores.</em></h2>
+      <p class="lede">While your PC is on, it reads Jobnet, Jobindex, LinkedIn and Indeed every two hours, quietly, in the background. When you sit down, the few posts worth your time are waiting, each with a reason.</p>
+    </div>
+    <div class="digest">
+      <h3>Today, while you were away</h3>
+      <p class="meta">6 scans · 41 new posts read · 3 worth a look</p>
+      <div class="job"><b>Lagerkoordinator</b><span class="score">82</span><span class="why">You meet 5 of 6 requirements · Aarhus N</span></div>
+      <div class="job"><b>Logistikplanlægger</b><span class="score">74</span><span class="why">A title you didn't search for · Viby J</span></div>
+      <div class="job"><b>Indkøbsassistent</b><span class="score mid">69</span><span class="why">Your SAP years count here too · Aarhus C</span></div>
+      <p class="hand">38 others weren't worth your evening.</p>
+    </div>
+  </section>
+
+  <section id="how">
+    <span class="eyebrow">What it does for you</span>
+    <h2 style="margin-top:12px">The checking, the sorting and the first draft.</h2>
+    <div class="feats">
+      <div class="feat">
+        <div class="scene">
+          <svg viewBox="0 0 240 160" aria-hidden="true">
+            <circle cx="120" cy="80" r="66" fill="var(--wash)"/>
+            <rect x="52" y="52" width="92" height="62" rx="8" fill="var(--paper)" stroke="var(--line)" stroke-width="2" transform="rotate(-12 98 83)"/>
+            <rect x="66" y="46" width="92" height="62" rx="8" fill="var(--paper)" stroke="var(--line)" stroke-width="2" transform="rotate(-4 112 77)"/>
+            <rect x="82" y="44" width="92" height="62" rx="8" fill="var(--paper)" stroke="var(--sage)" stroke-width="3" transform="rotate(6 128 75)"/>
+            <rect x="94" y="60" width="44" height="7" rx="3" fill="var(--sage)" transform="rotate(6 128 75)"/>
+            <rect x="94" y="74" width="62" height="5" rx="2" fill="var(--line)" transform="rotate(6 128 75)"/>
+            <circle cx="150" cy="96" r="24" fill="var(--bg)" fill-opacity=".35" stroke="var(--ink)" stroke-width="6"/>
+            <path d="M167 113 l20 20" stroke="var(--ink)" stroke-width="9" stroke-linecap="round"/>
+            <path d="M190 40 l4 10 l10 4 l-10 4 l-4 10 l-4 -10 l-10 -4 l10 -4 z" fill="var(--clay)"/>
+          </svg>
+          <span class="note">the one you'd have scrolled past</span>
+        </div>
+        <h3>Finds the jobs you'd have missed</h3>
+        <p>You search for your last job title. JobFinder reads every new post and judges it against your whole CV, so a "planner" job you never searched for still turns up.</p>
+      </div>
+      <div class="feat">
+        <div class="scene">
+          <svg viewBox="0 0 240 160" aria-hidden="true">
+            <path d="M46 128 v-56 a74 62 0 0 1 148 0 v56 a18 18 0 0 1 -18 18 h-112 a18 18 0 0 1 -18 -18 z" fill="var(--wash)"/>
+            <rect x="74" y="36" width="92" height="112" rx="8" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/>
+            <rect x="100" y="28" width="40" height="16" rx="5" fill="var(--soft)"/>
+            <path d="M88 66 l6 6 l12 -12" stroke="var(--sage)" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="114" y="62" width="40" height="6" rx="3" fill="var(--line)"/>
+            <path d="M88 92 l6 6 l12 -12" stroke="var(--sage)" stroke-width="5" fill="none" stroke-linecap="round" stroke-linejoin="round"/>
+            <rect x="114" y="88" width="32" height="6" rx="3" fill="var(--line)"/>
+            <path d="M90 112 l12 12 M102 112 l-12 12" stroke="var(--clay)" stroke-width="5" stroke-linecap="round"/>
+            <rect x="114" y="114" width="36" height="6" rx="3" fill="var(--line)"/>
+            <path d="M176 120 l22 -60 l9 3 l-22 60 l-9 6 z" fill="var(--clay)"/>
+            <path d="M198 60 l9 3 l3 -8 l-9 -3 z" fill="var(--ink)"/>
+          </svg>
+          <span class="note">5 of 6, and here's why</span>
+        </div>
+        <h3>Tells you why</h3>
+        <p>Every match lists the post's requirements, which ones you meet and what on your CV shows it. Ten seconds tells you whether it's worth a look.</p>
+      </div>
+      <div class="feat">
+        <div class="scene">
+          <svg viewBox="0 0 240 160" aria-hidden="true">
+            <rect x="34" y="18" width="172" height="128" rx="18" fill="var(--wash)" transform="rotate(-4 120 82)"/>
+            <rect x="62" y="30" width="104" height="112" rx="3" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/>
+            <rect x="74" y="46" width="50" height="6" rx="3" fill="var(--soft)"/>
+            <rect x="74" y="62" width="78" height="4" rx="2" fill="var(--line)"/>
+            <rect x="74" y="72" width="70" height="4" rx="2" fill="var(--line)"/>
+            <rect x="74" y="82" width="74" height="4" rx="2" fill="var(--line)"/>
+            <path d="M74 104 c8 -8 12 6 20 -2 s10 4 18 -2" fill="none" stroke="var(--rust)" stroke-width="3" stroke-linecap="round"/>
+            <path d="M130 108 l52 -62 l14 12 l-52 62 l-18 6 z" fill="var(--ink)"/>
+            <path d="M130 108 l-4 12 l12 -6 z" fill="var(--clay)"/>
+            <rect x="170" y="50" width="22" height="8" rx="2" fill="var(--clay)" transform="rotate(40 181 54)"/>
+          </svg>
+          <span class="note">first draft, done</span>
+        </div>
+        <h3>Starts the application</h3>
+        <p>For any match, it drafts the letter and a résumé tailored to the post. You change what you like and send it yourself.</p>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">Read on</span>
+    <h2 style="margin-top:12px">See it for yourself.</h2>
+    <div class="next"><a href="tour.html"><b>How it works</b><span>The scan, why a job fits, the letter and the joblog, in four steps.</span><i>Read more →</i></a><a href="screens.html"><b>Screens</b><span>Every screen of the app, one at a time.</span><i>Have a look →</i></a><a href="phone.html"><b>The phone app</b><span>Your shortlist in your pocket, over a private line.</span><i>Read more →</i></a><a href="questions.html"><b>Questions</b><span>Why not ChatGPT? Is my CV sent anywhere? Is it free?</span><i>Read more →</i></a></div>
+  </section>
+  <footer id="download">
+    <span>JobFinder · free and open source · Windows 11 and Linux<br>Made by Jonas Kerwin Hansen, built with help from Claude.</span>
+    <span style="display:flex;gap:20px;flex-wrap:wrap"><a href="https://github.com/sasin91/jobfinder/releases/latest">Download</a><a href="https://github.com/sasin91/jobfinder">Source on GitHub</a></span>
+  </footer>
+</div>
+<script>
+// The header gets its hairline once the page has scrolled.
+(() => {
+  const top = document.querySelector('header.top');
+  const mark = () => top.classList.toggle('scrolled', scrollY > 4);
+  addEventListener('scroll', mark, { passive: true }); mark();
+  // The phone menu closes on a click elsewhere or on Escape.
+  const menu = top.querySelector('.menu');
+  addEventListener('click', e => { if (menu.open && !menu.contains(e.target)) menu.open = false; });
+  addEventListener('keydown', e => { if (e.key === 'Escape' && menu.open) { menu.open = false; menu.querySelector('summary').focus(); } });
+})();
+
+// With reduced motion asked for, the clips wait for a click instead of playing on their own.
+if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  for (const v of document.querySelectorAll('video')) { v.removeAttribute('autoplay'); v.pause(); v.controls = true; }
+}
+</script>
+</body>
+</html>

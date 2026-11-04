@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Send to JobFinder</title>
+<title>JobFinder</title>
 <style>
   :root { color-scheme: light dark; --accent: #0067c0; --muted: #5f6368; --line: #d0d4d9; }
   @media (prefers-color-scheme: dark) { :root { --accent: #4cc2ff; --muted: #a8adb3; --line: #3d4248; } }
@@ -13,19 +13,35 @@
   select { width: 100%; margin: 0 0 12px; padding: 4px; }
   button { font: inherit; padding: 6px 16px; border-radius: 4px; border: 1px solid var(--accent); background: var(--accent); color: #fff; cursor: pointer; }
   button:disabled { opacity: 0.5; cursor: default; }
-  #said { margin: 10px 0 0; color: inherit; }
+  #said, #filled { margin: 10px 0 0; color: inherit; }
+  section + section { border-top: 1px solid var(--line); margin-top: 12px; padding-top: 12px; }
+  #filled { color: var(--muted); }
+  .buttons { display: flex; gap: 8px; }
+  button.second { background: transparent; color: var(--accent); }
   [hidden] { display: none !important; }
 </style>
 </head>
 <body>
-<h1>Send this job post to JobFinder</h1>
 <p id="page">Reading the page…</p>
-<div id="pick" hidden>
-  <label for="search">Add it to</label>
-  <select id="search"></select>
-</div>
-<button id="send" disabled>Send</button>
-<p id="said" role="status"></p>
+<section>
+  <h1>Send this job post to JobFinder</h1>
+  <div id="pick" hidden>
+    <label for="search">Add it to</label>
+    <select id="search"></select>
+  </div>
+  <button id="send" disabled>Send</button>
+  <p id="said" role="status"></p>
+</section>
+<section>
+  <h1>Fill in this application form</h1>
+  <label for="match">From the match</label>
+  <select id="match"><option>Loading your saved matches…</option></select>
+  <div class="buttons">
+    <button id="fill" disabled>Fill in</button>
+    <button id="applied" class="second" disabled>Mark as applied</button>
+  </div>
+  <p id="filled" role="status">Contact details, uploads and answers to the questions. Nothing is sent: you read it and send it.</p>
+</section>
 <script src="popup.js"></script>
 </body>
 </html>

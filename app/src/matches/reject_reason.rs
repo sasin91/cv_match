@@ -3,7 +3,8 @@
 //! person's own note; 'other' needs one.
 
 /// The reasons, in the order the form lists them.
-pub const REASONS: [(&str, &str); 8] = [
+pub const REASONS: [(&str, &str); 9] = [
+    ("applied", "Already applied to this position"),
     ("commute", "Too long commute"),
     ("salary", "Salary"),
     ("tech_stack", "Tech stack"),
@@ -110,5 +111,8 @@ mod tests {
         assert_eq!(problem(&strings(&["commute", "salary", "other"]), &notes), "");
         let rows = rows(&strings(&["commute", "salary", "commute", "other"]), &notes);
         assert_eq!(describe(&rows), "Too long commute (1h each way), Salary, Agency");
+        assert_eq!(problem(&strings(&["applied"]), &[]), "");
+        let applied = super::rows(&strings(&["applied"]), &[]);
+        assert_eq!(describe(&applied), "Already applied to this position");
     }
 }

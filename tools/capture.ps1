@@ -183,6 +183,9 @@ if ($What -like 'phone-*') {
     Assert-Tool adb 'winget install Google.PlatformTools, and turn on USB debugging on the phone'
     # Where the phone keeps the file until it is copied over.
     $OnPhone = '/sdcard/jobfinder-capture'
+    # Android's Configuration.UI_MODE_NIGHT_MASK, and the value under it that means night (dark).
+    $UiModeNightMask = 0x30
+    $UiModeNightYes = 0x20
     # Runs adb and stops on failure (no phone, not authorised, more than one phone).
     function Invoke-Adb {
         $output = & adb @args
@@ -191,7 +194,14 @@ if ($What -like 'phone-*') {
     }
     # The phone's night mode setting as it is (yes, no, auto, custom_schedule, ...), to put back.
     function Get-PhoneSetting { ((Invoke-Adb shell cmd uimode night) -join ' ') -replace '^.*:\s*', '' }
-    function Get-PhoneMode { if ((Get-PhoneSetting) -eq 'yes') { 'dark' } else { 'light' } }
+    # The look the phone shows now, even when the setting is auto or on a schedule: the night bits
+    # of its current UI mode (Configuration.UI_MODE_NIGHT_MASK) say yes or no.
+    function Get-PhoneMode {
+        $line = (Invoke-Adb shell dumpsys uimode) | Where-Object { $_ -match 'mCurUiMode=0x([0-9a-fA-F]+)' } | Select-Object -First 1
+        if (-not $line) { throw "The phone didn't say which look it shows (no mCurUiMode in dumpsys uimode)." }
+        $null = $line -match 'mCurUiMode=0x([0-9a-fA-F]+)'
+        if (([Convert]::ToInt32($Matches[1], 16) -band $UiModeNightMask) -eq $UiModeNightYes) { 'dark' } else { 'light' }
+    }
     function Set-PhoneSetting([string]$setting) {
         Invoke-Adb shell cmd uimode night $setting | Out-Null
         Start-Sleep -Milliseconds $PhoneSettleMs

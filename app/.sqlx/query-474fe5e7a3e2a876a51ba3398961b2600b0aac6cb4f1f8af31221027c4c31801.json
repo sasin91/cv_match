@@ -1,6 +1,6 @@
 {
   "db_name": "SQLite",
-  "query": "SELECT name, email, phone, title, location, about, years_of_work FROM profile",
+  "query": "SELECT name, email, phone, title, location, about FROM profile",
   "describe": {
     "columns": [
       {
@@ -68,17 +68,6 @@
             "name": "about"
           }
         }
-      },
-      {
-        "name": "years_of_work",
-        "ordinal": 6,
-        "type_info": "Integer",
-        "origin": {
-          "Table": {
-            "table": "profile",
-            "name": "years_of_work"
-          }
-        }
       }
     ],
     "parameters": {
@@ -90,9 +79,8 @@
       true,
       false,
       false,
-      false,
-      true
+      false
     ]
   },
-  "hash": "15f68ea4e3584202417d051715f5e7e3900e85849b674fad7a3adfb1d0b9fc92"
+  "hash": "474fe5e7a3e2a876a51ba3398961b2600b0aac6cb4f1f8af31221027c4c31801"
 }

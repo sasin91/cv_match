@@ -257,6 +257,7 @@ mod tests {
                 job_url: "https://www.jobindex.dk/job/1".to_string(),
                 job_text: String::new(),
                 cv_found: None,
+                applied_on: String::new(),
             },
             matched_before,
             save_error: None,

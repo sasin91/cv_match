@@ -18,16 +18,17 @@ use super::match_score::{self, MatchScore};
 use super::matcher::{Groups, Part, Score, Verdicts};
 use super::reject_button::RejectButton;
 use super::verdict_row::{self, VerdictRow};
-use super::{Job, Profile, dates, still_open};
+use super::{Job, Profile, dates, joblog, still_open};
 use crate::laya::laya_client::LayaReading;
 
 /// The groups' names, in the order a saved match's unknown criterion falls back from.
-pub const GROUP_NAMES: [(&str, &str); 6] = [
+pub const GROUP_NAMES: [(&str, &str); 7] = [
     ("requirements", "Requirements"),
     ("skills", "Nice to have"),
     ("title", "Job title"),
     ("responsibilities", "Responsibilities"),
     ("location", "Location"),
+    ("language", "Languages"),
     ("level", "Level"),
 ];
 /// The note on a group that isn't weighed (matcher::DISQUALIFIERS).
@@ -146,6 +147,9 @@ pub struct MatchResult {
     pub job_url: String,
     pub job_text: String,
     pub cv_found: Option<CvFound>,
+    /// The day the candidate applied, dd-mm-yyyy (joblog::applied_on); empty when they haven't, or
+    /// the match isn't saved.
+    pub applied_on: String,
 }
 
 /// A match just made: the job post and CV as read, its groups, combined verdicts and score.
@@ -190,6 +194,7 @@ impl MatchResult {
             job_url: fresh.job_url.to_string(),
             job_text: String::new(),
             cv_found: None,
+            applied_on: String::new(),
         }
     }
 
@@ -215,6 +220,7 @@ impl MatchResult {
             job_url: found.job_url.clone().unwrap_or_default(),
             job_text: found.job_text.clone(),
             cv_found: None,
+            applied_on: joblog::applied_on(found.jobnet_joblog.as_ref()),
         }
     }
 

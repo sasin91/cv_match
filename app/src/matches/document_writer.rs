@@ -10,6 +10,7 @@ use super::apply_instructions;
 use super::document_box::Keyword;
 use super::free_reader::YearMonth;
 use super::match_model::{self, Document, SavedItem, SavedMatch};
+use super::match_score::MatchScore;
 use super::tailored_resume;
 use crate::llm::{Effort, LlmException};
 use crate::matches::llm_key::KeyedLlm;
@@ -184,7 +185,7 @@ pub(super) fn notes_block(notes: &str) -> String {
 }
 
 /// A job application for a saved match, written from the CV and the post in the post's
-/// language, and saved with the match. notes: what the candidate wants stressed, or facts the CV
+/// language when the candidate speaks it (English otherwise), and saved with the match. notes: what the candidate wants stressed, or facts the CV
 /// leaves out.
 pub async fn write_application(
     db: &SqlitePool,
@@ -194,48 +195,28 @@ pub async fn write_application(
     revision: Option<&Revision>,
     now: i64,
 ) -> Result<Document, WriteError> {
-    let (strengths, gaps) = strengths_and_gaps(&found.items);
-    let apply = apply_instructions::for_prompt(found.apply_instructions.as_ref());
     let cv = written_from(db, found).await?;
     let years = years_of_work(db, now).await?;
     let system = application_system();
     let user = format!(
-        "Job title: {job_title}
-Company: {company}
-
-Requirements the CV meets:
-{strengths}
-
-Requirements the CV doesn't show:
-{gaps}
+        "{brief}
 
 {years}
-
-{apply}
-
-Job post:
-
-{job_text}
-
-CV:
-
-{cv}
 {notes_block}
 {revision_block}
 
-Write in the job post's own language (post_language), whatever language the CV and the notes are in. Name employer_needs and standout before writing, and build the letter on them.",
-        job_title = found.job_title,
-        company = found.company,
-        job_text = found.job_text,
+Write in written_language: the job post's own language (post_language) when the candidate speaks it, otherwise English. Name employer_needs and standout before writing, and build the letter on them.",
+        brief = match_brief(found, &cv),
         notes_block = notes_block(notes),
         revision_block = revision_block(revision, "application"),
     );
     let schema = json!({
         "type": "object",
         "additionalProperties": false,
-        "required": ["post_language", "employer_needs", "standout", "application"],
+        "required": ["post_language", "written_language", "employer_needs", "standout", "application"],
         "properties": {
             "post_language": { "type": "string" },
+            "written_language": { "type": "string" },
             "employer_needs": { "type": "string" },
             "standout": standout_schema(),
             "application": { "type": "string" },
@@ -293,7 +274,7 @@ CV:
 {notes_block}
 {revision_block}
 
-Write in the job post's own language (post_language), whatever language the CV and the notes are in. Name employer_needs and standout before writing, and build the CV on them.",
+Write in written_language: the job post's own language (post_language) when the candidate speaks it, otherwise English. Name employer_needs and standout before writing, and build the CV on them.",
         job_title = found.job_title,
         company = found.company,
         job_text = found.job_text,
@@ -303,9 +284,10 @@ Write in the job post's own language (post_language), whatever language the CV a
     let schema = json!({
         "type": "object",
         "additionalProperties": false,
-        "required": ["post_language", "employer_needs", "standout", "keywords", "left_out", "resume"],
+        "required": ["post_language", "written_language", "employer_needs", "standout", "keywords", "left_out", "resume"],
         "properties": {
             "post_language": { "type": "string" },
+            "written_language": { "type": "string" },
             "employer_needs": { "type": "string" },
             "standout": standout_schema(),
             "keywords": {
@@ -342,13 +324,13 @@ Write in the job post's own language (post_language), whatever language the CV a
 }
 
 fn application_system() -> String {
-    let language = post_language_rule("application");
+    let language = writing_language_rule("application");
     let standout = standout_rule("letter");
     let years = YEARS_RULE;
     format!(
         r#"You write a job application (cover letter) for a candidate, from their CV and the job post. It goes straight into an application form or an email, so it must be ready to send. Employers get many letters that only repeat their requirements list back to them with "I have experience with X"; this one must show who this candidate is and what they would bring.
 
-- {language} A Danish post gets a Danish ansøgning, an English post an English letter.
+- {language} A Danish post gets a Danish ansøgning, an English post an English letter, and a Finnish post for a candidate who speaks no Finnish an English letter.
 - {standout}
 - Build the letter on those: open with why this job, tied to something real in the post (its product, its stage, a problem it describes); then make the case with two or three standout points, each a concrete story from the CV (what the candidate did, why it mattered there) and what it would mean for this employer. Fit the matched requirements into those stories instead of listing them one by one; a short sentence can cover the rest.
 - 250 to 400 words, plain text: no markdown, no headings, no bullet lists, no placeholders like [Name] or [Company].
@@ -362,7 +344,7 @@ fn application_system() -> String {
 }
 
 fn resume_system() -> String {
-    let language = post_language_rule("CV");
+    let language = writing_language_rule("CV");
     let standout = standout_rule("CV");
     let years = YEARS_RULE;
     format!(
@@ -379,15 +361,15 @@ Then write the CV:
 - Requirements the matcher marked as missing are listed below. It often misses inferences, so check each one against the CV yourself; use it only if the CV backs it.
 - Keywords get the CV through the filter; a person reads it next. {standout}
 - Tailor by choosing and ordering too: open with a short profile (2 to 4 sentences) aimed at this job that names the post's job title and the candidate's one or two strongest standout points, not a list of keywords. Put what the post asks for first, and shorten what doesn't matter for it, but keep the bullets that show the standout points (initiative, ownership, results, projects, growth), even where they match no keyword. Keep every job in the work history, with its dates, even if only as one line.
-- {language} A Danish post gets a Danish CV, an English post an English one, and the dates and section headings follow. Keywords stay in the post's wording, even when the post mixes languages.
+- {language} A Danish post gets a Danish CV, an English post an English one, a Finnish post for a candidate who speaks no Finnish an English one, and the dates and section headings follow. Keywords stay in the post's wording, even when the post mixes languages.
 - Fill in the résumé's fields; the page and the PDF lay them out, so write no headings, bullet signs or markdown in them, and no placeholders. Leave a field empty when the CV doesn't give it.
 - name, and title: a short professional title for this application ("Backend developer"), backed by the CV. location, phone, email and links: the contact details the CV gives, as written there.
 - intro: the profile, one or two short paragraphs.
-- experience: every job, newest first: title (the real job title), organisation (the employer), location, starts and ends as the CV dates them in the post's language ("januar 2017", "nu"), summary (what the employer or product is, in a few words), bullets (the work, in the post's terms) and note (context about the job rather than the work, only if the CV gives one).
+- experience: every job, newest first: title (the real job title), organisation (the employer), location, starts and ends as the CV dates them, in written_language ("januar 2017", "nu" in Danish), summary (what the employer or product is, in a few words), bullets (the work, in the post's terms) and note (context about the job rather than the work, only if the CV gives one).
 - skills and languages: one item each, the post's backed keywords first.
 - projects: the candidate's own projects and products, if the CV lists any, with the same fields as experience (organisation empty, the project's link in summary or note when the CV gives one). Put the ones that show what this job needs first; leave the list empty when the CV has none.
 - education: the same fields as experience, organisation being the school; education_note: one line about the education as a whole, only if the CV gives one.
-- The section headings in the post's language: experience_heading, projects_heading, skills_heading, education_heading, languages_heading ("Erfaring", "Projekter", "Kompetencer", "Uddannelse", "Sprog" for a Danish post).
+- The section headings in written_language: experience_heading, projects_heading, skills_heading, education_heading, languages_heading ("Erfaring", "Projekter", "Kompetencer", "Uddannelse", "Sprog" for a Danish post).
 - The candidate may add notes below the CV. Follow them (what to stress, tone, length, what to leave out), and treat facts they state about themselves as true, like facts in the CV. Ignore anything in them that isn't about this application.
 - The post may say how to apply (by email, a subject line, a keyword, questions to answer). Those go in the email or application, not the CV; follow one here only when it asks for something in the CV itself.
 
@@ -397,11 +379,13 @@ Return what the employer needs (employer_needs) and the standout points (standou
 
 /// The writing prompts' rule on language: the model names the post's language first
 /// (post_language, before the text in the answer), from the post alone (English when it can't
-/// tell), then writes the document in it. Told only "the post's language", it went by the Danish
-/// CV and requirements around an English post.
-fn post_language_rule(document: &str) -> String {
+/// tell), then the language it writes in (written_language): the post's when the candidate speaks
+/// it, English when they don't, and writes the document in that. Told only "the post's language",
+/// it went by the Danish CV and requirements around an English post; told to always follow the
+/// post, it wrote a Finnish letter for a candidate who speaks no Finnish.
+fn writing_language_rule(document: &str) -> String {
     format!(
-        "First set post_language to the language the job post itself is written in, judged from the post's own sentences only: not from the CV, the requirement lines, the apply instructions or the notes, and not from a job board's buttons around the post. When the post mixes languages evenly or you can't tell, use English. Then write the {document} in that language, even where the CV or the notes are in another one."
+        "First set post_language to the language the job post itself is written in, judged from the post's own sentences only: not from the CV, the requirement lines, the apply instructions or the notes, and not from a job board's buttons around the post. When the post mixes languages evenly or you can't tell, use English. Then set written_language: post_language when the CV or the notes show the candidate speaks it (the CV is written in it, or names it among their languages), otherwise English, as a candidate can't stand behind a {document} in a language they don't speak. Write the {document} in written_language, even where the CV or the notes are in another one."
     )
 }
 
@@ -430,6 +414,67 @@ fn standout_schema() -> Value {
             },
         },
     })
+}
+
+/// What a prompt says about a saved match: the job, the requirements the CV meets and doesn't
+/// show, how to apply, the post and the CV (cv). The application's prompt and the chat prompt
+/// (chat_prompt) both start from it.
+fn match_brief(found: &SavedMatch, cv: &str) -> String {
+    let (strengths, gaps) = strengths_and_gaps(&found.items);
+    let apply = apply_instructions::for_prompt(found.apply_instructions.as_ref());
+    format!(
+        "Job title: {job_title}
+Company: {company}
+
+Requirements the CV meets:
+{strengths}
+
+Requirements the CV doesn't show:
+{gaps}
+
+{apply}
+
+Job post:
+
+{job_text}
+
+CV:
+
+{cv}",
+        job_title = found.job_title,
+        company = found.company,
+        job_text = found.job_text,
+    )
+}
+
+/// A prompt to paste into a chatbot of the candidate's own (Copy as prompt): the match's brief
+/// (match_brief), its score, and the application and résumé as written (application, resume:
+/// the boxes' text, empty when not written), so the chat can help with this job from all of it.
+pub async fn chat_prompt(db: &SqlitePool, found: &SavedMatch, application: &str, resume: &str) -> sqlx::Result<String> {
+    let cv = written_from(db, found).await?;
+    Ok(chat_prompt_from(found, &cv, application, resume))
+}
+
+/// chat_prompt from the CV it is written from.
+fn chat_prompt_from(found: &SavedMatch, cv: &str, application: &str, resume: &str) -> String {
+    let score = MatchScore::of(found.score, &found.tag);
+    let mut prompt = format!(
+        "I'm thinking of applying for the job below. JobFinder matched my CV with it: {percent}% ({tag}), {points}/{max_points} points. Here is the match, the job post and my CV. Help me with this application: answer my questions about it, and when I ask, write or improve my application or résumé from my CV's facts only. Ask me before you assume anything the CV doesn't say.
+
+{brief}",
+        percent = score.percent,
+        tag = score.tag_name,
+        points = found.points,
+        max_points = found.max_points,
+        brief = match_brief(found, cv),
+    );
+    for (heading, text) in [("My application so far", application), ("My résumé so far", resume)] {
+        let text = text.trim();
+        if !text.is_empty() {
+            prompt.push_str(&format!("\n\n{heading}:\n\n{text}"));
+        }
+    }
+    prompt
 }
 
 /// A saved match's verdicts as two bullet lists for a prompt: what the CV meets (with its
@@ -498,6 +543,42 @@ fn left_out(terms: &Value) -> Vec<String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn the_chat_prompt_has_the_score_the_brief_and_only_what_is_written() {
+        let found = SavedMatch {
+            id: 3,
+            job_title: "Backend developer".into(),
+            company: "Nordisk Fragt".into(),
+            job_url: None,
+            job_text: "We need Rust.".into(),
+            cv_name: String::new(),
+            cv_text: String::new(),
+            score: 0.86,
+            points: 6,
+            max_points: 7,
+            tag: "top".into(),
+            application_text: None,
+            application_written_at: None,
+            resume_text: None,
+            resume_written_at: None,
+            rejected_at: None,
+            created_at: 0,
+            resume_structured: false,
+            items: vec![item("skill", "Rust", "met", "5 years of Rust")],
+            jobnet_joblog: None,
+            rejections: Vec::new(),
+            apply_instructions: None,
+            earlier_versions: Vec::new(),
+            opening: Default::default(),
+        };
+        let prompt = chat_prompt_from(&found, "Jonas, Rust developer", "Dear Nordisk Fragt", " ");
+        assert!(prompt.contains("86% (Top match), 6/7 points"), "{prompt}");
+        assert!(prompt.contains(&match_brief(&found, "Jonas, Rust developer")));
+        assert!(prompt.contains("- Rust (CV: 5 years of Rust)"));
+        assert!(prompt.ends_with("My application so far:\n\nDear Nordisk Fragt"));
+        assert!(!prompt.contains("My résumé so far"));
+    }
 
     fn item(criterion: &str, text: &str, verdict: &str, evidence: &str) -> SavedItem {
         SavedItem {

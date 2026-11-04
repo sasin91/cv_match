@@ -18,7 +18,15 @@ use super::tailored_resume::{self, ResumeEntry, TailoredResume};
 use crate::pdf::page::{Block, BlockClass, Family, LineBreak, Node, Page, Paragraph, ParagraphClass};
 use crate::pdf::{self, fonts};
 
-pub const KINDS: [&str; 4] = ["application", "resume", "cv", "job"];
+/// The written application.
+pub const APPLICATION: &str = "application";
+/// The tailored résumé.
+pub const RESUME: &str = "resume";
+/// The CV the match was made with.
+pub const CV: &str = "cv";
+/// The job post.
+pub const JOB: &str = "job";
+pub const KINDS: [&str; 4] = [APPLICATION, RESUME, CV, JOB];
 
 /// What the downloads are called, by kind.
 const FILE_NAMES: [(&str, &str); 4] = [
