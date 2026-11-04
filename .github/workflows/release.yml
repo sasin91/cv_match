@@ -3,8 +3,9 @@ name: release
 # The programs for a release: pushing a tag like v0.2.0 builds the app and attaches it to that
 # tag's GitHub release.
 #
-# - Windows: jobfinder.exe, which runs from wherever it is kept (nothing to install). The Visual C++
-#   runtime is linked in, so it starts on a Windows without the Visual C++ Redistributable.
+# - Windows: jobfinder.exe, which runs from wherever it is kept (nothing to install). It needs
+#   Microsoft's Visual C++ Redistributable (MSVCP140.dll), which the ONNX Runtime linked in for Laya
+#   is built against; most PCs have it, and the release notes link it for those that don't.
 # - Linux: JobFinder-x86_64.AppImage, which runs from wherever it is kept (nothing to install).
 #   Built on Ubuntu 24.04: the ONNX Runtime linked in for Laya needs glibc 2.38 or newer, so it
 #   runs on Ubuntu 24.04, Debian 13, Fedora 39 and later.
@@ -30,11 +31,6 @@ jobs:
         working-directory: app
     env:
       SQLX_OFFLINE: true
-      # The "hybrid CRT": the Visual C++ runtime (VCRUNTIME140.dll, which a Windows without the
-      # Visual C++ Redistributable lacks) built into the exe, and the Universal C runtime, which
-      # every Windows 10 and 11 has, still loaded from Windows. ONNX Runtime's prebuilt library
-      # calls the Universal C runtime through its DLL, so a fully static CRT doesn't link.
-      RUSTFLAGS: -C target-feature=+crt-static -C link-arg=/NODEFAULTLIB:libucrt.lib -C link-arg=/DEFAULTLIB:ucrt.lib
     steps:
       - uses: actions/checkout@v4
       - uses: dtolnay/rust-toolchain@stable
@@ -43,19 +39,15 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: app
-          key: hybrid-crt
       - run: cargo build --release
-      - name: Check that the exe needs no Visual C++ runtime
+      - name: List the DLLs the exe needs
+        # The release notes say what a PC must have: a DLL here beyond Windows' own and the
+        # Visual C++ Redistributable's (VCRUNTIME140, MSVCP140) needs a line there too.
         shell: pwsh
         run: |
           $sysroot = rustc --print sysroot
           $objdump = Get-ChildItem -Recurse -Filter llvm-objdump.exe "$sysroot/lib/rustlib" | Select-Object -First 1
-          $imports = & $objdump.FullName -p target/release/jobfinder.exe | Select-String 'DLL Name'
-          $imports | ForEach-Object { $_.Line.Trim() }
-          # api-ms-win-crt-* is the Universal C runtime, part of Windows itself; VCRUNTIME and MSVCP
-          # come only with the Visual C++ Redistributable.
-          $runtime = $imports | Where-Object { $_.Line -match 'VCRUNTIME|MSVCP' }
-          if ($runtime) { throw "jobfinder.exe needs the Visual C++ Redistributable: $($runtime.Line)" }
+          & $objdump.FullName -p target/release/jobfinder.exe | Select-String 'DLL Name' | ForEach-Object { $_.Line.Trim() }
       - name: Put the program in dist
         shell: pwsh
         run: |

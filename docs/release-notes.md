@@ -7,6 +7,8 @@ JobFinder checks the job sites for you while your PC is on, matches each post wi
 
 `SHA256SUMS` lists each file's checksum.
 
+**If Windows says MSVCP140.dll or VCRUNTIME140.dll was not found,** install Microsoft's [Visual C++ Redistributable (x64)](https://aka.ms/vs/17/release/vc_redist.x64.exe) and start JobFinder again. Most PCs have it already.
+
 **Windows may warn you the first time.** The program isn't signed with a paid certificate yet, so Edge can say it "isn't commonly downloaded" (choose **Keep**), and SmartScreen can say "Windows protected your PC" (choose **More info**, then **Run anyway**).
 
 ## The first start
