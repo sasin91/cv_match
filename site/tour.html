@@ -18,8 +18,19 @@
 <link rel="stylesheet" href="style.css">
 </head>
 <body>
+<header class="top">
+  <div class="col">
+    <nav aria-label="Main">
+      <a class="home" href="./"><strong>JobFinder</strong></a>
+      <span class="links"><a href="tour.html" aria-current="page">How it works</a><a href="screens.html">Screens</a><a href="phone.html">Phone</a><a href="questions.html">Questions</a><a href="https://github.com/sasin91/jobfinder">GitHub</a></span>
+      <span class="actions">
+        <a class="btn small" href="https://github.com/sasin91/jobfinder/releases/latest">Download</a>
+        <details class="menu"><summary aria-label="Menu">Menu</summary><div class="sheet"><a href="tour.html" aria-current="page">How it works</a><a href="screens.html">Screens</a><a href="phone.html">Phone</a><a href="questions.html">Questions</a><a href="https://github.com/sasin91/jobfinder">GitHub</a></div></details>
+      </span>
+    </nav>
+  </div>
+</header>
 <div class="col">
-  <nav><a class="home" href="./"><strong>JobFinder</strong></a><span class="links"><a href="tour.html" aria-current="page">How it works</a><a href="screens.html">Screens</a><a href="phone.html">Phone</a><a href="questions.html">Questions</a><a href="https://github.com/sasin91/jobfinder">GitHub</a></span></nav>
   <!-- The real app, in the reader's own light or dark -->
   <section class="page-head">
     <span class="eyebrow">How it works</span>
@@ -184,6 +195,17 @@
   </footer>
 </div>
 <script>
+// The header gets its hairline once the page has scrolled.
+(() => {
+  const top = document.querySelector('header.top');
+  const mark = () => top.classList.toggle('scrolled', scrollY > 4);
+  addEventListener('scroll', mark, { passive: true }); mark();
+  // The phone menu closes on a click elsewhere or on Escape.
+  const menu = top.querySelector('.menu');
+  addEventListener('click', e => { if (menu.open && !menu.contains(e.target)) menu.open = false; });
+  addEventListener('keydown', e => { if (e.key === 'Escape' && menu.open) { menu.open = false; menu.querySelector('summary').focus(); } });
+})();
+
 // With reduced motion asked for, the clips wait for a click instead of playing on their own.
 if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
   for (const v of document.querySelectorAll('video')) { v.removeAttribute('autoplay'); v.pause(); v.controls = true; }
