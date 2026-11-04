@@ -1,8 +1,18 @@
-# cv_match
+# JobFinder
 
-JobFinder: Recruiter's CV match as a desktop app: one program for Windows or Linux, in its own
-window, that keeps your saved matches in SQLite and works with Jobnet's joblog through its browser
-extension (which talks to the app on http://127.0.0.1:8765). One local user, no sign-in.
+JobFinder checks the job sites for you while your PC is on, matches each post with your CV, and
+starts the application: one program for Windows or Linux, in its own window, with your data in one
+SQLite file on your PC. Free and open source (BSD 2-Clause). Web page:
+https://sasin91.github.io/jobfinder/
+
+## Download
+
+Take the newest [release](https://github.com/sasin91/jobfinder/releases/latest):
+`jobfinder.exe` for Windows 11, or `JobFinder-x86_64.AppImage` for Linux. Nothing is installed:
+keep the file where you like and double-click it. The release notes say what Windows may ask the
+first time. The rest of this README is for building and developing it.
+
+## What is here
 
 | Folder | What |
 | --- | --- |
