@@ -51,6 +51,8 @@ $SettleMs = 800
 $LookTimeoutSeconds = 15
 # Milliseconds between looks at the window while waiting for it to change.
 $LookPollMs = 250
+# Milliseconds between repeated colour-change notices while the window hasn't changed yet.
+$NudgeMs = 1000
 # Where to read the page colour: in the sidebar, under its last item, this far from the
 # window's left and bottom edges.
 $LookProbeLeft = 20
@@ -106,12 +108,16 @@ $PersonalizeKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Person
 # Windows' app colour mode: light or dark. JobFinder follows it.
 function Get-Mode { if ((Get-ItemProperty $PersonalizeKey).AppsUseLightTheme -eq 0) { 'dark' } else { 'light' } }
 
-function Set-Mode([string]$mode) {
-    Set-ItemProperty $PersonalizeKey AppsUseLightTheme ([int]($mode -eq 'light'))
-    # Tell running programs the colours changed, as the Settings app does.
+# Tells running programs the colours changed, as the Settings app does.
+function Send-ColorChange {
     $HWND_BROADCAST = [IntPtr]0xffff; $WM_SETTINGCHANGE = 0x1A; $SMTO_ABORTIFHUNG = 2
     $result = [UIntPtr]::Zero
     [void][Win]::SendMessageTimeout($HWND_BROADCAST, $WM_SETTINGCHANGE, [UIntPtr]::Zero, 'ImmersiveColorSet', $SMTO_ABORTIFHUNG, 1000, [ref]$result)
+}
+
+function Set-Mode([string]$mode) {
+    Set-ItemProperty $PersonalizeKey AppsUseLightTheme ([int]($mode -eq 'light'))
+    Send-ColorChange
     Start-Sleep -Milliseconds $SettleMs
 }
 
@@ -129,8 +135,11 @@ function Get-ShownLook([IntPtr]$hwnd) {
 # Waits until JobFinder has redrawn in the look; it follows Windows a moment after the switch.
 function Wait-Look([IntPtr]$hwnd, [string]$mode) {
     $until = (Get-Date).AddSeconds($LookTimeoutSeconds)
+    $nudged = Get-Date
     while ((Get-ShownLook $hwnd) -ne $mode) {
         if ((Get-Date) -gt $until) { throw "JobFinder didn't turn $mode within $LookTimeoutSeconds s, so no $mode shot was saved." }
+        # Windows can answer the first notice with the old mode; say it again until the app follows.
+        if (((Get-Date) - $nudged).TotalMilliseconds -ge $NudgeMs) { Send-ColorChange; $nudged = Get-Date }
         Start-Sleep -Milliseconds $LookPollMs
     }
     # One more beat so every part has redrawn, not just the page.
