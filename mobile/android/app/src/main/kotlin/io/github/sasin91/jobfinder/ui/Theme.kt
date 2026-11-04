@@ -12,81 +12,82 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import io.github.sasin91.jobfinder.R
 
-// The computer app's colours (app/src/desktop/style.rs): oat paper by day, the A4 evening by night.
-// Links are rust (secondary), as the desktop's and the web page's.
+// The computer app's colours (app/src/desktop/style.rs), the "Nordic" look: cool paper and navy
+// ink by day, deep fjord by night, pine as the accent, fjord blue for links (secondary), marigold
+// for warnings.
 
 private val Light = lightColorScheme(
-    primary = Color(0xFF4F6D4D),
-    onPrimary = Color(0xFFFCF9F3),
-    primaryContainer = Color(0xFFE1E9DC),
-    onPrimaryContainer = Color(0xFF2A231C),
-    secondary = Color(0xFF8A4A2F),
-    onSecondary = Color(0xFFFCF9F3),
-    // A selected chip and the bottom bar's pill: the sage accent, as the desktop's selected items.
-    secondaryContainer = Color(0xFF4F6D4D),
-    onSecondaryContainer = Color(0xFFFCF9F3),
-    tertiary = Color(0xFF8A4A2F),
-    onTertiary = Color(0xFFFCF9F3),
-    tertiaryContainer = Color(0xFFECE4D6),
-    onTertiaryContainer = Color(0xFF2A231C),
-    background = Color(0xFFF5EFE4),
-    onBackground = Color(0xFF2A231C),
-    surface = Color(0xFFFCF9F3),
-    onSurface = Color(0xFF2A231C),
-    surfaceVariant = Color(0xFFECE4D6),
-    onSurfaceVariant = Color(0xFF6F6456),
-    surfaceContainer = Color(0xFFF5EFE4),
-    surfaceContainerLow = Color(0xFFFCF9F3),
-    outline = Color(0xFFD4C7B2),
-    outlineVariant = Color(0xFFE2D7C4),
+    primary = Color(0xFF2E6B5B),
+    onPrimary = Color(0xFFF9FBFA),
+    primaryContainer = Color(0xFFDCEBE5),
+    onPrimaryContainer = Color(0xFF142430),
+    secondary = Color(0xFF1F5C8A),
+    onSecondary = Color(0xFFF9FBFA),
+    // A selected chip and the bottom bar's pill: the pine accent, as the desktop's selected items.
+    secondaryContainer = Color(0xFF2E6B5B),
+    onSecondaryContainer = Color(0xFFF9FBFA),
+    tertiary = Color(0xFF1F5C8A),
+    onTertiary = Color(0xFFF9FBFA),
+    tertiaryContainer = Color(0xFFE2E8E6),
+    onTertiaryContainer = Color(0xFF142430),
+    background = Color(0xFFEEF1EF),
+    onBackground = Color(0xFF142430),
+    surface = Color(0xFFF9FBFA),
+    onSurface = Color(0xFF142430),
+    surfaceVariant = Color(0xFFE2E8E6),
+    onSurfaceVariant = Color(0xFF526270),
+    surfaceContainer = Color(0xFFEEF1EF),
+    surfaceContainerLow = Color(0xFFF9FBFA),
+    outline = Color(0xFFD5DDDB),
+    outlineVariant = Color(0xFFE1E7E5),
     error = Color(0xFFB23A26),
-    onError = Color(0xFFFCF9F3),
+    onError = Color(0xFFF9FBFA),
 )
 
 private val Dark = darkColorScheme(
-    primary = Color(0xFF9DBF9A),
-    onPrimary = Color(0xFF221B16),
-    primaryContainer = Color(0xFF2F3A2C),
-    onPrimaryContainer = Color(0xFFF1E6D6),
-    secondary = Color(0xFFE6A46A),
-    onSecondary = Color(0xFF221B16),
-    secondaryContainer = Color(0xFF9DBF9A),
-    onSecondaryContainer = Color(0xFF221B16),
-    tertiary = Color(0xFFE6A46A),
-    onTertiary = Color(0xFF221B16),
-    tertiaryContainer = Color(0xFF3A2F27),
-    onTertiaryContainer = Color(0xFFF1E6D6),
-    background = Color(0xFF221B16),
-    onBackground = Color(0xFFF1E6D6),
-    surface = Color(0xFF2D241E),
-    onSurface = Color(0xFFF1E6D6),
-    surfaceVariant = Color(0xFF3A2F27),
-    onSurfaceVariant = Color(0xFFB8A792),
-    surfaceContainer = Color(0xFF221B16),
-    surfaceContainerLow = Color(0xFF2D241E),
-    outline = Color(0xFF5A4A3D),
-    outlineVariant = Color(0xFF43362C),
-    error = Color(0xFFE07A66),
-    onError = Color(0xFF221B16),
+    primary = Color(0xFF6FB59C),
+    onPrimary = Color(0xFF0F1B24),
+    primaryContainer = Color(0xFF1D3A35),
+    onPrimaryContainer = Color(0xFFE6EEF0),
+    secondary = Color(0xFF7DB6E3),
+    onSecondary = Color(0xFF0F1B24),
+    secondaryContainer = Color(0xFF6FB59C),
+    onSecondaryContainer = Color(0xFF0F1B24),
+    tertiary = Color(0xFF7DB6E3),
+    onTertiary = Color(0xFF0F1B24),
+    tertiaryContainer = Color(0xFF1E2F3A),
+    onTertiaryContainer = Color(0xFFE6EEF0),
+    background = Color(0xFF0F1B24),
+    onBackground = Color(0xFFE6EEF0),
+    surface = Color(0xFF16252F),
+    onSurface = Color(0xFFE6EEF0),
+    surfaceVariant = Color(0xFF1E2F3A),
+    onSurfaceVariant = Color(0xFF93A6B1),
+    surfaceContainer = Color(0xFF0F1B24),
+    surfaceContainerLow = Color(0xFF16252F),
+    outline = Color(0xFF263844),
+    outlineVariant = Color(0xFF1E2F3A),
+    error = Color(0xFFC4513A),
+    onError = Color(0xFF0F1B24),
 )
 
-/** A verdict's or a tag's colour: sage for met and top, ochre for partial, clay for missing. */
+/** A verdict's or a tag's colour: pine for met and top, marigold for partial, red for missing. */
 object Marks {
     @Composable
     fun of(kind: String): Color {
         val dark = isSystemInDarkTheme()
         return when (kind) {
-            "met", "top", "good" -> if (dark) Color(0xFF9DBF9A) else Color(0xFF4F6D4D)
-            "partial", "medium", "fair" -> if (dark) Color(0xFFE0B66A) else Color(0xFF8A5A12)
-            "missing", "poor", "low" -> if (dark) Color(0xFFE07A66) else Color(0xFFB23A26)
+            "met", "top", "good" -> if (dark) Color(0xFF6FB59C) else Color(0xFF2E6B5B)
+            "partial", "medium", "fair" -> if (dark) Color(0xFFF0B952) else Color(0xFF8A5A12)
+            "missing", "poor", "low" -> if (dark) Color(0xFFC4513A) else Color(0xFFB23A26)
             else -> MaterialTheme.colorScheme.onSurfaceVariant
         }
     }
 }
 
-// The desktop's and the web page's type: Newsreader for titles, Figtree for the rest (OFL, from
-// assets/fonts at the repository's root).
-private val Newsreader = FontFamily(Font(R.font.newsreader_regular, FontWeight.Normal))
+// The desktop's and the web page's type: Bricolage Grotesque Bold for titles, Figtree for the rest
+// (OFL, from assets/fonts at the repository's root).
+private val Bricolage = FontFamily(Font(R.font.bricolage_grotesque_bold, FontWeight.Bold))
 private val Figtree = FontFamily(
     Font(R.font.figtree_regular, FontWeight.Normal),
     Font(R.font.figtree_semibold, FontWeight.SemiBold),
@@ -94,13 +95,13 @@ private val Figtree = FontFamily(
 
 private val Typography = Typography().let { base ->
     base.copy(
-        displayLarge = base.displayLarge.copy(fontFamily = Newsreader),
-        displayMedium = base.displayMedium.copy(fontFamily = Newsreader),
-        displaySmall = base.displaySmall.copy(fontFamily = Newsreader),
-        headlineLarge = base.headlineLarge.copy(fontFamily = Newsreader),
-        headlineMedium = base.headlineMedium.copy(fontFamily = Newsreader),
-        headlineSmall = base.headlineSmall.copy(fontFamily = Newsreader),
-        titleLarge = base.titleLarge.copy(fontFamily = Newsreader),
+        displayLarge = base.displayLarge.copy(fontFamily = Bricolage, fontWeight = FontWeight.Bold),
+        displayMedium = base.displayMedium.copy(fontFamily = Bricolage, fontWeight = FontWeight.Bold),
+        displaySmall = base.displaySmall.copy(fontFamily = Bricolage, fontWeight = FontWeight.Bold),
+        headlineLarge = base.headlineLarge.copy(fontFamily = Bricolage, fontWeight = FontWeight.Bold),
+        headlineMedium = base.headlineMedium.copy(fontFamily = Bricolage, fontWeight = FontWeight.Bold),
+        headlineSmall = base.headlineSmall.copy(fontFamily = Bricolage, fontWeight = FontWeight.Bold),
+        titleLarge = base.titleLarge.copy(fontFamily = Bricolage, fontWeight = FontWeight.Bold),
         titleMedium = base.titleMedium.copy(fontFamily = Figtree, fontWeight = FontWeight.SemiBold),
         titleSmall = base.titleSmall.copy(fontFamily = Figtree, fontWeight = FontWeight.SemiBold),
         bodyLarge = base.bodyLarge.copy(fontFamily = Figtree),

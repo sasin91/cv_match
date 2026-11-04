@@ -1,6 +1,6 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
-    <!-- Only what shows before Compose draws: the window's oat paper background. -->
+    <!-- Only what shows before Compose draws: the window's paper background. -->
     <style name="Theme.JobFinder" parent="android:Theme.Material.Light.NoActionBar">
         <item name="android:windowBackground">@color/page</item>
         <item name="android:statusBarColor">@color/page</item>
