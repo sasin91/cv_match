@@ -303,6 +303,16 @@ pub fn warning_bar(theme: &Theme) -> container::Style {
     }
 }
 
+/// A bar of actions across the bottom of a page: card paper, square, on the page's edge.
+pub fn footer_bar(theme: &Theme) -> container::Style {
+    let c = colors(theme);
+    container::Style {
+        text_color: Some(c.text),
+        background: Some(Background::Color(c.card)),
+        ..container::Style::default()
+    }
+}
+
 /// A one-pixel line between rows in a card.
 pub fn divider(theme: &Theme) -> container::Style {
     let c = colors(theme);

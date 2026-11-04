@@ -464,6 +464,15 @@ async fn save_change(
     Ok((status, logged))
 }
 
+/// Marks saved match id as applied for, the path the extension's Mark as applied takes
+/// (match_service::mark_applied), and reads its joblog entry back: the status and whether it is in
+/// the joblog, for the Jobnet joblog sections shown.
+pub async fn mark_applied(context: &crate::context::Context, id: i64) -> Result<(&'static str, Logged), String> {
+    match_service::mark_applied(context, id).await.map_err(|e| e.message)?;
+    let saved = match_service::joblog_panel(context, id).await.map_err(|e| e.message)?;
+    Ok((saved_status(&saved), saved.logged))
+}
+
 /// The status a joblog entry has, as read.
 fn saved_status(panel: &JoblogPanel) -> &'static str {
     panel

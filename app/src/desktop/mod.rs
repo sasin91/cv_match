@@ -781,12 +781,17 @@ fn view(shell: &Shell) -> Element<'_, Message> {
                 .margin(2),
         ))
         .height(Fill);
+    // A match's details keep their actions in a footer under the page, in view while it scrolls.
+    let page: Element<'_, Message> = match matching_footer(shell) {
+        Some(footer) => column![page, footer].into(),
+        None => page.into(),
+    };
     // The drawer lies over the bottom of the page, which keeps its place under it.
     let page: Element<'_, Message> = if shell.drawer_open {
         let drawer = notification_drawer::view(&shell.notifications).map(Message::Notifications);
         stack![page, column![space().height(Fill), drawer]].into()
     } else {
-        page.into()
+        page
     };
     let main = column![page, status_line(&shell.status, shell.drawer_open, shell.unread)];
     container(row![sidebar(shell.screen), main])
@@ -794,6 +799,20 @@ fn view(shell: &Shell) -> Element<'_, Message> {
         .height(Fill)
         .style(style::page)
         .into()
+}
+
+/// The match details' footer (matching::footer), across the page under a hairline, its buttons
+/// as wide as the page's cards.
+fn matching_footer(shell: &Shell) -> Option<Element<'_, Message>> {
+    if shell.screen != Screen::Match {
+        return None;
+    }
+    let actions = matching::footer(&shell.matching)?.map(Message::Matching);
+    let bar = container(container(actions).max_width(PAGE_MAX_WIDTH))
+        .padding([10.0, PADDING * 2.0])
+        .center_x(Fill)
+        .style(style::footer_bar);
+    Some(column![container(space().height(1)).width(Fill).style(style::divider), bar].into())
 }
 
 /// The widest a page's cards get, so lines stay readable on a wide window.
