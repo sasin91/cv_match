@@ -1,6 +1,6 @@
 //! What the Jobnet extension asks the app for, as JSON on 127.0.0.1 (server): the saved matches,
-//! a match as a joblog entry and its PDFs, the joblog status it saved on Jobnet, and the job post
-//! its "Send to JobFinder" button sends. The work is in match_service and scan_service; errors
+//! a match as a joblog entry and its PDFs, the joblog status it saved on Jobnet, the answers for
+//! an employer's application form, and the job post its "Send to JobFinder" button sends. The work is in match_service and scan_service; errors
 //! answer JSON {error} (api_error), which the extension shows.
 
 use std::sync::Arc;
@@ -15,6 +15,7 @@ use serde_json::json;
 use crate::api_error::ApiError;
 use crate::job_scan::{scan_service, search_service};
 use crate::matches::application_delivery::rawurlencode;
+use crate::matches::application_form;
 use crate::matches::match_service;
 use crate::server::AppState;
 
@@ -121,6 +122,23 @@ fn content_disposition(name: &str) -> String {
         "attachment; filename=\"{ascii}\"; filename*=UTF-8''{}",
         rawurlencode(name)
     )
+}
+
+/// application_form's body.
+#[derive(Debug, Default, Deserialize)]
+#[serde(default)]
+pub struct ApplicationFormInput {
+    id: serde_json::Value,
+    fields: Vec<application_form::FormField>,
+}
+
+/// POST match/application_form {id, fields}: what goes in each field of the employer's
+/// application form the browser shows, from saved match id (match_service::application_form).
+/// Answers {answers: [{key, value, file, from}], left: [{key, why}]}; the extension fetches the
+/// PDFs named in file with match/pdf.
+pub async fn application_form(State(state): State<Arc<AppState>>, Json(input): Json<ApplicationFormInput>) -> Answer {
+    let answers = match_service::application_form(&state.context, id_in_body(&input.id), input.fields).await?;
+    Ok(Json(answers).into_response())
 }
 
 /// GET job_scan/search_names: the searches the extension can send a post to, as JSON

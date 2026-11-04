@@ -37,20 +37,49 @@ struct Entry {
 /// The profile's one row: profile.id is always this (its CHECK, migration 0011_one_user_schema).
 pub const PROFILE_ID: i64 = 1;
 
+/// The profile's top: who the candidate is and how to reach them, as the profile page has it.
+#[derive(Debug, Clone, Default, PartialEq)]
+pub struct Contact {
+    pub name: String,
+    pub email: String,
+    /// "" when the profile has none.
+    pub phone: String,
+    pub title: String,
+    pub location: String,
+    pub about: String,
+}
+
+/// The profile's top, or None when the user has no profile.
+pub async fn contact(db: &SqlitePool) -> sqlx::Result<Option<Contact>> {
+    let row = sqlx::query!(r#"SELECT name, email, phone, title, location, about FROM profile"#)
+        .fetch_optional(db)
+        .await?;
+    Ok(row.map(|row| Contact {
+        name: row.name,
+        email: row.email,
+        phone: row.phone.unwrap_or_default(),
+        title: row.title,
+        location: row.location,
+        about: row.about,
+    }))
+}
+
 /// The user's profile as text, or None when they have none.
 pub async fn text_for_user(db: &SqlitePool) -> sqlx::Result<Option<String>> {
-    let Some(profile) = sqlx::query!(r#"SELECT name, email, phone, title, location, about FROM profile"#)
-        .fetch_optional(db)
-        .await?
-    else {
+    let Some(profile) = contact(db).await? else {
         return Ok(None);
     };
     let entries = entries(db).await?;
     let links = links_for_user(db).await?;
-    let (name, email, phone) = (profile.name, profile.email, profile.phone);
-    let (title, location, about) = (profile.title, profile.location, profile.about);
+    let Contact {
+        name,
+        email,
+        phone,
+        title,
+        location,
+        about,
+    } = profile;
 
-    let phone = phone.unwrap_or_default();
     let contact = join_present(&[&location, &phone, &email], " · ");
     let link_line = links
         .iter()

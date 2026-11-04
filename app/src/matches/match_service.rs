@@ -7,6 +7,7 @@ use std::sync::Arc;
 
 use super::ai_match::{self, AiMatch, Matching};
 use super::application_delivery::ApplicationDelivery;
+use super::application_form;
 use super::cv_links::CvLink;
 use super::document_box::{self, DocumentBox, RESUME};
 use super::document_question::{self, Answer as QuestionAnswer, Question};
@@ -810,16 +811,7 @@ fn writing_label(kind: &str, saved: &SavedMatch) -> String {
     } else {
         "The application"
     };
-    let job = [saved.job_title.trim(), saved.company.trim()]
-        .into_iter()
-        .filter(|part| !part.is_empty())
-        .collect::<Vec<_>>()
-        .join(", ");
-    if job.is_empty() {
-        format!("{document} for match {}", saved.id)
-    } else {
-        format!("{document} for {job}")
-    }
+    format!("{document} for {}", job_label(saved))
 }
 
 /// Writes kind (document_box::APPLICATION or RESUME) for a saved match from its CV and post, with
@@ -1077,6 +1069,84 @@ pub async fn resume_comparison(context: &Context, id: i64, resume_id: i64) -> Re
     let cv_match = saved_match(context, id).await?;
     let resume_match = saved_match(context, resume_id).await?;
     Ok(ResumeComparison::from(&cv_match, &resume_match))
+}
+
+/// What goes in the fields of an employer's application form for saved match id
+/// (application_form): the profile's contact details, the match's PDFs and letter, and the
+/// model's answers to the questions, listed in the task manager as writing is. When the model
+/// can't answer (no key, a failed call), the rest is still answered and its questions are left
+/// with why. Nothing is saved.
+pub async fn application_form(
+    context: &Context,
+    id: i64,
+    fields: Vec<application_form::FormField>,
+) -> Result<application_form::FormAnswers, ServiceError> {
+    const WORK: &str = "match/application_form";
+    let fields = application_form::cleaned(fields);
+    if fields.is_empty() {
+        return Err(ServiceError::new(
+            ErrorKind::Invalid,
+            "No form fields to fill in were found on this page.",
+        ));
+    }
+    let found = saved_match(context, id).await?;
+    let db = context.db();
+    let contact = profile::contact(db).await?.unwrap_or_default();
+    let links = profile::links_for_user(db).await?;
+    let letter = found.application_text.clone().unwrap_or_default();
+    let written = application_form::Written::of(&found);
+    let mut plan = application_form::plan(&fields, &contact, &links, written, &letter);
+    if plan.for_model.is_empty() {
+        return Ok(plan.answers);
+    }
+    let answered = match llm_key::llm(context, task_model::writing(document_box::APPLICATION)).await {
+        Ok(keyed) => {
+            let what = format!("Answering the application form for {}", job_label(&found));
+            let asking = application_form::ask(db, &found, &keyed, &plan.for_model, &letter);
+            Arc::clone(&context.running)
+                .run(WorkKind::Writing, what, asking)
+                .await
+                .unwrap_or_else(|Stopped| Err(WriteError::Empty(Stopped::SAID)))
+                .map_err(|e| match e {
+                    WriteError::Llm(e) => ServiceError::llm(WORK, &e),
+                    WriteError::Database(e) => ServiceError::from(e),
+                    WriteError::Empty(why) => ServiceError::failed(WORK, why),
+                })
+        }
+        Err(e) => Err(e),
+    };
+    match answered {
+        Ok(answered) => {
+            let taken = application_form::taken(&plan.for_model, &answered);
+            plan.answers.answers.extend(taken.answers);
+            plan.answers.left.extend(taken.left);
+        }
+        Err(e) => {
+            crate::log_line!("{WORK}: the questions were left: {}", e.message);
+            let why = format!("Not answered: {}", e.message);
+            plan.answers
+                .left
+                .extend(plan.for_model.iter().map(|field| application_form::LeftField {
+                    key: field.key.clone(),
+                    why: why.clone(),
+                }));
+        }
+    }
+    Ok(plan.answers)
+}
+
+/// The job as the task manager names it: "Backend developer, Acme", or "match 21".
+fn job_label(saved: &SavedMatch) -> String {
+    let job = [saved.job_title.trim(), saved.company.trim()]
+        .into_iter()
+        .filter(|part| !part.is_empty())
+        .collect::<Vec<_>>()
+        .join(", ");
+    if job.is_empty() {
+        format!("match {}", saved.id)
+    } else {
+        job
+    }
 }
 
 /// The Apply dialog's content for a saved match: how the application is delivered, by email or on

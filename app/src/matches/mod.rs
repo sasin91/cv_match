@@ -5,6 +5,7 @@
 
 pub mod ai_match;
 pub mod application_delivery;
+pub mod application_form;
 pub mod apply_instructions;
 pub mod apply_notice;
 pub mod batch_row;

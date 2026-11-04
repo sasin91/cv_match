@@ -98,3 +98,34 @@ ask for besides the zip: the 440x280 promo tile (Chrome), the 300x300 logo
 (Edge) and `listing.md`, the texts for the store forms. The privacy policy is
 the "Privacy policy" part of the web app's /joblog_extension page; change it
 with the manifest.
+
+## Fill in an application form
+
+On an employer's own application form (Recruitee, Teamtailor, Greenhouse,
+Workday and the like), press the extension's toolbar button. Under "Fill in
+this application form", pick the saved match it is for (the one whose post the
+page comes from is picked already: its address, or the company in the address
+or the tab's title) and press "Fill in". A box in the page's corner says what
+went in each field and what was left for you; filled fields get a green
+outline, the ones left a yellow one. Click a line to scroll to its field.
+
+It asks JobFinder what goes in each empty field (`match/application_form`,
+app/src/matches/application_form.rs):
+
+- name, email, phone, city and the LinkedIn, GitHub and website links come
+  from your profile;
+- a cover letter upload gets the written application as a PDF, a CV or résumé
+  upload the tailored résumé (the CV the match was made with when there is
+  none); a cover letter text box gets the application's text;
+- the questions ("What made you interested in us?", a team to pick) are
+  answered by the model that writes your applications, from the CV, the post
+  and the application. It leaves empty what they don't say (salary, notice
+  period, start date), and a choice is always one of the form's own options.
+
+Fields that already have something in them are kept as they are. A consent or
+privacy box is never ticked, and nothing is sent: read every answer, then send
+the form yourself.
+
+It works on the page's own form, not one inside a frame or a pop-up from
+another site (open that on its own page first), and on plain fields: a
+drop-down the site draws itself instead of a `<select>` is left for you.
