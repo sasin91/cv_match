@@ -47,6 +47,18 @@ $ClipCrf = 32
 $CountdownSeconds = 3
 # Milliseconds for the window to redraw after a resize or a colour mode switch.
 $SettleMs = 800
+# Longest wait, in seconds, for the window to show the new light or dark look.
+$LookTimeoutSeconds = 15
+# Milliseconds between looks at the window while waiting for it to change.
+$LookPollMs = 250
+# Where to read the page colour: in the sidebar, under its last item, this far from the
+# window's left and bottom edges.
+$LookProbeLeft = 20
+$LookProbeBottom = 80
+# Brightness (0-255) between the dark page (about 30) and the light page (about 240).
+$LookThreshold = 128
+# Milliseconds for the phone app to redraw after its night mode changes.
+$PhoneSettleMs = 2500
 
 Add-Type -AssemblyName System.Drawing
 Add-Type @'
@@ -103,6 +115,28 @@ function Set-Mode([string]$mode) {
     Start-Sleep -Milliseconds $SettleMs
 }
 
+# Light or dark, as the window shows it now: the page colour in the sidebar.
+function Get-ShownLook([IntPtr]$hwnd) {
+    $frame = Get-Frame $hwnd
+    $bitmap = New-Object System.Drawing.Bitmap 1, 1
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    $graphics.CopyFromScreen($frame.Left + $LookProbeLeft, $frame.Bottom - $LookProbeBottom, 0, 0, $bitmap.Size)
+    $brightness = $bitmap.GetPixel(0, 0).GetBrightness() * 255
+    $graphics.Dispose(); $bitmap.Dispose()
+    if ($brightness -lt $LookThreshold) { 'dark' } else { 'light' }
+}
+
+# Waits until JobFinder has redrawn in the look; it follows Windows a moment after the switch.
+function Wait-Look([IntPtr]$hwnd, [string]$mode) {
+    $until = (Get-Date).AddSeconds($LookTimeoutSeconds)
+    while ((Get-ShownLook $hwnd) -ne $mode) {
+        if ((Get-Date) -gt $until) { throw "JobFinder didn't turn $mode within $LookTimeoutSeconds s, so no $mode shot was saved." }
+        Start-Sleep -Milliseconds $LookPollMs
+    }
+    # One more beat so every part has redrawn, not just the page.
+    Start-Sleep -Milliseconds $SettleMs
+}
+
 function Save-Shot([IntPtr]$hwnd, [string]$path) {
     $frame = Get-Frame $hwnd
     $width = $frame.Right - $frame.Left; $height = $frame.Bottom - $frame.Top
@@ -137,7 +171,7 @@ if ($What -like 'phone-*') {
     function Get-PhoneMode { if ((Get-PhoneSetting) -eq 'yes') { 'dark' } else { 'light' } }
     function Set-PhoneSetting([string]$setting) {
         Invoke-Adb shell cmd uimode night $setting | Out-Null
-        Start-Sleep -Milliseconds $SettleMs
+        Start-Sleep -Milliseconds $PhoneSettleMs
     }
     if ($What -eq 'phone-shot') {
         $was = Get-PhoneSetting
@@ -181,7 +215,7 @@ if ($What -eq 'shot') {
         foreach ($mode in $modes) {
             if ((Get-Mode) -ne $mode) { Set-Mode $mode }
             [void][Win]::SetForegroundWindow($hwnd)
-            Start-Sleep -Milliseconds $SettleMs
+            Wait-Look $hwnd $mode
             Save-Shot $hwnd (Join-Path $Out "$Name-$mode.png")
         }
     } finally {
