@@ -47,6 +47,20 @@ $ClipCrf = 32
 $CountdownSeconds = 3
 # Milliseconds for the window to redraw after a resize or a colour mode switch.
 $SettleMs = 800
+# Longest wait, in seconds, for the window to show the new light or dark look.
+$LookTimeoutSeconds = 15
+# Milliseconds between looks at the window while waiting for it to change.
+$LookPollMs = 250
+# Milliseconds between repeated colour-change notices while the window hasn't changed yet.
+$NudgeMs = 1000
+# Where to read the page colour: in the sidebar, under its last item, this far from the
+# window's left and bottom edges.
+$LookProbeLeft = 20
+$LookProbeBottom = 80
+# Brightness (0-255) between the dark page (about 30) and the light page (about 240).
+$LookThreshold = 128
+# Milliseconds for the phone app to redraw after its night mode changes.
+$PhoneSettleMs = 2500
 
 Add-Type -AssemblyName System.Drawing
 Add-Type @'
@@ -57,6 +71,7 @@ public static class Win {
     [DllImport("user32.dll")] public static extern bool SetForegroundWindow(IntPtr hWnd);
     [DllImport("user32.dll")] public static extern bool ShowWindow(IntPtr hWnd, int cmd);
     [DllImport("user32.dll")] public static extern bool MoveWindow(IntPtr hWnd, int x, int y, int w, int h, bool repaint);
+    [DllImport("user32.dll")] public static extern bool SetWindowPos(IntPtr hWnd, IntPtr after, int x, int y, int w, int h, uint flags);
     [DllImport("user32.dll")] public static extern bool SetProcessDPIAware();
     [DllImport("dwmapi.dll")] public static extern int DwmGetWindowAttribute(IntPtr hWnd, int attr, out RECT rect, int size);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -80,11 +95,22 @@ function Get-JobFinderWindow {
     $process.MainWindowHandle
 }
 
+# Keeps the window above every other window, or lets it go back to normal.
+function Set-OnTop([IntPtr]$hwnd, [bool]$onTop) {
+    $HWND_TOPMOST = [IntPtr](-1); $HWND_NOTOPMOST = [IntPtr](-2)
+    $SWP_NOSIZE = 0x1; $SWP_NOMOVE = 0x2; $SWP_SHOWWINDOW = 0x40
+    $after = if ($onTop) { $HWND_TOPMOST } else { $HWND_NOTOPMOST }
+    [void][Win]::SetWindowPos($hwnd, $after, 0, 0, 0, 0, $SWP_NOSIZE -bor $SWP_NOMOVE -bor $SWP_SHOWWINDOW)
+}
+
 # Puts the window in front at the set size, near the top left of the main screen.
 function Set-Window([IntPtr]$hwnd) {
     $SW_RESTORE = 9
     [void][Win]::ShowWindow($hwnd, $SW_RESTORE)
     [void][Win]::MoveWindow($hwnd, 40, 40, $WindowWidth, $WindowHeight, $true)
+    # Windows won't hand the focus to another program from a script, so pin the window above the
+    # rest instead; the screen grab only sees what is on top.
+    Set-OnTop $hwnd $true
     [void][Win]::SetForegroundWindow($hwnd)
     Start-Sleep -Milliseconds $SettleMs
 }
@@ -94,12 +120,41 @@ $PersonalizeKey = 'HKCU:\Software\Microsoft\Windows\CurrentVersion\Themes\Person
 # Windows' app colour mode: light or dark. JobFinder follows it.
 function Get-Mode { if ((Get-ItemProperty $PersonalizeKey).AppsUseLightTheme -eq 0) { 'dark' } else { 'light' } }
 
-function Set-Mode([string]$mode) {
-    Set-ItemProperty $PersonalizeKey AppsUseLightTheme ([int]($mode -eq 'light'))
-    # Tell running programs the colours changed, as the Settings app does.
+# Tells running programs the colours changed, as the Settings app does.
+function Send-ColorChange {
     $HWND_BROADCAST = [IntPtr]0xffff; $WM_SETTINGCHANGE = 0x1A; $SMTO_ABORTIFHUNG = 2
     $result = [UIntPtr]::Zero
     [void][Win]::SendMessageTimeout($HWND_BROADCAST, $WM_SETTINGCHANGE, [UIntPtr]::Zero, 'ImmersiveColorSet', $SMTO_ABORTIFHUNG, 1000, [ref]$result)
+}
+
+function Set-Mode([string]$mode) {
+    Set-ItemProperty $PersonalizeKey AppsUseLightTheme ([int]($mode -eq 'light'))
+    Send-ColorChange
+    Start-Sleep -Milliseconds $SettleMs
+}
+
+# Light or dark, as the window shows it now: the page colour in the sidebar.
+function Get-ShownLook([IntPtr]$hwnd) {
+    $frame = Get-Frame $hwnd
+    $bitmap = New-Object System.Drawing.Bitmap 1, 1
+    $graphics = [System.Drawing.Graphics]::FromImage($bitmap)
+    $graphics.CopyFromScreen($frame.Left + $LookProbeLeft, $frame.Bottom - $LookProbeBottom, 0, 0, $bitmap.Size)
+    $brightness = $bitmap.GetPixel(0, 0).GetBrightness() * 255
+    $graphics.Dispose(); $bitmap.Dispose()
+    if ($brightness -lt $LookThreshold) { 'dark' } else { 'light' }
+}
+
+# Waits until JobFinder has redrawn in the look; it follows Windows a moment after the switch.
+function Wait-Look([IntPtr]$hwnd, [string]$mode) {
+    $until = (Get-Date).AddSeconds($LookTimeoutSeconds)
+    $nudged = Get-Date
+    while ((Get-ShownLook $hwnd) -ne $mode) {
+        if ((Get-Date) -gt $until) { throw "JobFinder didn't turn $mode within $LookTimeoutSeconds s, so no $mode shot was saved." }
+        # Windows can answer the first notice with the old mode; say it again until the app follows.
+        if (((Get-Date) - $nudged).TotalMilliseconds -ge $NudgeMs) { Send-ColorChange; $nudged = Get-Date }
+        Start-Sleep -Milliseconds $LookPollMs
+    }
+    # One more beat so every part has redrawn, not just the page.
     Start-Sleep -Milliseconds $SettleMs
 }
 
@@ -137,7 +192,7 @@ if ($What -like 'phone-*') {
     function Get-PhoneMode { if ((Get-PhoneSetting) -eq 'yes') { 'dark' } else { 'light' } }
     function Set-PhoneSetting([string]$setting) {
         Invoke-Adb shell cmd uimode night $setting | Out-Null
-        Start-Sleep -Milliseconds $SettleMs
+        Start-Sleep -Milliseconds $PhoneSettleMs
     }
     if ($What -eq 'phone-shot') {
         $was = Get-PhoneSetting
@@ -172,33 +227,37 @@ if ($What -like 'phone-*') {
 }
 
 $hwnd = Get-JobFinderWindow
-Set-Window $hwnd
+try {
+    Set-Window $hwnd
 
-if ($What -eq 'shot') {
-    $was = Get-Mode
-    $modes = if ($Theme -eq 'both') { @('light', 'dark') } else { @($Theme) }
-    try {
-        foreach ($mode in $modes) {
-            if ((Get-Mode) -ne $mode) { Set-Mode $mode }
-            [void][Win]::SetForegroundWindow($hwnd)
-            Start-Sleep -Milliseconds $SettleMs
-            Save-Shot $hwnd (Join-Path $Out "$Name-$mode.png")
+    if ($What -eq 'shot') {
+        $was = Get-Mode
+        $modes = if ($Theme -eq 'both') { @('light', 'dark') } else { @($Theme) }
+        try {
+            foreach ($mode in $modes) {
+                if ((Get-Mode) -ne $mode) { Set-Mode $mode }
+                [void][Win]::SetForegroundWindow($hwnd)
+                Wait-Look $hwnd $mode
+                Save-Shot $hwnd (Join-Path $Out "$Name-$mode.png")
+            }
+        } finally {
+            if ((Get-Mode) -ne $was) { Set-Mode $was }
         }
-    } finally {
-        if ((Get-Mode) -ne $was) { Set-Mode $was }
+        return
     }
-    return
-}
 
-Assert-Tool ffmpeg $FfmpegHow
-$frame = Get-Frame $hwnd
-# VP9 wants even sizes.
-$width = ($frame.Right - $frame.Left) -band -2; $height = ($frame.Bottom - $frame.Top) -band -2
-$path = Join-Path $Out "$Name-$(Get-Mode).webm"
-for ($left = $CountdownSeconds; $left -gt 0; $left--) { Write-Host "Recording in $left..."; Start-Sleep 1 }
-Write-Host "Recording $Seconds s. Go."
-& ffmpeg -hide_banner -loglevel error -y -f gdigrab -framerate $ClipFps `
-    -offset_x $frame.Left -offset_y $frame.Top -video_size "${width}x${height}" -draw_mouse 1 -i desktop `
-    -t $Seconds -c:v libvpx-vp9 -crf $ClipCrf -b:v 0 -row-mt 1 -pix_fmt yuv420p -an $path
-if ($LASTEXITCODE -ne 0) { throw "ffmpeg stopped with code $LASTEXITCODE." }
-Write-Host "Saved $path"
+    Assert-Tool ffmpeg $FfmpegHow
+    $frame = Get-Frame $hwnd
+    # VP9 wants even sizes.
+    $width = ($frame.Right - $frame.Left) -band -2; $height = ($frame.Bottom - $frame.Top) -band -2
+    $path = Join-Path $Out "$Name-$(Get-Mode).webm"
+    for ($left = $CountdownSeconds; $left -gt 0; $left--) { Write-Host "Recording in $left..."; Start-Sleep 1 }
+    Write-Host "Recording $Seconds s. Go."
+    & ffmpeg -hide_banner -loglevel error -y -f gdigrab -framerate $ClipFps `
+        -offset_x $frame.Left -offset_y $frame.Top -video_size "${width}x${height}" -draw_mouse 1 -i desktop `
+        -t $Seconds -c:v libvpx-vp9 -crf $ClipCrf -b:v 0 -row-mt 1 -pix_fmt yuv420p -an $path
+    if ($LASTEXITCODE -ne 0) { throw "ffmpeg stopped with code $LASTEXITCODE." }
+    Write-Host "Saved $path"
+} finally {
+    Set-OnTop $hwnd $false
+}
