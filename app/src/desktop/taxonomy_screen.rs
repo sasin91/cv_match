@@ -1,6 +1,7 @@
-//! The Learned terms screen: the labels the taxonomy learned from matches (taxonomy_store), each
-//! with the term it names, how many matches taught it and when it was first seen, with Approve,
-//! Reject and Edit. Why shows each match that taught it: the post it was found in, and the model's
+//! The Taxonomy screen: the labels the taxonomy learned from matches (taxonomy_store), each
+//! with the term it names, its language, how many matches taught it and when it was first seen,
+//! with Approve, Reject, Edit and Copy. The list sorts by Label, Status or Seen (a column's name
+//! clicked) and shows one status at a time when a status is picked. Why shows each match that taught it: the post it was found in, and the model's
 //! reason (the judge's quote of the CV and its verdict). A search finds any label, a shipped one
 //! too, to edit or reject it.
 
@@ -17,16 +18,37 @@ use crate::taxonomy_store::{
 
 /// The search field's width.
 const SEARCH_WIDTH: f32 = 320.0;
+/// The Language column's width: "English" on one line.
+const LANGUAGE_WIDTH: f32 = 72.0;
 /// The Status column's width.
 const STATUS_WIDTH: f32 = 80.0;
 /// The Seen column's width: "12 ×, 30 Nov 2026" on one line.
 const SEEN_WIDTH: f32 = 120.0;
-/// The buttons' column width: Why, Approve, Reject and Edit side by side. The same in the header and
+/// The buttons' column width: Why, Approve, Reject, Edit and Copy side by side. The same in the header and
 /// every row, whichever buttons a row has, so the columns line up.
-const ACTIONS_WIDTH: f32 = 260.0;
+const ACTIONS_WIDTH: f32 = 320.0;
+
+/// A column the list sorts by.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum SortBy {
+    /// The label's text, alphabetically, case aside.
+    Label,
+    /// The status as shown (status_text), alphabetically.
+    Status,
+    /// When the first match taught it (first_seen_at); a label no match taught comes last.
+    Seen,
+}
+
+/// The statuses a list can be narrowed to, as status_text names them.
+const STATUS_FILTERS: [&str; 4] = ["Candidate", "Active", "Rejected", "Shipped"];
 
 #[derive(Default)]
 pub struct State {
+    /// The column the list is sorted by, and whether it runs down (Z to A, newest first); None
+    /// keeps the order it was read in: candidates first, then the newest changed.
+    sort: Option<(SortBy, bool)>,
+    /// The status shown (one of STATUS_FILTERS); None shows every one.
+    status: Option<&'static str>,
     /// None until read; Err says why the list couldn't be read.
     labels: Option<Result<Vec<ListedLabel>, String>>,
     /// The search's words; empty lists the learned labels.
@@ -52,6 +74,12 @@ pub enum Msg {
     /// Opens or closes a label's Why.
     Why(i64),
     WhyRead(i64, Result<Vec<LabelSighting>, String>),
+    /// Puts a label's text on the clipboard.
+    Copy(String),
+    /// Sorts by a column; the same column again turns its order around.
+    Sort(SortBy),
+    /// Shows only labels with this status (status_text), or every one with None.
+    Status(Option<&'static str>),
 }
 
 pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
@@ -66,7 +94,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
                         taxonomy_store::find_labels(context.db(), &search).await
                     };
                     listed.map_err(|e| {
-                        crate::log_line!("learned_terms: the labels couldn't be read: {e}");
+                        crate::log_line!("taxonomy_screen: the labels couldn't be read: {e}");
                         format!("The labels couldn't be read: {e}")
                     })
                 },
@@ -101,7 +129,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             return runner.run(
                 move |context| async move {
                     taxonomy_store::sightings(context.db(), id).await.map_err(|e| {
-                        crate::log_line!("learned_terms: the matches that taught label {id} couldn't be read: {e}");
+                        crate::log_line!("taxonomy_screen: the matches that taught label {id} couldn't be read: {e}");
                         format!("The matches that taught it couldn't be read: {e}")
                     })
                 },
@@ -114,6 +142,12 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             {
                 *read = Some(sightings);
             }
+        }
+        Msg::Sort(by) => state.sort = Some(next_sort(state.sort, by)),
+        Msg::Status(status) => state.status = status,
+        Msg::Copy(label) => {
+            state.said = Some((Health::Ready, format!("Copied \"{label}\" to the clipboard.")));
+            return iced::clipboard::write(label);
         }
         Msg::Reviewed(said) => {
             state.said = Some(match said {
@@ -128,7 +162,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
 
 pub fn view(state: &State) -> Element<'_, Msg> {
     let title = widgets::page_title(
-        "Learned terms",
+        "Taxonomy",
         widgets::note(
             "Phrases the taxonomy learned from your matches. One is used once two matches taught it, or when you approve it.",
         ),
@@ -139,7 +173,10 @@ pub fn view(state: &State) -> Element<'_, Msg> {
         .padding(8)
         .style(style::text_field)
         .width(SEARCH_WIDTH);
-    let mut screen = Column::new().spacing(GAP * 1.5).push(title).push(search);
+    let mut screen = Column::new()
+        .spacing(GAP * 1.5)
+        .push(title)
+        .push(row![search, status_filter(state.status)].spacing(GAP).align_y(Center));
     if let Some((health, said)) = &state.said {
         screen = screen.push(widgets::message_bar(*health, said.as_str()));
     }
@@ -164,31 +201,119 @@ pub fn view(state: &State) -> Element<'_, Msg> {
             ))
             .into();
     }
+    let shown = shown_labels(labels, state.status, state.sort);
+    if shown.is_empty() {
+        return screen
+            .push(widgets::card(
+                container(widgets::note("No label has that status."))
+                    .padding(ROW_PADDING)
+                    .into(),
+            ))
+            .into();
+    }
     let list = column![
-        header(),
+        header(state.sort),
         widgets::divider(),
         widgets::rows(
-            labels
-                .iter()
+            shown
+                .into_iter()
                 .map(|label| label_row(label, state.editing.as_ref(), state.why.as_ref()))
         )
     ];
     screen.push(widgets::card(list.into())).into()
 }
 
-/// The columns' names.
-fn header<'a>() -> Element<'a, Msg> {
+/// The order after a column's name is clicked: that column A to Z (oldest first), or the other
+/// way round when it was already sorted that way.
+fn next_sort(sort: Option<(SortBy, bool)>, by: SortBy) -> (SortBy, bool) {
+    let down = sort.is_some_and(|(sorted, down)| sorted == by && !down);
+    (by, down)
+}
+
+/// The labels with the picked status, in the picked order.
+fn shown_labels<'a>(
+    labels: &'a [ListedLabel],
+    status: Option<&'static str>,
+    sort: Option<(SortBy, bool)>,
+) -> Vec<&'a ListedLabel> {
+    let mut shown: Vec<&ListedLabel> = labels
+        .iter()
+        .filter(|label| status.is_none_or(|status| status_text(label) == status))
+        .collect();
+    if let Some((by, down)) = sort {
+        shown.sort_by(|a, b| match (by, a.first_seen_at, b.first_seen_at) {
+            (SortBy::Seen, None, Some(_)) => std::cmp::Ordering::Greater,
+            (SortBy::Seen, Some(_), None) => std::cmp::Ordering::Less,
+            _ => {
+                let order = compared(a, b, by);
+                if down { order.reverse() } else { order }
+            }
+        });
+    }
+    shown
+}
+
+/// a and b in a column's order, A to Z and oldest first (by the time, not the shown day). A label
+/// no match taught has no Seen; shown_labels puts it after every seen one either way round.
+fn compared(a: &ListedLabel, b: &ListedLabel, by: SortBy) -> std::cmp::Ordering {
+    match by {
+        SortBy::Label => a.text.to_lowercase().cmp(&b.text.to_lowercase()),
+        SortBy::Status => status_text(a).cmp(status_text(b)),
+        SortBy::Seen => a.first_seen_at.cmp(&b.first_seen_at),
+    }
+}
+
+/// All, then a button for each status; the picked one shows as pressed.
+fn status_filter<'a>(picked: Option<&'static str>) -> Element<'a, Msg> {
+    let choice = |name: &'static str, status: Option<&'static str>| {
+        button(text(name).size(style::BODY_SIZE))
+            .style(style::subtle_button(picked == status))
+            .on_press(Msg::Status(status))
+    };
+    STATUS_FILTERS
+        .into_iter()
+        .fold(row![choice("All", None)].spacing(GAP / 2.0), |filters, status| {
+            filters.push(choice(status, Some(status)))
+        })
+        .align_y(Center)
+        .into()
+}
+
+/// The columns' names; Label, Status and Seen sort the list when clicked, with an arrow on the
+/// one it is sorted by.
+fn header<'a>(sort: Option<(SortBy, bool)>) -> Element<'a, Msg> {
     let name = |label: &'a str, width: Length| {
         text(label)
             .size(style::CAPTION_SIZE)
             .style(style::secondary)
             .width(width)
     };
+    let sorting = |label: &'a str, by: SortBy, width: Length| -> Element<'a, Msg> {
+        let mut name = row![text(label).size(style::CAPTION_SIZE).style(style::secondary)]
+            .spacing(4)
+            .align_y(Center);
+        if let Some((_, down)) = sort.filter(|(sorted, _)| *sorted == by) {
+            let arrow = if down { style::SORTED_DOWN } else { style::SORTED_UP };
+            name = name.push(
+                text(arrow)
+                    .font(style::icon_font())
+                    .size(style::CAPTION_SIZE)
+                    .style(style::secondary),
+            );
+        }
+        button(name)
+            .padding(0)
+            .style(style::subtle_button(false))
+            .width(width)
+            .on_press(Msg::Sort(by))
+            .into()
+    };
     container(
         row![
-            name("Label, and the term it names", Fill),
-            name("Status", Length::Fixed(STATUS_WIDTH)),
-            name("Seen", Length::Fixed(SEEN_WIDTH)),
+            sorting("Label, and the term it names", SortBy::Label, Fill),
+            name("Language", Length::Fixed(LANGUAGE_WIDTH)),
+            sorting("Status", SortBy::Status, Length::Fixed(STATUS_WIDTH)),
+            sorting("Seen", SortBy::Seen, Length::Fixed(SEEN_WIDTH)),
             name("", Length::Fixed(ACTIONS_WIDTH)),
         ]
         .spacing(GAP),
@@ -200,7 +325,7 @@ fn header<'a>() -> Element<'a, Msg> {
 /// The label whose Why is open, and its sightings once read.
 type OpenWhy = (i64, Option<Result<Vec<LabelSighting>, String>>);
 
-/// A label: its text (or its edit field), its term, its status, how often and since when it was
+/// A label: its text (or its edit field), its term, its language, its status, how often and since when it was
 /// seen, and what can be done to it; under it, its Why when open.
 fn label_row<'a>(
     label: &'a ListedLabel,
@@ -219,7 +344,7 @@ fn label_row<'a>(
             .width(Fill)
             .into(),
         None => column![
-            text(format!("{} ({})", label.text, label.lang)).size(style::BODY_SIZE),
+            text(&label.text).size(style::BODY_SIZE),
             widgets::caption(format!("names {}", label.term_label)),
         ]
         .spacing(2)
@@ -228,6 +353,7 @@ fn label_row<'a>(
     };
     let line = row![
         name,
+        cell(language_name(&label.lang).to_string(), Length::Fixed(LANGUAGE_WIDTH)),
         cell(status_text(label).to_string(), Length::Fixed(STATUS_WIDTH)),
         cell(seen_text(label), Length::Fixed(SEEN_WIDTH)),
         actions_cell(actions(label, edited)),
@@ -307,6 +433,16 @@ fn why_learned(sighting: &LabelSighting) -> String {
     )
 }
 
+/// "Danish" or "English" for a label's lang (taxonomy_labels.lang). A learned label's is the
+/// language its words are in (taxonomy_lessons::phrase_lang), as the post wrote the requirement.
+fn language_name(lang: &str) -> &str {
+    match lang {
+        "da" => "Danish",
+        "en" => "English",
+        other => other,
+    }
+}
+
 /// "Candidate", "Active", "Rejected", or "Shipped" for one of the index's own.
 fn status_text(label: &ListedLabel) -> &'static str {
     match (label.source.as_str(), label.status.as_str()) {
@@ -327,8 +463,8 @@ fn seen_text(label: &ListedLabel) -> String {
     }
 }
 
-/// The buttons for a label: Save and Cancel while it is edited; otherwise Approve (unless
-/// active), Reject (unless rejected) and Edit.
+/// The buttons for a label: Save and Cancel while it is edited; otherwise Why (when a match
+/// taught it), Approve (unless active), Reject (unless rejected), Edit and Copy.
 fn actions<'a>(label: &'a ListedLabel, edited: Option<&'a (i64, String)>) -> Element<'a, Msg> {
     let action = |name: &'a str, msg: Msg| {
         button(text(name).size(style::BODY_SIZE))
@@ -355,10 +491,99 @@ fn actions<'a>(label: &'a ListedLabel, edited: Option<&'a (i64, String)>) -> Ele
     }
     buttons
         .push(action("Edit", Msg::Edit(label.id, label.text.clone())))
+        .push(action("Copy", Msg::Copy(label.text.clone())))
         .into()
 }
 
 /// A row's buttons in the fixed-width column, at its right edge.
 fn actions_cell<'a>(buttons: Element<'a, Msg>) -> Element<'a, Msg> {
     container(buttons).width(ACTIONS_WIDTH).align_x(iced::Right).into()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn label(id: i64, text: &str, status: &str, first_seen_at: Option<i64>) -> ListedLabel {
+        ListedLabel {
+            id,
+            term_id: 1,
+            term_label: String::new(),
+            text: text.to_string(),
+            lang: "da".to_string(),
+            source: crate::taxonomy_store::LEARNED.to_string(),
+            status: status.to_string(),
+            sightings: i64::from(first_seen_at.is_some()),
+            first_match_id: None,
+            first_seen_at,
+        }
+    }
+
+    fn ids(shown: &[&ListedLabel]) -> Vec<i64> {
+        shown.iter().map(|label| label.id).collect()
+    }
+
+    fn listed() -> Vec<ListedLabel> {
+        vec![
+            label(1, "bogføring", ACTIVE, Some(300)),
+            label(2, "Anlægsarbejde", CANDIDATE, None),
+            label(3, "C# udvikling", REJECTED, Some(100)),
+            label(4, "agil", CANDIDATE, Some(200)),
+        ]
+    }
+
+    #[test]
+    fn unsorted_keeps_the_order_read_in() {
+        assert_eq!(ids(&shown_labels(&listed(), None, None)), [1, 2, 3, 4]);
+    }
+
+    #[test]
+    fn label_sorts_alphabetically_case_aside_and_turns_around() {
+        let labels = listed();
+        assert_eq!(
+            ids(&shown_labels(&labels, None, Some((SortBy::Label, false)))),
+            [4, 2, 1, 3]
+        );
+        assert_eq!(
+            ids(&shown_labels(&labels, None, Some((SortBy::Label, true)))),
+            [3, 1, 2, 4]
+        );
+    }
+
+    #[test]
+    fn status_sorts_by_the_shown_status() {
+        let labels = listed();
+        let shown = shown_labels(&labels, None, Some((SortBy::Status, false)));
+        assert_eq!(ids(&shown), [1, 2, 4, 3]);
+    }
+
+    #[test]
+    fn seen_sorts_by_time_with_the_unseen_last_either_way() {
+        let labels = listed();
+        assert_eq!(
+            ids(&shown_labels(&labels, None, Some((SortBy::Seen, false)))),
+            [3, 4, 1, 2]
+        );
+        assert_eq!(
+            ids(&shown_labels(&labels, None, Some((SortBy::Seen, true)))),
+            [1, 4, 3, 2]
+        );
+    }
+
+    #[test]
+    fn a_status_shows_only_its_labels() {
+        let labels = listed();
+        let shown = shown_labels(&labels, Some("Candidate"), Some((SortBy::Label, false)));
+        assert_eq!(ids(&shown), [4, 2]);
+    }
+
+    #[test]
+    fn the_same_column_again_turns_the_order_around() {
+        let once = next_sort(None, SortBy::Seen);
+        assert_eq!(once, (SortBy::Seen, false));
+        let twice = next_sort(Some(once), SortBy::Seen);
+        assert_eq!(twice, (SortBy::Seen, true));
+        assert_eq!(next_sort(Some(twice), SortBy::Seen), (SortBy::Seen, false));
+        assert_eq!(next_sort(Some(twice), SortBy::Label), (SortBy::Label, false));
+    }
 }

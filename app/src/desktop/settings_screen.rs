@@ -23,9 +23,9 @@ const PAGES: [(&str, &str, Screen); 7] = [
         Screen::LocalModel,
     ),
     (
-        "Learned terms",
-        "What the taxonomy learned from your matches: approve, reject or edit it.",
-        Screen::LearnedTerms,
+        "Taxonomy",
+        "The terms it learned from your matches: approve, reject or edit them.",
+        Screen::Taxonomy,
     ),
     (
         "Job searches",

@@ -1,5 +1,5 @@
-//! The desktop window (iced): Match, the settings screens (Language models, Local model, Job
-//! searches, Setup, the Jobnet extension), the Task manager and Settings, with a status line for
+//! The desktop window (iced): Match, the settings screens (Language models, Local model,
+//! Taxonomy, Job searches, Setup, the Jobnet extension), the Task manager and Settings, with a status line for
 //! Laya and the app's own model under them. The status line's bell opens a drawer from the
 //! bottom with what the app told the user (notification_drawer); its system notifications open
 //! their place when clicked. Its screens print what the service layer gives them
@@ -19,7 +19,6 @@ mod extension_screen;
 mod history;
 mod job_searches;
 mod language_models;
-mod learned_terms;
 mod local_model;
 mod match_screen;
 mod matching;
@@ -28,6 +27,7 @@ mod settings_screen;
 mod setup_screen;
 mod style;
 mod task_manager;
+mod taxonomy_screen;
 mod widgets;
 
 use std::future::Future;
@@ -82,7 +82,7 @@ pub enum Screen {
     JobSearches,
     TaskManager,
     Settings,
-    LearnedTerms,
+    Taxonomy,
     Setup,
     JoblogExtension,
     Devices,
@@ -125,7 +125,7 @@ pub struct Shell {
     /// Windows' light or dark mode, which the window follows.
     mode: Mode,
     task_manager: task_manager::State,
-    learned_terms: learned_terms::State,
+    taxonomy: taxonomy_screen::State,
     setup: setup_screen::State,
     extension: extension_screen::State,
     devices: devices_screen::State,
@@ -155,7 +155,7 @@ pub enum Message {
     /// Windows' light or dark mode, read at the start and whenever it changes.
     ThemeMode(Mode),
     TaskManager(task_manager::Msg),
-    LearnedTerms(learned_terms::Msg),
+    Taxonomy(taxonomy_screen::Msg),
     Setup(setup_screen::Msg),
     Extension(extension_screen::Msg),
     Devices(devices_screen::Msg),
@@ -265,7 +265,7 @@ fn boot(launch: &Mutex<Option<Launch>>) -> (Shell, Task<Message>) {
         matching: matching::State::default(),
         mode: Mode::Light,
         task_manager: task_manager::State::default(),
-        learned_terms: learned_terms::State::default(),
+        taxonomy: taxonomy_screen::State::default(),
         setup: setup_screen::State::default(),
         extension: extension_screen::State::default(),
         devices: devices_screen::State::default(),
@@ -538,7 +538,7 @@ fn handle(shell: &mut Shell, message: Message) -> Task<Message> {
                     shell.task_manager.show();
                     return Task::done(Message::TaskManager(task_manager::Msg::Load));
                 }
-                Screen::LearnedTerms => return Task::done(Message::LearnedTerms(learned_terms::Msg::Load)),
+                Screen::Taxonomy => return Task::done(Message::Taxonomy(taxonomy_screen::Msg::Load)),
                 Screen::Setup => return Task::done(Message::Setup(setup_screen::Msg::Load)),
                 Screen::JoblogExtension => extension_screen::shown(&mut shell.extension),
                 Screen::Devices => {
@@ -572,9 +572,9 @@ fn handle(shell: &mut Shell, message: Message) -> Task<Message> {
             let runner = shell.runner();
             return task_manager::update(&mut shell.task_manager, msg, &runner).map(Message::TaskManager);
         }
-        Message::LearnedTerms(msg) => {
+        Message::Taxonomy(msg) => {
             let runner = shell.runner();
-            return learned_terms::update(&mut shell.learned_terms, msg, &runner).map(Message::LearnedTerms);
+            return taxonomy_screen::update(&mut shell.taxonomy, msg, &runner).map(Message::Taxonomy);
         }
         Message::Matching(matching::Msg::Changed) => return Task::done(Message::Reload),
         Message::Matching(matching::Msg::ShowLanguageModels) => {
@@ -758,7 +758,7 @@ fn view(shell: &Shell) -> Element<'_, Message> {
         Screen::JobSearches => job_searches::view(&shell.job_searches).map(Message::JobSearches),
         Screen::TaskManager => task_manager::view(&shell.task_manager).map(Message::TaskManager),
         Screen::Settings => settings_screen::view(&shell.context),
-        Screen::LearnedTerms => learned_terms::view(&shell.learned_terms).map(Message::LearnedTerms),
+        Screen::Taxonomy => taxonomy_screen::view(&shell.taxonomy).map(Message::Taxonomy),
         Screen::Setup => setup_screen::view(&shell.setup).map(Message::Setup),
         Screen::JoblogExtension => extension_screen::view(&shell.extension, &shell.context).map(Message::Extension),
         Screen::Devices => devices_screen::view(&shell.devices, not_listening(&shell.context)).map(Message::Devices),
@@ -812,6 +812,7 @@ fn sidebar(current: Screen) -> Element<'static, Message> {
         nav_item("Match", Screen::Match, current),
         nav_item("Language models", Screen::LanguageModels, current),
         nav_item("Local model", Screen::LocalModel, current),
+        nav_item("Taxonomy", Screen::Taxonomy, current),
         nav_item("Job searches", Screen::JobSearches, current),
         nav_item("Task manager", Screen::TaskManager, current),
         nav_item("Settings", Screen::Settings, current),
@@ -873,10 +874,7 @@ fn nav_item(label: &'static str, screen: Screen, current: Screen) -> Element<'st
 
 /// The screens without a sidebar entry, opened from Settings, which stays marked for them.
 fn opened_from_settings(screen: Screen) -> bool {
-    matches!(
-        screen,
-        Screen::LearnedTerms | Screen::Setup | Screen::JoblogExtension | Screen::Devices
-    )
+    matches!(screen, Screen::Setup | Screen::JoblogExtension | Screen::Devices)
 }
 
 /// Why the device server isn't listening, when it couldn't start.

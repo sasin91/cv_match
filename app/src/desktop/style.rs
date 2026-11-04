@@ -241,6 +241,12 @@ pub fn title_font() -> Font {
 /// elsewhere.
 pub const BELL: &str = if cfg!(windows) { "\u{EA8F}" } else { "\u{1F514}" };
 
+/// The arrow beside the column a list is sorted by, A to Z (up) or Z to A (down): Segoe Fluent
+/// Icons' ChevronUpSmall and ChevronDownSmall on Windows 11, the triangles elsewhere. Drawn in
+/// icon_font.
+pub const SORTED_UP: &str = if cfg!(windows) { "\u{E96D}" } else { "\u{25B2}" };
+pub const SORTED_DOWN: &str = if cfg!(windows) { "\u{E96E}" } else { "\u{25BC}" };
+
 /// The font the bell is drawn in: Windows 11's icon font there, else the system's own.
 pub fn icon_font() -> Font {
     if cfg!(windows) {
