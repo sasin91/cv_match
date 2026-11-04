@@ -317,3 +317,16 @@ async fn without_a_laya_model_a_match_has_no_laya_line() {
     assert!(found.laya_reading.laya.is_none());
     assert!(found.laya_reading.laya_error.is_none());
 }
+
+/// Made up: a CV whose dates run from 2010 (an own project) but whose years line, the number
+/// the candidate confirmed, says 9. The free reader, which the free match reads the CV with,
+/// takes the 9.
+#[test]
+fn the_free_reader_takes_the_confirmed_years_over_the_dates() {
+    use jobfinder::matches::free_reader::{FreeReader, YearMonth};
+    let now = YearMonth { year: 2026, month: 11 };
+    let dates = "Kim\n\nOwn site\n2010 - nu\n\nDeveloper\n2017 - nu";
+    assert_eq!(FreeReader::new(&TAXONOMY, now).cv(dates).experience_years, 16);
+    let confirmed = "Kim\nYears of professional work: 9\n\nOwn site\n2010 - nu\n\nDeveloper\n2017 - nu";
+    assert_eq!(FreeReader::new(&TAXONOMY, now).cv(confirmed).experience_years, 9);
+}
