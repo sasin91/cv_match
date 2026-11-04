@@ -8,6 +8,7 @@ use sqlx::SqlitePool;
 
 use super::apply_instructions;
 use super::document_box::Keyword;
+use super::free_reader::YearMonth;
 use super::match_model::{self, Document, SavedItem, SavedMatch};
 use super::match_score::MatchScore;
 use super::tailored_resume;
@@ -63,6 +64,28 @@ pub struct Tailored {
 pub fn notes(sent: &str) -> String {
     let cut: String = sent.chars().take(MAX_NOTES).collect();
     cut.trim().to_string()
+}
+
+/// The writing prompts' line with the candidate's years of professional work: the number they
+/// saved, else the one counted from the profile's jobs (profile::years_of_work), or saying there
+/// is none. The model is told to use this number and never count itself: counting from the
+/// whole CV, it took the earliest date in it (school, own projects) and wrote "16 years in
+/// software development" for 9 years of work.
+fn years_line(years: Option<i64>) -> String {
+    let label = profile::YEARS_OF_WORK_LABEL;
+    match years {
+        Some(years) => format!("{label}{years} (education and own projects not included)"),
+        None => format!("{label}not given"),
+    }
+}
+
+/// The writing prompts' rule on years of experience, which goes with years_line.
+const YEARS_RULE: &str = "Never count years of experience yourself. When the text says how long the candidate has worked (in total, or as a developer, in the field, in software), use exactly the number given as \"Years of professional work\", and only for work; years with one skill or at one employer only as the CV's own dates show them. Education, school projects and the candidate's own or hobby projects are not years of work, however early they start. When no number is given, don't state a total number of years.";
+
+/// The years line for a saved match's documents: from the profile when there is one.
+async fn years_of_work(db: &SqlitePool, now: i64) -> sqlx::Result<String> {
+    let years = profile::years_of_work(db, YearMonth::of(now)).await?;
+    Ok(years_line(years.and_then(|years| years.years())))
 }
 
 /// A rewrite of a written version the candidate commented on, as a pull request's review is
@@ -173,9 +196,12 @@ pub async fn write_application(
     now: i64,
 ) -> Result<Document, WriteError> {
     let cv = written_from(db, found).await?;
+    let years = years_of_work(db, now).await?;
     let system = application_system();
     let user = format!(
         "{brief}
+
+{years}
 {notes_block}
 {revision_block}
 
@@ -222,6 +248,7 @@ pub async fn tailor_resume(
     let (strengths, gaps) = strengths_and_gaps(&found.items);
     let apply = apply_instructions::for_prompt(found.apply_instructions.as_ref());
     let cv = written_from(db, found).await?;
+    let years = years_of_work(db, now).await?;
     let system = resume_system();
     let user = format!(
         "Job title: {job_title}
@@ -232,6 +259,8 @@ Requirements the CV meets:
 
 Requirements the matcher marked missing (use only if the CV backs them, also by inference):
 {gaps}
+
+{years}
 
 {apply}
 
@@ -297,6 +326,7 @@ Write in written_language: the job post's own language (post_language) when the 
 fn application_system() -> String {
     let language = writing_language_rule("application");
     let standout = standout_rule("letter");
+    let years = YEARS_RULE;
     format!(
         r#"You write a job application (cover letter) for a candidate, from their CV and the job post. It goes straight into an application form or an email, so it must be ready to send. Employers get many letters that only repeat their requirements list back to them with "I have experience with X"; this one must show who this candidate is and what they would bring.
 
@@ -305,7 +335,7 @@ fn application_system() -> String {
 - Build the letter on those: open with why this job, tied to something real in the post (its product, its stage, a problem it describes); then make the case with two or three standout points, each a concrete story from the CV (what the candidate did, why it mattered there) and what it would mean for this employer. Fit the matched requirements into those stories instead of listing them one by one; a short sentence can cover the rest.
 - 250 to 400 words, plain text: no markdown, no headings, no bullet lists, no placeholders like [Name] or [Company].
 - Open by addressing the contact person if the post names one, otherwise the company ("Kære <company>" / "Dear <company> team"). Never invent a name.
-- Use only what the CV (or the candidate's notes) says. Never claim a skill, degree, project, number or result the CV doesn't show. A requirement marked close but not exact may be framed as transferable; a missing requirement is either left out or, if it is central, met with honest willingness to learn plus the nearest thing the CV does show.
+- Use only what the CV (or the candidate's notes) says. Never claim a skill, degree, project, number or result the CV doesn't show. {years} A requirement marked close but not exact may be framed as transferable; a missing requirement is either left out or, if it is central, met with honest willingness to learn plus the nearest thing the CV does show.
 - Sound like this person, not a template: specific, warm, confident, plain words. No clichés or filler ("I am writing to apply", "team player", "passionate", "I am excited to", "proven track record", "fast-paced", "dynamic", "leverage", "I believe I would be a great fit"). Every sentence should be one only this candidate could write.
 - Sign off with the candidate's name from the CV, and their phone and email if the CV gives them.
 - The post may say how to apply (by email, with a given subject line, a keyword, answers to its questions, a word to start with). Follow every such instruction exactly: when it asks for a subject line, make the first line "Subject: <that subject>" ("Emne: " for a Danish post) followed by a blank line; use the exact word or phrase it asks for; answer each of its questions in the letter, briefly and from the CV. Those instructions are listed above the job post when found.
@@ -316,6 +346,7 @@ fn application_system() -> String {
 fn resume_system() -> String {
     let language = writing_language_rule("CV");
     let standout = standout_rule("CV");
+    let years = YEARS_RULE;
     format!(
         r#"You tailor a candidate's CV (résumé) to one job post. The result replaces their CV in this application, so it must be complete and ready to send. Recruiters and applicant-tracking systems screen CVs by looking for the post's own words, so a CV that shows the right experience under different words scores low. Your main job is to close that gap honestly.
 
@@ -325,8 +356,8 @@ First, list the post's keywords: the job title, the role names, skills, tools, m
 - Not at all: nothing in the CV comes close. Leave these out.
 
 Then write the CV:
-- Use every backed keyword in the post's exact wording, where it fits naturally: in the profile, in the job titles' descriptions and bullets, and in the skills list. Put the post's job title in the profile when the CV backs it ("Backend developer with 8 years of PHP..."). Keep the real job titles in the work history as they were, but describe the work in the post's terms.
-- Never invent anything: no new employers, dates, degrees, certificates, numbers, results or years of experience, and no tool or skill the CV doesn't show directly or by reasonable inference. Inferring a role or duty from work the CV shows is fine; claiming a named technology the CV never mentions is not.
+- Use every backed keyword in the post's exact wording, where it fits naturally: in the profile, in the job titles' descriptions and bullets, and in the skills list. Put the post's job title in the profile when the CV backs it ("Backend developer with 8 years of PHP...", the years as the CV's dates or the years line give them). Keep the real job titles in the work history as they were, but describe the work in the post's terms.
+- Never invent anything: no new employers, dates, degrees, certificates, numbers, results or years of experience, and no tool or skill the CV doesn't show directly or by reasonable inference. Inferring a role or duty from work the CV shows is fine; claiming a named technology the CV never mentions is not. {years}
 - Requirements the matcher marked as missing are listed below. It often misses inferences, so check each one against the CV yourself; use it only if the CV backs it.
 - Keywords get the CV through the filter; a person reads it next. {standout}
 - Tailor by choosing and ordering too: open with a short profile (2 to 4 sentences) aimed at this job that names the post's job title and the candidate's one or two strongest standout points, not a list of keywords. Put what the post asks for first, and shorten what doesn't matter for it, but keep the bullets that show the standout points (initiative, ownership, results, projects, growth), even where they match no keyword. Keep every job in the work history, with its dates, even if only as one line.
@@ -579,6 +610,17 @@ mod tests {
             strengths_and_gaps(&[]),
             ("- (none found)".to_string(), "- (none)".to_string())
         );
+    }
+
+    #[test]
+    fn the_years_line_gives_the_count_or_says_there_is_none() {
+        assert_eq!(
+            years_line(Some(9)),
+            "Years of professional work: 9 (education and own projects not included)"
+        );
+        assert_eq!(years_line(None), "Years of professional work: not given");
+        assert!(application_system().contains(YEARS_RULE));
+        assert!(resume_system().contains(YEARS_RULE));
     }
 
     #[test]

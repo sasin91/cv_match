@@ -1,0 +1,26 @@
+{
+  "db_name": "SQLite",
+  "query": "SELECT years_of_work FROM profile",
+  "describe": {
+    "columns": [
+      {
+        "name": "years_of_work",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "profile",
+            "name": "years_of_work"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 0
+    },
+    "nullable": [
+      true
+    ]
+  },
+  "hash": "213f0b92f583efe10d98017f6d66d58f60a36bd35670dffac3608196d1c088b2"
+}

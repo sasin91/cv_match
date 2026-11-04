@@ -151,6 +151,21 @@ pub struct YearMonth {
     pub month: i64,
 }
 
+impl YearMonth {
+    /// The month a Unix time (seconds) falls in, in local time.
+    pub fn of(timestamp: i64) -> Self {
+        use chrono::Datelike;
+        let day = chrono::DateTime::from_timestamp(timestamp, 0)
+            .unwrap_or_default()
+            .with_timezone(&chrono::Local)
+            .date_naive();
+        YearMonth {
+            year: i64::from(day.year()),
+            month: i64::from(day.month()),
+        }
+    }
+}
+
 pub struct FreeReader<'a> {
     taxonomy: &'a Taxonomy,
     /// Label words joined by spaces => term position in the taxonomy.

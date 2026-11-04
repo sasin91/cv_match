@@ -32,6 +32,21 @@ pub async fn filled_from(db: &SqlitePool) -> sqlx::Result<Option<FilledFrom>> {
     }))
 }
 
+/// Saves the candidate's years of professional work, or clears them (None) so the count from
+/// their jobs is used again. A CV read into the profile later keeps them.
+pub async fn save_years_of_work(db: &SqlitePool, years: Option<i64>) -> sqlx::Result<()> {
+    let now = chrono::Utc::now().timestamp();
+    sqlx::query!(
+        r#"UPDATE profile SET years_of_work = ?1, updated_at = ?2 WHERE id = ?3"#,
+        years,
+        now,
+        PROFILE_ID
+    )
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
 /// Replaces the user's whole profile with what was read from a CV (profile_fields::from_cv),
 /// making it when there is none. The name, email and phone are only changed where the CV has
 /// them.
@@ -120,8 +135,9 @@ async fn insert_lines(
 mod tests {
     use super::*;
     use crate::db;
+    use crate::matches::free_reader::YearMonth;
     use crate::profile::profile_fields::ProfileEntry;
-    use crate::profile::text_for_user;
+    use crate::profile::{text_for_user, text_for_user_at};
     use sqlx::Executor;
 
     fn read() -> ProfileFromCv {
@@ -158,8 +174,11 @@ mod tests {
         assert_eq!(filled_from(&db).await.unwrap(), None);
         replace_from_cv(&db, &read(), "cv.pdf").await.unwrap();
         assert_eq!(
-            text_for_user(&db).await.unwrap().unwrap(),
-            "Mette Sørensen\nUdvikler\nSlagelse · mette@example.com\n\nJeg bygger ting.\n\n\
+            text_for_user_at(&db, YearMonth { year: 2026, month: 11 })
+                .await
+                .unwrap()
+                .unwrap(),
+            "Mette Sørensen\nUdvikler\nSlagelse · mette@example.com\nYears of professional work: 9\n\nJeg bygger ting.\n\n\
              Experience\n\nUdvikler · Firma\nJanuary 2017 – now\n- Byggede en API\n\nSkills\n- PHP"
         );
         let filled = filled_from(&db).await.unwrap().unwrap();

@@ -9,9 +9,11 @@
 use crate::account::account_model::{self, RESUME};
 use crate::account::model_advice::ModelAdvice;
 use crate::context::Context;
+use crate::matches::free_reader::YearMonth;
 use crate::matches::llm_key;
-use crate::profile::profile_fill;
+pub use crate::profile::YearsOfWork;
 use crate::profile::profile_model::{self, FilledFrom};
+use crate::profile::{self, MAX_YEARS_OF_WORK, profile_fill};
 use crate::scan_schedule::INTERVALS;
 use crate::service_error::{ErrorKind, ServiceError};
 
@@ -33,6 +35,8 @@ pub struct AiStep {
 /// The CV step: what the profile was filled from, and whether a CV can be read now.
 pub struct CvStep {
     pub filled: Option<FilledFrom>,
+    /// The years of professional work saved and counted, None without a profile.
+    pub years: Option<YearsOfWork>,
     /// A key is picked for tailoring résumés, which reading the CV runs on.
     pub can_read: bool,
 }
@@ -126,7 +130,66 @@ pub async fn cv(context: &Context) -> Result<CvStep, String> {
         .await
         .map_err(|e| e.message)?
         .is_some();
-    Ok(CvStep { filled, can_read })
+    let years = profile::years_of_work(context.db(), YearMonth::of(chrono::Utc::now().timestamp()))
+        .await
+        .map_err(|e| format!("The database couldn't answer: {e}"))?;
+    Ok(CvStep {
+        filled,
+        years,
+        can_read,
+    })
+}
+
+/// The years box's text: the saved years, else the counted suggestion, else empty.
+pub fn years_box(years: &YearsOfWork) -> String {
+    years.years().map(|years| years.to_string()).unwrap_or_default()
+}
+
+/// The line under the years box: whether the number is saved, and what the jobs' dates count.
+pub fn years_line(years: &YearsOfWork) -> String {
+    let counted = match years.counted {
+        Some(counted) => {
+            format!("Your jobs' dates count {counted} years; education and your own projects don't count.")
+        }
+        None => "Your profile has no dated jobs to count the years from.".to_string(),
+    };
+    match years.saved {
+        Some(_) => format!("Saved. {counted}"),
+        None if years.counted.is_some() => {
+            format!("A suggestion, not saved yet. {counted} Letters and résumés use this number.")
+        }
+        None => counted,
+    }
+}
+
+/// Saves the years of professional work typed in the years box; empty clears them, so the
+/// count from the jobs is used again. Ok is what to say.
+pub async fn save_years_of_work(context: &Context, typed: &str) -> Result<String, ServiceError> {
+    let typed = typed.trim();
+    let years = if typed.is_empty() {
+        None
+    } else {
+        Some(parse_years(typed)?)
+    };
+    profile_model::save_years_of_work(context.db(), years).await?;
+    Ok(match years {
+        Some(years) => format!("Saved: {years} years of professional work."),
+        None => "Cleared: the years are counted from your jobs again.".to_string(),
+    })
+}
+
+/// A typed number of years, 0 to MAX_YEARS_OF_WORK.
+fn parse_years(typed: &str) -> Result<i64, ServiceError> {
+    typed
+        .parse::<i64>()
+        .ok()
+        .filter(|years| (0..=MAX_YEARS_OF_WORK).contains(years))
+        .ok_or_else(|| {
+            ServiceError::new(
+                ErrorKind::Invalid,
+                format!("Type the years as a whole number from 0 to {MAX_YEARS_OF_WORK}."),
+            )
+        })
 }
 
 pub async fn schedule(context: &Context) -> ScheduleStep {
