@@ -205,8 +205,8 @@ pub struct ListedMatch {
     pub has_application: bool,
     pub has_resume: bool,
     pub created_at: i64,
-    /// The first location the post requires that the match misses.
-    pub location_missed: Option<String>,
+    /// The first likely disqualifier the match misses: a location, a language or the career level.
+    pub missed_disqualifier: Option<String>,
     pub jobnet_status: Option<String>,
     pub jobnet_logged_at: Option<i64>,
     #[serde(skip)]
@@ -238,7 +238,7 @@ struct ListedRow {
     has_application: bool,
     has_resume: bool,
     created_at: i64,
-    location_missed: Option<String>,
+    missed_disqualifier: Option<String>,
     jobnet_status: Option<String>,
     jobnet_logged_at: Option<i64>,
     rejected_at: Option<i64>,
@@ -262,7 +262,7 @@ impl From<ListedRow> for ListedMatch {
             has_application: row.has_application,
             has_resume: row.has_resume,
             created_at: row.created_at,
-            location_missed: row.location_missed,
+            missed_disqualifier: row.missed_disqualifier,
             jobnet_status: row.jobnet_status,
             jobnet_logged_at: row.jobnet_logged_at,
             rejected_at: row.rejected_at,

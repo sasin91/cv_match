@@ -43,7 +43,7 @@ use crate::llm::{Effort, OPENAI};
 use crate::matches::match_service::{self, MatchRequest};
 use crate::matches::page_reader::ReadWith;
 use crate::matches::still_open::{self, CheckReport};
-use crate::matches::{Profile, llm_key, match_model, page_reader};
+use crate::matches::{Profile, disqualifier_notice, llm_key, match_model, page_reader};
 use crate::notifications::{self, scan_notices};
 use crate::profile;
 use crate::service_error::{ErrorKind, ServiceError};
@@ -1252,7 +1252,9 @@ async fn match_claimed(
         return Ok(false);
     }
     let mut errors = Vec::new();
-    let good = tailors(saved.score, post.tailor_from_score);
+    // A job in a language the user doesn't speak gets nothing written, whatever the search's
+    // score to tailor from: a letter they can't read is no use to them.
+    let good = tailors(saved.score, post.tailor_from_score) && !disqualifier_notice::misses_a_language(&saved.items);
     if good {
         errors.extend(write_document(context, &saved, RESUME, timeline).await);
         errors.extend(write_document(context, &saved, APPLICATION, timeline).await);

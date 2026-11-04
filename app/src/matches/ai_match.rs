@@ -10,7 +10,7 @@ use sqlx::SqlitePool;
 use super::apply_instructions::{self, ApplyInstructions};
 use super::match_model::{self, NewMatch};
 use super::match_prompts::{self, Undecided};
-use super::matcher::{self, Groups, LOCATION, Matcher, Score, Verdict, Verdicts};
+use super::matcher::{self, Groups, LANGUAGE, LOCATION, Matcher, Score, Verdict, Verdicts};
 use super::{Job, KnownTerm, Profile};
 use crate::laya::laya_client::{self, LayaClient, LayaReading};
 use crate::llm::{Llm, LlmException};
@@ -23,6 +23,9 @@ const NOT_FOUND_REASON: &str =
 /// What a location requirement nobody weighed says.
 const UNWEIGHED_LOCATION_REASON: &str =
     "Check this yourself: with an AI key on for evaluating job posts, the AI weighs it against where you live.";
+
+/// What a language requirement the taxonomy couldn't find, and nobody weighed, says.
+const UNWEIGHED_LANGUAGE_REASON: &str = "Check this yourself: with an AI key on for evaluating job posts, the AI checks it against the languages your CV shows.";
 
 /// The match's answer: the criteria, the combined verdicts and the score, with the soft skills,
 /// how the post asks to be applied to, the Laya summary and, with Laya's model, its answer on that
@@ -85,8 +88,15 @@ pub async fn ai_match(
             } else {
                 &profile.text_en
             };
-            let judged =
-                match_prompts::judge(llm, &job.job_title, &undecided, cv_text, profile.location.trim()).await?;
+            let judged = match_prompts::judge(
+                llm,
+                &job.job_title,
+                &undecided,
+                cv_text,
+                profile.location.trim(),
+                &profile.language,
+            )
+            .await?;
             // Only the requirements it was asked about: an id it made up, or one the taxonomy
             // decided, would put its verdict on the wrong requirement.
             let asked = |verdict: &match_prompts::Judged| undecided.iter().any(|unit| unit.id == verdict.id);
@@ -105,10 +115,10 @@ pub async fn ai_match(
         }
         _ => {
             for unit in undecided {
-                let verdict = if unit.kind == LOCATION {
-                    unweighed_location()
-                } else {
-                    not_found()
+                let verdict = match unit.kind.as_str() {
+                    LOCATION => unweighed(UNWEIGHED_LOCATION_REASON),
+                    LANGUAGE => unweighed(UNWEIGHED_LANGUAGE_REASON),
+                    _ => not_found(),
                 };
                 verdicts.insert(unit.id, verdict);
             }
@@ -174,12 +184,12 @@ fn not_found() -> Verdict {
     }
 }
 
-/// A location requirement nobody weighed (no AI key on for evaluating job posts): partial, so
-/// it's shown without capping the score.
-fn unweighed_location() -> Verdict {
+/// A location or language requirement nobody weighed (no AI key on for evaluating job posts):
+/// partial, so it's shown without capping the score, with the reason saying why.
+fn unweighed(reason: &str) -> Verdict {
     Verdict {
         verdict: "partial".to_string(),
-        reason: UNWEIGHED_LOCATION_REASON.to_string(),
+        reason: reason.to_string(),
         ..not_found()
     }
 }

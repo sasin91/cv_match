@@ -75,8 +75,8 @@ pub struct FoundPost {
     pub tag: Option<String>,
     pub has_application: bool,
     pub has_resume: bool,
-    /// The location requirement the match missed, the likely disqualifier.
-    pub location_missed: Option<String>,
+    /// The first likely disqualifier the match missed: a location, a language or the career level.
+    pub missed_disqualifier: Option<String>,
 }
 
 /// A batch of found posts, and the cursor of the next batch when there is one.
@@ -309,7 +309,7 @@ pub async fn posts(
         tag: row.tag,
         has_application: row.has_application,
         has_resume: row.has_resume,
-        location_missed: row.location_missed,
+        missed_disqualifier: row.missed_disqualifier,
     })
     .collect();
     let mut next = None;

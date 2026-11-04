@@ -22,12 +22,13 @@ use super::{Job, Profile, dates, still_open};
 use crate::laya::laya_client::LayaReading;
 
 /// The groups' names, in the order a saved match's unknown criterion falls back from.
-pub const GROUP_NAMES: [(&str, &str); 6] = [
+pub const GROUP_NAMES: [(&str, &str); 7] = [
     ("requirements", "Requirements"),
     ("skills", "Nice to have"),
     ("title", "Job title"),
     ("responsibilities", "Responsibilities"),
     ("location", "Location"),
+    ("language", "Languages"),
     ("level", "Level"),
 ];
 /// The note on a group that isn't weighed (matcher::DISQUALIFIERS).
