@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use iced::widget::{Column, Row, button, checkbox, column, container, row, space, text, text_editor, text_input};
+use iced::widget::{Column, Row, button, checkbox, column, container, row, text, text_editor, text_input};
 use iced::{Center, Element, Fill, Task};
 
 use super::apply::{self, ApplyMsg, Applying};
@@ -1848,7 +1848,11 @@ pub fn footer(state: &State) -> Option<Element<'_, Msg>> {
     let shown = state.saved.as_ref()?.as_ref().ok()?;
     let id = shown.result.saved_id?;
     let busy = state.busy;
-    let mut actions = Row::new().spacing(8).align_y(Center);
+    // Mark as applied leads; the row wraps onto more lines in a narrow window.
+    let mut actions = Row::new()
+        .spacing(8)
+        .align_y(Center)
+        .push(applied_action(&shown.result.applied_on, busy));
     for (label, kind) in FOOTER_PDFS {
         let save = Msg::Doc(id, DocMsg::SavePdf(kind, None));
         actions = actions.push(
@@ -1863,12 +1867,7 @@ pub fn footer(state: &State) -> Option<Element<'_, Msg>> {
             .style(style::standard_button)
             .on_press_maybe((!busy).then_some(Msg::CopyPrompt)),
     );
-    Some(
-        actions
-            .push(space().width(Fill))
-            .push(applied_action(&shown.result.applied_on, busy))
-            .into(),
-    )
+    Some(actions.wrap().vertical_spacing(8).into())
 }
 
 /// The footer's PDF buttons: their labels and the kind each saves.
