@@ -38,6 +38,8 @@ pdf-writer = "0.15"
 subsetter = "0.2"
 ttf-parser = "0.25"
 miniz_oxide = "0.9"
+# A PDF's text (pdf_text): an uploaded CV, a PDF job post.
+pdf-extract = "0.12"
 # The secrets kept in Windows Credential Manager (the keyring elsewhere) before the secrets
 # table, read once to move them into it (account::former_keys).
 keyring = "4"

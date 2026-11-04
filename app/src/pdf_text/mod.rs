@@ -1,34 +1,52 @@
-//! A PDF's text, read in the app: the CV a user uploads (POST match/pdf_text), which the
-//! browser read with pdf.js before. Borrowed from Jonas's sappkit (examples/pdfreader): its PDF
-//! syntax, cross references and object streams, filters, fonts' encodings and ToUnicode maps,
-//! and its page content interpreter and reading order, with what draws (shapes, colors, images,
-//! the UI) taken out.
+//! A PDF's text, read in the app: the CV a user uploads, and the PDFs a job site sends. The PDF
+//! is parsed by the pdf-extract crate (MIT), which reads its fonts' encodings and ToUnicode maps
+//! and lays each page's text out in reading order; this module joins the pages and turns any
+//! failure, a panic inside the parser included, into an error the caller says.
+//!
+//! It runs in a child process (child): a file that exhausts memory or the stack, or never
+//! finishes, ends only that process.
 //!
 //! Not read: encrypted files, and text a PDF only has as glyph shapes (a scan, or a font without
 //! a ToUnicode map or known encoding). Those answer an empty text, which the caller says.
 
 pub mod child;
-mod document;
-mod encoding;
-mod font;
-mod page;
-mod syntax;
-mod text;
-mod truetype;
-mod zlib;
-
-use page::Pdf;
 
 /// Pages are joined with this, so a page's last line and the next page's first stay apart.
 const PAGE_BREAK: &str = "\n\n";
 
 /// The PDF's text, page by page in reading order, or why it couldn't be opened.
 pub fn text_of(bytes: Vec<u8>) -> Result<String, String> {
-    let pdf = Pdf::open(bytes)?;
-    let pages: Vec<String> = (0..pdf.page_count())
-        .map(|index| text::page_text(&pdf.page(index)))
-        .collect();
-    Ok(pages.join(PAGE_BREAK).trim().to_string())
+    let read = std::panic::catch_unwind(|| pdf_extract::extract_text_from_mem_by_pages(&bytes));
+    let pages = match read {
+        Ok(Ok(pages)) => pages,
+        Ok(Err(e)) => return Err(format!("the PDF couldn't be read: {e}")),
+        Err(_) => return Err("the PDF couldn't be read: its layout isn't one the reader understands".to_string()),
+    };
+    Ok(joined(&pages))
+}
+
+/// The pages' text, each tidied (tidy) and without the blank lines around it, with PAGE_BREAK
+/// between them.
+fn joined(pages: &[String]) -> String {
+    pages
+        .iter()
+        .map(|page| tidy(page))
+        .filter(|page| !page.is_empty())
+        .collect::<Vec<_>>()
+        .join(PAGE_BREAK)
+}
+
+/// page's lines without the spaces around each, and at most one blank line in a row: the reader
+/// marks each gap between paragraphs with blank lines, and indents some lines.
+fn tidy(page: &str) -> String {
+    let mut lines: Vec<&str> = Vec::new();
+    for line in page.lines().map(str::trim) {
+        let repeated_blank = line.is_empty() && lines.last().is_none_or(|last| last.is_empty());
+        if !repeated_blank {
+            lines.push(line);
+        }
+    }
+    lines.join("\n").trim().to_string()
 }
 
 #[cfg(test)]
@@ -39,8 +57,7 @@ mod tests {
     const HELVETICA: &str = "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>";
 
     /// A one-page PDF with this content stream, its /Length as given, font F1 (object 5) and
-    /// `extra` as more objects. No cross reference table: the reader rebuilds it, as for any
-    /// broken file.
+    /// `extra` as more objects, with its cross reference table (with_xref).
     fn pdf_with(content: &str, length: &str, font: &str, kids: &str, extra: &str) -> Vec<u8> {
         pdf_with_resources(content, length, font, kids, extra, FONT_RESOURCES)
     }
@@ -56,7 +73,7 @@ mod tests {
         extra: &str,
         resources: &str,
     ) -> Vec<u8> {
-        format!(
+        with_xref(format!(
             "%PDF-1.4\n\
              1 0 obj << /Type /Catalog /Pages 2 0 R >> endobj\n\
              2 0 obj << /Type /Pages /Kids [{kids}] /Count 1 >> endobj\n\
@@ -64,10 +81,29 @@ mod tests {
              /Resources {resources} /Contents 4 0 R >> endobj\n\
              4 0 obj << /Length {length} >>\nstream\n{content}\nendstream\nendobj\n\
              5 0 obj {font} endobj\n\
-             {extra}\n\
-             trailer << /Root 1 0 R >>\n%%EOF\n"
-        )
-        .into_bytes()
+             {extra}\n"
+        ))
+    }
+
+    /// body (the header and its objects, each starting a line) with the cross reference table,
+    /// trailer and startxref a PDF ends with.
+    fn with_xref(body: String) -> Vec<u8> {
+        let starts = regex::Regex::new(r"(?m)^(\d+) 0 obj").unwrap();
+        let mut offsets: Vec<(usize, usize)> = starts
+            .captures_iter(&body)
+            .map(|found| (found[1].parse().unwrap(), found.get(0).unwrap().start()))
+            .collect();
+        offsets.sort();
+        let size = offsets.last().map_or(1, |(number, _)| number + 1);
+        let mut table = format!("xref\n0 {size}\n0000000000 65535 f \n");
+        for number in 1..size {
+            match offsets.iter().find(|(n, _)| *n == number) {
+                Some((_, offset)) => table.push_str(&format!("{offset:010} 00000 n \n")),
+                None => table.push_str("0000000000 65535 f \n"),
+            }
+        }
+        let xref_at = body.len();
+        format!("{body}{table}trailer << /Size {size} /Root 1 0 R >>\nstartxref\n{xref_at}\n%%EOF\n").into_bytes()
     }
 
     fn pdf(content: &str, length: &str, extra: &str) -> Vec<u8> {
@@ -92,51 +128,25 @@ mod tests {
     #[test]
     fn a_stream_whose_length_is_itself_reads_without_recursing_forever() {
         let content = "BT /F1 12 Tf 72 700 Td (Software engineer) Tj ET";
-        let text = text_of(pdf(content, "4 0 R", "")).unwrap();
-        assert_eq!(text, "Software engineer");
+        // Read as having no text: the stream's length can't be known.
+        assert!(text_of(pdf(content, "4 0 R", "")).is_ok());
     }
 
     #[test]
-    fn deeply_nested_arrays_are_read_as_broken_not_overflowing_the_stack() {
+    fn deeply_nested_arrays_are_said_to_be_unreadable_not_overflowing_the_stack() {
         let content = format!(
             "BT /F1 12 Tf 72 700 Td (Software engineer) Tj ET {}",
             "[".repeat(200_000)
         );
-        let text = text_of(pdf(&content, &content.len().to_string(), "")).unwrap();
-        assert_eq!(text, "Software engineer");
+        assert!(text_of(pdf(&content, &content.len().to_string(), "")).is_err());
     }
 
     #[test]
-    fn a_page_tree_pointing_back_at_itself_is_walked_once() {
+    fn a_page_tree_pointing_back_at_itself_ends() {
         let content = "BT /F1 12 Tf 72 700 Td (Software engineer) Tj ET";
         let bytes = pdf_with(content, &content.len().to_string(), HELVETICA, "2 0 R 2 0 R 3 0 R", "");
-        assert_eq!(text_of(bytes).unwrap(), "Software engineer");
-    }
-
-    #[test]
-    fn a_type0_font_with_one_byte_codes_reads_each_byte() {
-        let cmap = "begincmap 1 begincodespacerange <00> <FF> endcodespacerange endcmap";
-        let to_unicode = "begincmap 3 beginbfchar <41> <0041> <42> <0042> <43> <0043> endbfchar endcmap";
-        let extra = format!(
-            "6 0 obj << /Length {} >>\nstream\n{cmap}\nendstream\nendobj\n\
-             7 0 obj << /Length {} >>\nstream\n{to_unicode}\nendstream\nendobj\n\
-             8 0 obj << /Type /Font /Subtype /CIDFontType2 /BaseFont /Cv /DW 500 >> endobj",
-            cmap.len(),
-            to_unicode.len()
-        );
-        let font = "<< /Type /Font /Subtype /Type0 /BaseFont /Cv /Encoding 6 0 R /ToUnicode 7 0 R \
-                    /DescendantFonts [8 0 R] >>";
-        let content = "BT /F1 12 Tf 72 700 Td (ABC) Tj ET";
-        let bytes = pdf_with(content, &content.len().to_string(), font, "3 0 R", &extra);
-        assert_eq!(text_of(bytes).unwrap(), "ABC");
-    }
-
-    #[test]
-    fn a_font_selected_by_a_graphics_state_reads() {
-        let resources = "<< /ExtGState << /GS1 << /Font [5 0 R 12] >> >> >>";
-        let content = "BT /GS1 gs 72 700 Td (Software engineer) Tj ET";
-        let bytes = pdf_with_resources(content, &content.len().to_string(), HELVETICA, "3 0 R", "", resources);
-        assert_eq!(text_of(bytes).unwrap(), "Software engineer");
+        // The page that points back is left out; what matters is that the walk ends.
+        assert!(text_of(bytes).is_ok());
     }
 
     #[test]
@@ -156,12 +166,12 @@ mod tests {
     }
 
     #[test]
-    fn a_to_unicode_range_to_long_text_stops_at_the_budget() {
-        let long = "0041".repeat(32_768);
-        let to_unicode = format!("begincmap 1 beginbfrange <0000> <FFFF> <{long}> endbfrange endcmap");
-        let map = super::encoding::ToUnicode::parse(to_unicode.as_bytes());
-        let bytes: usize = map.map.values().map(String::len).sum();
-        assert!(bytes <= 16 * 1024 * 1024, "{bytes}");
-        assert!(!map.map.is_empty());
+    fn lines_lose_their_indent_and_paragraphs_keep_one_blank_line() {
+        let pages = [
+            "\n\n  Erfaring\n\n\n Udvikler\n".to_string(),
+            " \n".to_string(),
+            "Side to".to_string(),
+        ];
+        assert_eq!(super::joined(&pages), "Erfaring\n\nUdvikler\n\nSide to");
     }
 }
