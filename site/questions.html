@@ -1,0 +1,52 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>JobFinder questions</title>
+<meta name="description" content="Why JobFinder and not ChatGPT, whether your CV leaves your PC, whether it applies for you, and what it costs.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#eef1ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1b24" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="JobFinder questions">
+<meta property="og:description" content="Finds the jobs you'd have missed, tells you why they fit, and starts the application. Free, and it runs on your own PC.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="media/dashboard-light.png">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/bricolage-grotesque-700.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/figtree-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="col">
+  <nav><a class="home" href="./"><strong>JobFinder</strong></a><span class="links"><a href="tour.html">How it works</a><a href="phone.html">Phone</a><a href="questions.html" aria-current="page">Questions</a><a href="https://github.com/sasin91/jobfinder">GitHub</a></span></nav>
+  <!-- FAQ -->
+  <section id="questions" class="page-head">
+    <span class="eyebrow">Questions</span>
+    <h1>Fair questions.</h1>
+    <div class="faq">
+      <details open><summary>Why would I need this? ChatGPT already does this.</summary>
+        <p>ChatGPT can run a scheduled task that searches for jobs, and that's a fine start. But it searches the web, so it finds what a search engine has indexed, not every post on Jobnet and Jobindex, and it can't sign in to LinkedIn or Indeed as you. Its results arrive as a message, not a list that remembers which jobs you've seen, rejected, applied to and logged. JobFinder reads the sites themselves, keeps that list, scores every post the same way, and can do it all without your CV leaving your PC.</p></details>
+      <details><summary>Is my CV sent anywhere?</summary>
+        <p>Only if you choose a cloud model. With JobFinder's own model, your CV, matches and applications stay in one file on your PC. There is no JobFinder server and no account.</p></details>
+      <details><summary>Does it apply for me?</summary>
+        <p>No, on purpose. It finds, scores and drafts. You read the draft, change what you want and send it yourself.</p></details>
+      <details><summary>Is it free?</summary>
+        <p>Yes, completely. It's open source under the BSD licence, with no paid tier and no ads.</p></details>
+    </div>
+  </section>
+
+  <section><div class="next"><a href="tour.html"><b>How it works</b><span>The real app: screens, clips, and the letter it drafts.</span><i>Read more →</i></a><a href="phone.html"><b>The phone app</b><span>Your shortlist in your pocket, over a private line.</span><i>Read more →</i></a></div></section>
+  <footer id="download">
+    <span>JobFinder · free and open source · Windows 11 and Linux<br>Made by Jonas Kerwin Hansen, built with help from Claude.</span>
+    <span style="display:flex;gap:20px;flex-wrap:wrap"><a href="https://github.com/sasin91/jobfinder/releases/latest">Download</a><a href="https://github.com/sasin91/jobfinder">Source on GitHub</a></span>
+  </footer>
+</div>
+<script>
+// With reduced motion asked for, the clips wait for a click instead of playing on their own.
+if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  for (const v of document.querySelectorAll('video')) { v.removeAttribute('autoplay'); v.pause(); v.controls = true; }
+}
+</script>
+</body>
+</html>

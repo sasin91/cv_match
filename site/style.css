@@ -1,0 +1,160 @@
+/* The fonts are served from this site, not from Google (OFL; licences in fonts/). */
+@font-face { font-family: "Bricolage Grotesque"; src: url(fonts/bricolage-grotesque-700.woff2) format("woff2"); font-weight: 600 700; font-display: swap; }
+@font-face { font-family: "Figtree"; src: url(fonts/figtree-400.woff2) format("woff2"); font-weight: 400 500; font-display: swap; }
+@font-face { font-family: "Figtree"; src: url(fonts/figtree-600.woff2) format("woff2"); font-weight: 600 700; font-display: swap; }
+@font-face { font-family: "Caveat"; src: url(fonts/caveat-500.woff2) format("woff2"); font-weight: 500; font-display: swap; }
+/* Layout: one calm column of paper-toned sections, the digest as the proof, flat pine/marigold drawings as the only ornament. Nordic identity: cool paper, navy ink, Bricolage Grotesque headings. */
+:root {
+  --bg: #eef1ef;      /* cool Nordic paper */
+  --paper: #f9fbfa;   /* letter and cards */
+  --ink: #142430;     /* navy ink */
+  --soft: #526270;
+  --line: #d5dddb;
+  --rust: #1f5c8a;    /* links and handwriting: fjord blue (name kept from the oat version) */
+  --sage: #2e6b5b;    /* pine: drawings, good scores, the accent */
+  --clay: #e2a33b;    /* marigold: drawings, warmth */
+  --wash: #dee7e3;    /* drawing ground */
+  --dove: #ffffff; --dove-line: #142430;  /* the dove stays light in both themes */
+  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --sans: "Figtree", system-ui, "Segoe UI", sans-serif;
+  --hand: "Caveat", "Segoe Print", cursive;
+}
+@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
+  --bg: #0f1b24; --paper: #16252f; --ink: #e6eef0; --soft: #93a6b1; --line: #263844;
+  --rust: #7db6e3; --sage: #6fb59c; --clay: #f0b952; --wash: #1b2c37; --dove: #eef3f4; --dove-line: #0b141b; color-scheme: dark } }
+:root[data-theme="dark"] {
+  --bg: #0f1b24; --paper: #16252f; --ink: #e6eef0; --soft: #93a6b1; --line: #263844;
+  --rust: #7db6e3; --sage: #6fb59c; --clay: #f0b952; --wash: #1b2c37; --dove: #eef3f4; --dove-line: #0b141b; color-scheme: dark }
+
+html { scroll-behavior: smooth; }
+body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 var(--sans); -webkit-text-size-adjust: 100%; }
+img, video { max-width: 100%; height: auto; display: block; }
+.col { max-width: 1040px; margin: 0 auto;
+  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
+section { padding-block: 64px; border-top: 1px solid var(--line); }
+h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -0.025em; text-wrap: balance; margin: 0; }
+h1 { font-size: clamp(40px, 6.4vw, 72px); line-height: 1.0; }
+h1 em, h2 em { font-style: normal; color: var(--sage); }
+h2 { font-size: clamp(28px, 3.8vw, 40px); line-height: 1.1; }
+h3 { font-size: 21px; line-height: 1.25; }
+p { margin: 0; }
+.lede { font-size: 20px; color: var(--soft); max-width: 40ch; }
+.sans { font-family: var(--sans); }
+.small { font: 14px/1.5 var(--sans); color: var(--soft); }
+.eyebrow { font: 600 12px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--soft); }
+.btn { display: inline-block; font: 600 15px var(--sans); background: var(--ink); color: var(--bg); padding: 13px 22px; border-radius: 999px; text-decoration: none; }
+.btn:focus-visible, a:focus-visible { outline: 2px solid var(--rust); outline-offset: 3px; }
+a { color: var(--rust); }
+svg { display: block; max-width: 100%; height: auto; }
+.split { display: grid; grid-template-columns: 1.1fr 1fr; gap: 48px; align-items: center; }
+#phone { align-items: start; }
+.split > * { min-width: 0; }
+
+/* nav */
+nav { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding-block: 22px; font: 15px var(--sans); color: var(--soft); }
+nav strong { font: 700 24px var(--display); letter-spacing: -0.02em; color: var(--ink); }
+nav .links { display: flex; gap: 20px; flex-wrap: wrap; }
+nav .links a { color: var(--soft); text-decoration: none; }
+nav .links a:hover { color: var(--ink); }
+
+/* hero */
+.hero { padding-block: 32px 72px; border-top: 0; }
+.hero .stack { display: grid; gap: 22px; justify-items: start; }
+
+/* digest (A4's examples, in paper) */
+.digest { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; display: grid; gap: 4px; box-shadow: 0 20px 40px -32px rgba(60,40,20,.5); }
+.digest h3 { font-size: 22px; }
+.digest .meta { font: 14px var(--sans); color: var(--soft); margin-bottom: 8px; font-variant-numeric: tabular-nums; }
+.job { display: grid; grid-template-columns: 1fr auto; gap: 2px 16px; padding-block: 14px; border-top: 1px solid var(--line); }
+.job b { font-weight: 600; font-size: 17px; }
+.job .why { font: 14px var(--sans); color: var(--soft); }
+.job .score { grid-row: span 2; align-self: center; font: 700 30px var(--display); color: var(--sage); font-variant-numeric: tabular-nums; }
+.job .score.mid { color: var(--clay); }
+.hand { font: 500 22px var(--hand); color: var(--rust); }
+
+/* features: each tile its own little scene, ground shape and handwritten note */
+.feats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 48px 36px; margin-top: 44px; }
+.feat { display: grid; gap: 10px; align-content: start; min-width: 0; }
+.feat .scene { position: relative; }
+.feat .scene svg { width: 100%; max-width: 260px; }
+.feat:nth-child(odd) .scene svg { transform: rotate(-1.5deg); }
+.feat:nth-child(even) .scene svg { transform: rotate(1.2deg); }
+.feat .note { position: absolute; right: 4px; bottom: 2px; font: 500 21px/1 var(--hand); color: var(--rust); transform: rotate(-4deg); padding: 2px 6px; }
+.feat:nth-child(even) .note { transform: rotate(3deg); left: 4px; right: auto; }
+.feat p { font-size: 16px; color: var(--soft); }
+
+/* letter: a Danish application letter on paper, with a dove to carry it */
+.letter { position: relative; background: var(--paper); border: 1px solid var(--line); padding: 40px 36px 30px; transform: rotate(-0.8deg); box-shadow: 0 1px 0 var(--line), 0 26px 40px -28px rgba(60,40,20,.6); font-size: 15.5px; line-height: 1.6; }
+.letter .clip { position: absolute; top: -18px; left: 34px; width: 26px; }
+.letter .from { text-align: right; font: 13.5px/1.5 var(--sans); color: var(--soft); }
+.letter .from b { font: 700 17px var(--display); color: var(--ink); display: block; }
+.letter .to { margin-top: 18px; font: 13.5px/1.5 var(--sans); color: var(--soft); }
+.letter .date { text-align: right; margin-top: 4px; font: 13.5px var(--sans); color: var(--soft); }
+.letter .subject { margin: 22px 0 14px; font-weight: 600; font-size: 18px; }
+.letter p { margin-bottom: 10px; }
+.letter .sign { font: 500 32px/1 var(--hand); color: var(--rust); margin: 6px 0 2px; }
+.letter .name { font: 13.5px var(--sans); color: var(--soft); }
+.letter .att { margin-top: 16px; padding-top: 10px; border-top: 1px dashed var(--line); font: 13px var(--sans); color: var(--soft); display: flex; gap: 14px; flex-wrap: wrap; }
+.dove { margin-top: 8px; }
+.dove svg { width: 100%; max-width: 380px; }
+.dove figcaption { font: 500 21px var(--hand); color: var(--rust); margin-top: -6px; }
+.versions { font: 14px var(--sans); color: var(--soft); display: grid; gap: 4px; font-variant-numeric: tabular-nums; }
+
+/* phone: desktop and phone over a private Tailscale line */
+.phone-art svg { width: 100%; max-width: 460px; }
+.whys { display: grid; gap: 14px; margin-top: 6px; }
+.whys > div { display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: start; }
+.whys svg { width: 22px; margin-top: 3px; }
+.whys b { font-weight: 600; }
+.whys p { font-size: 16px; color: var(--soft); }
+.soon { display: inline-block; font: 600 12px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--clay); border: 1.5px solid var(--clay); border-radius: 999px; padding: 3px 10px; justify-self: start; }
+
+/* next pages */
+.next { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 20px; margin-top: 32px; }
+.next a { display: grid; gap: 6px; background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 20px 22px; color: var(--ink); text-decoration: none; }
+.next a:hover { border-color: var(--sage); }
+.next a b { font: 700 20px var(--display); letter-spacing: -0.02em; }
+.next a span { color: var(--soft); font-size: 15px; }
+.next a i { font-style: normal; color: var(--rust); font-weight: 600; font-size: 15px; }
+nav a.home { text-decoration: none; }
+nav .links a[aria-current] { color: var(--ink); font-weight: 600; }
+.page-head { padding-block: 24px 8px; border-top: 0; display: grid; gap: 14px; }
+.page-head h1 { font-size: clamp(36px, 5vw, 56px); line-height: 1.05; }
+
+/* real screens */
+.screens { display: grid; gap: 28px; margin-top: 36px; }
+.frame { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 8px; box-shadow: 0 24px 44px -34px rgba(10,30,40,.55); }
+.frame img, .frame video { border-radius: 8px; width: 100%; aspect-ratio: 1266 / 793; object-fit: cover; background: var(--wash); }
+figure { margin: 0; }
+figcaption.cap { margin-top: 10px; font-size: 15px; color: var(--soft); }
+figcaption.cap b { color: var(--ink); font-weight: 600; }
+.clips { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
+.gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: 28px; }
+.gallery > *, .clips > * { min-width: 0; }
+.phones { display: flex; gap: 18px; margin-top: 28px; justify-content: center; }
+.phones figure { flex: 1 1 0; min-width: 0; max-width: 220px; }
+.phones img { width: 100%; aspect-ratio: 540 / 1200; border-radius: 22px; border: 6px solid var(--ink); background: var(--wash); }
+
+/* faq */
+.faq { display: grid; gap: 0; margin-top: 28px; max-width: 760px; }
+.faq details { border-top: 1px solid var(--line); padding-block: 18px; }
+.faq details:last-child { border-bottom: 1px solid var(--line); }
+.faq summary { cursor: pointer; font: 600 19px/1.35 var(--display); list-style: none; display: flex; justify-content: space-between; gap: 16px; }
+.faq summary::-webkit-details-marker { display: none; }
+.faq summary::after { content: "+"; font-family: var(--sans); color: var(--soft); }
+.faq details[open] summary::after { content: "–"; }
+.faq details p { margin-top: 10px; color: var(--soft); max-width: 62ch; }
+
+footer { padding-block: 40px 56px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font: 14px var(--sans); color: var(--soft); }
+
+@media (max-width: 780px) {
+
+  .clips, .gallery { grid-template-columns: 1fr; }
+  .split { grid-template-columns: 1fr; gap: 32px; }
+  .feats { grid-template-columns: 1fr; gap: 28px; }
+  .letter { transform: none; padding: 32px 20px 24px; }
+  .feat .scene svg { max-width: 300px; }
+  section { padding-block: 48px; }
+}
+@media (max-width: 520px) { nav .links { display: none; } }
+@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }

@@ -1,0 +1,184 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>How JobFinder works</title>
+<meta name="description" content="Screens and clips from a real JobFinder: the scan, why a job matched, the letter it drafts, and what it does in the background.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#eef1ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1b24" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="How JobFinder works">
+<meta property="og:description" content="Finds the jobs you'd have missed, tells you why they fit, and starts the application. Free, and it runs on your own PC.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="media/dashboard-light.png">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/bricolage-grotesque-700.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/figtree-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="col">
+  <nav><a class="home" href="./"><strong>JobFinder</strong></a><span class="links"><a href="tour.html" aria-current="page">How it works</a><a href="phone.html">Phone</a><a href="questions.html">Questions</a><a href="https://github.com/sasin91/jobfinder">GitHub</a></span></nav>
+  <!-- The real app, in the reader's own light or dark -->
+  <section id="see" class="page-head" style="border-top:0">
+    <span class="eyebrow">The real thing</span>
+    <h1>This is the app, <em>on a real job hunt.</em></h1>
+    <p class="lede" style="margin-top:16px">Screens from the author's own JobFinder, in light or dark to match your system.</p>
+    <div class="screens">
+      <div class="clips">
+        <figure><div class="frame"><video autoplay muted loop playsinline preload="metadata" aria-label="A scan starting: the task manager fills with the job scan and a browser reading LinkedIn" width="1266" height="793"><source src="media/scan-dark.webm" type="video/webm" media="(prefers-color-scheme: dark)"><source src="media/scan-light.webm" type="video/webm"></video></div><figcaption class="cap"><b>Scan now.</b> The task manager shows what's being read, and for how long.</figcaption></figure>
+        <figure><div class="frame"><video autoplay muted loop playsinline preload="metadata" aria-label="Scrolling through a match's requirements, each with a verdict and the line from the CV that shows it" width="1266" height="793"><source src="media/match-why-dark.webm" type="video/webm" media="(prefers-color-scheme: dark)"><source src="media/match-why-light.webm" type="video/webm"></video></div><figcaption class="cap"><b>Why it matched.</b> Every requirement, with the line from your CV that shows it.</figcaption></figure>
+      </div>
+      <figure><div class="frame"><picture><source srcset="media/dashboard-dark.png" media="(prefers-color-scheme: dark)"><img src="media/dashboard-light.png" width="1266" height="793" loading="lazy" alt="The overview: status of the AI model, profile and job scan, counts of matches, and the best on the shortlist"></picture></div><figcaption class="cap"><b>Overview.</b> What's set up, what's running, and the best on your shortlist.</figcaption></figure>
+      <div class="gallery">
+        <figure><div class="frame"><picture><source srcset="media/saved-matches-dark.png" media="(prefers-color-scheme: dark)"><img src="media/saved-matches-light.png" width="1266" height="793" loading="lazy" alt="Saved matches on the shortlist, each with its score"></picture></div><figcaption class="cap"><b>Saved matches.</b> Your shortlist, with scores.</figcaption></figure>
+        <figure><div class="frame"><picture><source srcset="media/match-why-dark.png" media="(prefers-color-scheme: dark)"><img src="media/match-why-light.png" width="1266" height="793" loading="lazy" alt="One match: its requirements and the verdict on each"></picture></div><figcaption class="cap"><b>One match.</b> Met, partly met or missing, and why.</figcaption></figure>
+        <figure><div class="frame"><picture><source srcset="media/job-searches-dark.png" media="(prefers-color-scheme: dark)"><img src="media/job-searches-light.png" width="1266" height="793" loading="lazy" alt="Job searches: what to look for, where, and which sites to read"></picture></div><figcaption class="cap"><b>Job searches.</b> What to look for, and where.</figcaption></figure>
+        <figure><div class="frame"><picture><source srcset="media/task-manager-dark.png" media="(prefers-color-scheme: dark)"><img src="media/task-manager-light.png" width="1266" height="793" loading="lazy" alt="The task manager during a scan"></picture></div><figcaption class="cap"><b>Task manager.</b> Pause or stop anything it's doing.</figcaption></figure>
+        <figure><div class="frame"><picture><source srcset="media/learned-terms-dark.png" media="(prefers-color-scheme: dark)"><img src="media/learned-terms-light.png" width="1266" height="793" loading="lazy" alt="Learned terms: a skill term and the words it has learned to match it with"></picture></div><figcaption class="cap"><b>Learned terms.</b> It learns that two words mean the same skill.</figcaption></figure>
+        <figure><div class="frame"><picture><source srcset="media/notifications-dark.png" media="(prefers-color-scheme: dark)"><img src="media/notifications-light.png" width="1266" height="793" loading="lazy" alt="The notifications drawer with new matches"></picture></div><figcaption class="cap"><b>Notifications.</b> New matches, without checking.</figcaption></figure>
+      </div>
+    </div>
+  </section>
+
+  <!-- The letter, and the dove that carries it -->
+  <section class="split">
+    <article class="letter" aria-label="Example application letter">
+      <svg class="clip" viewBox="0 0 26 64" aria-hidden="true"><path d="M8 58 V12 a5 5 0 0 1 10 0 V50 a9 9 0 0 1 -18 0 V16" fill="none" stroke="var(--soft)" stroke-width="3" stroke-linecap="round"/></svg>
+      <div class="from"><b>Sofie Andersen</b>Søndergade 12, 2. tv.<br>8000 Aarhus C<br>20 45 67 89</div>
+      <div class="to">Nordlager A/S<br>Att.: Mette Holm<br>Industrivej 4<br>8200 Aarhus N</div>
+      <div class="date">Aarhus, 3. november 2026</div>
+      <p class="subject">Ansøgning: Lagerkoordinator</p>
+      <p>Kære Mette Holm</p>
+      <p>I søger en lagerkoordinator, der kender SAP og kan holde styr på et travlt lager. Det har jeg gjort de sidste fire år hos en grossist i Hasselager, hvor jeg planlagde vagter for tolv kolleger og tog mig af varemodtagelsen.</p>
+      <p>Jeg har truckcertifikat B, og jeg er vant til nattevagter i højsæsonen. Jeg vil rigtig gerne fortælle mere om, hvad jeg kan bidrage med hos Nordlager.</p>
+      <p>Med venlig hilsen</p>
+      <div class="sign">Sofie Andersen</div>
+      <div class="name">Sofie Andersen</div>
+      <div class="att"><span>Bilag: CV (tilpasset), 1 side</span><span>Version 3</span></div>
+    </article>
+    <div style="display:grid;gap:16px">
+      <span class="eyebrow">The blank page, already started</span>
+      <h2>A letter written <em>for this job</em>, not for every job.</h2>
+      <p class="lede">It uses what the post asks for and what your CV shows. Ask for another go and the old one is kept, so you can always go back.</p>
+      <div class="versions"><span>Version 3 · today 16:40 · "shorter, mention the night shifts"</span><span>Version 2 · today 16:31</span><span>Version 1 · today 16:28</span></div>
+      <figure class="dove">
+        <svg viewBox="0 0 320 190" role="img" aria-label="A white dove flying with a sealed envelope hanging from its beak">
+          <ellipse cx="60" cy="40" rx="34" ry="12" fill="var(--wash)"/>
+          <ellipse cx="270" cy="168" rx="40" ry="12" fill="var(--wash)"/>
+          <path d="M8 176 C 50 170, 60 140, 86 126" fill="none" stroke="var(--soft)" stroke-width="2.5" stroke-dasharray="2 9" stroke-linecap="round"/>
+          <path d="M124 118 L 84 102 L 94 120 L 80 134 L 126 128 Z" fill="var(--dove)" stroke="var(--dove-line)" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M120 112 C 140 80, 200 80, 222 100 C 236 112, 238 126, 226 132 C 200 148, 150 146, 120 130 Z" fill="var(--dove)" stroke="var(--dove-line)" stroke-width="2.5"/>
+          <circle cx="236" cy="92" r="15" fill="var(--dove)" stroke="var(--dove-line)" stroke-width="2.5"/>
+          <path d="M249 87 L 264 92 L 249 98 Z" fill="var(--clay)"/>
+          <circle cx="240" cy="88" r="2.4" fill="var(--dove-line)"/>
+          <path d="M150 106 C 136 74, 142 40, 164 16 C 170 30, 176 30, 182 14 C 190 30, 196 30, 206 18 C 210 32, 216 32, 226 26 C 220 58, 206 86, 192 106 Z" fill="var(--dove)" stroke="var(--dove-line)" stroke-width="2.5" stroke-linejoin="round"/>
+          <path d="M164 92 C 164 66, 170 44, 178 28 M178 96 C 182 72, 190 50, 200 34 M190 100 C 198 78, 208 58, 218 40" fill="none" stroke="var(--dove-line)" stroke-width="1.6" stroke-opacity=".45" stroke-linecap="round"/>
+          <path d="M262 94 L 266 132" stroke="var(--dove-line)" stroke-width="1.6"/>
+          <g transform="rotate(8 268 150)">
+            <rect x="244" y="132" width="50" height="34" rx="3" fill="var(--dove)" stroke="var(--dove-line)" stroke-width="2"/>
+            <path d="M244 134 L 269 152 L 294 134" fill="none" stroke="var(--dove-line)" stroke-width="2" stroke-linejoin="round"/>
+            <circle cx="269" cy="152" r="5" fill="var(--rust)"/>
+          </g>
+        </svg>
+        <figcaption>Tailor-made résumés and applications, ready for delivery.</figcaption>
+      </figure>
+    </div>
+  </section>
+
+  <section>
+    <span class="eyebrow">And also</span>
+    <h2 style="margin-top:12px">The parts you don't see.</h2>
+    <div class="feats">
+      <div class="feat">
+        <div class="scene">
+          <svg viewBox="0 0 240 160" aria-hidden="true">
+            <path d="M30 96 c-8 -46 40 -80 92 -74 c52 6 96 30 88 72 c-8 44 -60 58 -108 52 c-40 -4 -66 -20 -72 -50 z" fill="var(--wash)"/>
+            <rect x="80" y="30" width="70" height="118" rx="4" fill="var(--clay)"/>
+            <rect x="88" y="40" width="54" height="44" rx="3" fill="none" stroke="var(--paper)" stroke-opacity=".5" stroke-width="3"/>
+            <rect x="88" y="92" width="54" height="46" rx="3" fill="none" stroke="var(--paper)" stroke-opacity=".5" stroke-width="3"/>
+            <circle cx="138" cy="90" r="5" fill="var(--ink)"/>
+            <circle cx="176" cy="90" r="13" fill="none" stroke="var(--ink)" stroke-width="6"/>
+            <path d="M163 90 h-22 m6 0 v8 m8 -8 v6" stroke="var(--ink)" stroke-width="6" stroke-linecap="round"/>
+            <rect x="160" y="40" width="38" height="18" rx="4" fill="var(--sage)"/>
+            <text x="179" y="53" text-anchor="middle" font-family="Figtree, sans-serif" font-size="11" font-weight="600" fill="var(--paper)">IN</text>
+          </svg>
+          <span class="note">signed in as you</span>
+        </div>
+        <h3>Reads the sites you sign in to</h3>
+        <p>LinkedIn and Indeed hide many jobs behind a login. JobFinder opens them in its own browser on your PC, signed in as you, slowly and politely.</p>
+      </div>
+      <div class="feat">
+        <div class="scene">
+          <svg viewBox="0 0 240 160" aria-hidden="true">
+            <path d="M34 92 c-6 -44 38 -76 88 -72 c54 4 92 34 86 74 c-6 42 -56 56 -104 50 c-38 -4 -64 -22 -70 -52 z" fill="var(--wash)"/>
+            <rect x="56" y="34" width="104" height="112" rx="4" fill="var(--paper)" stroke="var(--line)" stroke-width="2" transform="rotate(-5 108 90)"/>
+            <g transform="rotate(-5 108 90)">
+              <rect x="68" y="48" width="46" height="7" rx="3" fill="var(--soft)"/>
+              <rect x="68" y="64" width="78" height="4" rx="2" fill="var(--line)"/>
+              <rect x="68" y="74" width="64" height="4" rx="2" fill="var(--line)"/>
+              <rect x="68" y="84" width="72" height="4" rx="2" fill="var(--line)"/>
+              <g transform="rotate(-10 104 118)">
+                <rect x="70" y="104" width="70" height="26" rx="4" fill="none" stroke="var(--sage)" stroke-width="3"/>
+                <text x="105" y="122" text-anchor="middle" font-family="Figtree, sans-serif" font-size="12" font-weight="700" letter-spacing="1" fill="var(--sage)">LOGGET ✓</text>
+              </g>
+            </g>
+            <g transform="rotate(24 176 70)">
+              <rect x="164" y="30" width="24" height="16" rx="8" fill="var(--ink)"/>
+              <rect x="171" y="44" width="10" height="24" fill="var(--ink)"/>
+              <rect x="154" y="66" width="44" height="14" rx="3" fill="var(--ink)"/>
+              <rect x="156" y="80" width="40" height="7" rx="2" fill="var(--clay)"/>
+            </g>
+            <path d="M196 104 l8 4 M192 114 l10 0 M196 94 l7 -3" stroke="var(--clay)" stroke-width="3" stroke-linecap="round"/>
+            <path d="M38 34 l4 10 l10 4 l-10 4 l-4 10 l-4 -10 l-10 -4 l10 -4 z" fill="var(--clay)"/>
+          </svg>
+          <span class="note">a-kasse, sorted</span>
+        </div>
+        <h3>Fills in your joblog</h3>
+        <p>On dagpenge? The Jobnet extension takes the job, the date and your PDFs from JobFinder, so the a-kasse paperwork takes seconds.</p>
+      </div>
+      <div class="feat">
+        <div class="scene">
+          <svg viewBox="0 0 240 160" aria-hidden="true">
+            <circle cx="120" cy="84" r="72" fill="var(--wash)"/>
+            <path d="M178 50 a9 9 0 0 1 2 -17 a13 13 0 0 1 25 -3 a10 10 0 0 1 4 20 z" fill="var(--bg)" stroke="var(--soft)" stroke-width="2.5" stroke-dasharray="4 4" stroke-linejoin="round"/>
+            <path d="M176 22 l36 34" stroke="var(--clay)" stroke-width="4" stroke-linecap="round"/>
+            <rect x="52" y="40" width="118" height="80" rx="8" fill="var(--ink)"/>
+            <rect x="60" y="48" width="102" height="64" rx="3" fill="var(--paper)"/>
+            <circle cx="80" cy="66" r="9" fill="var(--sage)"/>
+            <rect x="96" y="60" width="50" height="6" rx="3" fill="var(--soft)"/>
+            <rect x="96" y="70" width="38" height="4" rx="2" fill="var(--line)"/>
+            <rect x="72" y="84" width="76" height="4" rx="2" fill="var(--line)"/>
+            <rect x="72" y="94" width="62" height="4" rx="2" fill="var(--line)"/>
+            <rect x="100" y="120" width="22" height="14" fill="var(--ink)"/>
+            <rect x="84" y="132" width="54" height="7" rx="3" fill="var(--ink)"/>
+            <g transform="rotate(10 168 112)">
+              <path d="M156 102 v-10 a12 12 0 0 1 24 0 v10" fill="none" stroke="var(--ink)" stroke-width="6"/>
+              <rect x="148" y="100" width="40" height="34" rx="6" fill="var(--clay)" stroke="var(--ink)" stroke-width="3"/>
+              <circle cx="168" cy="114" r="4" fill="var(--ink)"/>
+              <rect x="166" y="116" width="4" height="9" rx="2" fill="var(--ink)"/>
+            </g>
+          </svg>
+          <span class="note">home, not the cloud</span>
+        </div>
+        <h3>Stays on your PC</h3>
+        <p>It can run its own AI model, so your CV never has to leave your computer. No subscriptions required.</p>
+      </div>
+    </div>
+  </section>
+
+  <section><div class="next"><a href="phone.html"><b>The phone app</b><span>Your shortlist in your pocket, over a private line.</span><i>Read more →</i></a><a href="questions.html"><b>Questions</b><span>Why not ChatGPT? Is my CV sent anywhere? Is it free?</span><i>Read more →</i></a></div></section>
+  <footer id="download">
+    <span>JobFinder · free and open source · Windows 11 and Linux<br>Made by Jonas Kerwin Hansen, built with help from Claude.</span>
+    <span style="display:flex;gap:20px;flex-wrap:wrap"><a href="https://github.com/sasin91/jobfinder/releases/latest">Download</a><a href="https://github.com/sasin91/jobfinder">Source on GitHub</a></span>
+  </footer>
+</div>
+<script>
+// With reduced motion asked for, the clips wait for a click instead of playing on their own.
+if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  for (const v of document.querySelectorAll('video')) { v.removeAttribute('autoplay'); v.pause(); v.controls = true; }
+}
+</script>
+</body>
+</html>

@@ -15,161 +15,11 @@
 <link rel="icon" href="favicon.svg" type="image/svg+xml">
 <link rel="preload" href="fonts/bricolage-grotesque-700.woff2" as="font" type="font/woff2" crossorigin>
 <link rel="preload" href="fonts/figtree-400.woff2" as="font" type="font/woff2" crossorigin>
-<style>
-/* The fonts are served from this site, not from Google (OFL; licences in fonts/). */
-@font-face { font-family: "Bricolage Grotesque"; src: url(fonts/bricolage-grotesque-700.woff2) format("woff2"); font-weight: 600 700; font-display: swap; }
-@font-face { font-family: "Figtree"; src: url(fonts/figtree-400.woff2) format("woff2"); font-weight: 400 500; font-display: swap; }
-@font-face { font-family: "Figtree"; src: url(fonts/figtree-600.woff2) format("woff2"); font-weight: 600 700; font-display: swap; }
-@font-face { font-family: "Caveat"; src: url(fonts/caveat-500.woff2) format("woff2"); font-weight: 500; font-display: swap; }
-/* Layout: one calm column of paper-toned sections, the digest as the proof, flat pine/marigold drawings as the only ornament. Nordic identity: cool paper, navy ink, Bricolage Grotesque headings. */
-:root {
-  --bg: #eef1ef;      /* cool Nordic paper */
-  --paper: #f9fbfa;   /* letter and cards */
-  --ink: #142430;     /* navy ink */
-  --soft: #526270;
-  --line: #d5dddb;
-  --rust: #1f5c8a;    /* links and handwriting: fjord blue (name kept from the oat version) */
-  --sage: #2e6b5b;    /* pine: drawings, good scores, the accent */
-  --clay: #e2a33b;    /* marigold: drawings, warmth */
-  --wash: #dee7e3;    /* drawing ground */
-  --dove: #ffffff; --dove-line: #142430;  /* the dove stays light in both themes */
-  --display: "Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
-  --sans: "Figtree", system-ui, "Segoe UI", sans-serif;
-  --hand: "Caveat", "Segoe Print", cursive;
-}
-@media (prefers-color-scheme: dark) { :root:not([data-theme="light"]) {
-  --bg: #0f1b24; --paper: #16252f; --ink: #e6eef0; --soft: #93a6b1; --line: #263844;
-  --rust: #7db6e3; --sage: #6fb59c; --clay: #f0b952; --wash: #1b2c37; --dove: #eef3f4; --dove-line: #0b141b; color-scheme: dark } }
-:root[data-theme="dark"] {
-  --bg: #0f1b24; --paper: #16252f; --ink: #e6eef0; --soft: #93a6b1; --line: #263844;
-  --rust: #7db6e3; --sage: #6fb59c; --clay: #f0b952; --wash: #1b2c37; --dove: #eef3f4; --dove-line: #0b141b; color-scheme: dark }
-
-html { scroll-behavior: smooth; }
-body { margin: 0; background: var(--bg); color: var(--ink); font: 17px/1.6 var(--sans); -webkit-text-size-adjust: 100%; }
-img, video { max-width: 100%; height: auto; display: block; }
-.col { max-width: 1040px; margin: 0 auto;
-  padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px)); }
-section { padding-block: 64px; border-top: 1px solid var(--line); }
-h1, h2, h3 { font-family: var(--display); font-weight: 700; letter-spacing: -0.025em; text-wrap: balance; margin: 0; }
-h1 { font-size: clamp(40px, 6.4vw, 72px); line-height: 1.0; }
-h1 em, h2 em { font-style: normal; color: var(--sage); }
-h2 { font-size: clamp(28px, 3.8vw, 40px); line-height: 1.1; }
-h3 { font-size: 21px; line-height: 1.25; }
-p { margin: 0; }
-.lede { font-size: 20px; color: var(--soft); max-width: 40ch; }
-.sans { font-family: var(--sans); }
-.small { font: 14px/1.5 var(--sans); color: var(--soft); }
-.eyebrow { font: 600 12px var(--sans); letter-spacing: .1em; text-transform: uppercase; color: var(--soft); }
-.btn { display: inline-block; font: 600 15px var(--sans); background: var(--ink); color: var(--bg); padding: 13px 22px; border-radius: 999px; text-decoration: none; }
-.btn:focus-visible, a:focus-visible { outline: 2px solid var(--rust); outline-offset: 3px; }
-a { color: var(--rust); }
-svg { display: block; max-width: 100%; height: auto; }
-.split { display: grid; grid-template-columns: 1.1fr 1fr; gap: 48px; align-items: center; }
-#phone { align-items: start; }
-.split > * { min-width: 0; }
-
-/* nav */
-nav { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; padding-block: 22px; font: 15px var(--sans); color: var(--soft); }
-nav strong { font: 700 24px var(--display); letter-spacing: -0.02em; color: var(--ink); }
-nav .links { display: flex; gap: 20px; flex-wrap: wrap; }
-nav .links a { color: var(--soft); text-decoration: none; }
-nav .links a:hover { color: var(--ink); }
-
-/* hero */
-.hero { padding-block: 32px 72px; border-top: 0; }
-.hero .stack { display: grid; gap: 22px; justify-items: start; }
-
-/* digest (A4's examples, in paper) */
-.digest { background: var(--paper); border: 1px solid var(--line); border-radius: 16px; padding: 22px 24px; display: grid; gap: 4px; box-shadow: 0 20px 40px -32px rgba(60,40,20,.5); }
-.digest h3 { font-size: 22px; }
-.digest .meta { font: 14px var(--sans); color: var(--soft); margin-bottom: 8px; font-variant-numeric: tabular-nums; }
-.job { display: grid; grid-template-columns: 1fr auto; gap: 2px 16px; padding-block: 14px; border-top: 1px solid var(--line); }
-.job b { font-weight: 600; font-size: 17px; }
-.job .why { font: 14px var(--sans); color: var(--soft); }
-.job .score { grid-row: span 2; align-self: center; font: 700 30px var(--display); color: var(--sage); font-variant-numeric: tabular-nums; }
-.job .score.mid { color: var(--clay); }
-.hand { font: 500 22px var(--hand); color: var(--rust); }
-
-/* features: each tile its own little scene, ground shape and handwritten note */
-.feats { display: grid; grid-template-columns: repeat(3, 1fr); gap: 48px 36px; margin-top: 44px; }
-.feat { display: grid; gap: 10px; align-content: start; min-width: 0; }
-.feat .scene { position: relative; }
-.feat .scene svg { width: 100%; max-width: 260px; }
-.feat:nth-child(odd) .scene svg { transform: rotate(-1.5deg); }
-.feat:nth-child(even) .scene svg { transform: rotate(1.2deg); }
-.feat .note { position: absolute; right: 4px; bottom: 2px; font: 500 21px/1 var(--hand); color: var(--rust); transform: rotate(-4deg); padding: 2px 6px; }
-.feat:nth-child(even) .note { transform: rotate(3deg); left: 4px; right: auto; }
-.feat p { font-size: 16px; color: var(--soft); }
-
-/* letter: a Danish application letter on paper, with a dove to carry it */
-.letter { position: relative; background: var(--paper); border: 1px solid var(--line); padding: 40px 36px 30px; transform: rotate(-0.8deg); box-shadow: 0 1px 0 var(--line), 0 26px 40px -28px rgba(60,40,20,.6); font-size: 15.5px; line-height: 1.6; }
-.letter .clip { position: absolute; top: -18px; left: 34px; width: 26px; }
-.letter .from { text-align: right; font: 13.5px/1.5 var(--sans); color: var(--soft); }
-.letter .from b { font: 700 17px var(--display); color: var(--ink); display: block; }
-.letter .to { margin-top: 18px; font: 13.5px/1.5 var(--sans); color: var(--soft); }
-.letter .date { text-align: right; margin-top: 4px; font: 13.5px var(--sans); color: var(--soft); }
-.letter .subject { margin: 22px 0 14px; font-weight: 600; font-size: 18px; }
-.letter p { margin-bottom: 10px; }
-.letter .sign { font: 500 32px/1 var(--hand); color: var(--rust); margin: 6px 0 2px; }
-.letter .name { font: 13.5px var(--sans); color: var(--soft); }
-.letter .att { margin-top: 16px; padding-top: 10px; border-top: 1px dashed var(--line); font: 13px var(--sans); color: var(--soft); display: flex; gap: 14px; flex-wrap: wrap; }
-.dove { margin-top: 8px; }
-.dove svg { width: 100%; max-width: 380px; }
-.dove figcaption { font: 500 21px var(--hand); color: var(--rust); margin-top: -6px; }
-.versions { font: 14px var(--sans); color: var(--soft); display: grid; gap: 4px; font-variant-numeric: tabular-nums; }
-
-/* phone: desktop and phone over a private Tailscale line */
-.phone-art svg { width: 100%; max-width: 460px; }
-.whys { display: grid; gap: 14px; margin-top: 6px; }
-.whys > div { display: grid; grid-template-columns: 26px 1fr; gap: 10px; align-items: start; }
-.whys svg { width: 22px; margin-top: 3px; }
-.whys b { font-weight: 600; }
-.whys p { font-size: 16px; color: var(--soft); }
-.soon { display: inline-block; font: 600 12px var(--sans); letter-spacing: .06em; text-transform: uppercase; color: var(--clay); border: 1.5px solid var(--clay); border-radius: 999px; padding: 3px 10px; justify-self: start; }
-
-/* real screens */
-.screens { display: grid; gap: 28px; margin-top: 36px; }
-.frame { background: var(--paper); border: 1px solid var(--line); border-radius: 14px; padding: 8px; box-shadow: 0 24px 44px -34px rgba(10,30,40,.55); }
-.frame img, .frame video { border-radius: 8px; width: 100%; aspect-ratio: 1266 / 793; object-fit: cover; background: var(--wash); }
-figure { margin: 0; }
-figcaption.cap { margin-top: 10px; font-size: 15px; color: var(--soft); }
-figcaption.cap b { color: var(--ink); font-weight: 600; }
-.clips { display: grid; grid-template-columns: 1fr 1fr; gap: 28px; }
-.gallery { display: grid; grid-template-columns: repeat(2, 1fr); gap: 28px; }
-.gallery > *, .clips > * { min-width: 0; }
-.phones { display: flex; gap: 18px; margin-top: 28px; justify-content: center; }
-.phones figure { flex: 1 1 0; min-width: 0; max-width: 220px; }
-.phones img { width: 100%; aspect-ratio: 540 / 1200; border-radius: 22px; border: 6px solid var(--ink); background: var(--wash); }
-
-/* faq */
-.faq { display: grid; gap: 0; margin-top: 28px; max-width: 760px; }
-.faq details { border-top: 1px solid var(--line); padding-block: 18px; }
-.faq details:last-child { border-bottom: 1px solid var(--line); }
-.faq summary { cursor: pointer; font: 600 19px/1.35 var(--display); list-style: none; display: flex; justify-content: space-between; gap: 16px; }
-.faq summary::-webkit-details-marker { display: none; }
-.faq summary::after { content: "+"; font-family: var(--sans); color: var(--soft); }
-.faq details[open] summary::after { content: "–"; }
-.faq details p { margin-top: 10px; color: var(--soft); max-width: 62ch; }
-
-footer { padding-block: 40px 56px; border-top: 1px solid var(--line); display: flex; justify-content: space-between; gap: 16px; flex-wrap: wrap; font: 14px var(--sans); color: var(--soft); }
-
-@media (max-width: 780px) {
-  .clips, .gallery { grid-template-columns: 1fr; }
-  .split { grid-template-columns: 1fr; gap: 32px; }
-  .feats { grid-template-columns: 1fr; gap: 28px; }
-  .letter { transform: none; padding: 32px 20px 24px; }
-  .feat .scene svg { max-width: 300px; }
-  section { padding-block: 48px; }
-}
-@media (max-width: 520px) { nav .links { display: none; } }
-@media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
-</style>
+<link rel="stylesheet" href="style.css">
 </head>
 <body>
-
 <div class="col">
-  <nav><strong>JobFinder</strong><span class="links"><a href="#how">How it works</a><a href="#see">See it</a><a href="#phone">Phone</a><a href="#questions">Questions</a><a href="https://github.com/sasin91/jobfinder">GitHub</a></span></nav>
-
+  <nav><a class="home" href="./"><strong>JobFinder</strong></a><span class="links"><a href="tour.html">How it works</a><a href="phone.html">Phone</a><a href="questions.html">Questions</a><a href="https://github.com/sasin91/jobfinder">GitHub</a></span></nav>
   <!-- Hero: A2 type, A5 drawing -->
   <div class="hero split">
     <div class="stack">
@@ -218,12 +68,10 @@ footer { padding-block: 40px 56px; border-top: 1px solid var(--line); display: f
     </div>
   </section>
 
-  <!-- Features: each with its own little scene -->
   <section id="how">
     <span class="eyebrow">What it does for you</span>
     <h2 style="margin-top:12px">The checking, the sorting and the first draft.</h2>
     <div class="feats">
-
       <div class="feat">
         <div class="scene">
           <svg viewBox="0 0 240 160" aria-hidden="true">
@@ -242,7 +90,6 @@ footer { padding-block: 40px 56px; border-top: 1px solid var(--line); display: f
         <h3>Finds the jobs you'd have missed</h3>
         <p>You search for your last job title. JobFinder reads every new post and judges it against your whole CV, so a "planner" job you never searched for still turns up.</p>
       </div>
-
       <div class="feat">
         <div class="scene">
           <svg viewBox="0 0 240 160" aria-hidden="true">
@@ -263,26 +110,6 @@ footer { padding-block: 40px 56px; border-top: 1px solid var(--line); display: f
         <h3>Tells you why</h3>
         <p>Every match lists the post's requirements, which ones you meet and what on your CV shows it. Ten seconds tells you whether it's worth a look.</p>
       </div>
-
-      <div class="feat">
-        <div class="scene">
-          <svg viewBox="0 0 240 160" aria-hidden="true">
-            <path d="M30 96 c-8 -46 40 -80 92 -74 c52 6 96 30 88 72 c-8 44 -60 58 -108 52 c-40 -4 -66 -20 -72 -50 z" fill="var(--wash)"/>
-            <rect x="80" y="30" width="70" height="118" rx="4" fill="var(--clay)"/>
-            <rect x="88" y="40" width="54" height="44" rx="3" fill="none" stroke="var(--paper)" stroke-opacity=".5" stroke-width="3"/>
-            <rect x="88" y="92" width="54" height="46" rx="3" fill="none" stroke="var(--paper)" stroke-opacity=".5" stroke-width="3"/>
-            <circle cx="138" cy="90" r="5" fill="var(--ink)"/>
-            <circle cx="176" cy="90" r="13" fill="none" stroke="var(--ink)" stroke-width="6"/>
-            <path d="M163 90 h-22 m6 0 v8 m8 -8 v6" stroke="var(--ink)" stroke-width="6" stroke-linecap="round"/>
-            <rect x="160" y="40" width="38" height="18" rx="4" fill="var(--sage)"/>
-            <text x="179" y="53" text-anchor="middle" font-family="Figtree, sans-serif" font-size="11" font-weight="600" fill="var(--paper)">IN</text>
-          </svg>
-          <span class="note">signed in as you</span>
-        </div>
-        <h3>Reads the sites you sign in to</h3>
-        <p>LinkedIn and Indeed hide many jobs behind a login. JobFinder opens them in its own browser on your PC, signed in as you, slowly and politely.</p>
-      </div>
-
       <div class="feat">
         <div class="scene">
           <svg viewBox="0 0 240 160" aria-hidden="true">
@@ -302,215 +129,14 @@ footer { padding-block: 40px 56px; border-top: 1px solid var(--line); display: f
         <h3>Starts the application</h3>
         <p>For any match, it drafts the letter and a résumé tailored to the post. You change what you like and send it yourself.</p>
       </div>
-
-      <div class="feat">
-        <div class="scene">
-          <svg viewBox="0 0 240 160" aria-hidden="true">
-            <path d="M34 92 c-6 -44 38 -76 88 -72 c54 4 92 34 86 74 c-6 42 -56 56 -104 50 c-38 -4 -64 -22 -70 -52 z" fill="var(--wash)"/>
-            <rect x="56" y="34" width="104" height="112" rx="4" fill="var(--paper)" stroke="var(--line)" stroke-width="2" transform="rotate(-5 108 90)"/>
-            <g transform="rotate(-5 108 90)">
-              <rect x="68" y="48" width="46" height="7" rx="3" fill="var(--soft)"/>
-              <rect x="68" y="64" width="78" height="4" rx="2" fill="var(--line)"/>
-              <rect x="68" y="74" width="64" height="4" rx="2" fill="var(--line)"/>
-              <rect x="68" y="84" width="72" height="4" rx="2" fill="var(--line)"/>
-              <g transform="rotate(-10 104 118)">
-                <rect x="70" y="104" width="70" height="26" rx="4" fill="none" stroke="var(--sage)" stroke-width="3"/>
-                <text x="105" y="122" text-anchor="middle" font-family="Figtree, sans-serif" font-size="12" font-weight="700" letter-spacing="1" fill="var(--sage)">LOGGET ✓</text>
-              </g>
-            </g>
-            <g transform="rotate(24 176 70)">
-              <rect x="164" y="30" width="24" height="16" rx="8" fill="var(--ink)"/>
-              <rect x="171" y="44" width="10" height="24" fill="var(--ink)"/>
-              <rect x="154" y="66" width="44" height="14" rx="3" fill="var(--ink)"/>
-              <rect x="156" y="80" width="40" height="7" rx="2" fill="var(--clay)"/>
-            </g>
-            <path d="M196 104 l8 4 M192 114 l10 0 M196 94 l7 -3" stroke="var(--clay)" stroke-width="3" stroke-linecap="round"/>
-            <path d="M38 34 l4 10 l10 4 l-10 4 l-4 10 l-4 -10 l-10 -4 l10 -4 z" fill="var(--clay)"/>
-          </svg>
-          <span class="note">a-kasse, sorted</span>
-        </div>
-        <h3>Fills in your joblog</h3>
-        <p>On dagpenge? The Jobnet extension takes the job, the date and your PDFs from JobFinder, so the a-kasse paperwork takes seconds.</p>
-      </div>
-
-      <div class="feat">
-        <div class="scene">
-          <svg viewBox="0 0 240 160" aria-hidden="true">
-            <circle cx="120" cy="84" r="72" fill="var(--wash)"/>
-            <path d="M178 50 a9 9 0 0 1 2 -17 a13 13 0 0 1 25 -3 a10 10 0 0 1 4 20 z" fill="var(--bg)" stroke="var(--soft)" stroke-width="2.5" stroke-dasharray="4 4" stroke-linejoin="round"/>
-            <path d="M176 22 l36 34" stroke="var(--clay)" stroke-width="4" stroke-linecap="round"/>
-            <rect x="52" y="40" width="118" height="80" rx="8" fill="var(--ink)"/>
-            <rect x="60" y="48" width="102" height="64" rx="3" fill="var(--paper)"/>
-            <circle cx="80" cy="66" r="9" fill="var(--sage)"/>
-            <rect x="96" y="60" width="50" height="6" rx="3" fill="var(--soft)"/>
-            <rect x="96" y="70" width="38" height="4" rx="2" fill="var(--line)"/>
-            <rect x="72" y="84" width="76" height="4" rx="2" fill="var(--line)"/>
-            <rect x="72" y="94" width="62" height="4" rx="2" fill="var(--line)"/>
-            <rect x="100" y="120" width="22" height="14" fill="var(--ink)"/>
-            <rect x="84" y="132" width="54" height="7" rx="3" fill="var(--ink)"/>
-            <g transform="rotate(10 168 112)">
-              <path d="M156 102 v-10 a12 12 0 0 1 24 0 v10" fill="none" stroke="var(--ink)" stroke-width="6"/>
-              <rect x="148" y="100" width="40" height="34" rx="6" fill="var(--clay)" stroke="var(--ink)" stroke-width="3"/>
-              <circle cx="168" cy="114" r="4" fill="var(--ink)"/>
-              <rect x="166" y="116" width="4" height="9" rx="2" fill="var(--ink)"/>
-            </g>
-          </svg>
-          <span class="note">home, not the cloud</span>
-        </div>
-        <h3>Stays on your PC</h3>
-        <p>It can run its own AI model, so your CV never has to leave your computer. No subscriptions required.</p>
-      </div>
-
     </div>
   </section>
 
-
-  <!-- The real app, in the reader's own light or dark -->
-  <section id="see">
-    <span class="eyebrow">The real thing</span>
-    <h2 style="margin-top:12px">This is the app, <em>on a real job hunt.</em></h2>
-    <p class="lede" style="margin-top:16px">Screens from the author's own JobFinder, in light or dark to match your system.</p>
-    <div class="screens">
-      <div class="clips">
-        <figure><div class="frame"><video autoplay muted loop playsinline preload="metadata" aria-label="A scan starting: the task manager fills with the job scan and a browser reading LinkedIn" width="1266" height="793"><source src="media/scan-dark.webm" type="video/webm" media="(prefers-color-scheme: dark)"><source src="media/scan-light.webm" type="video/webm"></video></div><figcaption class="cap"><b>Scan now.</b> The task manager shows what's being read, and for how long.</figcaption></figure>
-        <figure><div class="frame"><video autoplay muted loop playsinline preload="metadata" aria-label="Scrolling through a match's requirements, each with a verdict and the line from the CV that shows it" width="1266" height="793"><source src="media/match-why-dark.webm" type="video/webm" media="(prefers-color-scheme: dark)"><source src="media/match-why-light.webm" type="video/webm"></video></div><figcaption class="cap"><b>Why it matched.</b> Every requirement, with the line from your CV that shows it.</figcaption></figure>
-      </div>
-      <figure><div class="frame"><picture><source srcset="media/dashboard-dark.png" media="(prefers-color-scheme: dark)"><img src="media/dashboard-light.png" width="1266" height="793" loading="lazy" alt="The overview: status of the AI model, profile and job scan, counts of matches, and the best on the shortlist"></picture></div><figcaption class="cap"><b>Overview.</b> What's set up, what's running, and the best on your shortlist.</figcaption></figure>
-      <div class="gallery">
-        <figure><div class="frame"><picture><source srcset="media/saved-matches-dark.png" media="(prefers-color-scheme: dark)"><img src="media/saved-matches-light.png" width="1266" height="793" loading="lazy" alt="Saved matches on the shortlist, each with its score"></picture></div><figcaption class="cap"><b>Saved matches.</b> Your shortlist, with scores.</figcaption></figure>
-        <figure><div class="frame"><picture><source srcset="media/match-why-dark.png" media="(prefers-color-scheme: dark)"><img src="media/match-why-light.png" width="1266" height="793" loading="lazy" alt="One match: its requirements and the verdict on each"></picture></div><figcaption class="cap"><b>One match.</b> Met, partly met or missing, and why.</figcaption></figure>
-        <figure><div class="frame"><picture><source srcset="media/job-searches-dark.png" media="(prefers-color-scheme: dark)"><img src="media/job-searches-light.png" width="1266" height="793" loading="lazy" alt="Job searches: what to look for, where, and which sites to read"></picture></div><figcaption class="cap"><b>Job searches.</b> What to look for, and where.</figcaption></figure>
-        <figure><div class="frame"><picture><source srcset="media/task-manager-dark.png" media="(prefers-color-scheme: dark)"><img src="media/task-manager-light.png" width="1266" height="793" loading="lazy" alt="The task manager during a scan"></picture></div><figcaption class="cap"><b>Task manager.</b> Pause or stop anything it's doing.</figcaption></figure>
-        <figure><div class="frame"><picture><source srcset="media/learned-terms-dark.png" media="(prefers-color-scheme: dark)"><img src="media/learned-terms-light.png" width="1266" height="793" loading="lazy" alt="Learned terms: a skill term and the words it has learned to match it with"></picture></div><figcaption class="cap"><b>Learned terms.</b> It learns that two words mean the same skill.</figcaption></figure>
-        <figure><div class="frame"><picture><source srcset="media/notifications-dark.png" media="(prefers-color-scheme: dark)"><img src="media/notifications-light.png" width="1266" height="793" loading="lazy" alt="The notifications drawer with new matches"></picture></div><figcaption class="cap"><b>Notifications.</b> New matches, without checking.</figcaption></figure>
-      </div>
-    </div>
+  <section>
+    <span class="eyebrow">Read on</span>
+    <h2 style="margin-top:12px">See it for yourself.</h2>
+    <div class="next"><a href="tour.html"><b>How it works</b><span>The real app: screens, clips, and the letter it drafts.</span><i>Read more →</i></a><a href="phone.html"><b>The phone app</b><span>Your shortlist in your pocket, over a private line.</span><i>Read more →</i></a><a href="questions.html"><b>Questions</b><span>Why not ChatGPT? Is my CV sent anywhere? Is it free?</span><i>Read more →</i></a></div>
   </section>
-
-  <!-- The letter, and the dove that carries it -->
-  <section class="split">
-    <article class="letter" aria-label="Example application letter">
-      <svg class="clip" viewBox="0 0 26 64" aria-hidden="true"><path d="M8 58 V12 a5 5 0 0 1 10 0 V50 a9 9 0 0 1 -18 0 V16" fill="none" stroke="var(--soft)" stroke-width="3" stroke-linecap="round"/></svg>
-      <div class="from"><b>Sofie Andersen</b>Søndergade 12, 2. tv.<br>8000 Aarhus C<br>20 45 67 89</div>
-      <div class="to">Nordlager A/S<br>Att.: Mette Holm<br>Industrivej 4<br>8200 Aarhus N</div>
-      <div class="date">Aarhus, 3. november 2026</div>
-      <p class="subject">Ansøgning: Lagerkoordinator</p>
-      <p>Kære Mette Holm</p>
-      <p>I søger en lagerkoordinator, der kender SAP og kan holde styr på et travlt lager. Det har jeg gjort de sidste fire år hos en grossist i Hasselager, hvor jeg planlagde vagter for tolv kolleger og tog mig af varemodtagelsen.</p>
-      <p>Jeg har truckcertifikat B, og jeg er vant til nattevagter i højsæsonen. Jeg vil rigtig gerne fortælle mere om, hvad jeg kan bidrage med hos Nordlager.</p>
-      <p>Med venlig hilsen</p>
-      <div class="sign">Sofie Andersen</div>
-      <div class="name">Sofie Andersen</div>
-      <div class="att"><span>Bilag: CV (tilpasset), 1 side</span><span>Version 3</span></div>
-    </article>
-    <div style="display:grid;gap:16px">
-      <span class="eyebrow">The blank page, already started</span>
-      <h2>A letter written <em>for this job</em>, not for every job.</h2>
-      <p class="lede">It uses what the post asks for and what your CV shows. Ask for another go and the old one is kept, so you can always go back.</p>
-      <div class="versions"><span>Version 3 · today 16:40 · "shorter, mention the night shifts"</span><span>Version 2 · today 16:31</span><span>Version 1 · today 16:28</span></div>
-      <figure class="dove">
-        <svg viewBox="0 0 320 190" role="img" aria-label="A white dove flying with a sealed envelope hanging from its beak">
-          <ellipse cx="60" cy="40" rx="34" ry="12" fill="var(--wash)"/>
-          <ellipse cx="270" cy="168" rx="40" ry="12" fill="var(--wash)"/>
-          <path d="M8 176 C 50 170, 60 140, 86 126" fill="none" stroke="var(--soft)" stroke-width="2.5" stroke-dasharray="2 9" stroke-linecap="round"/>
-          <path d="M124 118 L 84 102 L 94 120 L 80 134 L 126 128 Z" fill="var(--dove)" stroke="var(--dove-line)" stroke-width="2.5" stroke-linejoin="round"/>
-          <path d="M120 112 C 140 80, 200 80, 222 100 C 236 112, 238 126, 226 132 C 200 148, 150 146, 120 130 Z" fill="var(--dove)" stroke="var(--dove-line)" stroke-width="2.5"/>
-          <circle cx="236" cy="92" r="15" fill="var(--dove)" stroke="var(--dove-line)" stroke-width="2.5"/>
-          <path d="M249 87 L 264 92 L 249 98 Z" fill="var(--clay)"/>
-          <circle cx="240" cy="88" r="2.4" fill="var(--dove-line)"/>
-          <path d="M150 106 C 136 74, 142 40, 164 16 C 170 30, 176 30, 182 14 C 190 30, 196 30, 206 18 C 210 32, 216 32, 226 26 C 220 58, 206 86, 192 106 Z" fill="var(--dove)" stroke="var(--dove-line)" stroke-width="2.5" stroke-linejoin="round"/>
-          <path d="M164 92 C 164 66, 170 44, 178 28 M178 96 C 182 72, 190 50, 200 34 M190 100 C 198 78, 208 58, 218 40" fill="none" stroke="var(--dove-line)" stroke-width="1.6" stroke-opacity=".45" stroke-linecap="round"/>
-          <path d="M262 94 L 266 132" stroke="var(--dove-line)" stroke-width="1.6"/>
-          <g transform="rotate(8 268 150)">
-            <rect x="244" y="132" width="50" height="34" rx="3" fill="var(--dove)" stroke="var(--dove-line)" stroke-width="2"/>
-            <path d="M244 134 L 269 152 L 294 134" fill="none" stroke="var(--dove-line)" stroke-width="2" stroke-linejoin="round"/>
-            <circle cx="269" cy="152" r="5" fill="var(--rust)"/>
-          </g>
-        </svg>
-        <figcaption>Tailor-made résumés and applications, ready for delivery.</figcaption>
-      </figure>
-    </div>
-  </section>
-
-  <!-- Phone: the PC and the phone over Tailscale, and why -->
-  <section class="split" id="phone">
-    <figure class="phone-art" style="margin:0">
-      <svg viewBox="0 0 420 300" role="img" aria-label="A drawing of a PC and a phone joined by a private, locked line. Above them a cloud is crossed out. A QR code is scanned once to pair them.">
-        <rect width="420" height="300" rx="24" fill="var(--wash)"/>
-        <rect x="20" y="246" width="380" height="10" rx="5" fill="var(--line)"/>
-        <!-- the cloud nobody goes through -->
-        <path d="M176 66 a12 12 0 0 1 3 -23 a18 18 0 0 1 34 -5 a14 14 0 0 1 6 27 z" fill="var(--bg)" stroke="var(--soft)" stroke-width="2.5" stroke-dasharray="4 4" stroke-linejoin="round"/>
-        <path d="M172 30 l52 42" stroke="var(--clay)" stroke-width="4" stroke-linecap="round"/>
-        <text x="236" y="40" style="font:500 19px var(--hand)" fill="var(--rust)" transform="rotate(-4 236 40)">no server in between</text>
-        <!-- the PC -->
-        <rect x="30" y="104" width="142" height="98" rx="10" fill="var(--ink)"/>
-        <rect x="40" y="114" width="122" height="78" rx="4" fill="var(--paper)"/>
-        <circle cx="54" cy="130" r="5" fill="var(--sage)"/><rect x="66" y="126" width="62" height="8" rx="4" fill="var(--line)"/>
-        <circle cx="54" cy="152" r="5" fill="var(--sage)"/><rect x="66" y="148" width="78" height="8" rx="4" fill="var(--line)"/>
-        <circle cx="54" cy="174" r="5" fill="var(--clay)"/><rect x="66" y="170" width="54" height="8" rx="4" fill="var(--line)"/>
-        <path d="M90 202 l-8 34 h38 l-8 -34 z" fill="var(--ink)"/>
-        <rect x="66" y="234" width="70" height="12" rx="6" fill="var(--ink)"/>
-        <!-- the QR card, scanned once -->
-        <g transform="rotate(-8 168 222)">
-          <rect x="146" y="198" width="44" height="48" rx="4" fill="var(--paper)" stroke="var(--line)" stroke-width="2"/>
-          <rect x="152" y="204" width="12" height="12" rx="2" fill="var(--ink)"/><rect x="172" y="204" width="12" height="12" rx="2" fill="var(--ink)"/>
-          <rect x="152" y="224" width="12" height="12" rx="2" fill="var(--ink)"/>
-          <rect x="172" y="224" width="5" height="5" fill="var(--ink)"/><rect x="179" y="231" width="5" height="5" fill="var(--ink)"/><rect x="172" y="236" width="5" height="4" fill="var(--ink)"/>
-        </g>
-        <text x="126" y="284" style="font:500 19px var(--hand)" fill="var(--rust)" transform="rotate(-2 126 284)">scan it once</text>
-        <!-- the private line: a sage tube with the data inside, locked in the middle -->
-        <path d="M172 148 C 220 108, 258 196, 300 152" fill="none" stroke="var(--sage)" stroke-opacity=".28" stroke-width="22" stroke-linecap="round"/>
-        <path d="M172 148 C 220 108, 258 196, 300 152" fill="none" stroke="var(--sage)" stroke-width="3" stroke-dasharray="2 9" stroke-linecap="round"/>
-        <path d="M228 140 v-9 a10 10 0 0 1 20 0 v9" fill="none" stroke="var(--ink)" stroke-width="5"/>
-        <rect x="221" y="138" width="34" height="28" rx="6" fill="var(--clay)" stroke="var(--ink)" stroke-width="3"/>
-        <circle cx="238" cy="150" r="3.5" fill="var(--ink)"/><path d="M238 152 v6" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"/>
-        <text x="198" y="214" style="font:500 19px var(--hand)" fill="var(--rust)" transform="rotate(3 198 214)">a private line</text>
-        <!-- the phone -->
-        <g transform="rotate(6 334 160)">
-          <rect x="300" y="88" width="72" height="140" rx="14" fill="var(--ink)"/>
-          <rect x="307" y="100" width="58" height="114" rx="6" fill="var(--paper)"/>
-          <circle cx="336" cy="128" r="15" fill="none" stroke="var(--line)" stroke-width="5"/>
-          <path d="M336 113 a15 15 0 1 1 -14.3 19.6" fill="none" stroke="var(--sage)" stroke-width="5" stroke-linecap="round"/>
-          <rect x="316" y="154" width="40" height="6" rx="3" fill="var(--line)"/>
-          <path d="M318 172 l4 4 l8 -8" stroke="var(--sage)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="334" y="170" width="22" height="5" rx="2.5" fill="var(--line)"/>
-          <path d="M318 188 l4 4 l8 -8" stroke="var(--sage)" stroke-width="3" fill="none" stroke-linecap="round" stroke-linejoin="round"/><rect x="334" y="186" width="18" height="5" rx="2.5" fill="var(--line)"/>
-          <path d="M319 201 l8 8 M327 201 l-8 8" stroke="var(--clay)" stroke-width="3" stroke-linecap="round"/><rect x="334" y="202" width="20" height="5" rx="2.5" fill="var(--line)"/>
-        </g>
-      </svg>
-        <div class="phones">
-        <figure><picture><source srcset="media/phone-matches-dark.png" media="(prefers-color-scheme: dark)"><img src="media/phone-matches-light.png" width="540" height="1200" loading="lazy" alt="The phone app's shortlist of matches"></picture></figure>
-        <figure><picture><source srcset="media/phone-match-dark.png" media="(prefers-color-scheme: dark)"><img src="media/phone-match-light.png" width="540" height="1200" loading="lazy" alt="One match on the phone: its score ring and requirements"></picture></figure>
-      </div>
-    </figure>
-    <div style="display:grid;gap:16px">
-      <span class="soon">New: the Android app</span>
-      <h2>Your shortlist in your pocket. <em>Your data stays home.</em></h2>
-      <p class="lede">See today's matches on the bus, or send a post you just spotted to your PC to be checked. The phone talks straight to your PC over Tailscale, a free private network for your own devices.</p>
-      <div class="whys">
-        <div><svg viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="8" fill="none" stroke="var(--sage)" stroke-width="3"/></svg><div><b>Nothing in the cloud.</b><p>There's no JobFinder server. Your CV and matches never leave your PC, and the phone only asks the PC for them. Tailscale introduces the two devices but can't read what they say to each other.</p></div></div>
-        <div><svg viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="8" fill="none" stroke="var(--sage)" stroke-width="3"/></svg><div><b>Works away from home.</b><p>Not just on your home Wi-Fi: wherever the phone has a connection, it can reach your PC, as long as the PC is on.</p></div></div>
-        <div><svg viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="8" fill="none" stroke="var(--clay)" stroke-width="3"/></svg><div><b>Paired with a QR code, once.</b><p>The code works one time, for five minutes. After that the phone has its own key. Lose the phone, press Remove, and the key stops working right away.</p></div></div>
-        <div><svg viewBox="0 0 22 22" aria-hidden="true"><circle cx="11" cy="11" r="8" fill="none" stroke="var(--clay)" stroke-width="3"/></svg><div><b>Never on the open internet.</b><p>Only your own devices can reach your PC, and only a paired phone gets an answer.</p></div></div>
-      </div>
-    </div>
-  </section>
-
-  <!-- FAQ -->
-  <section id="questions">
-    <span class="eyebrow">Questions</span>
-    <h2 style="margin-top:12px">Fair questions.</h2>
-    <div class="faq">
-      <details open><summary>Why would I need this? ChatGPT already does this.</summary>
-        <p>ChatGPT can run a scheduled task that searches for jobs, and that's a fine start. But it searches the web, so it finds what a search engine has indexed, not every post on Jobnet and Jobindex, and it can't sign in to LinkedIn or Indeed as you. Its results arrive as a message, not a list that remembers which jobs you've seen, rejected, applied to and logged. JobFinder reads the sites themselves, keeps that list, scores every post the same way, and can do it all without your CV leaving your PC.</p></details>
-      <details><summary>Is my CV sent anywhere?</summary>
-        <p>Only if you choose a cloud model. With JobFinder's own model, your CV, matches and applications stay in one file on your PC. There is no JobFinder server and no account.</p></details>
-      <details><summary>Does it apply for me?</summary>
-        <p>No, on purpose. It finds, scores and drafts. You read the draft, change what you want and send it yourself.</p></details>
-      <details><summary>Is it free?</summary>
-        <p>Yes, completely. It's open source under the BSD licence, with no paid tier and no ads.</p></details>
-    </div>
-  </section>
-
   <footer id="download">
     <span>JobFinder · free and open source · Windows 11 and Linux<br>Made by Jonas Kerwin Hansen, built with help from Claude.</span>
     <span style="display:flex;gap:20px;flex-wrap:wrap"><a href="https://github.com/sasin91/jobfinder/releases/latest">Download</a><a href="https://github.com/sasin91/jobfinder">Source on GitHub</a></span>
