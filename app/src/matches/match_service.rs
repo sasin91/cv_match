@@ -475,13 +475,24 @@ pub async fn extract_job(context: &Context, text: &str) -> Result<Job, ServiceEr
 /// The CV as a structured profile, read by the model, or by the free reader when the key is off
 /// for evaluating job posts.
 pub async fn extract_cv(context: &Context, text: &str) -> Result<Profile, ServiceError> {
-    if llm_key::llm_settings(context, JOB_EVALUATION).await?.is_none() {
-        return Ok(FreeReader::new(&context.taxonomy(), this_month()).cv(text));
+    let read = if llm_key::llm_settings(context, JOB_EVALUATION).await?.is_none() {
+        FreeReader::new(&context.taxonomy(), this_month()).cv(text)
+    } else {
+        let keyed = llm_key::llm(context, &task_model::READ_CV).await?;
+        match_prompts::read_cv(&keyed.llm, text)
+            .await
+            .map_err(|e| ServiceError::llm("match/extract_cv", &e))?
+    };
+    Ok(with_stated_years(read, text))
+}
+
+/// The read CV with the years of work its text states (the profile's line, which the candidate
+/// confirms on the setup screen) in place of the years the reader counted, when it states them.
+fn with_stated_years(mut read: Profile, text: &str) -> Profile {
+    if let Some(years) = profile::stated_years_of_work(text) {
+        read.experience_years = years;
     }
-    let keyed = llm_key::llm(context, &task_model::READ_CV).await?;
-    match_prompts::read_cv(&keyed.llm, text)
-        .await
-        .map_err(|e| ServiceError::llm("match/extract_cv", &e))
+    read
 }
 
 /// A read job post and a read CV, with their texts, to match.

@@ -41,9 +41,17 @@ pub const PROFILE_ID: i64 = 1;
 
 /// The user's profile as text, or None when they have none.
 pub async fn text_for_user(db: &SqlitePool) -> sqlx::Result<Option<String>> {
-    let Some(profile) = sqlx::query!(r#"SELECT name, email, phone, title, location, about FROM profile"#)
-        .fetch_optional(db)
-        .await?
+    text_for_user_at(db, YearMonth::of(chrono::Utc::now().timestamp())).await
+}
+
+/// The user's profile as text with the years of work counted until now, or None when they have
+/// none. The years go on their own line under the header, so the CV's readers take them as
+/// given (stated_years_of_work) instead of counting.
+async fn text_for_user_at(db: &SqlitePool, now: YearMonth) -> sqlx::Result<Option<String>> {
+    let Some(profile) =
+        sqlx::query!(r#"SELECT name, email, phone, title, location, about, years_of_work FROM profile"#)
+            .fetch_optional(db)
+            .await?
     else {
         return Ok(None);
     };
@@ -59,7 +67,14 @@ pub async fn text_for_user(db: &SqlitePool) -> sqlx::Result<Option<String>> {
         .map(|(label, url)| format!("{label}: {url}"))
         .collect::<Vec<_>>()
         .join(" · ");
-    let mut blocks = vec![join_present(&[&name, &title, &contact, &link_line], "\n")];
+    let years = YearsOfWork {
+        saved: profile.years_of_work,
+        counted: counted_years_of_work(&entries, now),
+    }
+    .years()
+    .map(|years| format!("{YEARS_OF_WORK_LABEL}{years}"))
+    .unwrap_or_default();
+    let mut blocks = vec![join_present(&[&name, &title, &contact, &link_line, &years], "\n")];
     let about = about.trim();
     if !about.is_empty() {
         blocks.push(about.to_string());
@@ -90,25 +105,69 @@ pub async fn text_for_user(db: &SqlitePool) -> sqlx::Result<Option<String>> {
     Ok(Some(blocks.join("\n\n")))
 }
 
-/// Whole years of professional work the profile's work history (its experience entries) covers
-/// until now, overlaps counted once, or None when there is no profile or no dated job in it.
-/// Education and the candidate's own projects aren't work, so they never count: left to count
-/// the years themselves from the whole CV, the writing models counted from the earliest date in
-/// it and claimed years the candidate hasn't worked.
-pub async fn years_of_work(db: &SqlitePool, now: YearMonth) -> sqlx::Result<Option<i64>> {
-    let jobs: Vec<Entry> = entries(db)
+/// How the CV text names the years of professional work: profile text writes the line, and
+/// stated_years_of_work reads it back so every reader of the CV (the model, the free reader)
+/// takes the same number.
+pub const YEARS_OF_WORK_LABEL: &str = "Years of professional work: ";
+
+/// Most years of work the profile takes: a working life.
+pub const MAX_YEARS_OF_WORK: i64 = 60;
+
+/// The candidate's years of professional work: the number they saved, and the one the app counts
+/// from the profile's jobs, which it offers as the suggestion.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct YearsOfWork {
+    /// What the candidate saved, None until they do.
+    pub saved: Option<i64>,
+    /// Counted from the jobs' dates (counted_years_of_work), None when no job is dated.
+    pub counted: Option<i64>,
+}
+
+impl YearsOfWork {
+    /// The years everything uses: the saved number, else the counted one.
+    pub fn years(&self) -> Option<i64> {
+        self.saved.or(self.counted)
+    }
+}
+
+/// The candidate's years of work, saved and counted until now, or None when there is no profile.
+pub async fn years_of_work(db: &SqlitePool, now: YearMonth) -> sqlx::Result<Option<YearsOfWork>> {
+    let Some(saved) = sqlx::query_scalar!(r#"SELECT years_of_work FROM profile"#)
+        .fetch_optional(db)
         .await?
-        .into_iter()
+    else {
+        return Ok(None);
+    };
+    let counted = counted_years_of_work(&entries(db).await?, now);
+    Ok(Some(YearsOfWork { saved, counted }))
+}
+
+/// Whole years of professional work the jobs (the experience entries) cover until now, overlaps
+/// counted once, or None when no job is dated. Education and the candidate's own projects aren't
+/// work, so they never count: left to count the years themselves from the whole CV, the writing
+/// models counted from the earliest date in it and claimed years the candidate hasn't worked.
+fn counted_years_of_work(entries: &[Entry], now: YearMonth) -> Option<i64> {
+    let jobs: Vec<&Entry> = entries
+        .iter()
         .filter(|entry| entry.section == "experience" && entry.started_on.is_some())
         .collect();
     if jobs.is_empty() {
-        return Ok(None);
+        return None;
     }
-    Ok(Some(free_reader::years_worked(&work_history_dates(&jobs), now)))
+    Some(free_reader::years_worked(&work_history_dates(&jobs), now))
+}
+
+/// The years of work a CV text states on its YEARS_OF_WORK_LABEL line, if it has one.
+pub fn stated_years_of_work(cv_text: &str) -> Option<i64> {
+    cv_text
+        .lines()
+        .find_map(|line| line.trim().strip_prefix(YEARS_OF_WORK_LABEL))
+        .and_then(|years| years.trim().parse::<i64>().ok())
+        .filter(|years| (0..=MAX_YEARS_OF_WORK).contains(years))
 }
 
 /// The jobs' date ranges, one per line, the way the free reader reads a work history.
-fn work_history_dates(jobs: &[Entry]) -> String {
+fn work_history_dates(jobs: &[&Entry]) -> String {
     jobs.iter()
         .map(|job| months(job.started_on.as_deref(), job.ended_on.as_deref()))
         .collect::<Vec<_>>()
@@ -225,6 +284,7 @@ pub fn months(started_on: Option<&str>, ended_on: Option<&str>) -> String {
 mod tests {
     use super::*;
     use crate::db;
+    use crate::profile::profile_model;
     use sqlx::Executor;
 
     #[tokio::test]
@@ -247,8 +307,9 @@ mod tests {
         .await
         .unwrap();
         assert_eq!(
-            text_for_user(&db).await.unwrap().unwrap(),
-            "Jonas\nSoftware developer\nSlagelse · 12345678 · me@example.com\nGitHub: https://github.com/sasin91\n\n\
+            text_for_user_at(&db, NOVEMBER_2026).await.unwrap().unwrap(),
+            "Jonas\nSoftware developer\nSlagelse · 12345678 · me@example.com\nGitHub: https://github.com/sasin91\n\
+             Years of professional work: 9\n\n\
              I build things.\n\n\
              Experience\n\nLead · New Firm\nApril 2020 – now\n- Built the platform\n\n\
              Developer · Old Firm\nJanuary 2017 – March 2020\n\n\
@@ -257,15 +318,15 @@ mod tests {
         );
     }
 
+    /// The month the tests count until.
+    const NOVEMBER_2026: YearMonth = YearMonth { year: 2026, month: 11 };
+
     /// Made up: school until 2014, an own project from 2010, two jobs from January 2017. Only
-    /// the jobs count, and the gap and the overlap don't add years.
+    /// the jobs count, and the gap and the overlap don't add years; a saved number wins.
     #[tokio::test]
-    async fn only_the_jobs_count_as_years_of_work() {
+    async fn only_the_jobs_count_as_years_of_work_until_one_is_saved() {
         let db = db::open_in_memory().await.unwrap();
-        assert_eq!(
-            years_of_work(&db, YearMonth { year: 2026, month: 11 }).await.unwrap(),
-            None
-        );
+        assert_eq!(years_of_work(&db, NOVEMBER_2026).await.unwrap(), None);
         db.execute(sqlx::raw_sql(
             r#"
              INSERT INTO profile (id, name, email, phone, title, location, about, created_at, updated_at)
@@ -277,8 +338,11 @@ mod tests {
         ))
         .await
         .unwrap();
-        let now = YearMonth { year: 2026, month: 11 };
-        assert_eq!(years_of_work(&db, now).await.unwrap(), None);
+        let none = YearsOfWork {
+            saved: None,
+            counted: None,
+        };
+        assert_eq!(years_of_work(&db, NOVEMBER_2026).await.unwrap(), Some(none));
         db.execute(sqlx::raw_sql(
             r#"
              INSERT INTO profile_entries (id, section, title, organisation, started_on, ended_on, sort_order, created_at, updated_at)
@@ -288,6 +352,22 @@ mod tests {
         ))
         .await
         .unwrap();
-        assert_eq!(years_of_work(&db, now).await.unwrap(), Some(9));
+        let counted = years_of_work(&db, NOVEMBER_2026).await.unwrap().unwrap();
+        assert_eq!((counted.counted, counted.years()), (Some(9), Some(9)));
+        profile_model::save_years_of_work(&db, Some(8)).await.unwrap();
+        let saved = years_of_work(&db, NOVEMBER_2026).await.unwrap().unwrap();
+        assert_eq!((saved.saved, saved.counted, saved.years()), (Some(8), Some(9), Some(8)));
+        let text = text_for_user_at(&db, NOVEMBER_2026).await.unwrap().unwrap();
+        assert_eq!(stated_years_of_work(&text), Some(8));
+    }
+
+    #[test]
+    fn the_stated_years_are_read_back_from_their_line() {
+        assert_eq!(
+            stated_years_of_work("Kim\nYears of professional work: 9\n\nExperience"),
+            Some(9)
+        );
+        assert_eq!(stated_years_of_work("I have 16 years of experience"), None);
+        assert_eq!(stated_years_of_work("Years of professional work: 400"), None);
     }
 }

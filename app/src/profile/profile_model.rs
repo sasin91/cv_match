@@ -32,6 +32,21 @@ pub async fn filled_from(db: &SqlitePool) -> sqlx::Result<Option<FilledFrom>> {
     }))
 }
 
+/// Saves the candidate's years of professional work, or clears them (None) so the count from
+/// their jobs is used again. A CV read into the profile later keeps them.
+pub async fn save_years_of_work(db: &SqlitePool, years: Option<i64>) -> sqlx::Result<()> {
+    let now = chrono::Utc::now().timestamp();
+    sqlx::query!(
+        r#"UPDATE profile SET years_of_work = ?1, updated_at = ?2 WHERE id = ?3"#,
+        years,
+        now,
+        PROFILE_ID
+    )
+    .execute(db)
+    .await?;
+    Ok(())
+}
+
 /// Replaces the user's whole profile with what was read from a CV (profile_fields::from_cv),
 /// making it when there is none. The name, email and phone are only changed where the CV has
 /// them.

@@ -65,16 +65,16 @@ pub fn notes(sent: &str) -> String {
     cut.trim().to_string()
 }
 
-/// The writing prompts' line with the candidate's years of professional work, counted from the
-/// profile's jobs (profile::years_of_work), or saying there is no count. The model is told to use
-/// this number and never count itself: counting from the whole CV, it took the earliest date in
-/// it (school, own projects) and wrote "16 years in software development" for 9 years of work.
+/// The writing prompts' line with the candidate's years of professional work: the number they
+/// saved, else the one counted from the profile's jobs (profile::years_of_work), or saying there
+/// is none. The model is told to use this number and never count itself: counting from the
+/// whole CV, it took the earliest date in it (school, own projects) and wrote "16 years in
+/// software development" for 9 years of work.
 fn years_line(years: Option<i64>) -> String {
+    let label = profile::YEARS_OF_WORK_LABEL;
     match years {
-        Some(years) => format!(
-            "Years of professional work: {years} (counted from the jobs' dates; education and own projects not included)"
-        ),
-        None => "Years of professional work: not counted (no dated jobs in the profile)".to_string(),
+        Some(years) => format!("{label}{years} (education and own projects not included)"),
+        None => format!("{label}not given"),
     }
 }
 
@@ -83,7 +83,8 @@ const YEARS_RULE: &str = "Never count years of experience yourself. When the tex
 
 /// The years line for a saved match's documents: from the profile when there is one.
 async fn years_of_work(db: &SqlitePool, now: i64) -> sqlx::Result<String> {
-    Ok(years_line(profile::years_of_work(db, YearMonth::of(now)).await?))
+    let years = profile::years_of_work(db, YearMonth::of(now)).await?;
+    Ok(years_line(years.and_then(|years| years.years())))
 }
 
 /// The notes as a block to end the prompt with, or "" when there are none.
@@ -440,9 +441,9 @@ mod tests {
     fn the_years_line_gives_the_count_or_says_there_is_none() {
         assert_eq!(
             years_line(Some(9)),
-            "Years of professional work: 9 (counted from the jobs' dates; education and own projects not included)"
+            "Years of professional work: 9 (education and own projects not included)"
         );
-        assert!(years_line(None).contains("not counted"));
+        assert_eq!(years_line(None), "Years of professional work: not given");
         assert!(application_system().contains(YEARS_RULE));
         assert!(resume_system().contains(YEARS_RULE));
     }

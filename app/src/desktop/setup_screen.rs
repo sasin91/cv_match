@@ -5,7 +5,7 @@
 
 use std::sync::Arc;
 
-use iced::widget::{Column, button, checkbox, column, container, pick_list, row, text, text_editor};
+use iced::widget::{Column, button, checkbox, column, container, pick_list, row, text, text_editor, text_input};
 use iced::{Center, Element, Fill, Task};
 
 use super::drawings;
@@ -21,6 +21,8 @@ use crate::setup::setup_steps::{self, AiStep, CvStep, DatabaseStep, ScheduleStep
 const CV_BOX_HEIGHT: f32 = 220.0;
 /// The interval list's width.
 const PICK_WIDTH: f32 = 220.0;
+/// The years box's width: room for a two-digit number.
+const YEARS_BOX_WIDTH: f32 = 80.0;
 
 /// The four steps as read.
 pub struct Steps {
@@ -68,6 +70,10 @@ pub struct State {
     replace: bool,
     /// Why the CV couldn't be read, under its box.
     cv_error: Option<String>,
+    /// The years of professional work box: the saved years or the suggestion, as typed.
+    years_text: String,
+    /// Why the years couldn't be saved, under the box.
+    years_error: Option<String>,
     interval: Option<Interval>,
     /// Work is running (reading the CV, the scheduler), so the buttons wait.
     busy: bool,
@@ -84,6 +90,10 @@ pub enum Msg {
     Replace(bool),
     ReadCv,
     CvRead(Result<String, String>),
+    YearsEdit(String),
+    SaveYears,
+    /// What saving the years came to: Ok what to say, or Err why not.
+    YearsSaved(Result<String, String>),
     Interval(Interval),
     Schedule,
     Unschedule,
@@ -122,6 +132,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             if let Ok(steps) = &steps {
                 state.interval = interval_of(steps.schedule.interval_hours);
                 state.replace = false;
+                state.years_text = steps.cv.years.as_ref().map(setup_steps::years_box).unwrap_or_default();
             }
             if let Err(why) = &steps {
                 crate::log_line!("setup: the steps couldn't be read: {why}");
@@ -171,6 +182,25 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             state.busy = false;
             state.said = None;
             state.cv_error = Some(why);
+        }
+        Msg::YearsEdit(typed) => state.years_text = typed,
+        Msg::SaveYears => {
+            state.busy = true;
+            state.years_error = None;
+            let typed = state.years_text.clone();
+            return runner.run(
+                move |context| async move { setup_steps::save_years_of_work(&context, &typed).await },
+                |answer| Msg::YearsSaved(answer.and_then(|said| said.map_err(|e| e.message))),
+            );
+        }
+        Msg::YearsSaved(Ok(said)) => {
+            state.busy = false;
+            state.said = Some((Health::Ready, said));
+            return Task::done(Msg::Load);
+        }
+        Msg::YearsSaved(Err(why)) => {
+            state.busy = false;
+            state.years_error = Some(why);
         }
         Msg::Interval(interval) => state.interval = Some(interval),
         Msg::Schedule => {
@@ -353,6 +383,9 @@ fn cv_step<'a>(cv: &'a CvStep, state: &'a State) -> Element<'a, Msg> {
             .size(style::BODY_SIZE),
         );
     }
+    if let Some(years) = &cv.years {
+        body = body.push(years_row(years, state));
+    }
     if !cv.can_read {
         if cv.filled.is_none() {
             body = body.push(widgets::note("Set up an AI model first: reading the CV runs on it."));
@@ -416,6 +449,33 @@ fn cv_step<'a>(cv: &'a CvStep, state: &'a State) -> Element<'a, Msg> {
             .on_press_maybe(waiting(Msg::ReadCv).filter(|_| can_read)),
     )
     .into()
+}
+
+/// The years of professional work: a box with the saved years or the suggestion counted from
+/// the jobs, Save, and what the number is.
+fn years_row<'a>(years: &'a setup_steps::YearsOfWork, state: &'a State) -> Element<'a, Msg> {
+    let mut body = Column::new().spacing(6).push(
+        row![
+            text("Years of professional work").size(style::BODY_SIZE),
+            text_input("", &state.years_text)
+                .on_input(Msg::YearsEdit)
+                .on_submit(Msg::SaveYears)
+                .size(style::BODY_SIZE)
+                .padding(8)
+                .width(YEARS_BOX_WIDTH)
+                .style(style::text_field),
+            button(text("Save").size(style::BODY_SIZE))
+                .style(style::standard_button)
+                .on_press_maybe((!state.busy).then_some(Msg::SaveYears)),
+        ]
+        .spacing(10)
+        .align_y(Center),
+    );
+    body = body.push(widgets::caption(setup_steps::years_line(years)));
+    if let Some(why) = &state.years_error {
+        body = body.push(widgets::errors_line(why.clone()));
+    }
+    body.into()
 }
 
 fn schedule_step<'a>(schedule: &'a ScheduleStep, state: &'a State) -> Element<'a, Msg> {
