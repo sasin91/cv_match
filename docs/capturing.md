@@ -26,7 +26,7 @@ Start JobFinder, open the screen, and from the repository folder:
 | job-searches | Job searches | `.\tools\capture.ps1 shot job-searches` |
 | task-manager | Task manager during a scan | `.\tools\capture.ps1 shot task-manager` |
 | notifications | The bell's drawer open, with a few notifications | `.\tools\capture.ps1 shot notifications` |
-| learned-terms | Settings → Learned terms, with a term open | `.\tools\capture.ps1 shot learned-terms` |
+| learned-terms | Taxonomy (in the sidebar), with a term open | `.\tools\capture.ps1 shot learned-terms` |
 | devices | Settings → Devices, with the phone paired | `.\tools\capture.ps1 shot devices` |
 
 Clips (about 10 seconds, in the look Windows has now). Start the command, then click through in
