@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import io.github.sasin91.jobfinder.ListState
 import io.github.sasin91.jobfinder.protocol.MatchRow
+import io.github.sasin91.jobfinder.protocol.SavedTime
 
 /** A list of saved matches, best first: the shortlist, or another list chosen above it. */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -104,7 +105,7 @@ private fun MatchRowItem(row: MatchRow, onClick: () -> Unit) {
                     color = if (row.closed) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant,
                 )
             }
-            val saved = listOf(row.savedAt, row.done).filter { it.isNotEmpty() }.joinToString(" · ")
+            val saved = listOf(SavedTime.of(row.savedAt), row.done).filter { it.isNotEmpty() }.joinToString(" · ")
             if (saved.isNotEmpty()) {
                 Text(saved, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             }

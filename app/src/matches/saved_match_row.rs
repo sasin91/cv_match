@@ -14,6 +14,10 @@ pub struct SavedMatchRow {
     pub title: String,
     /// "81% good · likely disqualifier: Located close to Copenhagen".
     pub about: String,
+    /// The score, 0 to 100.
+    pub percent: i64,
+    /// What about says after the score: "likely disqualifier: Located close to Copenhagen", or "".
+    pub notes: String,
     pub saved_at: String,
     pub saved_on: String,
     /// "application · applied · on Jobnet", ending "rejected: Too long commute" when rejected.
@@ -27,18 +31,23 @@ pub struct SavedMatchRow {
 
 impl SavedMatchRow {
     pub fn from(m: &ListedMatch) -> Self {
-        let mut about = vec![match_score::short_label(m.score, &m.tag)];
+        let mut notes = Vec::new();
         if m.cv_name.ends_with(TAILORED_CV) {
-            about.push("tailored résumé".to_string());
+            notes.push("tailored résumé".to_string());
         }
         if let Some(location) = &m.location_missed {
-            about.push(format!("likely disqualifier: {location}"));
+            notes.push(format!("likely disqualifier: {location}"));
         }
+        let about: Vec<String> = std::iter::once(match_score::short_label(m.score, &m.tag))
+            .chain(notes.iter().cloned())
+            .collect();
         SavedMatchRow {
             id: m.id,
             tag: m.tag.clone(),
             title: title(m),
             about: about.join(" · "),
+            percent: match_score::percent(m.score),
+            notes: notes.join(" · "),
             saved_at: dates::iso(m.created_at),
             saved_on: dates::day(m.created_at),
             done: done(m).join(" · "),

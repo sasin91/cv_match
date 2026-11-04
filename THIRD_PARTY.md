@@ -9,7 +9,7 @@ and of the built `jobfinder.exe`, come from others and keep their own licences:
 | Laya's model weights (`laya.onnx`, exported from the English checkpoint) | not in the repository; you export them | the checkpoint's own licence on Hugging Face |
 | Trongate MX (`assets/js/trongate-mx.min.js`), from the [Trongate framework](https://github.com/trongate/trongate-framework), copyright (c) 2019 Dave Connelly | built into the app | MIT |
 | The Danish postcodes (`assets/danish_postcodes.json`): PostNord's list, via the npm package [dk-postals](https://github.com/DanielZambelli/dk-postals) 1.0.0, copyright Daniel Zambelli | built into the app | ISC |
-| Figtree and Newsreader (`assets/fonts`), from [Google Fonts](https://fonts.google.com), the window's fonts | built into the app | SIL Open Font License 1.1 ([OFL-Figtree.txt](assets/fonts/OFL-Figtree.txt), [OFL-Newsreader.txt](assets/fonts/OFL-Newsreader.txt)) |
+| Figtree and Newsreader (`assets/fonts`), from [Google Fonts](https://fonts.google.com), the window's fonts | built into the app, and the phone app (`mobile/android/app/src/main/res/font`) | SIL Open Font License 1.1 ([OFL-Figtree.txt](assets/fonts/OFL-Figtree.txt), [OFL-Newsreader.txt](assets/fonts/OFL-Newsreader.txt)) |
 | DejaVu Sans 2.37 (`assets/fonts`) | built into the app, and into the PDFs | Bitstream Vera / DejaVu ([assets/fonts/LICENSE](assets/fonts/LICENSE)) |
 | The Rust crates in `Cargo.lock` | built into the app | each crate's own (`cargo metadata` lists them) |
 | llama.cpp and the GGUF models | downloaded by the app, never shipped | MIT; each model's own licence |

@@ -128,3 +128,21 @@ class IsLinkTest {
         assertTrue(!isLink("jobfinder-pair://pc:8766/ab"))
     }
 }
+
+class SavedTimeTest {
+    private val now = java.time.ZonedDateTime.of(2026, 11, 3, 20, 0, 0, 0, java.time.ZoneId.of("Europe/Copenhagen"))
+
+    @Test
+    fun aSavedTimeReadsAsAPersonSaysIt() {
+        assertEquals("today 15:34", SavedTime.of("2026-11-03T14:34:41Z", now))
+        assertEquals("yesterday 09:12", SavedTime.of("2026-11-02T08:12:00Z", now))
+        assertEquals("21 Oct", SavedTime.of("2026-10-21T10:00:00Z", now))
+        assertEquals("3 Nov 2025", SavedTime.of("2025-11-03T10:00:00Z", now))
+    }
+
+    @Test
+    fun aTimeThatCantBeReadIsShownAsItCame() {
+        assertEquals("", SavedTime.of("", now))
+        assertEquals("soon", SavedTime.of("soon", now))
+    }
+}

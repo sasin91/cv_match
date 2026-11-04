@@ -18,7 +18,9 @@ use crate::job_scan::job_search_rules;
 use crate::job_sites;
 use crate::matches::match_model::{LISTS, SHORTLIST};
 use crate::matches::match_result::MatchResult;
+use crate::matches::match_score;
 use crate::matches::match_service::{self, MatchAnswer, MatchAsk};
+use crate::matches::saved_match_row::SavedMatchRow;
 use crate::matches::verdict_row::VerdictRow;
 use crate::profile;
 use crate::service_error::{ErrorKind, ServiceError};
@@ -46,10 +48,10 @@ pub async fn matches(context: &Context, ask: &MatchesAsk) -> Result<Matches, Ser
             .matches
             .into_iter()
             .map(|row| MatchRow {
+                about: device_about(&row),
                 id: row.id,
                 tag: row.tag,
                 title: row.title,
-                about: row.about,
                 saved_at: row.saved_at,
                 saved_on: row.saved_on,
                 done: row.done,
@@ -59,6 +61,14 @@ pub async fn matches(context: &Context, ask: &MatchesAsk) -> Result<Matches, Ser
             .collect(),
         next_after: found.next_after,
     })
+}
+
+/// A row's meta line as a device shows it: "81% · Good match", then what else the row notes.
+fn device_about(row: &SavedMatchRow) -> String {
+    std::iter::once(format!("{}% · {}", row.percent, match_score::tag_name(&row.tag)))
+        .chain((!row.notes.is_empty()).then(|| row.notes.clone()))
+        .collect::<Vec<_>>()
+        .join(" · ")
 }
 
 /// The saved match with this id, as a device shows it.
