@@ -24,9 +24,6 @@ const LANGUAGE_WIDTH: f32 = 72.0;
 const STATUS_WIDTH: f32 = 80.0;
 /// The Seen column's width: "12 ×, 30 Nov 2026" on one line.
 const SEEN_WIDTH: f32 = 120.0;
-/// The buttons' column width: Why, Approve, Reject, Edit and Copy side by side. The same in the header and
-/// every row, whichever buttons a row has, so the columns line up.
-const ACTIONS_WIDTH: f32 = 320.0;
 
 /// A column the list sorts by.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -176,7 +173,8 @@ pub fn view(state: &State) -> Element<'_, Msg> {
     let mut screen = Column::new()
         .spacing(GAP * 1.5)
         .push(title)
-        .push(row![search, status_filter(state.status)].spacing(GAP).align_y(Center));
+        .push(search)
+        .push(status_filter(state.status));
     if let Some((health, said)) = &state.said {
         screen = screen.push(widgets::message_bar(*health, said.as_str()));
     }
@@ -314,7 +312,6 @@ fn header<'a>(sort: Option<(SortBy, bool)>) -> Element<'a, Msg> {
             name("Language", Length::Fixed(LANGUAGE_WIDTH)),
             sorting("Status", SortBy::Status, Length::Fixed(STATUS_WIDTH)),
             sorting("Seen", SortBy::Seen, Length::Fixed(SEEN_WIDTH)),
-            name("", Length::Fixed(ACTIONS_WIDTH)),
         ]
         .spacing(GAP),
     )
@@ -325,8 +322,9 @@ fn header<'a>(sort: Option<(SortBy, bool)>) -> Element<'a, Msg> {
 /// The label whose Why is open, and its sightings once read.
 type OpenWhy = (i64, Option<Result<Vec<LabelSighting>, String>>);
 
-/// A label: its text (or its edit field), its term, its language, its status, how often and since when it was
-/// seen, and what can be done to it; under it, its Why when open.
+/// A label: its text (or its edit field), its term, its language, its status, how often and
+/// since when it was seen; under them what can be done to it, so the label keeps the row's width
+/// at the window's default size; under those, its Why when open.
 fn label_row<'a>(
     label: &'a ListedLabel,
     editing: Option<&'a (i64, String)>,
@@ -356,11 +354,10 @@ fn label_row<'a>(
         cell(language_name(&label.lang).to_string(), Length::Fixed(LANGUAGE_WIDTH)),
         cell(status_text(label).to_string(), Length::Fixed(STATUS_WIDTH)),
         cell(seen_text(label), Length::Fixed(SEEN_WIDTH)),
-        actions_cell(actions(label, edited)),
     ]
     .spacing(GAP)
     .align_y(Center);
-    let mut shown = Column::new().spacing(GAP / 2.0).push(line);
+    let mut shown = Column::new().spacing(GAP / 2.0).push(line).push(actions(label, edited));
     if let Some((_, read)) = why.filter(|(id, _)| *id == label.id) {
         shown = shown.push(why_panel(read.as_ref()));
     }
@@ -493,11 +490,6 @@ fn actions<'a>(label: &'a ListedLabel, edited: Option<&'a (i64, String)>) -> Ele
         .push(action("Edit", Msg::Edit(label.id, label.text.clone())))
         .push(action("Copy", Msg::Copy(label.text.clone())))
         .into()
-}
-
-/// A row's buttons in the fixed-width column, at its right edge.
-fn actions_cell<'a>(buttons: Element<'a, Msg>) -> Element<'a, Msg> {
-    container(buttons).width(ACTIONS_WIDTH).align_x(iced::Right).into()
 }
 
 #[cfg(test)]
