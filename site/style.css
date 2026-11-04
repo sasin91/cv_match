@@ -158,3 +158,14 @@ footer { padding-block: 40px 56px; border-top: 1px solid var(--line); display: f
 }
 @media (max-width: 520px) { nav .links { display: none; } }
 @media (prefers-reduced-motion: reduce) { * { scroll-behavior: auto !important; } }
+
+/* how it works: one step per row */
+.step .frame { margin: 0; }
+
+/* screens: tabs over one big screen */
+.viewer { display: grid; gap: 20px; }
+.tabs { display: flex; gap: 8px; flex-wrap: wrap; }
+.tabs button { font: 600 15px var(--sans); color: var(--soft); background: transparent; border: 1px solid var(--line); border-radius: 999px; padding: 8px 16px; cursor: pointer; }
+.tabs button:hover { color: var(--ink); border-color: var(--soft); }
+.tabs button[aria-selected="true"] { background: var(--ink); color: var(--bg); border-color: var(--ink); }
+.tabs button:focus-visible { outline: 2px solid var(--rust); outline-offset: 2px; }

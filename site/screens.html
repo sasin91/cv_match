@@ -1,0 +1,77 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>JobFinder screens</title>
+<meta name="description" content="Every screen of JobFinder: the overview, saved matches, one match and why, job searches, the task manager, learned terms and notifications.">
+<meta name="color-scheme" content="light dark">
+<meta name="theme-color" content="#eef1ef" media="(prefers-color-scheme: light)">
+<meta name="theme-color" content="#0f1b24" media="(prefers-color-scheme: dark)">
+<meta property="og:title" content="JobFinder screens">
+<meta property="og:description" content="Finds the jobs you'd have missed, tells you why they fit, and starts the application. Free, and it runs on your own PC.">
+<meta property="og:type" content="website">
+<meta property="og:image" content="media/dashboard-light.png">
+<link rel="icon" href="favicon.svg" type="image/svg+xml">
+<link rel="preload" href="fonts/bricolage-grotesque-700.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="fonts/figtree-400.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="style.css">
+</head>
+<body>
+<div class="col">
+  <nav><a class="home" href="./"><strong>JobFinder</strong></a><span class="links"><a href="tour.html">How it works</a><a href="screens.html" aria-current="page">Screens</a><a href="phone.html">Phone</a><a href="questions.html">Questions</a><a href="https://github.com/sasin91/jobfinder">GitHub</a></span></nav>
+  <!-- The real app, in the reader's own light or dark -->
+  <section class="page-head">
+    <span class="eyebrow">Screens</span>
+    <h1>Every screen, <em>one at a time.</em></h1>
+    <p class="lede">From the author's own JobFinder on a real job hunt, in light or dark to match your system.</p>
+  </section>
+  <section style="border-top:0;padding-top:8px">
+    <div class="viewer">
+      <div class="tabs" role="tablist" aria-label="Screens"><button role="tab" id="tab-overview" aria-controls="panel-overview" aria-selected="true">Overview</button><button role="tab" id="tab-saved" aria-controls="panel-saved" aria-selected="false" tabindex="-1">Saved matches</button><button role="tab" id="tab-match" aria-controls="panel-match" aria-selected="false" tabindex="-1">One match</button><button role="tab" id="tab-searches" aria-controls="panel-searches" aria-selected="false" tabindex="-1">Job searches</button><button role="tab" id="tab-tasks" aria-controls="panel-tasks" aria-selected="false" tabindex="-1">Task manager</button><button role="tab" id="tab-terms" aria-controls="panel-terms" aria-selected="false" tabindex="-1">Learned terms</button><button role="tab" id="tab-notes" aria-controls="panel-notes" aria-selected="false" tabindex="-1">Notifications</button></div>
+      <div role="tabpanel" id="panel-overview" aria-labelledby="tab-overview"><figure><div class="frame"><picture><source srcset="media/dashboard-dark.png" media="(prefers-color-scheme: dark)"><img src="media/dashboard-light.png" width="1266" height="793" alt="The overview: status of the AI model, profile and job scan, counts of matches, and the best on the shortlist"></picture></div><figcaption class="cap"><b>Overview.</b> What's set up, what's running, and the best on your shortlist.</figcaption></figure></div>
+      <div role="tabpanel" id="panel-saved" aria-labelledby="tab-saved"><figure><div class="frame"><picture><source srcset="media/saved-matches-dark.png" media="(prefers-color-scheme: dark)"><img src="media/saved-matches-light.png" width="1266" height="793" loading="lazy" alt="Saved matches on the shortlist, each with its score"></picture></div><figcaption class="cap"><b>Saved matches.</b> Your shortlist, with scores.</figcaption></figure></div>
+      <div role="tabpanel" id="panel-match" aria-labelledby="tab-match"><figure><div class="frame"><picture><source srcset="media/match-why-dark.png" media="(prefers-color-scheme: dark)"><img src="media/match-why-light.png" width="1266" height="793" loading="lazy" alt="One match: its requirements and the verdict on each"></picture></div><figcaption class="cap"><b>One match.</b> Met, partly met or missing, and why.</figcaption></figure></div>
+      <div role="tabpanel" id="panel-searches" aria-labelledby="tab-searches"><figure><div class="frame"><picture><source srcset="media/job-searches-dark.png" media="(prefers-color-scheme: dark)"><img src="media/job-searches-light.png" width="1266" height="793" loading="lazy" alt="Job searches: what to look for, where, and which sites to read"></picture></div><figcaption class="cap"><b>Job searches.</b> What to look for, and where.</figcaption></figure></div>
+      <div role="tabpanel" id="panel-tasks" aria-labelledby="tab-tasks"><figure><div class="frame"><picture><source srcset="media/task-manager-dark.png" media="(prefers-color-scheme: dark)"><img src="media/task-manager-light.png" width="1266" height="793" loading="lazy" alt="The task manager during a scan"></picture></div><figcaption class="cap"><b>Task manager.</b> Pause or stop anything it's doing.</figcaption></figure></div>
+      <div role="tabpanel" id="panel-terms" aria-labelledby="tab-terms"><figure><div class="frame"><picture><source srcset="media/learned-terms-dark.png" media="(prefers-color-scheme: dark)"><img src="media/learned-terms-light.png" width="1266" height="793" loading="lazy" alt="Learned terms: a skill term and the words it has learned to match it with"></picture></div><figcaption class="cap"><b>Learned terms.</b> It learns that two words mean the same skill.</figcaption></figure></div>
+      <div role="tabpanel" id="panel-notes" aria-labelledby="tab-notes"><figure><div class="frame"><picture><source srcset="media/notifications-dark.png" media="(prefers-color-scheme: dark)"><img src="media/notifications-light.png" width="1266" height="793" loading="lazy" alt="The notifications drawer with new matches"></picture></div><figcaption class="cap"><b>Notifications.</b> New matches, without checking.</figcaption></figure></div>
+    </div>
+  </section>
+
+  <section><div class="next"><a href="tour.html"><b>How it works</b><span>The scan, why a job fits, and the letter, in three steps.</span><i>Read more →</i></a><a href="phone.html"><b>The phone app</b><span>Your shortlist in your pocket, over a private line.</span><i>Read more →</i></a><a href="questions.html"><b>Questions</b><span>Why not ChatGPT? Is my CV sent anywhere? Is it free?</span><i>Read more →</i></a></div></section>
+  <footer id="download">
+    <span>JobFinder · free and open source · Windows 11 and Linux<br>Made by Jonas Kerwin Hansen, built with help from Claude.</span>
+    <span style="display:flex;gap:20px;flex-wrap:wrap"><a href="https://github.com/sasin91/jobfinder/releases/latest">Download</a><a href="https://github.com/sasin91/jobfinder">Source on GitHub</a></span>
+  </footer>
+</div>
+<script>
+// With reduced motion asked for, the clips wait for a click instead of playing on their own.
+if (matchMedia('(prefers-reduced-motion: reduce)').matches) {
+  for (const v of document.querySelectorAll('video')) { v.removeAttribute('autoplay'); v.pause(); v.controls = true; }
+}
+</script>
+<script>
+// Tabs: one screen at a time. Without scripts every screen shows, one under the other.
+(() => {
+  const tabs = [...document.querySelectorAll('[role=tab]')];
+  const show = (tab, focus) => {
+    for (const t of tabs) {
+      const on = t === tab;
+      t.setAttribute('aria-selected', on); t.tabIndex = on ? 0 : -1;
+      document.getElementById(t.getAttribute('aria-controls')).hidden = !on;
+    }
+    if (focus) tab.focus();
+  };
+  tabs.forEach((t, i) => {
+    t.addEventListener('click', () => show(t));
+    t.addEventListener('keydown', e => {
+      const step = { ArrowRight: 1, ArrowLeft: -1 }[e.key];
+      if (step) { e.preventDefault(); show(tabs[(i + step + tabs.length) % tabs.length], true); }
+    });
+  });
+  show(tabs[0]);
+})();
+</script>
+</body>
+</html>

@@ -19,27 +19,22 @@
 </head>
 <body>
 <div class="col">
-  <nav><a class="home" href="./"><strong>JobFinder</strong></a><span class="links"><a href="tour.html" aria-current="page">How it works</a><a href="phone.html">Phone</a><a href="questions.html">Questions</a><a href="https://github.com/sasin91/jobfinder">GitHub</a></span></nav>
+  <nav><a class="home" href="./"><strong>JobFinder</strong></a><span class="links"><a href="tour.html" aria-current="page">How it works</a><a href="screens.html">Screens</a><a href="phone.html">Phone</a><a href="questions.html">Questions</a><a href="https://github.com/sasin91/jobfinder">GitHub</a></span></nav>
   <!-- The real app, in the reader's own light or dark -->
-  <section id="see" class="page-head" style="border-top:0">
-    <span class="eyebrow">The real thing</span>
-    <h1>This is the app, <em>on a real job hunt.</em></h1>
-    <p class="lede" style="margin-top:16px">Screens from the author's own JobFinder, in light or dark to match your system.</p>
-    <div class="screens">
-      <div class="clips">
-        <figure><div class="frame"><video autoplay muted loop playsinline preload="metadata" aria-label="A scan starting: the task manager fills with the job scan and a browser reading LinkedIn" width="1266" height="793"><source src="media/scan-dark.webm" type="video/webm" media="(prefers-color-scheme: dark)"><source src="media/scan-light.webm" type="video/webm"></video></div><figcaption class="cap"><b>Scan now.</b> The task manager shows what's being read, and for how long.</figcaption></figure>
-        <figure><div class="frame"><video autoplay muted loop playsinline preload="metadata" aria-label="Scrolling through a match's requirements, each with a verdict and the line from the CV that shows it" width="1266" height="793"><source src="media/match-why-dark.webm" type="video/webm" media="(prefers-color-scheme: dark)"><source src="media/match-why-light.webm" type="video/webm"></video></div><figcaption class="cap"><b>Why it matched.</b> Every requirement, with the line from your CV that shows it.</figcaption></figure>
-      </div>
-      <figure><div class="frame"><picture><source srcset="media/dashboard-dark.png" media="(prefers-color-scheme: dark)"><img src="media/dashboard-light.png" width="1266" height="793" loading="lazy" alt="The overview: status of the AI model, profile and job scan, counts of matches, and the best on the shortlist"></picture></div><figcaption class="cap"><b>Overview.</b> What's set up, what's running, and the best on your shortlist.</figcaption></figure>
-      <div class="gallery">
-        <figure><div class="frame"><picture><source srcset="media/saved-matches-dark.png" media="(prefers-color-scheme: dark)"><img src="media/saved-matches-light.png" width="1266" height="793" loading="lazy" alt="Saved matches on the shortlist, each with its score"></picture></div><figcaption class="cap"><b>Saved matches.</b> Your shortlist, with scores.</figcaption></figure>
-        <figure><div class="frame"><picture><source srcset="media/match-why-dark.png" media="(prefers-color-scheme: dark)"><img src="media/match-why-light.png" width="1266" height="793" loading="lazy" alt="One match: its requirements and the verdict on each"></picture></div><figcaption class="cap"><b>One match.</b> Met, partly met or missing, and why.</figcaption></figure>
-        <figure><div class="frame"><picture><source srcset="media/job-searches-dark.png" media="(prefers-color-scheme: dark)"><img src="media/job-searches-light.png" width="1266" height="793" loading="lazy" alt="Job searches: what to look for, where, and which sites to read"></picture></div><figcaption class="cap"><b>Job searches.</b> What to look for, and where.</figcaption></figure>
-        <figure><div class="frame"><picture><source srcset="media/task-manager-dark.png" media="(prefers-color-scheme: dark)"><img src="media/task-manager-light.png" width="1266" height="793" loading="lazy" alt="The task manager during a scan"></picture></div><figcaption class="cap"><b>Task manager.</b> Pause or stop anything it's doing.</figcaption></figure>
-        <figure><div class="frame"><picture><source srcset="media/learned-terms-dark.png" media="(prefers-color-scheme: dark)"><img src="media/learned-terms-light.png" width="1266" height="793" loading="lazy" alt="Learned terms: a skill term and the words it has learned to match it with"></picture></div><figcaption class="cap"><b>Learned terms.</b> It learns that two words mean the same skill.</figcaption></figure>
-        <figure><div class="frame"><picture><source srcset="media/notifications-dark.png" media="(prefers-color-scheme: dark)"><img src="media/notifications-light.png" width="1266" height="793" loading="lazy" alt="The notifications drawer with new matches"></picture></div><figcaption class="cap"><b>Notifications.</b> New matches, without checking.</figcaption></figure>
-      </div>
-    </div>
+  <section class="page-head">
+    <span class="eyebrow">How it works</span>
+    <h1>Three things it does, <em>so you don't have to.</em></h1>
+    <p class="lede">Clips from the author's own JobFinder, in light or dark to match your system.</p>
+  </section>
+
+  <section class="split step">
+    <div style="display:grid;gap:14px"><span class="eyebrow">Step 1</span><h2>It reads the job sites.</h2><p class="lede">Every two hours while your PC is on, or when you press Scan now. Jobnet, Jobindex, LinkedIn and Indeed, and the task manager shows what it's reading.</p></div>
+    <figure><div class="frame"><video autoplay muted loop playsinline preload="metadata" aria-label="A scan starting: the task manager fills with the job scan and a browser reading LinkedIn" width="1266" height="793"><source src="media/scan-dark.webm" type="video/webm" media="(prefers-color-scheme: dark)"><source src="media/scan-light.webm" type="video/webm"></video></div></figure>
+  </section>
+
+  <section class="split step">
+    <figure><div class="frame"><video autoplay muted loop playsinline preload="metadata" aria-label="Scrolling through a match's requirements, each with a verdict and the line from the CV that shows it" width="1266" height="793"><source src="media/match-why-dark.webm" type="video/webm" media="(prefers-color-scheme: dark)"><source src="media/match-why-light.webm" type="video/webm"></video></div></figure>
+    <div style="display:grid;gap:14px"><span class="eyebrow">Step 2</span><h2>It tells you why a job fits.</h2><p class="lede">Each match lists the post's requirements, whether you meet them, and the line from your CV that shows it. Ten seconds tells you whether it's worth your evening.</p></div>
   </section>
 
   <!-- The letter, and the dove that carries it -->
@@ -59,7 +54,7 @@
       <div class="att"><span>Bilag: CV (tilpasset), 1 side</span><span>Version 3</span></div>
     </article>
     <div style="display:grid;gap:16px">
-      <span class="eyebrow">The blank page, already started</span>
+      <span class="eyebrow">Step 3</span>
       <h2>A letter written <em>for this job</em>, not for every job.</h2>
       <p class="lede">It uses what the post asks for and what your CV shows. Ask for another go and the old one is kept, so you can always go back.</p>
       <div class="versions"><span>Version 3 · today 16:40 · "shorter, mention the night shifts"</span><span>Version 2 · today 16:31</span><span>Version 1 · today 16:28</span></div>
@@ -168,7 +163,7 @@
     </div>
   </section>
 
-  <section><div class="next"><a href="phone.html"><b>The phone app</b><span>Your shortlist in your pocket, over a private line.</span><i>Read more →</i></a><a href="questions.html"><b>Questions</b><span>Why not ChatGPT? Is my CV sent anywhere? Is it free?</span><i>Read more →</i></a></div></section>
+  <section><div class="next"><a href="screens.html"><b>Screens</b><span>Every screen of the app, one at a time.</span><i>Have a look →</i></a><a href="phone.html"><b>The phone app</b><span>Your shortlist in your pocket, over a private line.</span><i>Read more →</i></a><a href="questions.html"><b>Questions</b><span>Why not ChatGPT? Is my CV sent anywhere? Is it free?</span><i>Read more →</i></a></div></section>
   <footer id="download">
     <span>JobFinder · free and open source · Windows 11 and Linux<br>Made by Jonas Kerwin Hansen, built with help from Claude.</span>
     <span style="display:flex;gap:20px;flex-wrap:wrap"><a href="https://github.com/sasin91/jobfinder/releases/latest">Download</a><a href="https://github.com/sasin91/jobfinder">Source on GitHub</a></span>
