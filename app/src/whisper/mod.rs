@@ -55,8 +55,10 @@ pub struct Whisper {
     pub downloads: Downloads,
     /// Held while whisper-cli or the model is being fetched, so two recordings don't both fetch.
     pub fetching: tokio::sync::Mutex<()>,
-    /// Held while a recording is transcribed.
-    pub transcribing: tokio::sync::Mutex<()>,
+    /// Held while a recording is transcribed, and by its decoding thread until that ends, even
+    /// after the transcription was stopped: the next one waits, so it never writes the WAV the
+    /// stopped one's thread still writes.
+    pub transcribing: std::sync::Arc<tokio::sync::Mutex<()>>,
 }
 
 impl Whisper {
@@ -66,7 +68,7 @@ impl Whisper {
             build: Build::for_computer(inventory),
             downloads: Downloads::default(),
             fetching: tokio::sync::Mutex::new(()),
-            transcribing: tokio::sync::Mutex::new(()),
+            transcribing: std::sync::Arc::new(tokio::sync::Mutex::new(())),
         }
     }
 

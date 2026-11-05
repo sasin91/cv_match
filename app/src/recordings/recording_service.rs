@@ -4,6 +4,8 @@
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
+use tokio::sync::OwnedMutexGuard;
+
 use super::audio::{self, WHISPER_SAMPLE_RATE};
 use super::recording_model::{self, KIND_CALL, KIND_VOICE_MESSAGE, NewRecording, SOURCE_FILE};
 use super::recording_row::RecordingRow;
@@ -63,14 +65,14 @@ pub async fn transcribe(context: &Context, id: i64) -> Result<(), ServiceError> 
     let audio_file = recordings_folder(context)?.join(&recording.content_url);
     let program = ready_program(context, whisper).await?;
     ready_model(context, whisper).await?;
-    let _one_at_a_time = whisper.transcribing.lock().await;
+    let turn = Arc::clone(&whisper.transcribing).lock_owned().await;
     let what = format!("Recording {}", recording.content_url);
     let heard = context
         .running
         .run(
             WorkKind::Transcribing,
             what,
-            hear(&program, &whisper.model_path(), &audio_file),
+            hear(&program, &whisper.model_path(), &audio_file, turn),
         )
         .await
         .unwrap_or_else(|Stopped| Err(Stopped::SAID.to_string()))
@@ -187,12 +189,19 @@ async fn fetch(
 
 /// What whisper-cli hears in audio_file, and its length in milliseconds: the file is decoded
 /// into a 16 kHz WAV beside it first, deleted after.
-async fn hear(program: &Path, model: &Path, audio_file: &Path) -> Result<(whisper_cli::Heard, i64), String> {
+/// turn is the transcriptions' turn (Whisper::transcribing), let go once both this and the
+/// decoding thread are done.
+async fn hear(
+    program: &Path,
+    model: &Path,
+    audio_file: &Path,
+    turn: OwnedMutexGuard<()>,
+) -> Result<(whisper_cli::Heard, i64), String> {
     let wav = whisper_wav_path(audio_file);
-    // Held here and by the decoding thread: the files go when both have let go, also when the
-    // transcription is stopped in the task manager (this future is then dropped) while the
-    // thread, which can't be stopped, still writes the WAV.
-    let files = Arc::new(WhisperFiles::beside(audio_file));
+    // Held here and by the decoding thread: the files go, and the next transcription may start,
+    // when both have let go, also when the transcription is stopped in the task manager (this
+    // future is then dropped) while the thread, which can't be stopped, still writes the WAV.
+    let files = Arc::new((WhisperFiles::beside(audio_file), turn));
     let (from, to, held) = (audio_file.to_path_buf(), wav.clone(), Arc::clone(&files));
     let duration_ms = tokio::task::spawn_blocking(move || {
         let _held = held;
@@ -348,6 +357,17 @@ mod tests {
         drop(decoding_thread);
         assert!(!wav.exists() && !json.exists());
         std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[tokio::test]
+    async fn a_retry_waits_for_a_stopped_transcriptions_decoding_thread() {
+        let transcribing = Arc::new(tokio::sync::Mutex::new(()));
+        let stopped = Arc::clone(&transcribing).lock_owned().await;
+        // What the stopped transcription's decoding thread still holds once its future is gone.
+        let decoding_thread = Arc::new((WhisperFiles(Vec::new()), stopped));
+        assert!(transcribing.try_lock().is_err(), "the retry waits");
+        drop(decoding_thread);
+        assert!(transcribing.try_lock().is_ok(), "and starts once the thread is done");
     }
 
     #[test]
