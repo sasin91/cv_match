@@ -58,8 +58,10 @@ pub enum WorkKind {
     Browser,
     /// A PDF read in a child process (`jobfinder read-pdf`).
     PdfReader,
-    /// llama.cpp or one of its models being downloaded.
+    /// llama.cpp, whisper.cpp or one of their models being downloaded.
     Download,
+    /// A recording being turned into text by whisper-cli.
+    Transcribing,
 }
 
 impl WorkKind {
@@ -82,6 +84,7 @@ impl WorkKind {
             WorkKind::Browser => "Browser",
             WorkKind::PdfReader => "PDF reader",
             WorkKind::Download => "Download",
+            WorkKind::Transcribing => "Transcribing",
         }
     }
 

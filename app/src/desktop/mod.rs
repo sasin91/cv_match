@@ -23,6 +23,7 @@ mod local_model;
 mod match_screen;
 mod matching;
 mod notification_drawer;
+mod recordings_card;
 mod settings_screen;
 mod setup_screen;
 mod style;

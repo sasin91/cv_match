@@ -53,10 +53,11 @@ pub struct Asset {
     pub browser_download_url: String,
 }
 
+/// A GitHub release, as its API lists it.
 #[derive(Debug, Deserialize)]
-struct Release {
-    id: u64,
-    tag_name: String,
+pub(crate) struct Release {
+    pub id: u64,
+    pub tag_name: String,
 }
 
 /// A llama.cpp build for Windows, by the name part its zip carries.
@@ -287,6 +288,25 @@ impl Downloads {
         }
     }
 
+    /// Unzips zip into folder on a thread of its own, counted as running until it is done (see
+    /// unzipping), and deletes the zip after.
+    pub(crate) async fn unzip(&self, zip: &Path, folder: &Path) -> Result<(), String> {
+        let name = zip.file_name().unwrap_or_default().to_string_lossy().to_string();
+        let (zip_path, into) = (zip.to_path_buf(), folder.to_path_buf());
+        let unzipping = Unzipping::start(&self.unzipping);
+        tokio::task::spawn_blocking(move || {
+            let _unzipping = unzipping;
+            unzip(&zip_path, &into)
+        })
+        .await
+        .map_err(|e| format!("Unzipping {name} stopped: {e}"))?
+        .map_err(|e| format!("Couldn't unzip {name}: {e}"))?;
+        if let Err(e) = std::fs::remove_file(zip) {
+            crate::log_line!("{} couldn't be deleted after unzipping: {e}", zip.display());
+        }
+        Ok(())
+    }
+
     /// Ends the running download with its outcome; a failure is logged.
     pub fn end(&self, outcome: Result<(), String>) {
         let mut progress = self.lock();
@@ -304,7 +324,7 @@ impl Downloads {
     }
 }
 
-fn client() -> Result<reqwest::Client, String> {
+pub(crate) fn client() -> Result<reqwest::Client, String> {
     reqwest::Client::builder()
         .user_agent(USER_AGENT)
         .connect_timeout(Duration::from_secs(CONNECT_SECONDS))
@@ -328,18 +348,7 @@ pub async fn download_server(folder: &Path, inventory: &Inventory, downloads: &D
     for asset in &assets {
         let zip_path = folder.join(&asset.name);
         download_file(&client, &asset.browser_download_url, &zip_path, downloads).await?;
-        let (zip, into) = (zip_path.clone(), staging.clone());
-        let unzipping = Unzipping::start(&downloads.unzipping);
-        tokio::task::spawn_blocking(move || {
-            let _unzipping = unzipping;
-            unzip(&zip, &into)
-        })
-        .await
-        .map_err(|e| format!("Unzipping {} stopped: {e}", asset.name))?
-        .map_err(|e| format!("Couldn't unzip {}: {e}", asset.name))?;
-        if let Err(e) = std::fs::remove_file(&zip_path) {
-            crate::log_line!("llama: {} couldn't be deleted after unzipping: {e}", zip_path.display());
-        }
+        downloads.unzip(&zip_path, &staging).await?;
     }
     if !staging.join(SERVER_FILE).is_file() {
         return Err(format!(
@@ -359,16 +368,27 @@ pub async fn download_server(folder: &Path, inventory: &Inventory, downloads: &D
 
 /// The newest of the last RELEASES_SEARCHED releases with build's zips, and those zips.
 async fn newest_release_with(client: &reqwest::Client, build: Build) -> Result<(Release, Vec<Asset>), String> {
-    let releases: Vec<Release> = get_json(client, &format!("{RELEASES}?per_page={RELEASES_SEARCHED}")).await?;
+    let program = format!("llama.cpp's Windows {} build", build.name());
+    newest_release_having(client, RELEASES, &program, |assets| assets_for(build, assets)).await
+}
+
+/// The newest of the last RELEASES_SEARCHED releases at releases (a GitHub API releases URL) whose
+/// files pick finds, and the files it picked. program names what is looked for, for the messages.
+pub(crate) async fn newest_release_having(
+    client: &reqwest::Client,
+    releases: &str,
+    program: &str,
+    pick: impl Fn(&[Asset]) -> Result<Vec<Asset>, String>,
+) -> Result<(Release, Vec<Asset>), String> {
+    let listed: Vec<Release> = get_json(client, &format!("{releases}?per_page={RELEASES_SEARCHED}")).await?;
     let mut skipped = Vec::new();
-    for release in releases {
-        match assets_for(build, &all_assets(client, release.id).await?) {
+    for release in listed {
+        match pick(&all_assets(client, releases, release.id).await?) {
             Ok(assets) => {
                 if !skipped.is_empty() {
                     println!(
-                        "llama: {} has no Windows {} build yet, so {} is used.",
+                        "{} has no {program} yet, so {} is used.",
                         skipped.join(", "),
-                        build.name(),
                         release.tag_name
                     );
                 }
@@ -377,17 +397,14 @@ async fn newest_release_with(client: &reqwest::Client, build: Build) -> Result<(
             Err(_) => skipped.push(release.tag_name),
         }
     }
-    Err(format!(
-        "None of llama.cpp's last {RELEASES_SEARCHED} releases has a Windows {} build.",
-        build.name()
-    ))
+    Err(format!("None of the last {RELEASES_SEARCHED} releases has {program}."))
 }
 
 /// Every file of a release, page by page.
-async fn all_assets(client: &reqwest::Client, release_id: u64) -> Result<Vec<Asset>, String> {
+async fn all_assets(client: &reqwest::Client, releases: &str, release_id: u64) -> Result<Vec<Asset>, String> {
     let mut assets = Vec::new();
     for page in 1.. {
-        let url = format!("{RELEASES}/{release_id}/assets?per_page={ASSETS_PER_PAGE}&page={page}");
+        let url = format!("{releases}/{release_id}/assets?per_page={ASSETS_PER_PAGE}&page={page}");
         let listed: Vec<Asset> = get_json(client, &url).await?;
         let last_page = listed.len() < ASSETS_PER_PAGE;
         assets.extend(listed);
@@ -405,10 +422,10 @@ async fn get_json<T: serde::de::DeserializeOwned>(client: &reqwest::Client, url:
         .send()
         .await
         .and_then(reqwest::Response::error_for_status)
-        .map_err(|e| format!("GitHub didn't list llama.cpp's releases: {e}"))?
+        .map_err(|e| format!("GitHub didn't answer {url}: {e}"))?
         .json()
         .await
-        .map_err(|e| format!("GitHub's list of llama.cpp's releases couldn't be read: {e}"))
+        .map_err(|e| format!("GitHub's answer to {url} couldn't be read: {e}"))
 }
 
 /// Downloads model into models_folder.
@@ -423,7 +440,12 @@ pub async fn download_model(model: &CatalogModel, models_folder: &Path, download
 /// manager, it lets go of the connection (a server ends one that waits long) between two chunks,
 /// and on resume asks for the rest (an HTTP range), or for all of it again when the server can't
 /// send a part.
-async fn download_file(client: &reqwest::Client, url: &str, to: &Path, downloads: &Downloads) -> Result<(), String> {
+pub(crate) async fn download_file(
+    client: &reqwest::Client,
+    url: &str,
+    to: &Path,
+    downloads: &Downloads,
+) -> Result<(), String> {
     // Paused before this file (between two of a build's zips): it waits to be resumed first.
     running_work::until_resumed().await;
     if running_work::stop_asked() {
@@ -543,7 +565,7 @@ fn part_path(to: &Path) -> PathBuf {
 
 /// Moves everything in staging into folder, replacing what is there by the same name, and
 /// removes staging.
-fn move_into(staging: &Path, folder: &Path) -> io::Result<()> {
+pub(crate) fn move_into(staging: &Path, folder: &Path) -> io::Result<()> {
     for entry in std::fs::read_dir(staging)? {
         let entry = entry?;
         let target = folder.join(entry.file_name());

@@ -24,6 +24,7 @@ use crate::notifications::Toasts;
 use crate::scan_schedule::ScanSchedule;
 use crate::task_manager::running_work::RunningWork;
 use crate::taxonomy::Taxonomy;
+use crate::whisper::Whisper;
 
 pub struct Context {
     db: SqlitePool,
@@ -60,6 +61,10 @@ pub struct Context {
     pub toasts: Toasts,
     /// The pairing code shown now and the tailnet name, for paired devices (devices).
     pub devices: Devices,
+    /// The whisper folder, whose whisper-cli transcribes the recordings (whisper).
+    pub whisper: Option<Whisper>,
+    /// The folder the recordings' audio files are kept in, next to the database (recordings).
+    pub recordings_folder: Option<PathBuf>,
 }
 
 /// The database file the app runs on.
@@ -90,6 +95,8 @@ impl Context {
             game_mode: GameMode::default(),
             toasts: Toasts::default(),
             devices: Devices::default(),
+            whisper: None,
+            recordings_folder: None,
         }
     }
 

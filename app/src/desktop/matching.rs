@@ -15,6 +15,7 @@ use super::apply::{self, ApplyMsg, Applying};
 use super::batch::{self, Batch};
 use super::documents::{self, DocMsg, Docs};
 use super::drawings;
+use super::recordings_card::{self, RecMsg, Recordings};
 use super::style;
 use super::task_manager::Working;
 use super::widgets::{self, CARD_PADDING, ROW_PADDING};
@@ -190,6 +191,8 @@ pub struct State {
     /// working is read again every WORK_READ_EVERY, so a second start doesn't start a second
     /// round.
     watching: bool,
+    /// The calls and notes of the saved match open on its page.
+    recordings: Recordings,
 }
 
 impl Default for State {
@@ -213,6 +216,7 @@ impl Default for State {
             working: Working::default(),
             questions: 0,
             watching: false,
+            recordings: Recordings::default(),
         }
     }
 }
@@ -326,6 +330,8 @@ pub enum Msg {
     Apply(i64, u64, ApplyMsg),
     /// Where a PDF was saved; None when the dialog was closed.
     PdfSaved(Result<Option<String>, String>),
+    /// The calls and notes of the saved match open on its page.
+    Recordings(RecMsg),
     /// For the shell: go to Language models.
     ShowLanguageModels,
     /// For the shell: a match was saved or rejected, so the overview is read again.
@@ -666,6 +672,7 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
         // The shell's.
         Msg::Doc(id, msg) => return document(state, id, msg, runner),
         Msg::Apply(id, view, msg) => return applying(state, id, view, msg, runner),
+        Msg::Recordings(msg) => return state.recordings.update(msg, runner).map(Msg::Recordings),
         Msg::Wrote { id, answer } => {
             state.busy = false;
             match answer.as_ref() {
@@ -825,13 +832,16 @@ fn go(state: &mut State, page: Page, runner: &Runner) -> Task<Msg> {
             state.request += 1;
             let request = state.request;
             state.saved = None;
-            runner.run(
-                move |context| async move { match_service::saved_result(&context, id).await.map(Arc::new) },
-                move |result| Msg::SavedLoaded {
-                    request,
-                    result: result.and_then(|result| result.map_err(|e| e.message)),
-                },
-            )
+            Task::batch([
+                runner.run(
+                    move |context| async move { match_service::saved_result(&context, id).await.map(Arc::new) },
+                    move |result| Msg::SavedLoaded {
+                        request,
+                        result: result.and_then(|result| result.map_err(|e| e.message)),
+                    },
+                ),
+                state.recordings.open(id, runner).map(Msg::Recordings),
+            ])
         }
     }
 }
@@ -1622,7 +1632,12 @@ fn saved_view(state: &State) -> Element<'_, Msg> {
     page.push(match &state.saved {
         None => widgets::note("Reading the match…"),
         Some(Err(why)) => widgets::message_bar(Health::Attention, why.as_str()),
-        Some(Ok(shown)) => result_view(shown, state.busy, &state.working, None),
+        Some(Ok(shown)) => column![
+            result_view(shown, state.busy, &state.working, None),
+            recordings_card::view(&state.recordings).map(Msg::Recordings),
+        ]
+        .spacing(GAP * 1.5)
+        .into(),
     })
     .into()
 }

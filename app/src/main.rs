@@ -37,10 +37,12 @@ use jobfinder::job_sites::signed_in::{self, SignedInBrowser};
 use jobfinder::laya::laya_client::{self, LayaClient};
 use jobfinder::llama::{self, hardware::Inventory, llama_server::LlamaServer};
 use jobfinder::notifications::{Toasts, notification_model};
+use jobfinder::recordings;
 use jobfinder::scan_schedule::{self, ScanSchedule};
 use jobfinder::server::{self, AppState};
 use jobfinder::taxonomy::Taxonomy;
 use jobfinder::taxonomy_store;
+use jobfinder::whisper::{self, Whisper};
 use jobfinder::{cleanup, db, desktop, extension};
 
 /// Options of the web pages, which are gone: a shortcut or login task that still gives one starts
@@ -558,6 +560,8 @@ fn app_context(
         "This computer, for the app's own model: {inventory}. Its llama folder is {}.",
         llama_folder.display()
     );
+    context.whisper = Some(Whisper::new(&data_folder.join(whisper::FOLDER), &inventory));
+    context.recordings_folder = Some(recordings::folder_for(database));
     context.llama = Some(LlamaServer::new(&llama_folder, inventory));
     context.signed_in = Some(SignedInBrowser::new(data_folder.join(signed_in::FOLDER)));
     Ok(context)
