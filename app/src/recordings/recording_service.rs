@@ -2,6 +2,7 @@
 //! it with Whisper, list a match's recordings, delete one.
 
 use std::path::{Path, PathBuf};
+use std::sync::Arc;
 
 use super::audio::{self, WHISPER_SAMPLE_RATE};
 use super::recording_model::{self, KIND_CALL, KIND_VOICE_MESSAGE, NewRecording, SOURCE_FILE};
@@ -96,6 +97,9 @@ pub async fn delete(context: &Context, id: i64) -> Result<(), ServiceError> {
         .map_err(|e| ServiceError::internal(WHERE, format!("The recording couldn't be read: {e}")))?
         .ok_or_else(|| ServiceError::new(ErrorKind::NotFound, "That recording was not found."))?;
     let audio_file = recordings_folder(context)?.join(&recording.content_url);
+    // A WAV or transcript a stopped transcription couldn't delete (whisper-cli still had it
+    // open) goes too.
+    WhisperFiles::beside(&audio_file).delete();
     if let Err(e) = std::fs::remove_file(&audio_file)
         && e.kind() != std::io::ErrorKind::NotFound
     {
@@ -185,8 +189,13 @@ async fn fetch(
 /// into a 16 kHz WAV beside it first, deleted after.
 async fn hear(program: &Path, model: &Path, audio_file: &Path) -> Result<(whisper_cli::Heard, i64), String> {
     let wav = whisper_wav_path(audio_file);
-    let (from, to) = (audio_file.to_path_buf(), wav.clone());
+    // Held here and by the decoding thread: the files go when both have let go, also when the
+    // transcription is stopped in the task manager (this future is then dropped) while the
+    // thread, which can't be stopped, still writes the WAV.
+    let files = Arc::new(WhisperFiles::beside(audio_file));
+    let (from, to, held) = (audio_file.to_path_buf(), wav.clone(), Arc::clone(&files));
     let duration_ms = tokio::task::spawn_blocking(move || {
+        let _held = held;
         let mono = audio::resample(&audio::decode(&from)?, WHISPER_SAMPLE_RATE);
         audio::write_wav(&mono, &to)?;
         Ok::<i64, String>(mono.duration_ms())
@@ -194,10 +203,39 @@ async fn hear(program: &Path, model: &Path, audio_file: &Path) -> Result<(whispe
     .await
     .map_err(|e| format!("Decoding the sound stopped: {e}"))??;
     let heard = whisper_cli::transcribe(program, model, &wav).await;
-    if let Err(e) = std::fs::remove_file(&wav) {
-        crate::log_line!("whisper: {} couldn't be deleted: {e}", wav.display());
-    }
+    drop(files);
     Ok((heard?, duration_ms))
+}
+
+/// The files made for whisper-cli beside a recording: the 16 kHz WAV, and the JSON transcript
+/// whisper-cli writes. They hold the recording's sound and words, so they are deleted when the
+/// last holder drops this, however the transcription ended.
+#[derive(Debug)]
+struct WhisperFiles(Vec<PathBuf>);
+
+impl WhisperFiles {
+    fn beside(audio_file: &Path) -> Self {
+        let wav = whisper_wav_path(audio_file);
+        let json = whisper_cli::json_path(&wav);
+        WhisperFiles(vec![wav, json])
+    }
+
+    /// Deletes the files that are there.
+    fn delete(&self) {
+        for file in &self.0 {
+            if let Err(e) = std::fs::remove_file(file)
+                && e.kind() != std::io::ErrorKind::NotFound
+            {
+                crate::log_line!("whisper: {} couldn't be deleted: {e}", file.display());
+            }
+        }
+    }
+}
+
+impl Drop for WhisperFiles {
+    fn drop(&mut self) {
+        self.delete();
+    }
 }
 
 fn whisper_wav_path(audio_file: &Path) -> PathBuf {
@@ -291,6 +329,24 @@ mod tests {
         let second = keep_copy(&kept, &picked, 100).unwrap();
         assert_eq!(file_name(&first), "100-Call with Acme.m4a");
         assert_eq!(file_name(&second), "100-1-Call with Acme.m4a");
+        std::fs::remove_dir_all(&folder).unwrap();
+    }
+
+    #[test]
+    fn the_files_made_for_whisper_go_once_the_last_holder_lets_go() {
+        let folder = std::env::temp_dir().join(format!("jobfinder-whisper-files-{}", std::process::id()));
+        std::fs::create_dir_all(&folder).unwrap();
+        let audio_file = folder.join("call.m4a");
+        let wav = whisper_wav_path(&audio_file);
+        let json = whisper_cli::json_path(&wav);
+        let files = Arc::new(WhisperFiles::beside(&audio_file));
+        let decoding_thread = Arc::clone(&files);
+        drop(files);
+        // Written by the decoding thread after the transcription was stopped.
+        std::fs::write(&wav, b"sound").unwrap();
+        std::fs::write(&json, b"{}").unwrap();
+        drop(decoding_thread);
+        assert!(!wav.exists() && !json.exists());
         std::fs::remove_dir_all(&folder).unwrap();
     }
 

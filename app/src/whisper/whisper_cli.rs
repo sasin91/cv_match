@@ -1,7 +1,7 @@
 //! Runs whisper-cli on a 16 kHz mono WAV (recordings::audio makes one) and reads the transcript it
 //! writes as JSON: its timed lines and the language it heard.
 
-use std::path::Path;
+use std::path::{Path, PathBuf};
 
 use serde::Deserialize;
 
@@ -102,7 +102,7 @@ pub fn read_output(json: &str) -> Result<Heard, String> {
 /// and deleted after.
 pub async fn transcribe(program: &Path, model: &Path, wav: &Path) -> Result<Heard, String> {
     let output_base = wav.with_extension("");
-    let json_path = wav.with_extension("json");
+    let json_path = json_path(wav);
     let mut command = tokio::process::Command::new(program);
     command
         .arg("--model")
@@ -134,10 +134,12 @@ pub async fn transcribe(program: &Path, model: &Path, wav: &Path) -> Result<Hear
         ));
     }
     let json = std::fs::read_to_string(&json_path).map_err(|e| format!("whisper-cli wrote no transcript: {e}"))?;
-    if let Err(e) = std::fs::remove_file(&json_path) {
-        crate::log_line!("whisper: {} couldn't be deleted: {e}", json_path.display());
-    }
     read_output(&json)
+}
+
+/// Where whisper-cli writes the transcript of wav: beside it, as .json.
+pub fn json_path(wav: &Path) -> PathBuf {
+    wav.with_extension("json")
 }
 
 /// The threads whisper-cli computes on: CORES_SHARE of the processor's, at least one.
