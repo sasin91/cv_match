@@ -1,0 +1,41 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "providers": {
+    "local": {
+      "name": "Local server",
+      "package": "@opencode/ai/providers/openai-compatible",
+      "settings": {
+        "baseURL": "http://localhost:8080",
+        "apiKey": "sk-dummy"
+      },
+      "models": {
+        "granite": {
+          "modelID": "granite-4.2-8b-Q4_K_M",
+          "capabilities": {
+            "tools": true,
+            "input": ["text"],
+            "output": ["text"],
+          },
+          "limit": {
+            "context": 32768,
+            "output": 8192,
+          },
+        },
+        "qwen3": {
+          "name": "Qwen3.5 9B",
+          "modelID": "qwen3.5-9b-Q4_K_M",
+          "capabilities": {
+            "tools": true,
+            "input": ["text"],
+            "output": ["text"]
+          },
+          "limit": {
+            "context": 16384,
+            "output": 8192
+          }
+        }
+      }
+    }
+  },
+  "model": "local/granite"
+}
