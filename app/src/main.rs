@@ -561,7 +561,7 @@ fn app_context(
         llama_folder.display()
     );
     context.whisper = Some(Whisper::new(&data_folder.join(whisper::FOLDER), &inventory));
-    context.recordings_folder = Some(data_folder.join(recordings::FOLDER));
+    context.recordings_folder = Some(recordings::folder_for(database));
     context.llama = Some(LlamaServer::new(&llama_folder, inventory));
     context.signed_in = Some(SignedInBrowser::new(data_folder.join(signed_in::FOLDER)));
     Ok(context)

@@ -239,8 +239,9 @@ pub async fn remove_besides_the_database(found: &Found, schedule: &ScanSchedule)
     failed
 }
 
-/// Removes the database's files, and the recordings folder beside it (their audio is the
-/// user's, like the database); what couldn't be removed, said why.
+/// Removes the database's files, and its own recordings folder (recordings::folder_for; their
+/// audio is the user's, like the database), with the recordings folder itself once no other
+/// database's are left in it; what couldn't be removed, said why.
 pub fn remove_database(found: &Found) -> Vec<String> {
     let mut failed: Vec<String> = found
         .database_files
@@ -254,12 +255,15 @@ pub fn remove_database(found: &Found) -> Vec<String> {
     let recordings = found
         .database_files
         .first()
-        .and_then(|database| database.parent())
-        .map(|folder| folder.join(crate::recordings::FOLDER));
-    if let Some(recordings) = recordings.filter(|folder| folder.is_dir())
-        && let Err(e) = std::fs::remove_dir_all(&recordings)
-    {
-        failed.push(format!("{}: {e}", recordings.display()));
+        .map(|database| crate::recordings::folder_for(database));
+    if let Some(recordings) = recordings.filter(|folder| folder.is_dir()) {
+        if let Err(e) = std::fs::remove_dir_all(&recordings) {
+            failed.push(format!("{}: {e}", recordings.display()));
+        }
+        // remove_dir only removes an empty folder: another database's recordings keep it.
+        if let Some(shared) = recordings.parent() {
+            let _ = std::fs::remove_dir(shared);
+        }
     }
     failed
 }
@@ -383,6 +387,12 @@ mod tests {
         let database = folder.join("jobfinder.sqlite");
         std::fs::write(&database, "db").unwrap();
         std::fs::create_dir_all(folder.join("mine")).unwrap();
+        let recordings = crate::recordings::folder_for(&database);
+        let others_recordings = crate::recordings::folder_for(&folder.join("test.sqlite"));
+        for (recordings, file) in [(&recordings, "call.m4a"), (&others_recordings, "other.m4a")] {
+            std::fs::create_dir_all(recordings).unwrap();
+            std::fs::write(recordings.join(file), "sound").unwrap();
+        }
 
         let schedule = ScanSchedule::in_memory();
         schedule.register(4).await.unwrap();
@@ -405,6 +415,11 @@ mod tests {
         assert!(remove_database(&found).is_empty());
         assert!(!database.exists());
         assert!(!key_file.exists(), "the key file goes with the database");
+        assert!(!recordings.exists(), "its recordings go with the database");
+        assert!(
+            others_recordings.join("other.m4a").exists(),
+            "another database's recordings in the same folder stay"
+        );
         assert!(!remove_default_folder(&database, Path::new("/elsewhere")));
         std::fs::remove_dir_all(&folder).unwrap();
     }
