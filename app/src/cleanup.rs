@@ -8,9 +8,10 @@
 //!   when any is left there (account::former_keys);
 //! - JobFinder's name for Windows' notifications, in the user's registry (notifications);
 //! - what the app wrote or downloaded next to the database: the Jobnet extension's files,
-//!   llama.cpp and its models, Laya's model;
+//!   llama.cpp and its models, whisper.cpp and its model, Laya's model;
 //! - and only when asked again, the database itself, with its -wal and -shm files, its key file
-//!   (account::data_key) and the app's log (app_log) beside it. The API keys and the paired
+//!   (account::data_key), the recordings' audio files (recordings) and the app's log (app_log)
+//!   beside it. The API keys and the paired
 //!   devices' tokens are in the database, so they go with it.
 //!
 //! The data folder itself goes too when it is the default one (%APPDATA%\JobFinder) and nothing
@@ -63,6 +64,7 @@ pub fn app_folders(database: &Path) -> Vec<PathBuf> {
     [
         extension::FOLDER,
         llama::FOLDER,
+        crate::whisper::FOLDER,
         laya::laya_client::FOLDER,
         crate::job_sites::signed_in::FOLDER,
     ]
@@ -237,9 +239,10 @@ pub async fn remove_besides_the_database(found: &Found, schedule: &ScanSchedule)
     failed
 }
 
-/// Removes the database's files; what couldn't be removed, said why.
+/// Removes the database's files, and the recordings folder beside it (their audio is the
+/// user's, like the database); what couldn't be removed, said why.
 pub fn remove_database(found: &Found) -> Vec<String> {
-    found
+    let mut failed: Vec<String> = found
         .database_files
         .iter()
         .filter_map(|file| {
@@ -247,7 +250,18 @@ pub fn remove_database(found: &Found) -> Vec<String> {
                 .err()
                 .map(|e| format!("{}: {e}", file.display()))
         })
-        .collect()
+        .collect();
+    let recordings = found
+        .database_files
+        .first()
+        .and_then(|database| database.parent())
+        .map(|folder| folder.join(crate::recordings::FOLDER));
+    if let Some(recordings) = recordings.filter(|folder| folder.is_dir())
+        && let Err(e) = std::fs::remove_dir_all(&recordings)
+    {
+        failed.push(format!("{}: {e}", recordings.display()));
+    }
+    failed
 }
 
 /// Removes the data folder when it is default_folder and empty; whether it did.
@@ -353,6 +367,7 @@ mod tests {
             [
                 "/home/me/jobnet-joblog",
                 "/home/me/llama",
+                "/home/me/whisper",
                 "/home/me/laya",
                 "/home/me/signed-in-browser"
             ]

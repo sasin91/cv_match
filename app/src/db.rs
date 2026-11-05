@@ -53,6 +53,7 @@ const MIGRATIONS: &[(&str, &str)] = &[
         "0015_profile_years_of_work",
         include_str!("../migrations/0015_profile_years_of_work.sql"),
     ),
+    ("0016_recordings", include_str!("../migrations/0016_recordings.sql")),
 ];
 
 /// How long a write waits for another connection's write to finish, in milliseconds.

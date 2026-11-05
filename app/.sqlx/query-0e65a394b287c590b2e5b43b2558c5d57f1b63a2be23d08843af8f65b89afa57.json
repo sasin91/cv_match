@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "DELETE FROM recording_segments WHERE recording_id = ?1",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": []
+  },
+  "hash": "0e65a394b287c590b2e5b43b2558c5d57f1b63a2be23d08843af8f65b89afa57"
+}

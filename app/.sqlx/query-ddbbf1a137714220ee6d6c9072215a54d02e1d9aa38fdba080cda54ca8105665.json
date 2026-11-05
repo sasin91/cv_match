@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n            INSERT INTO recording_segments (recording_id, start_time_ms, end_time_ms, text)\n            VALUES (?1, ?2, ?3, ?4)\n            ON CONFLICT (recording_id, start_time_ms) DO UPDATE\n            SET text = recording_segments.text || ' ' || excluded.text,\n                end_time_ms = MAX(recording_segments.end_time_ms, excluded.end_time_ms)\n            ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 4
+    },
+    "nullable": []
+  },
+  "hash": "ddbbf1a137714220ee6d6c9072215a54d02e1d9aa38fdba080cda54ca8105665"
+}

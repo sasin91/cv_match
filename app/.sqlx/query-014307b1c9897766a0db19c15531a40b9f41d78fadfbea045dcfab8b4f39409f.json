@@ -1,0 +1,194 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        SELECT id AS \"id!\", match_id, kind, source, content_url, encoding_format, content_size,\n               duration_ms, date_created, upload_date, in_language, transcript,\n               abstract AS summary, transcribed_by, transcribed_at\n        FROM recordings\n        WHERE match_id = ?1\n        ORDER BY COALESCE(date_created, upload_date) DESC, id DESC\n        ",
+  "describe": {
+    "columns": [
+      {
+        "name": "id!",
+        "ordinal": 0,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "recordings",
+            "name": "id"
+          }
+        }
+      },
+      {
+        "name": "match_id",
+        "ordinal": 1,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "recordings",
+            "name": "match_id"
+          }
+        }
+      },
+      {
+        "name": "kind",
+        "ordinal": 2,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "recordings",
+            "name": "kind"
+          }
+        }
+      },
+      {
+        "name": "source",
+        "ordinal": 3,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "recordings",
+            "name": "source"
+          }
+        }
+      },
+      {
+        "name": "content_url",
+        "ordinal": 4,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "recordings",
+            "name": "content_url"
+          }
+        }
+      },
+      {
+        "name": "encoding_format",
+        "ordinal": 5,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "recordings",
+            "name": "encoding_format"
+          }
+        }
+      },
+      {
+        "name": "content_size",
+        "ordinal": 6,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "recordings",
+            "name": "content_size"
+          }
+        }
+      },
+      {
+        "name": "duration_ms",
+        "ordinal": 7,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "recordings",
+            "name": "duration_ms"
+          }
+        }
+      },
+      {
+        "name": "date_created",
+        "ordinal": 8,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "recordings",
+            "name": "date_created"
+          }
+        }
+      },
+      {
+        "name": "upload_date",
+        "ordinal": 9,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "recordings",
+            "name": "upload_date"
+          }
+        }
+      },
+      {
+        "name": "in_language",
+        "ordinal": 10,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "recordings",
+            "name": "in_language"
+          }
+        }
+      },
+      {
+        "name": "transcript",
+        "ordinal": 11,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "recordings",
+            "name": "transcript"
+          }
+        }
+      },
+      {
+        "name": "summary",
+        "ordinal": 12,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "recordings",
+            "name": "abstract"
+          }
+        }
+      },
+      {
+        "name": "transcribed_by",
+        "ordinal": 13,
+        "type_info": "Text",
+        "origin": {
+          "Table": {
+            "table": "recordings",
+            "name": "transcribed_by"
+          }
+        }
+      },
+      {
+        "name": "transcribed_at",
+        "ordinal": 14,
+        "type_info": "Integer",
+        "origin": {
+          "Table": {
+            "table": "recordings",
+            "name": "transcribed_at"
+          }
+        }
+      }
+    ],
+    "parameters": {
+      "Right": 1
+    },
+    "nullable": [
+      false,
+      true,
+      false,
+      false,
+      false,
+      true,
+      true,
+      true,
+      true,
+      false,
+      true,
+      true,
+      true,
+      true,
+      true
+    ]
+  },
+  "hash": "014307b1c9897766a0db19c15531a40b9f41d78fadfbea045dcfab8b4f39409f"
+}

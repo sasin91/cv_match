@@ -1,0 +1,12 @@
+{
+  "db_name": "SQLite",
+  "query": "\n        INSERT INTO recordings (match_id, kind, source, content_url, encoding_format, content_size,\n                                date_created, upload_date)\n        VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)\n        ",
+  "describe": {
+    "columns": [],
+    "parameters": {
+      "Right": 8
+    },
+    "nullable": []
+  },
+  "hash": "9750b3341e9e946deba695f3dd3e92e584d3c3a2603dad5040d7fd7bb68f65fa"
+}
