@@ -45,6 +45,7 @@ use tokio::sync::mpsc::{UnboundedReceiver, unbounded_channel};
 
 use crate::context::Context;
 use crate::dashboard::{self, Dashboard, Findings, Health, Work};
+use crate::game_mode::Playing;
 use crate::job_scan::scan_service;
 use crate::laya::laya_client::LayaState;
 use crate::notifications::notification_model;
@@ -115,6 +116,7 @@ pub struct Shell {
     /// The status line, read with the overview (it looks in the llama folder, too slow for
     /// every redraw).
     status: Vec<(Health, String)>,
+    detected_game: Option<Playing>,
     /// The bell's count, read with the overview.
     unread: i64,
     /// The last thing a click said (Scan now's answer, a page that couldn't open).
@@ -142,6 +144,8 @@ pub struct Shell {
 pub enum Message {
     Show(Screen),
     Reload,
+    ToggleGameMode,
+    GameDetected(Option<Playing>),
     Loaded(Arc<Read>),
     /// Goes to the place a link names by its path, as the work's links give it (place_for).
     OpenPage(String),
@@ -253,12 +257,15 @@ fn boot(launch: &Mutex<Option<Launch>>) -> (Shell, Task<Message>) {
         .expect("the window boots once");
     let ticks = ticks(&runtime);
     let clicks = notification_clicks(&context);
+    let detected = context.game_mode.detected();
+    let detected_game = detected.borrow().clone();
     let shell = Shell {
         context,
         runtime,
         screen: Screen::Match,
         overview: None,
         status: Vec::new(),
+        detected_game,
         said: None,
         language_models: language_models::State::default(),
         local_model: local_model::State::default(),
@@ -281,6 +288,14 @@ fn boot(launch: &Mutex<Option<Launch>>) -> (Shell, Task<Message>) {
         Task::run(received(front), |()| Message::Front),
         Task::run(received(ticks), |()| Message::Reload),
         Task::run(received(clicks), Message::NotificationClicked),
+        Task::run(
+            iced::futures::stream::unfold(detected, |mut detected| async {
+                detected.changed().await.ok()?;
+                let playing = detected.borrow_and_update().clone();
+                Some((playing, detected))
+            }),
+            Message::GameDetected,
+        ),
         first_run(&shell),
     ]);
     (shell, tasks)
@@ -517,6 +532,11 @@ fn place_shown(shell: &Shell) -> Place {
 
 fn handle(shell: &mut Shell, message: Message) -> Task<Message> {
     match message {
+        Message::ToggleGameMode => {
+            let mode = &shell.context.game_mode;
+            mode.set_manual(!mode.manual());
+        }
+        Message::GameDetected(playing) => shell.detected_game = playing,
         Message::Show(screen) => {
             shell.screen = screen;
             shell.said = None;
@@ -787,6 +807,32 @@ fn view(shell: &Shell) -> Element<'_, Message> {
         Some(footer) => column![page, footer].into(),
         None => page.into(),
     };
+    let game_mode = if shell.context.game_mode.manual() {
+        Some(Playing::Manual)
+    } else {
+        shell.detected_game.clone()
+    };
+    let page: Element<'_, Message> = if let Some(playing) = game_mode {
+        let reason = match playing {
+            Playing::Manual => "Enabled manually".to_string(),
+            detected => crate::game_mode::capitalized(&detected),
+        };
+        let banner = container(
+            row![
+                style::dot(Health::Ready),
+                text("Game mode active").font(style::semibold()).size(style::BODY_SIZE),
+                text(reason).size(style::BODY_SIZE).style(style::secondary),
+            ]
+            .spacing(10)
+            .align_y(Center),
+        )
+        .padding([10.0, PADDING * 2.0])
+        .width(Fill)
+        .style(style::card);
+        column![banner, page].into()
+    } else {
+        page
+    };
     // The drawer lies over the bottom of the page, which keeps its place under it.
     let page: Element<'_, Message> = if shell.drawer_open {
         let drawer = notification_drawer::view(&shell.notifications).map(Message::Notifications);
@@ -795,7 +841,7 @@ fn view(shell: &Shell) -> Element<'_, Message> {
         page
     };
     let main = column![page, status_line(&shell.status, shell.drawer_open, shell.unread)];
-    container(row![sidebar(shell.screen), main])
+    container(row![sidebar(shell), main])
         .width(Fill)
         .height(Fill)
         .style(style::page)
@@ -826,7 +872,9 @@ const SIDEBAR_WIDTH: f32 = 200.0;
 const STRIP_SIZE: Size = Size::new(3.0, 16.0);
 
 /// The app's name and its screens, as Windows 11's Settings has them.
-fn sidebar(current: Screen) -> Element<'static, Message> {
+fn sidebar(shell: &Shell) -> Element<'static, Message> {
+    let current = shell.screen;
+    let manual = shell.context.game_mode.manual();
     column![
         container(text(TITLE).font(style::title_font()).size(style::SECTION_SIZE)).padding([8.0, 12.0]),
         nav_item("Match", Screen::Match, current),
@@ -836,6 +884,19 @@ fn sidebar(current: Screen) -> Element<'static, Message> {
         nav_item("Job searches", Screen::JobSearches, current),
         nav_item("Task manager", Screen::TaskManager, current),
         nav_item("Settings", Screen::Settings, current),
+        space().height(Fill),
+        button(
+            text(if manual {
+                "End manual game mode"
+            } else {
+                "Enable game mode"
+            })
+            .size(style::BODY_SIZE)
+        )
+        .width(Fill)
+        .padding([8.0, 8.0])
+        .style(style::subtle_button(manual))
+        .on_press(Message::ToggleGameMode),
     ]
     .spacing(4)
     .padding(PADDING / 2.0)

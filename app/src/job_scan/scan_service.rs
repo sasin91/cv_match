@@ -1841,6 +1841,7 @@ mod tests {
         let why = out_of_time.make_way(&context).await.unwrap_err();
         assert!(why.starts_with("The scan ran for 0 minutes, its limit"), "{why}");
         let mut in_time = Matching::new(Started::ByHand);
+        context.game_mode.cache_detection_for_test(None);
         assert_eq!(in_time.make_way(&context).await, Ok(()));
     }
 

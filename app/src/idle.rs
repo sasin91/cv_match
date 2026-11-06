@@ -8,27 +8,26 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use crate::context::Context;
+use crate::game_mode::LOOK_EVERY;
 use crate::llama::llama_server::LlamaServer;
 
 /// How long a model may sit unused before it is let go (five minutes): long enough that a few
 /// matches in a row, or the posts of one scan, keep it loaded.
 pub const UNLOAD_AFTER: Duration = Duration::from_secs(300);
 
-/// How often the models are looked at (every half minute).
-const CHECK_EVERY: Duration = Duration::from_secs(30);
-
-/// Forever: every CHECK_EVERY, stops llama-server and lets Laya's model go when each sat unused
+/// Forever: every LOOK_EVERY, stops llama-server and lets Laya's model go when each sat unused
 /// for UNLOAD_AFTER, and says so.
 pub async fn unload_when_idle(context: Arc<Context>) {
     loop {
-        tokio::time::sleep(CHECK_EVERY).await;
+        tokio::time::sleep(LOOK_EVERY).await;
         unload_idle_models(&context).await;
     }
 }
 
 async fn unload_idle_models(context: &Context) {
+    let playing = context.game_mode.why_running();
     if let Some(llama) = &context.llama {
-        stop_llama_server_if_idle(context, llama).await;
+        stop_llama_server_if_idle(playing, llama).await;
     }
     if let Some(laya) = &context.laya
         && laya.unload_if_idle(UNLOAD_AFTER)
@@ -42,8 +41,7 @@ async fn unload_idle_models(context: &Context) {
 
 /// Stops llama-server when it sat unused for UNLOAD_AFTER, or while a game runs once no call
 /// needs it, and says so.
-async fn stop_llama_server_if_idle(context: &Context, llama: &LlamaServer) {
-    let playing = context.game_mode.why_running();
+async fn stop_llama_server_if_idle(playing: Option<crate::game_mode::Playing>, llama: &LlamaServer) {
     let idle_for = if playing.is_some() {
         Duration::ZERO
     } else {
