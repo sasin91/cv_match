@@ -17,6 +17,25 @@ use super::reject_reason::Rejection;
 use super::score_cursor;
 use super::tailored_resume::{ResumeEntry, TailoredResume};
 
+/// The sort order for saved matches.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum SortOrder {
+    #[default]
+    Best = 0,
+    Newest = 1,
+    Oldest = 2,
+}
+
+impl std::fmt::Display for SortOrder {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        f.write_str(match self {
+            Self::Best => "Best match",
+            Self::Newest => "Newest saved",
+            Self::Oldest => "Oldest saved",
+        })
+    }
+}
+
 /// The integration a match's Jobnet joblog status is kept under.
 pub const JOBNET_JOBLOG: &str = "jobnet_joblog";
 
@@ -393,6 +412,17 @@ pub async fn recent(db: &SqlitePool, limit: usize) -> sqlx::Result<Vec<ListedMat
 /// A batch of the user's matches in list `list` (LISTS), best first (highest score, then
 /// newest), after cursor `after` (score_cursor) when it is one.
 pub async fn best_first(db: &SqlitePool, limit: usize, after: &str, list: &str) -> sqlx::Result<Batch> {
+    list_matches(db, limit, after, list, SortOrder::Best).await
+}
+
+/// A batch in the selected order. The cursor must come from a batch in that same order.
+pub async fn list_matches(
+    db: &SqlitePool,
+    limit: usize,
+    after: &str,
+    list: &str,
+    sort_order: SortOrder,
+) -> sqlx::Result<Batch> {
     let place = score_cursor::place(after);
     let after_score = place.as_ref().map(|place| place.score);
     let after_at = place.as_ref().map(|place| place.at);
@@ -409,7 +439,8 @@ pub async fn best_first(db: &SqlitePool, limit: usize, after: &str, list: &str) 
         after_score,
         after_at,
         after_id,
-        fetch
+        fetch,
+        sort_order as i32,
     )
     .fetch_all(db)
     .await?
@@ -1124,6 +1155,26 @@ mod tests {
         let (second, next) = ids(&db, "all", 2, &next.unwrap()).await;
         assert_eq!(second, [3, 5]);
         assert_eq!(ids(&db, "all", 2, &next.unwrap()).await, (vec![6], None));
+    }
+
+    #[tokio::test]
+    async fn date_sort_pages_through_matches_with_equal_saved_times() {
+        let db = db::open_in_memory().await.unwrap();
+        db.execute(sqlx::raw_sql(SEED)).await.unwrap();
+        db.execute("UPDATE matches SET created_at = 100 WHERE id IN (1, 5, 6)")
+            .await
+            .unwrap();
+
+        for (sort, expected) in [
+            (SortOrder::Newest, [6, 5, 1, 3, 2]),
+            (SortOrder::Oldest, [2, 3, 1, 5, 6]),
+        ] {
+            let first = list_matches(&db, 2, "", "all", sort).await.unwrap();
+            let second = list_matches(&db, 3, &first.next.unwrap(), "all", sort).await.unwrap();
+            let ids: Vec<_> = first.rows.iter().chain(&second.rows).map(|row| row.id).collect();
+            assert_eq!(ids, expected);
+            assert!(second.next.is_none());
+        }
     }
 
     #[tokio::test]

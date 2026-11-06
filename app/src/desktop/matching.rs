@@ -8,7 +8,7 @@
 
 use std::sync::Arc;
 
-use iced::widget::{Column, Row, button, checkbox, column, container, row, text, text_editor, text_input};
+use iced::widget::{Column, Row, button, checkbox, column, container, pick_list, row, text, text_editor, text_input};
 use iced::{Center, Element, Fill, Task};
 
 use super::apply::{self, ApplyMsg, Applying};
@@ -27,7 +27,7 @@ use crate::matches::document_question::Answer as QuestionAnswer;
 use crate::matches::document_writer::Revision;
 use crate::matches::joblog;
 use crate::matches::joblog_panel::Logged;
-use crate::matches::match_model::LISTS;
+use crate::matches::match_model::{LISTS, SortOrder};
 use crate::matches::match_result::{MatchResult, OpeningLine, Section};
 use crate::matches::match_service::{
     self, JobAsk, MAX_JOBS, MatchAnswer, MatchAsk, ReadCv, RejectOutcome, SavedMatchList, WriteAnswer,
@@ -156,6 +156,7 @@ struct List {
     rows: Vec<SavedMatchRow>,
     next_after: Option<String>,
     empty: &'static str,
+    sort: SortOrder,
 }
 
 pub struct State {
@@ -336,6 +337,7 @@ pub enum Msg {
     ShowLanguageModels,
     /// For the shell: a match was saved or rejected, so the overview is read again.
     Changed,
+    Sort(SortOrder),
 }
 
 pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
@@ -540,6 +542,14 @@ pub fn update(state: &mut State, msg: Msg, runner: &Runner) -> Task<Msg> {
             }
             state.list.read = None;
             return Task::done(Msg::Changed);
+        }
+        Msg::Sort(order) => {
+            if let Page::List(list) = state.page
+                && state.list.sort != order
+            {
+                state.list.sort = order;
+                return reload_list(state, list, runner);
+            }
         }
         Msg::OpenJobPost(url) => {
             if let Err(why) = super::open_in_browser(&url) {
@@ -856,12 +866,13 @@ fn reload_list(state: &mut State, list: &'static str, runner: &Runner) -> Task<M
 }
 
 fn load_list(state: &mut State, list: &'static str, after: String, runner: &Runner) -> Task<Msg> {
+    let sort = state.list.sort;
     state.request += 1;
     let request = state.request;
     let more = !after.is_empty();
     runner.run(
         move |context| async move {
-            match_service::saved_matches(&context, Some(list), &after)
+            match_service::sorted_saved_matches(&context, Some(list), &after, sort)
                 .await
                 .map(Arc::new)
         },
@@ -1559,14 +1570,21 @@ fn list_view<'a>(state: &'a State, current: &'static str) -> Element<'a, Msg> {
     let check_open = button(text("Check which are still open").size(style::BODY_SIZE))
         .style(style::standard_button)
         .on_press_maybe((!state.busy).then_some(Msg::CheckOpen));
+    let sort_select = pick_list(
+        [SortOrder::Best, SortOrder::Newest, SortOrder::Oldest],
+        Some(state.list.sort),
+        Msg::Sort,
+    )
+    .text_size(style::BODY_SIZE)
+    .style(style::pick_field);
     let mut page = Column::new()
         .spacing(GAP * 1.5)
         .push(widgets::page_title(
             "Saved matches",
-            widgets::note("Best first. Open one to see its verdicts, or to say you're not interested."),
+            widgets::note("Open a match to see its verdicts, or to say you're not interested."),
         ))
         .push(
-            row![container(tabs).width(Fill), check_open]
+            row![container(tabs).width(Fill), sort_select, check_open]
                 .spacing(12)
                 .align_y(Center),
         );

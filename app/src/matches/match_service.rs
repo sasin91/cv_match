@@ -17,7 +17,7 @@ use super::joblog::{self, Entry};
 use super::joblog_panel::{JoblogPanel, Logged};
 use super::llm_key;
 use super::match_documents::{self, MatchDocuments};
-use super::match_model::{self, JOBNET_JOBLOG, LISTS, ListedMatch, NewMatch, SHORTLIST, SavedMatch};
+use super::match_model::{self, JOBNET_JOBLOG, LISTS, ListedMatch, NewMatch, SHORTLIST, SavedMatch, SortOrder};
 use super::match_result::{Fresh, MatchResult};
 use super::matcher::{self, Matcher, Verdict, Verdicts};
 use super::page_reader::{self, Page};
@@ -53,7 +53,7 @@ const NOT_FOUND_REASON: &str = "Not named in the CV. The AI match also looks for
 /// The extension's history: the latest matches, and the ones to log on Jobnet first.
 const HISTORY_SIZE: usize = 50;
 
-/// A batch of a list's saved matches, best first.
+/// A batch of a list's saved matches.
 pub struct SavedMatchList {
     pub matches: Vec<SavedMatchRow>,
     /// The cursor of the next batch, when there is one.
@@ -63,12 +63,22 @@ pub struct SavedMatchList {
 /// A batch of the list named list (the shortlist when None or unknown), after the cursor after
 /// ("" for the first batch).
 pub async fn saved_matches(context: &Context, list: Option<&str>, after: &str) -> Result<SavedMatchList, ServiceError> {
+    sorted_saved_matches(context, list, after, SortOrder::Best).await
+}
+
+/// A batch in the selected order, after a cursor from the same order.
+pub async fn sorted_saved_matches(
+    context: &Context,
+    list: Option<&str>,
+    after: &str,
+    sort: SortOrder,
+) -> Result<SavedMatchList, ServiceError> {
     let list = LISTS
         .iter()
         .map(|(name, ..)| *name)
         .find(|name| list == Some(*name))
         .unwrap_or(SHORTLIST);
-    let found = match_model::best_first(context.db(), PER_PAGE, after, list).await?;
+    let found = match_model::list_matches(context.db(), PER_PAGE, after, list, sort).await?;
     Ok(SavedMatchList {
         matches: found.rows.iter().map(SavedMatchRow::from).collect(),
         next_after: found.next,
